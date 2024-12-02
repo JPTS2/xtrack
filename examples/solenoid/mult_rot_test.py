@@ -15,10 +15,10 @@ import matplotlib.pyplot as plt
 ################################################################################
 # User Parameters
 ################################################################################
-N_SLICES    = int(1E2)
-K0          = 1E-3
+N_SLICES    = int(1E3)
+K0          = 1E-1
 L_SOL       = 1
-XING_RAD    = 1E-3
+XING_RAD    = 1000E-3
 
 BETX        = 100E-3
 BETY        = 1E-3
@@ -53,14 +53,14 @@ bl_line    = env.new_line(
 # Line (horizontal rotated frame)
 ########################################
 hrot_components_in = [
-    env.new('hrot_drift0',       xt.Drift,       length  = 1),
-    env.new('hshift_in',     xt.XYShift,     dx      = np.sin(XING_RAD) * L_SOL / 2),
-    env.new('hrot_in',       xt.YRotation,   angle   = -np.rad2deg(XING_RAD))]
+    env.new('hrot_drift0',   xt.Drift,       length  = 1),
+    env.new('hrot_in',       xt.YRotation,   angle   = -np.rad2deg(XING_RAD)),
+    env.new('hshift_in',     xt.XYShift,     dx      = -np.sin(XING_RAD) * (-L_SOL / 2))]
 
 hrot_components_out = [
-    env.new('hrot_out',      xt.YRotation,   angle   = np.rad2deg(XING_RAD)),
     env.new('hshift_out',    xt.XYShift,     dx      = np.sin(XING_RAD) * L_SOL / 2),
-    env.new('hrot_drift1',       xt.Drift,       length  = 1)]
+    env.new('hrot_out',      xt.YRotation,   angle   = np.rad2deg(XING_RAD)),
+    env.new('hrot_drift1',   xt.Drift,       length  = 1)]
 
 hrot_components_sol = [
     env.new(f'hrot_sol.{i}',  xt.Solenoid,
@@ -68,8 +68,10 @@ hrot_components_sol = [
             ks                  = 0,
             knl                 = [K0 * (L_SOL / N_SLICES), 0, 0],
             num_multipole_kicks = 1,
-            mult_rot_y_rad      = XING_RAD,
-            mult_shift_x        = np.sin(XING_RAD) * L_SOL * (i/N_SLICES - 1/2))
+            mult_rot_y_rad      = - XING_RAD,
+            mult_shift_x        = np.sin(XING_RAD) * (
+                (L_SOL * (i / N_SLICES) - L_SOL / 2) +  # s from IP
+                (L_SOL / N_SLICES) / 2 ) )              # half slice thickness
     for i in range(N_SLICES)]
 
 hrot_line    = env.new_line(
@@ -80,12 +82,12 @@ hrot_line    = env.new_line(
 ########################################
 vrot_components_in = [
     env.new('vrot_drift0',   xt.Drift,       length  = 1),
-    env.new('vshift_in',     xt.XYShift,     dy      = np.sin(XING_RAD) * L_SOL / 2),
-    env.new('vrot_in',       xt.XRotation,   angle   = np.rad2deg(XING_RAD))]
+    env.new('vrot_in',       xt.XRotation,   angle   = np.rad2deg(XING_RAD)),
+    env.new('vshift_in',     xt.XYShift,     dy      = -np.sin(XING_RAD) * (-L_SOL / 2))]
 # TODO: Minus sign difference here as still inconsistent definition with XRotation and YRotation
 vrot_components_out = [
-    env.new('vrot_out',      xt.XRotation,   angle   = -np.rad2deg(XING_RAD)),
     env.new('vshift_out',    xt.XYShift,     dy      = np.sin(XING_RAD) * L_SOL / 2),
+    env.new('vrot_out',      xt.XRotation,   angle   = -np.rad2deg(XING_RAD)),
     env.new('vrot_drift1',   xt.Drift,       length  = 1)]
 
 vrot_components_sol = [
@@ -94,8 +96,9 @@ vrot_components_sol = [
             ks                  = 0,
             knl                 = [K0 * (L_SOL / N_SLICES), 0, 0],
             num_multipole_kicks = 1,
-            mult_rot_x_rad      = XING_RAD,
-            mult_shift_y        = np.sin(XING_RAD) * L_SOL * (i/N_SLICES - 1/2))
+            mult_rot_x_rad      = - XING_RAD,
+            mult_shift_y        = np.sin(XING_RAD) * L_SOL *\
+                ((2*i + 1) / (2 * N_SLICES) - 1/2))
     for i in range(N_SLICES)]
 
 vrot_line    = env.new_line(
