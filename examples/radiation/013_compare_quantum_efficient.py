@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 import xobjects as xo
+from xobjects.context import get_context_from_string, get_user_context
 import xpart as xp
 import xtrack as xt
 
@@ -20,7 +21,12 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-CONTEXT = xo.ContextCpu()
+
+# ``None`` asks Xobjects to use the default user context. This still allows the
+# context to be selected from the shell through ``XOBJECTS_USER_CONTEXT``. For a
+# fully explicit run, set this to a string such as ``"ContextCpu:auto"`` or
+# ``"ContextCupy:0"``, or set it directly to an instantiated context.
+CONTEXT = None
 
 N_PARTICLES         = int(1E8)
 BATCH_SIZE          = int(1E6)
@@ -31,12 +37,23 @@ PILOT_PARTICLES     = int(1E6)
 TAIL_PROBABILITY    = 1E-10
 DDELTA_LOW_SIGMAS   = 8.0
 
-P0C                 = 182.5e9
-LENGTH              = 22.653765579198428
-ANGLE               = 0.0022799344662676477
 INITIAL_PX          = 1e-4
 INITIAL_PY          = -1e-4
 INITIAL_DELTA       = 0.0
+
+ALPHA_EM            = 7.2973525693e-3
+
+CASES = [
+    {
+        "name":     "FCC-ee tt-like high lambda",
+        "p0c":      182.5e9,
+        "length":   22.653765579198428,
+        "angle":    0.0022799344662676477},
+    {
+        "name":     "SuperKEKB-like low lambda",
+        "p0c":      4.0e9,
+        "length":   22.653765579198428,
+        "angle":    0.0012128729366015125}]
 
 MODES = {
     "quantum": 2,
@@ -47,6 +64,11 @@ PLOT_SPECS = [
     ("dpy", r"$\Delta p_y$"),
     ("ddelta", r"$\Delta\delta$")]
 
+if CONTEXT is None:
+    CONTEXT = get_user_context()
+elif isinstance(CONTEXT, str):
+    CONTEXT = get_context_from_string(CONTEXT)
+
 ################################################################################
 # Purpose
 ################################################################################
@@ -55,25 +77,54 @@ PLOT_SPECS = [
 # ``quantum-efficient``.
 #
 # The physics question is whether the algorithmic change preserves the particle
-# kicks produced by one representative FCC-ee tt-like bend. The efficient mode
-# no longer samples every emitted photon, so the retained observables are the
-# total radiation kick:
+# kicks produced by representative bends. The efficient mode no longer samples
+# every emitted photon, so the retained observables are the total radiation kick:
 #
 #     Delta p_x, Delta p_y, Delta delta
 #
-# The script streams many particles through the same bend, accumulates moments
-# and histograms, and gives special attention to the lower tail of
-# ``Delta delta`` because rare large energy-loss events are important for
-# lifetime studies.
+# The script tests both a high-lambda FCC-ee tt-like case and a lower-lambda
+# case representative of weaker-radiation regimes. This is important because
+# low-lambda tracking is dominated by zero- and one-photon events, precisely
+# where table-generation errors are most visible. The script streams many
+# particles through each bend, accumulates moments and histograms, and gives
+# special attention to the lower tail of ``Delta delta`` because rare large
+# energy-loss events are important for lifetime studies.
 
 ################################################################################
 # Lattice and particle construction
 ################################################################################
-def make_particles(n_batch, i_start):
+def expected_average_photon_count(case):
+    """Estimate the mean photon count for the configured bend.
+
+    Parameters
+    ----------
+    case : dict
+        Tracking case containing ``p0c`` and ``angle``.
+
+    Returns
+    -------
+    lambda_synrad : float
+        Expected number of emitted photons in the bend.
+
+    Notes
+    -----
+    This mirrors the expression used in ``synrad_average_number_of_photons``
+    in ``xtrack/headers/synrad_spectrum.h``. For an ideal bend, the integrated
+    curvature kick is the bend angle, so
+
+    ``lambda = 2.5 / sqrt(3) * alpha * beta0_gamma0 * abs(angle)``.
+    """
+    beta0_gamma0 = case["p0c"] / xp.ELECTRON_MASS_EV
+    return 2.5 / np.sqrt(3.0) * ALPHA_EM * beta0_gamma0 * abs(case["angle"])
+
+
+def make_particles(case, n_batch, i_start):
     """Build a reproducible batch of identical test particles.
 
     Parameters
     ----------
+    case : dict
+        Tracking case containing the reference momentum.
     n_batch : int
         Number of particles in this batch.
     i_start : int
@@ -90,7 +141,7 @@ def make_particles(n_batch, i_start):
     """
     return xp.Particles(
         _context    = CONTEXT,
-        p0c         = P0C,
+        p0c         = case["p0c"],
         mass0       = xp.ELECTRON_MASS_EV,
         q0          = -1,
         particle_id = np.arange(i_start, i_start + n_batch),
@@ -101,11 +152,13 @@ def make_particles(n_batch, i_start):
         delta       = INITIAL_DELTA * np.ones(n_batch))
 
 
-def make_bend(radiation_flag):
+def make_bend(case, radiation_flag):
     """Build the single bend used for the comparison.
 
     Parameters
     ----------
+    case : dict
+        Tracking case containing bend length and angle.
     radiation_flag : int
         Xtrack radiation flag. In this branch, ``2`` is the existing
         photon-by-photon quantum mode and ``3`` is the proposed
@@ -124,17 +177,19 @@ def make_bend(radiation_flag):
     """
     return xt.Bend(
         _context        = CONTEXT,
-        length          = LENGTH,
-        angle           = ANGLE,
+        length          = case["length"],
+        angle           = case["angle"],
         k0_from_h       = True,
         radiation_flag  = radiation_flag)
 
 
-def track_batch(bend, radiation_flag, n_batch, i_start):
+def track_batch(case, bend, radiation_flag, n_batch, i_start):
     """Track one batch and return the radiation-induced coordinate changes.
 
     Parameters
     ----------
+    case : dict
+        Tracking case used to build the particles.
     bend : xtrack.Bend
         Element through which the particles are tracked.
     radiation_flag : int
@@ -152,7 +207,7 @@ def track_batch(bend, radiation_flag, n_batch, i_start):
         tracking time. The coordinate differences are measured relative to the
         configured initial coordinates.
     """
-    particles = make_particles(n_batch, i_start)
+    particles = make_particles(case, n_batch, i_start)
     particles._init_random_number_generator()
 
     t_start = time.perf_counter()
@@ -172,8 +227,13 @@ def track_batch(bend, radiation_flag, n_batch, i_start):
 ########################################
 # Collect pilot distributions
 ########################################
-def collect_pilot():
+def collect_pilot(case):
     """Track a smaller pilot sample to choose stable histogram ranges.
+
+    Parameters
+    ----------
+    case : dict
+        Tracking case to run.
 
     Returns
     -------
@@ -192,17 +252,18 @@ def collect_pilot():
     n_pilot = min(PILOT_PARTICLES, N_PARTICLES)
 
     for mode, radiation_flag in MODES.items():
-        bend    = make_bend(radiation_flag)
+        bend    = make_bend(case, radiation_flag)
         n_done  = 0
 
         with tqdm(
                 total       = n_pilot,
-                desc        = f"{mode:17s} pilot",
+                desc        = f"{case['name'][:18]:18s} {mode:17s} pilot",
                 unit        = "particle",
                 unit_scale  = True) as progress:
             while n_done < n_pilot:
                 n_batch = min(BATCH_SIZE, n_pilot - n_done)
-                values  = track_batch(bend, radiation_flag, n_batch, n_done)
+                values  = track_batch(
+                    case, bend, radiation_flag, n_batch, n_done)
                 for key in pilot[mode]:
                     pilot[mode][key].append(values[key])
 
@@ -476,11 +537,13 @@ def print_summary(mode, mode_acc):
 ########################################
 # Track the full sample
 ########################################
-def stream_statistics(bins):
+def stream_statistics(case, bins):
     """Track all requested particles and accumulate comparison statistics.
 
     Parameters
     ----------
+    case : dict
+        Tracking case to run.
     bins : dict
         Histogram bin edges returned by :func:`make_bins`.
 
@@ -499,17 +562,18 @@ def stream_statistics(bins):
     acc = make_accumulators(bins)
 
     for mode, radiation_flag in MODES.items():
-        bend = make_bend(radiation_flag)
+        bend = make_bend(case, radiation_flag)
         n_done = 0
 
         with tqdm(
                 total=N_PARTICLES,
-                desc=f"{mode:17s} track",
+                desc=f"{case['name'][:18]:18s} {mode:17s} track",
                 unit="particle",
                 unit_scale=True) as progress:
             while n_done < N_PARTICLES:
                 n_batch = min(BATCH_SIZE, N_PARTICLES - n_done)
-                values = track_batch(bend, radiation_flag, n_batch, n_done)
+                values = track_batch(
+                    case, bend, radiation_flag, n_batch, n_done)
                 update_timing(acc[mode]["timing"], n_batch, values["t_track"])
 
                 for key, _ in PLOT_SPECS:
@@ -539,11 +603,13 @@ def stream_statistics(bins):
 ########################################
 # Plot accumulated results
 ########################################
-def plot_results(acc, bins):
+def plot_results(case, acc, bins):
     """Plot distributions, CDFs, and the lower energy-loss tail.
 
     Parameters
     ----------
+    case : dict
+        Tracking case that produced the accumulated results.
     acc : dict
         Accumulators returned by :func:`stream_statistics`.
     bins : dict
@@ -558,9 +624,9 @@ def plot_results(acc, bins):
     CDF for ``Delta delta`` focuses on rare high-energy radiation events,
     which are the most important events for lifetime-sensitive validation.
     """
-    plt.close("all")
     reference_mode = "quantum"
     efficient_mode = "quantum-efficient"
+    lambda_synrad = expected_average_photon_count(case)
 
     fig, axes = plt.subplots(
         2, 3, figsize=(14, 6.5), sharex="col",
@@ -644,9 +710,11 @@ def plot_results(acc, bins):
         ax_cdf_res.grid(True)
 
     fig.suptitle(
-        "Synchrotron radiation kick distributions in one FCC-ee tt-like bend")
+        f"{case['name']}: kick distributions, "
+        rf"$\lambda = {lambda_synrad:.3g}$")
     fig_cdf.suptitle(
-        "Synchrotron radiation kick CDFs in one FCC-ee tt-like bend")
+        f"{case['name']}: kick CDFs, "
+        rf"$\lambda = {lambda_synrad:.3g}$")
     fig.tight_layout()
     fig_cdf.tight_layout()
 
@@ -685,17 +753,32 @@ def plot_results(acc, bins):
     ax_tail_res.set_ylabel(r"$\Delta$CDF")
     ax_tail_res.grid(True)
 
-    fig_tail.suptitle("Lower-tail CDF of the energy kick")
+    fig_tail.suptitle(
+        f"{case['name']}: lower-tail CDF of the energy kick, "
+        rf"$\lambda = {lambda_synrad:.3g}$")
     fig_tail.tight_layout()
 
 
 ################################################################################
 # Run
 ################################################################################
-pilot   = collect_pilot()
-bins    = make_bins(pilot)
-del pilot
-acc     = stream_statistics(bins)
-plot_results(acc, bins)
+plt.close("all")
+
+for case in CASES:
+    lambda_synrad = expected_average_photon_count(case)
+    print()
+    print("=" * 80)
+    print(case["name"])
+    print("=" * 80)
+    print(f"p0c = {case['p0c']:.6e} eV")
+    print(f"length = {case['length']:.6e} m")
+    print(f"angle = {case['angle']:.6e} rad")
+    print(f"expected lambda = <N_gamma> = {lambda_synrad:.6e}")
+
+    pilot   = collect_pilot(case)
+    bins    = make_bins(pilot)
+    del pilot
+    acc     = stream_statistics(case, bins)
+    plot_results(case, acc, bins)
 
 plt.show()

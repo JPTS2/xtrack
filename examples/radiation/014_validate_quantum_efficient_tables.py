@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import fftconvolve
 
 
 ################################################################################
@@ -21,15 +20,10 @@ FIXED_COUNTS        = [1, 2, 3, 7, 9, 16, 32]
 LAMBDAS             = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 9.0, 30.0]
 N_SAMPLES           = int(1E6)
 MAX_POWER           = 256
-PLOT_COUNTS         = [1, 3, 9, 32]
+PLOT_COUNTS         = [1, 2, 4, 8, 32]
 PLOT_LAMBDAS_LOW    = [0.01, 0.03, 0.1, 0.3]
 PLOT_LAMBDAS_HIGH   = [1.0, 3.0, 9.0, 30.0]
 
-# ``DIRECT_MAX = 0`` corresponds to the current power-of-two table strategy.
-# Setting ``DIRECT_MAX = 16`` or ``32`` prototypes direct tables for all
-# low photon counts up to that value, followed by power-of-two decomposition
-# above it.
-DIRECT_MAX          = 0
 SEED                = 12345
 
 # The mean check is compared against the expected Monte Carlo uncertainty from
@@ -71,6 +65,12 @@ KS_LIMIT_FACTOR     = 1.95
 # ``xtrack/headers/_generate_synrad_total_energy_tables.py``. The point is to
 # make this example a validation of the generated-table machinery itself,
 # rather than an independent reimplementation of the same physics.
+#
+# The adopted generator builds all power-of-two runtime tables through the same
+# high-accuracy offline route: a carefully integrated one-photon CDF followed
+# by repeated deterministic self-convolution in quantile/CDF space. This
+# example therefore validates the table-only runtime sampler against an
+# independent brute-force photon-by-photon reference.
 #
 # This is complementary to ``013_compare_quantum_efficient.py``. Example 013
 # asks whether the full Xtrack radiation kick agrees after tracking through a
@@ -125,51 +125,15 @@ table_generator = load_module(
 ################################################################################
 
 ########################################
-# Add one photon by convolution
-########################################
-def convolve_with_single_photon(mass, single_photon_mass):
-    """Convolve an existing fixed-count distribution with one photon.
-
-    Parameters
-    ----------
-    mass : ndarray
-        Probability mass for the total normalized energy of ``N`` photons on
-        the generator's energy grid.
-    single_photon_mass : ndarray
-        Probability mass for one photon on the same grid.
-
-    Returns
-    -------
-    out : ndarray
-        Probability mass for the total normalized energy of ``N + 1`` photons.
-
-    Notes
-    -----
-    The production generator naturally builds powers of two by repeated
-    self-convolution. This helper is used only for algorithm studies where we
-    want to prototype direct tables for every low photon count, for example
-    ``N = 1..32``.
-    """
-    out = fftconvolve(mass, single_photon_mass)[:mass.size]
-    out = np.maximum(out, 0.0)
-    out /= np.sum(out)
-    return out
-
-
-########################################
 # Build validation tables
 ########################################
-def build_log_inverse_cdf_tables(max_power=256, direct_max=0):
+def build_log_inverse_cdf_tables(max_power = 256):
     """Build the log inverse-CDF tables used by the efficient sampler.
 
     Parameters
     ----------
     max_power : int
         Largest power-of-two photon count to include.
-    direct_max : int
-        If nonzero, also build direct tables for all photon counts up to this
-        value. ``direct_max = 0`` corresponds to the current power-of-two-only
-        design.
 
     Returns
     -------
@@ -181,29 +145,19 @@ def build_log_inverse_cdf_tables(max_power=256, direct_max=0):
 
     Notes
     -----
-    This function calls the production table generator routines for the
-    single-photon probability mass, power-of-two self-convolutions, probability
-    grid, and inverse-CDF extraction. The validation therefore checks the same
-    deterministic table-building path used by the branch.
+    This function calls the production table generator. The validation
+    therefore checks the same deterministic table-building path used by the
+    branch. The returned values are converted to logarithms because the runtime
+    C header stores ``log(X_N)`` and interpolates in log-space.
     """
-    u_grid = table_generator.make_probability_grid()
-    single = table_generator.make_single_photon_probability_mass()
+    u_grid, quantile_tables = table_generator.build_total_energy_quantile_tables(
+        u_grid=table_generator.make_probability_grid())
 
-    masses = {1: single}
-    power = 2
-    while power <= max_power:
-        masses[power] = table_generator.convolve_same_grid(masses[power // 2])
-        power *= 2
-
-    if direct_max > 0:
-        for nn in range(2, direct_max + 1):
-            if nn not in masses:
-                masses[nn] = convolve_with_single_photon(masses[nn - 1], single)
-
-    tables = {}
-    for nn, mass in sorted(masses.items()):
-        quantiles = table_generator.quantiles_from_mass(mass, u_grid, nn)
-        tables[nn] = np.log(quantiles)
+    tables = {
+        nn: np.log(values)
+        for nn, values in sorted(quantile_tables.items())
+        if nn <= max_power
+    }
 
     return u_grid, tables
 
@@ -311,7 +265,7 @@ def sample_total_loss_normalized(rng, lam, n_samples):
 ########################################
 # Decompose photon count into tables
 ########################################
-def decompose_photon_count(n_photons, tables, direct_max=0):
+def decompose_photon_count(n_photons, tables):
     """Return the table chunks used to sample a photon count.
 
     Parameters
@@ -320,9 +274,6 @@ def decompose_photon_count(n_photons, tables, direct_max=0):
         Photon count to represent.
     tables : dict[int, ndarray]
         Available inverse-CDF tables.
-    direct_max : int
-        Direct-table range. If ``n_photons <= direct_max``, the count is
-        represented by a single direct table.
 
     Returns
     -------
@@ -331,26 +282,18 @@ def decompose_photon_count(n_photons, tables, direct_max=0):
 
     Notes
     -----
-    With ``direct_max = 0`` this is the current greedy power-of-two algorithm.
-    With ``direct_max > 0`` it prototypes the possible optimization of using
-    direct low-count tables and only falling back to greedy decomposition above
-    that range.
+    The adopted runtime algorithm represents arbitrary photon counts as sums
+    of independent power-of-two table samples. The tables themselves are all
+    generated by the same high-accuracy offline method.
     """
     if n_photons == 0:
         return []
-
-    if direct_max > 0 and n_photons <= direct_max:
-        return [n_photons]
 
     chunks = []
     n_left = int(n_photons)
     max_power_available = max(nn for nn in tables if nn & (nn - 1) == 0)
 
     while n_left > 0:
-        if direct_max > 0 and n_left <= direct_max:
-            chunks.append(n_left)
-            break
-
         chunk = 1 << (n_left.bit_length() - 1)
         chunk = min(chunk, max_power_available)
         chunks.append(chunk)
@@ -392,8 +335,7 @@ def sample_one_table_chunk(rng, u_grid, log_table):
 ########################################
 # Sample fixed photon count from tables
 ########################################
-def sample_fixed_count_from_tables(rng, n_photons, u_grid, tables,
-                                   direct_max=0):
+def sample_fixed_count_from_tables(rng, n_photons, u_grid, tables):
     """Sample total normalized energy for a fixed photon count.
 
     Parameters
@@ -406,16 +348,13 @@ def sample_fixed_count_from_tables(rng, n_photons, u_grid, tables,
         Probability grid for all inverse-CDF tables.
     tables : dict[int, ndarray]
         Available log inverse-CDF tables.
-    direct_max : int
-        Direct-table range for low photon counts.
-
     Returns
     -------
     total : float
         Total normalized emitted energy.
     """
     total = 0.0
-    for chunk in decompose_photon_count(n_photons, tables, direct_max):
+    for chunk in decompose_photon_count(n_photons, tables):
         total += sample_one_table_chunk(rng, u_grid, tables[chunk])
     return total
 
@@ -424,7 +363,7 @@ def sample_fixed_count_from_tables(rng, n_photons, u_grid, tables,
 # Sample many fixed-count events from tables
 ########################################
 def sample_many_fixed_count_from_tables(rng, n_photons, n_samples, u_grid,
-                                        tables, direct_max=0):
+                                        tables):
     """Sample many fixed-count total losses from the table method.
 
     Parameters
@@ -439,9 +378,6 @@ def sample_many_fixed_count_from_tables(rng, n_photons, n_samples, u_grid,
         Probability grid for all inverse-CDF tables.
     tables : dict[int, ndarray]
         Available log inverse-CDF tables.
-    direct_max : int
-        Direct-table range for low photon counts.
-
     Returns
     -------
     values : ndarray
@@ -457,7 +393,7 @@ def sample_many_fixed_count_from_tables(rng, n_photons, n_samples, u_grid,
     values = np.empty(n_samples)
     for ii in range(n_samples):
         values[ii] = sample_fixed_count_from_tables(
-            rng, n_photons, u_grid, tables, direct_max)
+            rng, n_photons, u_grid, tables)
     return values
 
 
@@ -492,8 +428,7 @@ def sample_many_fixed_count_bruteforce(rng, n_photons, n_samples):
 ########################################
 # Sample compound-Poisson events from tables
 ########################################
-def sample_compound_poisson_from_tables(rng, lam, n_samples, u_grid, tables,
-                                        direct_max=0):
+def sample_compound_poisson_from_tables(rng, lam, n_samples, u_grid, tables):
     """Sample the compound-Poisson process using total-energy tables.
 
     Parameters
@@ -508,9 +443,6 @@ def sample_compound_poisson_from_tables(rng, lam, n_samples, u_grid, tables,
         Probability grid for all inverse-CDF tables.
     tables : dict[int, ndarray]
         Available log inverse-CDF tables.
-    direct_max : int
-        Direct-table range for low photon counts.
-
     Returns
     -------
     values : ndarray
@@ -530,7 +462,7 @@ def sample_compound_poisson_from_tables(rng, lam, n_samples, u_grid, tables,
     n_chunks = np.empty(n_samples, dtype=np.int64)
 
     for ii, count in enumerate(counts):
-        chunks = decompose_photon_count(count, tables, direct_max)
+        chunks = decompose_photon_count(count, tables)
         n_chunks[ii] = len(chunks)
         values[ii] = sum(
             sample_one_table_chunk(rng, u_grid, tables[chunk])
@@ -769,7 +701,7 @@ def run_fixed_count_checks(u_grid, tables):
         reference = sample_many_fixed_count_bruteforce(
             rng_ref, count, N_SAMPLES)
         candidate = sample_many_fixed_count_from_tables(
-            rng_table, count, N_SAMPLES, u_grid, tables, DIRECT_MAX)
+            rng_table, count, N_SAMPLES, u_grid, tables)
         results.append(compare_distributions(str(count), reference, candidate))
 
     print_comparison_table("Fixed photon count checks", results)
@@ -804,7 +736,7 @@ def run_compound_poisson_checks(u_grid, tables):
     for lam in LAMBDAS:
         reference = sample_total_loss_normalized(rng_ref, lam, N_SAMPLES)
         candidate, _counts, n_chunks = sample_compound_poisson_from_tables(
-            rng_table, lam, N_SAMPLES, u_grid, tables, DIRECT_MAX)
+            rng_table, lam, N_SAMPLES, u_grid, tables)
         results.append(compare_distributions(
             f"{lam:g}",
             reference,
@@ -1007,12 +939,9 @@ def plot_validation_results(fixed_results, compound_results):
 ################################################################################
 print("Building deterministic inverse-CDF tables")
 print(f"MAX_POWER = {MAX_POWER}")
-print(f"DIRECT_MAX = {DIRECT_MAX}")
 print(f"N_SAMPLES = {N_SAMPLES}")
 
-u_grid, tables = build_log_inverse_cdf_tables(
-    max_power   = MAX_POWER,
-    direct_max  = DIRECT_MAX)
+u_grid, tables = build_log_inverse_cdf_tables(max_power=MAX_POWER)
 
 print(f"available table counts = {sorted(tables)}")
 print()
