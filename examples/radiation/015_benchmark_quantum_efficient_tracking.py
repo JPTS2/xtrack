@@ -146,6 +146,24 @@ else:
     context = CONTEXT
 
 
+def is_cupy_context(context):
+    """Return True when the resolved Xobjects context is a CuPy GPU context."""
+    return context.__class__.__name__ == "ContextCupy"
+
+
+def describe_cupy_device():
+    """Return a human-readable description of the active CuPy device."""
+    import cupy as cp
+
+    device_id = cp.cuda.Device().id
+    properties = cp.cuda.runtime.getDeviceProperties(device_id)
+    device_name = properties["name"]
+    if isinstance(device_name, bytes):
+        device_name = device_name.decode()
+    return device_id, device_name
+
+
+
 ################################################################################
 # Beam and line helpers
 ################################################################################
@@ -511,6 +529,11 @@ def print_configuration():
     slices.
     """
     print(f"context = {context}")
+    print(f"context_is_cupy = {is_cupy_context(context)}")
+    if is_cupy_context(context):
+        device_id, device_name = describe_cupy_device()
+        print(f"cupy_device_id = {device_id}")
+        print(f"cupy_device_name = {device_name}")
     print(f"compile_workdir = {COMPILE_WORKDIR}")
     print("modes:")
     for mode in MODES_TO_RUN:

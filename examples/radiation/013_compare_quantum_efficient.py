@@ -43,6 +43,14 @@ INITIAL_DELTA       = 0.0
 
 ALPHA_EM            = 7.2973525693e-3
 
+# These limits are reporting thresholds, not hard physics tolerances. They make
+# non-interactive terminal logs readable by marking obvious agreement as PASS
+# and drawing attention to quantities that need plot-level inspection.
+MEAN_REL_LIMIT      = 5E-3
+RMS_REL_LIMIT       = 5E-3
+CDF_ABS_LIMIT       = 5E-3
+TAIL_CDF_ABS_LIMIT  = 5E-3
+
 CASES = [
     {
         "name":     "FCC-ee tt-like high lambda",
@@ -68,6 +76,24 @@ if CONTEXT is None:
     CONTEXT = get_user_context()
 elif isinstance(CONTEXT, str):
     CONTEXT = get_context_from_string(CONTEXT)
+
+
+def is_cupy_context(context):
+    """Return True when the resolved Xobjects context is a CuPy GPU context."""
+    return context.__class__.__name__ == "ContextCupy"
+
+
+def describe_cupy_device():
+    """Return a human-readable description of the active CuPy device."""
+    import cupy as cp
+
+    device_id = cp.cuda.Device().id
+    properties = cp.cuda.runtime.getDeviceProperties(device_id)
+    device_name = properties["name"]
+    if isinstance(device_name, bytes):
+        device_name = device_name.decode()
+    return device_id, device_name
+
 
 ################################################################################
 # Purpose
@@ -535,6 +561,125 @@ def print_summary(mode, mode_acc):
 
 
 ########################################
+# Build terminal comparison diagnostics
+########################################
+def relative_difference(candidate, reference):
+    """Return a signed relative difference with protection near zero."""
+    scale = max(abs(reference), np.finfo(float).tiny)
+    return (candidate - reference) / scale
+
+
+def cdf_abs_difference(acc, key, reference_mode, candidate_mode):
+    """Return the maximum absolute CDF difference on the shared histogram grid."""
+    reference = acc[reference_mode][key]
+    candidate = acc[candidate_mode][key]
+
+    reference_cdf = (
+        reference["below"] + np.cumsum(reference["hist"])
+    ) / reference["n"]
+    candidate_cdf = (
+        candidate["below"] + np.cumsum(candidate["hist"])
+    ) / candidate["n"]
+
+    return np.max(np.abs(candidate_cdf - reference_cdf))
+
+
+def pass_or_check(value, limit):
+    """Return a compact status string for a scalar validation metric."""
+    if np.isfinite(value) and abs(value) <= limit:
+        return "PASS"
+    return "CHECK"
+
+
+def print_case_decision_summary(case, acc):
+    """Print a compact non-interactive summary for one tracking case.
+
+    The detailed plots remain the best diagnostic for understanding any
+    discrepancy, but this table is intended for SSH and batch-log use. It makes
+    the key physics and timing outcomes visible without opening figures.
+    """
+    reference_mode = "quantum"
+    candidate_mode = "quantum-efficient"
+
+    print()
+    print(
+        "Terminal comparison summary: "
+        f"{case['name']} "
+        rf"(<N_gamma> = {expected_average_photon_count(case):.6e})")
+    print(
+        "limits:"
+        f" |mean rel| <= {MEAN_REL_LIMIT:.3e},"
+        f" |rms rel| <= {RMS_REL_LIMIT:.3e},"
+        f" max |CDF diff| <= {CDF_ABS_LIMIT:.3e},"
+        f" tail max |CDF diff| <= {TAIL_CDF_ABS_LIMIT:.3e}")
+    print(
+        "observable        mean rel      rms rel    max |CDF diff|"
+        "       status")
+
+    statuses = []
+    for key, _label in PLOT_SPECS:
+        reference_mean, reference_rms = mean_and_rms(acc[reference_mode][key])
+        candidate_mean, candidate_rms = mean_and_rms(acc[candidate_mode][key])
+        mean_rel = relative_difference(candidate_mean, reference_mean)
+        rms_rel = relative_difference(candidate_rms, reference_rms)
+        cdf_diff = cdf_abs_difference(
+            acc, key, reference_mode, candidate_mode)
+
+        status = "PASS"
+        if pass_or_check(mean_rel, MEAN_REL_LIMIT) == "CHECK":
+            status = "CHECK"
+        if pass_or_check(rms_rel, RMS_REL_LIMIT) == "CHECK":
+            status = "CHECK"
+        if pass_or_check(cdf_diff, CDF_ABS_LIMIT) == "CHECK":
+            status = "CHECK"
+        statuses.append(status)
+
+        print(
+            f"{key:12s}"
+            f" {mean_rel:+13.6e}"
+            f" {rms_rel:+12.6e}"
+            f" {cdf_diff:17.6e}"
+            f" {status:>12s}")
+
+    tail_cdf_diff = cdf_abs_difference(
+        acc, "ddelta_tail", reference_mode, candidate_mode)
+    tail_status = pass_or_check(tail_cdf_diff, TAIL_CDF_ABS_LIMIT)
+    statuses.append(tail_status)
+
+    print()
+    print(
+        "lower-tail ddelta CDF:"
+        f" max |CDF diff| = {tail_cdf_diff:.6e}"
+        f" limit = {TAIL_CDF_ABS_LIMIT:.6e}"
+        f" status = {tail_status}")
+
+    timing_ref = acc[reference_mode]["timing"]
+    timing_eff = acc[candidate_mode]["timing"]
+    throughput_ref = timing_ref["n_particles"] / timing_ref["total"]
+    throughput_eff = timing_eff["n_particles"] / timing_eff["total"]
+    speedup = throughput_eff / throughput_ref
+    time_ratio = timing_eff["total"] / timing_ref["total"]
+
+    print()
+    print("timing:")
+    print(
+        f"  {reference_mode:17s}"
+        f" total = {timing_ref['total']:.6f} s"
+        f" throughput = {throughput_ref:.6e} particles/s")
+    print(
+        f"  {candidate_mode:17s}"
+        f" total = {timing_eff['total']:.6f} s"
+        f" throughput = {throughput_eff:.6e} particles/s")
+    print(
+        f"  efficient speedup vs quantum = {speedup:.6f}"
+        f"  time ratio = {time_ratio:.6f}")
+
+    overall = "PASS" if all(item == "PASS" for item in statuses) else "CHECK"
+    print()
+    print(f"overall physics status = {overall}")
+
+
+########################################
 # Track the full sample
 ########################################
 def stream_statistics(case, bins):
@@ -764,6 +909,16 @@ def plot_results(case, acc, bins):
 ################################################################################
 plt.close("all")
 
+print(f"context = {CONTEXT}")
+print(f"context_is_cupy = {is_cupy_context(CONTEXT)}")
+if is_cupy_context(CONTEXT):
+    device_id, device_name = describe_cupy_device()
+    print(f"cupy_device_id = {device_id}")
+    print(f"cupy_device_name = {device_name}")
+else:
+    print("cupy_device_id = not applicable")
+    print("cupy_device_name = not applicable")
+
 for case in CASES:
     lambda_synrad = expected_average_photon_count(case)
     print()
@@ -779,6 +934,7 @@ for case in CASES:
     bins    = make_bins(pilot)
     del pilot
     acc     = stream_statistics(case, bins)
+    print_case_decision_summary(case, acc)
     plot_results(case, acc, bins)
 
 plt.show()
