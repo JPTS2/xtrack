@@ -265,8 +265,137 @@ double synrad_gen_total_energy_normalized_exact_for_n_photons(
 }
 
 GPUFUN
-double synrad_gen_total_energy_normalized_for_power2_chunk(
-        LocalParticle *part, int64_t nphot){
+int64_t synrad_total_energy_find_grid_index_binary(
+        double const value, GPUGLMEM const double* grid,
+        int64_t i_low, int64_t i_high){
+
+    while (i_high - i_low > 1){
+        int64_t const i_mid = (i_low + i_high) / 2;
+        if (grid[i_mid] <= value)
+            i_low = i_mid;
+        else
+            i_high = i_mid;
+    }
+
+    return i_low;
+}
+
+GPUFUN
+int64_t synrad_total_energy_find_grid_index_direct_segment(
+        double const value, GPUGLMEM const double* grid, int64_t size,
+        int64_t is_log_spaced){
+
+    if (value <= grid[0])
+        return 0;
+    if (value >= grid[size - 1])
+        return size - 2;
+
+    if (is_log_spaced){
+        if (value < grid[1])
+            return 0;
+        double const position = (
+            (log(value) - log(grid[1]))
+            / (log(grid[size - 1]) - log(grid[1]))
+            * (size - 2));
+        int64_t i_low = 1 + (int64_t) floor(position);
+        if (i_low < 0)
+            i_low = 0;
+        if (i_low > size - 2)
+            i_low = size - 2;
+        return i_low;
+    }
+
+    double const du = (grid[size - 1] - grid[0]) / (size - 1);
+    int64_t i_low = (int64_t) floor((value - grid[0]) / du);
+    if (i_low < 0)
+        i_low = 0;
+    if (i_low > size - 2)
+        i_low = size - 2;
+    return i_low;
+}
+
+GPUFUN
+double synrad_total_energy_interpolate_segment(
+        double const value,
+        GPUGLMEM const double* grid,
+        GPUGLMEM const double* table,
+        int64_t offset,
+        int64_t size,
+        int64_t is_log_spaced,
+        int64_t use_direct_search){
+
+    if (value <= grid[0])
+        return table[offset];
+    if (value >= grid[size - 1])
+        return table[offset + size - 1];
+
+    int64_t i_low = (
+        use_direct_search
+        ? synrad_total_energy_find_grid_index_direct_segment(
+            value, grid, size, is_log_spaced)
+        : synrad_total_energy_find_grid_index_binary(
+            value, grid, 0, size - 1));
+    if (i_low < 0)
+        i_low = 0;
+    if (i_low >= size - 1)
+        i_low = size - 2;
+
+    int64_t const i_high = i_low + 1;
+    double const u_low = grid[i_low];
+    double const u_high = grid[i_high];
+    double w;
+    if (is_log_spaced && u_low > 0.0 && value > 0.0){
+        w = (log(value) - log(u_low)) / (log(u_high) - log(u_low));
+    }
+    else{
+        w = (value - u_low) / (u_high - u_low);
+    }
+    return (
+        (1.0 - w) * table[offset + i_low]
+        + w * table[offset + i_high]);
+}
+
+GPUFUN
+double synrad_total_energy_interpolate_log_table(
+        double const u, GPUGLMEM const double* table,
+        int64_t use_direct_search){
+
+    if (u < XTRACK_SYNRAD_TOTAL_ENERGY_TAIL_PROBABILITY_MAX){
+        return synrad_total_energy_interpolate_segment(
+            u,
+            synrad_total_energy_left_u_grid,
+            table,
+            XTRACK_SYNRAD_TOTAL_ENERGY_LEFT_OFFSET,
+            XTRACK_SYNRAD_TOTAL_ENERGY_LEFT_SIZE,
+            1,
+            use_direct_search);
+    }
+    else if (u <= 1.0 - XTRACK_SYNRAD_TOTAL_ENERGY_TAIL_PROBABILITY_MAX){
+        return synrad_total_energy_interpolate_segment(
+            u,
+            synrad_total_energy_center_u_grid,
+            table,
+            XTRACK_SYNRAD_TOTAL_ENERGY_CENTER_OFFSET,
+            XTRACK_SYNRAD_TOTAL_ENERGY_CENTER_SIZE,
+            0,
+            use_direct_search);
+    }
+    else{
+        double const v = 1.0 - u;
+        return synrad_total_energy_interpolate_segment(
+            v,
+            synrad_total_energy_right_v_grid,
+            table,
+            XTRACK_SYNRAD_TOTAL_ENERGY_RIGHT_OFFSET,
+            XTRACK_SYNRAD_TOTAL_ENERGY_RIGHT_SIZE,
+            1,
+            use_direct_search);
+    }
+}
+
+GPUFUN
+double synrad_gen_total_energy_normalized_from_log_table(
+        LocalParticle *part, const double* table, int64_t use_direct_search){
 
     // For nphot = 1, 2, 4, ..., 256, the table stores
     // log(F_nphot^{-1}(u)), where F_nphot is the CDF of the sum of nphot
@@ -275,30 +404,24 @@ double synrad_gen_total_energy_normalized_for_power2_chunk(
     // log(F^{-1}(u)) is interpolated on the shared probability grid, and exp()
     // turns it into one random sample of the total normalized energy loss.
     // This inverse-CDF sampling avoids generating each photon individually.
-    const double* table = synrad_get_total_energy_log_table_power2(nphot);
     if (table != 0){
         double const u = RandomUniform_generate(part);
-        if (u <= synrad_total_energy_u_grid[0])
-            return exp(table[0]);
-        if (u >= synrad_total_energy_u_grid[XTRACK_SYNRAD_TOTAL_ENERGY_TABLE_SIZE - 1])
-            return exp(table[XTRACK_SYNRAD_TOTAL_ENERGY_TABLE_SIZE - 1]);
-
-        int64_t i_low = 0;
-        int64_t i_high = XTRACK_SYNRAD_TOTAL_ENERGY_TABLE_SIZE - 1;
-        while (i_high - i_low > 1){
-            int64_t const i_mid = (i_low + i_high) / 2;
-            if (synrad_total_energy_u_grid[i_mid] <= u)
-                i_low = i_mid;
-            else
-                i_high = i_mid;
-        }
-
-        double const u_low = synrad_total_energy_u_grid[i_low];
-        double const u_high = synrad_total_energy_u_grid[i_high];
-        double const w = (u - u_low) / (u_high - u_low);
-        double const log_value = (1.0 - w) * table[i_low] + w * table[i_high];
+        double const log_value = synrad_total_energy_interpolate_log_table(
+            u, table, use_direct_search);
         return exp(log_value);
     }
+
+    return 0.0;
+}
+
+GPUFUN
+double synrad_gen_total_energy_normalized_for_power2_chunk(
+        LocalParticle *part, int64_t nphot){
+
+    const double* table = synrad_get_total_energy_log_table_power2(nphot);
+    if (table != 0)
+        return synrad_gen_total_energy_normalized_from_log_table(
+            part, table, 0);
 
     return synrad_gen_total_energy_normalized_exact_for_n_photons(part, nphot);
 }
@@ -322,8 +445,35 @@ double synrad_gen_total_energy_normalized_power2(
 }
 
 GPUFUN
-int64_t synrad_emit_total_energy_loss(LocalParticle *part, double B_T,
-                            double lpath /* m */){
+double synrad_gen_total_energy_normalized_table32(
+        LocalParticle *part, int64_t nphot, int64_t use_direct_search){
+
+    // Direct fixed-count tables cover the common low-count range. Counts above
+    // the direct-table range remain table-based by combining high-count
+    // power-of-two chunks and a final direct remainder.
+    double total = 0.0;
+    int64_t nphot_left = nphot;
+
+    while (nphot_left > XTRACK_SYNRAD_TOTAL_ENERGY_DIRECT_TABLE_MAX){
+        int64_t const chunk = synrad_largest_power_of_two_leq(nphot_left);
+        total += synrad_gen_total_energy_normalized_from_log_table(
+            part, synrad_get_total_energy_log_table_power2(chunk),
+            use_direct_search);
+        nphot_left -= chunk;
+    }
+
+    if (nphot_left > 0){
+        total += synrad_gen_total_energy_normalized_from_log_table(
+            part, synrad_get_total_energy_log_table_direct32(nphot_left),
+            use_direct_search);
+    }
+
+    return total;
+}
+
+GPUFUN
+int64_t synrad_emit_total_energy_loss_with_mode(LocalParticle *part, double B_T,
+                            double lpath /* m */, int64_t table_mode){
 
     if (fabs(B_T) < 1e-4)
         return 0;
@@ -356,8 +506,18 @@ int64_t synrad_emit_total_energy_loss(LocalParticle *part, double B_T,
 
     double const c1 = 1.5 * 1.973269804593025e-07; // hbar * c = 1.973269804593025e-07 eV * m
     double const energy_critical = c1 * (gamma*gamma*gamma0) * curv; // eV
-    energy_loss_total = synrad_gen_total_energy_normalized_power2(part, nphot)
-                      * energy_critical; // eV
+    if (table_mode == 1){
+        energy_loss_total = synrad_gen_total_energy_normalized_table32(
+            part, nphot, 0) * energy_critical; // eV
+    }
+    else if (table_mode == 2){
+        energy_loss_total = synrad_gen_total_energy_normalized_table32(
+            part, nphot, 1) * energy_critical; // eV
+    }
+    else{
+        energy_loss_total = synrad_gen_total_energy_normalized_power2(part, nphot)
+                          * energy_critical; // eV
+    }
 
     if (energy_loss_total >= initial_energy)
         energy_loss_total = initial_energy;
@@ -373,6 +533,12 @@ int64_t synrad_emit_total_energy_loss(LocalParticle *part, double B_T,
     }
 
     return nphot;
+}
+
+GPUFUN
+int64_t synrad_emit_total_energy_loss(LocalParticle *part, double B_T,
+                            double lpath /* m */){
+    return synrad_emit_total_energy_loss_with_mode(part, B_T, lpath, 0);
 }
 
 GPUFUN
