@@ -21,8 +21,8 @@ import xobjects as xo
 ########################################
 # Time Limit
 ########################################
-TIME_LIMIT          = 120
-N_TURNS             = int(2E1)
+TIME_LIMIT          = 30
+N_TURNS             = int(1E2)
 N_PARTICLES_INIT    = int(1)
 
 ########################################

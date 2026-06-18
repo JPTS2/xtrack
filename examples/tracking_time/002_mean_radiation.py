@@ -30,9 +30,9 @@ OPEN_MP_THREADS     = 4
 ########################################
 # Time Limit
 ########################################
-TIME_LIMIT          = 20
-N_TURNS             = int(2E1)
-N_PARTICLES_INIT    = int(1E0)
+TIME_LIMIT          = 30
+N_TURNS             = int(1E2)
+N_PARTICLES_INIT    = int(1)
 
 ########################################
 # Line

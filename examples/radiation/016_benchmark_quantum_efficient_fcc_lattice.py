@@ -21,7 +21,7 @@ OPEN_MP_THREADS     = 2
 
 N_PARTICLES_CPU     = int(2E2)
 N_PARTICLES_GPU     = int(2E4)
-N_TURNS             = int(2E1)
+N_TURNS             = int(1E2)
 
 MONITOR_POINT       = "ca1.1"
 
