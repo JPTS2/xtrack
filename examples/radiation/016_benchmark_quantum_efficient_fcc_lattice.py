@@ -19,9 +19,9 @@ import xobjects as xo
 ################################################################################
 OPEN_MP_THREADS     = 2
 
-N_PARTICLES_CPU     = int(5E1)
-N_PARTICLES_GPU     = int(5E4)
-N_TURNS             = int(1E2)
+N_PARTICLES_CPU     = int(2E2)
+N_PARTICLES_GPU     = int(2E4)
+N_TURNS             = int(2E1)
 
 MONITOR_POINT       = "ca1.1"
 
@@ -31,7 +31,7 @@ MONITOR_POINT       = "ca1.1"
 REPO_ROOT           = Path(__file__).resolve().parents[2]
 LINE_PATH           = REPO_ROOT / "test_data" / "fcc_ee" / "fccee_h_thick.json"
 
-TRACK_CPU_SINGLE    = False
+TRACK_CPU_SINGLE    = True
 TRACK_CPU_OPENMP    = False
 TRACK_GPU_CUPY      = True
 
