@@ -390,8 +390,8 @@ class Tracker:
                                multi_element_monitor=multi_element_monitor)
 
         if time:
-            t1 = perf_counter()
             self._context.synchronize()
+            t1 = perf_counter()
             self.time_last_track = t1 - t0
         else:
             self.time_last_track = None
