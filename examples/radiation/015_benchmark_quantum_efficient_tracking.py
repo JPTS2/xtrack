@@ -297,8 +297,6 @@ def track_batch(case, tracker, radiation_flag, n_batch, i_start):
     kernels between radiation modes and between CPU/GPU contexts.
     """
     particles = make_particles(case, n_batch, i_start)
-    if radiation_flag in (2, 3):
-        particles._init_random_number_generator()
 
     t_start = time.perf_counter()
     tracker.track(particles)

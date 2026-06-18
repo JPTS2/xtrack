@@ -322,13 +322,6 @@ if TRACK_CPU_SINGLE:
         zeta        = np.zeros(N_PARTICLES_CPU),
         delta       = np.zeros(N_PARTICLES_CPU))
 
-    particles_cpu_single_none._init_random_number_generator()
-    particles_cpu_single_mean._init_random_number_generator()
-    particles_cpu_single_quantum._init_random_number_generator()
-    particles_cpu_single_efficient._init_random_number_generator()
-    particles_cpu_single_table32._init_random_number_generator()
-    particles_cpu_single_direct._init_random_number_generator()
-
 ########################################
 # CPU OpenMP
 ########################################
@@ -384,13 +377,6 @@ if TRACK_CPU_OPENMP:
         zeta        = np.zeros(N_PARTICLES_CPU),
         delta       = np.zeros(N_PARTICLES_CPU))
 
-    particles_cpu_openmp_none._init_random_number_generator()
-    particles_cpu_openmp_mean._init_random_number_generator()
-    particles_cpu_openmp_quantum._init_random_number_generator()
-    particles_cpu_openmp_efficient._init_random_number_generator()
-    particles_cpu_openmp_table32._init_random_number_generator()
-    particles_cpu_openmp_direct._init_random_number_generator()
-
 ########################################
 # GPU CuPy
 ########################################
@@ -445,13 +431,6 @@ if TRACK_GPU_CUPY:
         py          = np.zeros(N_PARTICLES_GPU),
         zeta        = np.zeros(N_PARTICLES_GPU),
         delta       = np.zeros(N_PARTICLES_GPU))
-
-    particles_gpu_cupy_none._init_random_number_generator()
-    particles_gpu_cupy_mean._init_random_number_generator()
-    particles_gpu_cupy_quantum._init_random_number_generator()
-    particles_gpu_cupy_efficient._init_random_number_generator()
-    particles_gpu_cupy_table32._init_random_number_generator()
-    particles_gpu_cupy_direct._init_random_number_generator()
 
 ################################################################################
 # Track

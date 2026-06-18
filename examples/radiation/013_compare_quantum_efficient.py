@@ -234,7 +234,6 @@ def track_batch(case, bend, radiation_flag, n_batch, i_start):
         configured initial coordinates.
     """
     particles = make_particles(case, n_batch, i_start)
-    particles._init_random_number_generator()
 
     t_start = time.perf_counter()
     bend.track(particles)

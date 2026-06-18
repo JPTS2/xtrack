@@ -128,7 +128,6 @@ if TRACK_CPU_SINGLE:
             py          = np.zeros(n_particles_track),
             zeta        = np.zeros(n_particles_track),
             delta       = np.zeros(n_particles_track))
-        particles_cpu_single._init_random_number_generator()
 
         line_cpu_single.track(
             particles       = particles_cpu_single,
@@ -168,7 +167,6 @@ if TRACK_CPU_OPENMP:
             py          = np.zeros(n_particles_track),
             zeta        = np.zeros(n_particles_track),
             delta       = np.zeros(n_particles_track))
-        particles_cpu_openmp._init_random_number_generator()
 
         line_cpu_openmp.track(
             particles       = particles_cpu_openmp,
@@ -208,7 +206,6 @@ if TRACK_GPU_CUPY:
             py          = np.zeros(n_particles_track),
             zeta        = np.zeros(n_particles_track),
             delta       = np.zeros(n_particles_track))
-        particles_gpu_cupy._init_random_number_generator()
 
         line_gpu_cupy.track(
             particles       = particles_gpu_cupy,
