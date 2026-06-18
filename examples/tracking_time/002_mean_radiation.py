@@ -23,7 +23,7 @@ import xobjects as xo
 ########################################
 TRACK_CPU_SINGLE    = True
 TRACK_CPU_OPENMP    = False
-TRACK_GPU_CUPY      = False
+TRACK_GPU_CUPY      = True
 
 OPEN_MP_THREADS     = 4
 
@@ -31,8 +31,8 @@ OPEN_MP_THREADS     = 4
 # Time Limit
 ########################################
 TIME_LIMIT          = 20
-N_TURNS             = int(1E2)
-N_PARTICLES_INIT    = int(1E1)
+N_TURNS             = int(2E1)
+N_PARTICLES_INIT    = int(1E0)
 
 ########################################
 # Line
