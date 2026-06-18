@@ -9,6 +9,7 @@
 import os
 import tempfile
 import time
+from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -32,7 +33,9 @@ MODES_TO_RUN    = [
     "no-radiation",
     "mean",
     "quantum",
-    "quantum-efficient"]
+    "quantum-efficient",
+    "quantum-efficient-table32",
+    "quantum-efficient-table32-directsearch"]
 
 N_PARTICLES     = int(1E7)
 BATCH_SIZE      = int(1E6)
@@ -110,7 +113,9 @@ RADIATION_FLAGS = {
     "no-radiation":         0,
     "mean":                 1,
     "quantum":              2,
-    "quantum-efficient":    3}
+    "quantum-efficient":    3,
+    "quantum-efficient-table32": 4,
+    "quantum-efficient-table32-directsearch": 5}
 
 MODE_DESCRIPTIONS = {
     "no-radiation": (
@@ -120,7 +125,14 @@ MODE_DESCRIPTIONS = {
     "quantum": (
         "existing photon-by-photon quantum synchrotron radiation"),
     "quantum-efficient": (
-        "compound-table quantum radiation using total energy loss tables")}
+        "compound-table quantum radiation using power-of-two total energy "
+        "loss tables"),
+    "quantum-efficient-table32": (
+        "compound-table quantum radiation using direct fixed-count tables "
+        "through N=32 and binary grid search"),
+    "quantum-efficient-table32-directsearch": (
+        "compound-table quantum radiation using direct fixed-count tables "
+        "through N=32 and direct grid indexing")}
 
 PLOT_SPECS = [
     ("dpx", r"$\Delta p_x$"),
@@ -130,6 +142,21 @@ PLOT_SPECS = [
 UNKNOWN_MODES = sorted(set(MODES_TO_RUN) - set(RADIATION_FLAGS))
 if UNKNOWN_MODES:
     raise ValueError(f"Unknown modes: {UNKNOWN_MODES}")
+
+REQUESTS_TABLE32 = any("table32" in mode for mode in MODES_TO_RUN)
+HEADER_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "xtrack" / "headers" / "synrad_total_energy_tables.h")
+HEADER_TEXT = HEADER_PATH.read_text() if HEADER_PATH.exists() else ""
+HAS_TABLE32_TABLES = (
+    "XTRACK_SYNRAD_TOTAL_ENERGY_DIRECT_TABLE_MAX 32" in HEADER_TEXT
+    and "XTRACK_SYNRAD_TOTAL_ENERGY_TAIL_PROBABILITY_MAX 9.80000000000000038e-02"
+        in HEADER_TEXT)
+if REQUESTS_TABLE32 and not HAS_TABLE32_TABLES:
+    raise RuntimeError(
+        "MODES_TO_RUN requests table32 radiation modes, but "
+        "synrad_total_energy_tables.h has not been regenerated with direct "
+        "N=1..32 tables and the current runtime probability grid.")
 
 if COMPILE_WORKDIR == "auto":
     COMPILE_WORKDIR = tempfile.mkdtemp(prefix="xtrack-synrad-kernels-")
