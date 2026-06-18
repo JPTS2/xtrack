@@ -4022,7 +4022,8 @@ class Line:
         ----------
         model: str
             Radiation model to use. Can be 'mean', 'quantum',
-            'quantum-efficient' or None.
+            'quantum-efficient', 'quantum-efficient-table32',
+            'quantum-efficient-table32-directsearch' or None.
         model_beamstrahlung: str
             Beamstrahlung model to use. Can be 'mean', 'quantum' or None.
         model_bhabha: str
@@ -4037,7 +4038,10 @@ class Line:
         if not self._has_valid_tracker():
             self.build_tracker(compile=False)
 
-        assert model in [None, 'mean', 'quantum', 'quantum-efficient']
+        assert model in [
+            None, 'mean', 'quantum', 'quantum-efficient',
+            'quantum-efficient-table32',
+            'quantum-efficient-table32-directsearch']
         assert model_beamstrahlung in [None, 'mean', 'quantum']
         assert model_bhabha in [None, 'quantum']
 
@@ -4050,6 +4054,12 @@ class Line:
         elif model == 'quantum-efficient':
             radiation_flag = 3
             self._radiation_model = 'quantum-efficient'
+        elif model == 'quantum-efficient-table32':
+            radiation_flag = 4
+            self._radiation_model = 'quantum-efficient-table32'
+        elif model == 'quantum-efficient-table32-directsearch':
+            radiation_flag = 5
+            self._radiation_model = 'quantum-efficient-table32-directsearch'
         else:
             radiation_flag = 0
             self._radiation_model = None
