@@ -8,447 +8,209 @@
 ################################################################################
 from pathlib import Path
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
-import xtrack as xt
 import xobjects as xo
+import xtrack as xt
+
 
 ################################################################################
 # User parameters
 ################################################################################
 
 ########################################
-# Tracking Types
+# Radiation modes to test
 ########################################
-TRACK_NONE          = True
-TRACK_MEAN          = True
-TRACK_QUANTUM       = True
-TRACK_EFFICIENT     = True
-TRACK_TABLE32       = True
-TRACK_TABLE32DIRECT = True
+TRACK_NONE              = True
+TRACK_MEAN              = True
+TRACK_QUANTUM           = True
+TRACK_QUANTUM_KICK      = True
 
 ########################################
-# Time Limit
+# Test settings
 ########################################
-TIME_LIMIT          = 20
-N_TURNS             = int(5E1)
-N_PARTICLES_INIT    = int(1)
+TIME_LIMIT              = 20
+N_TURNS                 = int(5E1)
+N_PARTICLES_INIT        = int(1)
+OPTIMIZE_FOR_TRACKING   = False
 
 ########################################
-# Line
+# Lattice Path
 ########################################
-REPO_ROOT           = Path(__file__).resolve().parents[3]
-ENV_PATH            = REPO_ROOT / "examples" / "fcc_ee_solenoid" / "fccee_z_lcc.json"
+REPO_ROOT               = Path(__file__).resolve().parents[3]
+ENV_PATH                = REPO_ROOT / "examples" / "fcc_ee_solenoid" / "fccee_z_lcc.json"
+
+########################################
+# Context Settings
+########################################
+CONTEXT                 = xo.context_default
+CONTEXT_LABEL           = "CPU Single Thread"
+FIGURE_NAME             = "compare_radiations_cpu_single.png"
 
 ################################################################################
-# Contexts
+# Helpers
 ################################################################################
-CONTEXT_CPU_SINGLE  = xo.context_default
+
+########################################
+# Radiation Modes
+########################################
+RADIATION_MODES = [
+    {
+        "key":          "none",
+        "model":        None,
+        "label":        "None",
+        "enabled":      TRACK_NONE,
+        "needs_taper":  False,
+        "needs_rng":    False},
+    {
+        "key":          "mean",
+        "model":        "mean",
+        "label":        "Mean",
+        "enabled":      TRACK_MEAN,
+        "needs_taper":  True,
+        "needs_rng":    False},
+    {
+        "key":          "quantum",
+        "model":        "quantum",
+        "label":        "Quantum",
+        "enabled":      TRACK_QUANTUM,
+        "needs_taper":  True,
+        "needs_rng":    True},
+    {
+        "key":          "quantum_kick",
+        "model":        "quantum-kick",
+        "label":        "Quantum Kick",
+        "enabled":      TRACK_QUANTUM_KICK,
+        "needs_taper":  True,
+        "needs_rng":    True}]
+
+
+########################################
+# Particle Construction
+########################################
+def build_particles(line, context, n_particles):
+    return line.build_particles(
+        _context    = context,
+        x           = np.zeros(n_particles),
+        px          = np.zeros(n_particles),
+        y           = np.zeros(n_particles),
+        py          = np.zeros(n_particles),
+        zeta        = np.zeros(n_particles),
+        delta       = np.zeros(n_particles))
+
+
+def track_timing_scan(line, context, needs_rng):
+    tracking_times  = []
+    n_particles     = []
+    time_last_track = 0
+    iteration       = 0
+
+    while time_last_track < TIME_LIMIT:
+        n_particles_track = int(N_PARTICLES_INIT * 2**iteration)
+        print(f"Tracking with {n_particles_track} particles...")
+
+        particles = build_particles(line, context, n_particles_track)
+        if needs_rng:
+            particles._init_random_number_generator()
+
+        line.track(particles = particles, num_turns = N_TURNS, time = True)
+
+        assert np.all(particles.state == 1)
+
+        time_last_track = line.time_last_track
+        n_particles.append(n_particles_track)
+        tracking_times.append(line.time_last_track)
+        iteration += 1
+
+    tracking_times      = np.array(tracking_times)
+    n_particles         = np.array(n_particles)
+    particle_turn_time  = tracking_times / N_TURNS / n_particles
+    return n_particles, particle_turn_time
+
 
 ################################################################################
 # Lattice setup
 ################################################################################
-print("\n" + "#"*80 + "\n" + "Loading Line" + "\n" + "#"*80 + "\n")
+print("\n" + "#" * 80 + "\n" + "Loading Line" + "\n" + "#" * 80 + "\n")
+print(f"optimize_for_tracking = {OPTIMIZE_FOR_TRACKING}")
 
-########################################
-# Load line from JSON
-########################################
-env     = xt.load(ENV_PATH)
-line    = env.lines["fccee_p_ring"]
-line.build_tracker(_context = CONTEXT_CPU_SINGLE)
+env         = xt.load(ENV_PATH)
+line_base   = env.lines["fccee_p_ring"]
+line_base.build_tracker(_context=xo.context_default)
 
-########################################
-# Taper Line
-########################################
-line_taper  = line.copy()
-line_taper.configure_radiation(model = "mean")
+if OPTIMIZE_FOR_TRACKING:
+    line_base.optimize_for_tracking(compile = False, verbose = False)
+
+line_taper = line_base.copy()
+line_taper.configure_radiation(model="mean")
 line_taper.compensate_radiation_energy_loss()
 line_taper.discard_tracker()
 
 ################################################################################
-# Per radiation line setup
+# Build lines
 ################################################################################
-print("\n" + "#"*80 + "\n" + "Building Lines" + "\n" + "#"*80 + "\n")
+print("\n" + "#" * 80 + "\n" + "Building Lines" + "\n" + "#" * 80 + "\n")
 
-########################################
-# No radiation
-########################################
-if TRACK_NONE:
-    print("Creating line for radiation mode: None")
+lines = {}
 
-    line_none = line.copy()
-    line_none.configure_radiation(model = None)
-    line_none.build_tracker(_context = CONTEXT_CPU_SINGLE)
+for mode in RADIATION_MODES:
+    if not mode["enabled"]:
+        continue
 
-########################################
-# Mean radiation
-########################################
-if TRACK_MEAN:
-    print("Creating line for radiation mode: Mean")
-
-    line_mean = line_taper.copy()
-    line_mean.configure_radiation(model = "mean")
-    line_mean.build_tracker(_context = CONTEXT_CPU_SINGLE)
-
-########################################
-# Quantum radiation
-########################################
-if TRACK_QUANTUM:
-    print("Creating line for radiation mode: Quantum")
-
-    line_quantum = line_taper.copy()
-    line_quantum.configure_radiation(model = "quantum")
-    line_quantum.build_tracker(_context = CONTEXT_CPU_SINGLE)
-
-########################################
-# Quantum Efficient radiation
-########################################
-if TRACK_EFFICIENT:
-    print("Creating line for radiation mode: Quantum Efficient")
-
-    line_efficient = line_taper.copy()
-    line_efficient.configure_radiation(model = "quantum-efficient")
-    line_efficient.build_tracker(_context = CONTEXT_CPU_SINGLE)
-
-########################################
-# Quantum Efficient Table32 radiation
-########################################
-if TRACK_TABLE32:
-    print("Creating line for radiation mode: Quantum Efficient Table32")
-
-    line_table32 = line_taper.copy()
-    line_table32.configure_radiation(model = "quantum-efficient-table32")
-    line_table32.build_tracker(_context = CONTEXT_CPU_SINGLE)
-
-########################################
-# Quantum Efficient Table32 Direct radiation
-########################################
-if TRACK_TABLE32DIRECT:
-    print("Creating line for radiation mode: Quantum Efficient Table32 Direct")
-
-    line_direct = line_taper.copy()
-    line_direct.configure_radiation(model = "quantum-efficient-table32-directsearch")
-    line_direct.build_tracker(_context = CONTEXT_CPU_SINGLE)
+    print(f"Creating line for radiation mode: {mode['label']}")
+    source_line = line_taper if mode["needs_taper"] else line_base
+    line_mode   = source_line.copy()
+    line_mode.configure_radiation(model=mode["model"])
+    line_mode.build_tracker(_context=CONTEXT)
+    lines[mode["key"]] = line_mode
 
 ################################################################################
 # Track
 ################################################################################
-print("\n" + "#"*80 + "\n" + "Tracking" + "\n" + "#"*80 + "\n")
+print("\n" + "#" * 80 + "\n" + "Tracking" + "\n" + "#" * 80 + "\n")
 
-########################################
-# No Radiation
-########################################
-if TRACK_NONE:
-    print("#"*40 + "\n" + "Tracking with radiation mode: None" + "\n" + "#"*40)
+results = {}
+for mode in RADIATION_MODES:
+    if not mode["enabled"]:
+        continue
 
-    tracking_times_none   = []
-    n_particles_none      = []
-    time_last_track_none  = 0
-    iteration_none        = 0
+    print(
+        "#" * 40
+        + "\n"
+        + f"Tracking with radiation mode: {mode['label']}"
+        + "\n"
+        + "#" * 40)
 
-    while time_last_track_none < TIME_LIMIT:
-
-        n_particles_track   = int(N_PARTICLES_INIT * 2**iteration_none)
-        print(f"Tracking with {n_particles_track} particles...")
-        
-
-        particles_none    = line_none.build_particles(
-            _context    = CONTEXT_CPU_SINGLE,
-            x           = np.zeros(n_particles_track),
-            px          = np.zeros(n_particles_track),
-            y           = np.zeros(n_particles_track),
-            py          = np.zeros(n_particles_track),
-            zeta        = np.zeros(n_particles_track),
-            delta       = np.zeros(n_particles_track))
-
-        line_none.track(
-            particles       = particles_none,
-            num_turns       = N_TURNS,
-            time            = True)
-
-        assert np.all(particles_none.state == 1)
-
-        time_last_track_none  = line_none.time_last_track
-        n_particles_none.append(n_particles_track)
-        tracking_times_none.append(line_none.time_last_track)
-        iteration_none        += 1
-
-    tracking_times_none     = np.array(tracking_times_none)
-    n_particles_none        = np.array(n_particles_none)
-    particle_turn_time_none = tracking_times_none \
-        / N_TURNS / n_particles_none
-
-########################################
-# Mean Radiation
-########################################
-if TRACK_MEAN:
-    print("#"*40 + "\n" + "Tracking with radiation mode: Mean" + "\n" + "#"*40)
-
-    tracking_times_mean   = []
-    n_particles_mean      = []
-    time_last_track_mean  = 0
-    iteration_mean        = 0
-
-    while time_last_track_mean < TIME_LIMIT:
-
-        n_particles_track   = int(N_PARTICLES_INIT * 2**iteration_mean)
-        print(f"Tracking with {n_particles_track} particles...")
-
-        particles_mean    = line_mean.build_particles(
-            _context    = CONTEXT_CPU_SINGLE,
-            x           = np.zeros(n_particles_track),
-            px          = np.zeros(n_particles_track),
-            y           = np.zeros(n_particles_track),
-            py          = np.zeros(n_particles_track),
-            zeta        = np.zeros(n_particles_track),
-            delta       = np.zeros(n_particles_track))
-
-        line_mean.track(
-            particles       = particles_mean,
-            num_turns       = N_TURNS,
-            time            = True)
-
-        assert np.all(particles_mean.state == 1)
-
-        time_last_track_mean  = line_mean.time_last_track
-        n_particles_mean.append(n_particles_track)
-        tracking_times_mean.append(line_mean.time_last_track)
-        iteration_mean        += 1
-
-    tracking_times_mean     = np.array(tracking_times_mean)
-    n_particles_mean        = np.array(n_particles_mean)
-    particle_turn_time_mean = tracking_times_mean \
-        / N_TURNS / n_particles_mean
-    
-########################################
-# Quantum Radiation
-########################################
-if TRACK_QUANTUM:
-    print("#"*40 + "\n" + "Tracking with radiation mode: Quantum" + "\n" + "#"*40)
-
-    tracking_times_quantum   = []
-    n_particles_quantum      = []
-    time_last_track_quantum  = 0
-    iteration_quantum        = 0
-
-    while time_last_track_quantum < TIME_LIMIT:
-
-        n_particles_track   = int(N_PARTICLES_INIT * 2**iteration_quantum)
-        print(f"Tracking with {n_particles_track} particles...")
-        
-
-        particles_quantum    = line_quantum.build_particles(
-            _context    = CONTEXT_CPU_SINGLE,
-            x           = np.zeros(n_particles_track),
-            px          = np.zeros(n_particles_track),
-            y           = np.zeros(n_particles_track),
-            py          = np.zeros(n_particles_track),
-            zeta        = np.zeros(n_particles_track),
-            delta       = np.zeros(n_particles_track))
-        particles_quantum._init_random_number_generator()
-
-        line_quantum.track(
-            particles       = particles_quantum,
-            num_turns       = N_TURNS,
-            time            = True)
-
-        assert np.all(particles_quantum.state == 1)
-
-        time_last_track_quantum  = line_quantum.time_last_track
-        n_particles_quantum.append(n_particles_track)
-        tracking_times_quantum.append(line_quantum.time_last_track)
-        iteration_quantum        += 1
-
-    tracking_times_quantum     = np.array(tracking_times_quantum)
-    n_particles_quantum        = np.array(n_particles_quantum)
-    particle_turn_time_quantum = tracking_times_quantum \
-        / N_TURNS / n_particles_quantum
-    
-########################################
-# Quantum Efficient Radiation
-########################################
-if TRACK_EFFICIENT:
-    print("#"*40 + "\n" + "Tracking with radiation mode: Quantum Efficient" + "\n" + "#"*40)
-
-    tracking_times_efficient   = []
-    n_particles_efficient      = []
-    time_last_track_efficient  = 0
-    iteration_efficient        = 0
-
-    while time_last_track_efficient < TIME_LIMIT:
-
-        n_particles_track   = int(N_PARTICLES_INIT * 2**iteration_efficient)
-        print(f"Tracking with {n_particles_track} particles...")
-
-        particles_efficient    = line_efficient.build_particles(
-            _context    = CONTEXT_CPU_SINGLE,
-            x           = np.zeros(n_particles_track),
-            px          = np.zeros(n_particles_track),
-            y           = np.zeros(n_particles_track),
-            py          = np.zeros(n_particles_track),
-            zeta        = np.zeros(n_particles_track),
-            delta       = np.zeros(n_particles_track))
-        particles_efficient._init_random_number_generator()
-
-        line_efficient.track(
-            particles       = particles_efficient,
-            num_turns       = N_TURNS,
-            time            = True)
-
-        assert np.all(particles_efficient.state == 1)
-
-        time_last_track_efficient  = line_efficient.time_last_track
-        n_particles_efficient.append(n_particles_track)
-        tracking_times_efficient.append(line_efficient.time_last_track)
-        iteration_efficient        += 1
-
-    tracking_times_efficient     = np.array(tracking_times_efficient)
-    n_particles_efficient        = np.array(n_particles_efficient)
-    particle_turn_time_efficient = tracking_times_efficient \
-        / N_TURNS / n_particles_efficient
-    
-########################################
-# Quantum Efficient Table 32 Radiation
-########################################
-if TRACK_TABLE32:
-    print("#"*40 + "\n" + "Tracking with radiation mode: Quantum Efficient Table 32" + "\n" + "#"*40)
-
-    tracking_times_table32   = []
-    n_particles_table32      = []
-    time_last_track_table32  = 0
-    iteration_table32        = 0
-
-    while time_last_track_table32 < TIME_LIMIT:
-
-        n_particles_track   = int(N_PARTICLES_INIT * 2**iteration_table32)
-        print(f"Tracking with {n_particles_track} particles...")
-
-        particles_table32    = line_table32.build_particles(
-            _context    = CONTEXT_CPU_SINGLE,
-            x           = np.zeros(n_particles_track),
-            px          = np.zeros(n_particles_track),
-            y           = np.zeros(n_particles_track),
-            py          = np.zeros(n_particles_track),
-            zeta        = np.zeros(n_particles_track),
-            delta       = np.zeros(n_particles_track))
-        particles_table32._init_random_number_generator()
-
-        line_table32.track(
-            particles       = particles_table32,
-            num_turns       = N_TURNS,
-            time            = True)
-
-        assert np.all(particles_table32.state == 1)
-
-        time_last_track_table32  = line_table32.time_last_track
-        n_particles_table32.append(n_particles_track)
-        tracking_times_table32.append(line_table32.time_last_track)
-        iteration_table32        += 1
-
-    tracking_times_table32     = np.array(tracking_times_table32)
-    n_particles_table32        = np.array(n_particles_table32)
-    particle_turn_time_table32 = tracking_times_table32 \
-        / N_TURNS / n_particles_table32
-    
-########################################
-# Quantum Efficient Table 32 Direct Radiation
-########################################
-if TRACK_TABLE32DIRECT:
-    print("#"*40 + "\n" + "Tracking with radiation mode: Quantum Efficient Table 32 Direct Search" + "\n" + "#"*40)
-
-    tracking_times_direct   = []
-    n_particles_direct      = []
-    time_last_track_direct  = 0
-    iteration_direct        = 0
-
-    while time_last_track_direct < TIME_LIMIT:
-
-        n_particles_track   = int(N_PARTICLES_INIT * 2**iteration_direct)
-        print(f"Tracking with {n_particles_track} particles...")
-
-        particles_direct    = line_direct.build_particles(
-            _context    = CONTEXT_CPU_SINGLE,
-            x           = np.zeros(n_particles_track),
-            px          = np.zeros(n_particles_track),
-            y           = np.zeros(n_particles_track),
-            py          = np.zeros(n_particles_track),
-            zeta        = np.zeros(n_particles_track),
-            delta       = np.zeros(n_particles_track))
-        particles_direct._init_random_number_generator()
-
-        line_direct.track(
-            particles       = particles_direct,
-            num_turns       = N_TURNS,
-            time            = True)
-
-        assert np.all(particles_direct.state == 1)
-
-        time_last_track_direct  = line_direct.time_last_track
-        n_particles_direct.append(n_particles_track)
-        tracking_times_direct.append(line_direct.time_last_track)
-        iteration_direct        += 1
-
-    tracking_times_direct     = np.array(tracking_times_direct)
-    n_particles_direct        = np.array(n_particles_direct)
-    particle_turn_time_direct = tracking_times_direct \
-        / N_TURNS / n_particles_direct
+    results[mode["key"]] = track_timing_scan(
+        line        = lines[mode["key"]],
+        context     = CONTEXT,
+        needs_rng   = mode["needs_rng"])
 
 ################################################################################
-# Plot overlayed
+# Plot
 ################################################################################
 fig, ax = plt.subplots(figsize = (10, 6))
 
-if TRACK_NONE:
-    ax.plot(
-        n_particles_none,
-        particle_turn_time_none * 1E6,
-        label   = "None",
-        marker  = "o")
+for mode in RADIATION_MODES:
+    if not mode["enabled"]:
+        continue
 
-if TRACK_MEAN:
+    n_particles, particle_turn_time = results[mode["key"]]
     ax.plot(
-        n_particles_mean,
-        particle_turn_time_mean * 1E6,
-        label   = "Mean",
-        marker  = "o")
-
-if TRACK_QUANTUM:
-    ax.plot(
-        n_particles_quantum,
-        particle_turn_time_quantum * 1E6,
-        label   = "Quantum",
-        marker  = "o")
-    
-if TRACK_EFFICIENT:
-    ax.plot(
-        n_particles_efficient,
-        particle_turn_time_efficient * 1E6,
-        label   = "Quantum Efficient",
-        marker  = "o")
-
-if TRACK_TABLE32:
-    ax.plot(
-        n_particles_table32,
-        particle_turn_time_table32 * 1E6,
-        label   = "Quantum Efficient Table 32",
-        marker  = "o")
-
-if TRACK_TABLE32DIRECT:
-    ax.plot(
-        n_particles_direct,
-        particle_turn_time_direct * 1E6,
-        label   = "Quantum Efficient Table 32 Direct",
+        n_particles,
+        particle_turn_time * 1e6,
+        label   = mode["label"],
         marker  = "o")
 
 ax.set_xlabel("Number of Particles")
 ax.set_ylabel("Mean Tracking Time per Particle per Turn [us]")
-
 ax.set_xscale("log")
 ax.set_yscale("log")
-
 ax.legend()
 
-fig.suptitle(f"Tracking Time Comparison (CPU Single Thread) - {N_TURNS} Turns")
+fig.suptitle(
+    f"Tracking Time by Radiation Mode ({CONTEXT_LABEL}) - {N_TURNS} Turns")
+fig.savefig(FIGURE_NAME)
 
 plt.show()

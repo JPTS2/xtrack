@@ -14,18 +14,16 @@ import numpy as np
 import xobjects as xo
 import xtrack as xt
 
-
 ################################################################################
 # User parameters
 ################################################################################
 
 ########################################
-# Radiation modes to test
+# Trackers to test
 ########################################
-TRACK_NONE              = True
-TRACK_MEAN              = True
-TRACK_QUANTUM           = True
-TRACK_QUANTUM_KICK      = True
+TRACK_CPU_SINGLE        = True
+TRACK_CPU_OPENMP        = False
+TRACK_GPU_CUPY          = False
 
 ########################################
 # OpenMP settings
@@ -47,49 +45,39 @@ REPO_ROOT               = Path(__file__).resolve().parents[3]
 ENV_PATH                = REPO_ROOT / "examples" / "fcc_ee_solenoid" / "fccee_z_lcc.json"
 
 ########################################
-# Context Settings
+# Radiation Settings
 ########################################
-CONTEXT                 = xo.ContextCpu(omp_num_threads = OPEN_MP_THREADS)
-CONTEXT_LABEL           = f"CPU OpenMP ({OPEN_MP_THREADS} Threads)"
-FIGURE_NAME             = "compare_radiations_cpu_openmp.png"
+RADIATION_MODEL         = None
+NEEDS_TAPER             = False
+NEEDS_RNG               = False
+RADIATION_LABEL         = "No Radiation"
+FIGURE_NAME             = "compare_trackers_none.png"
 
 ################################################################################
 # Helpers
 ################################################################################
 
 ########################################
-# Radiation Modes
+# Context Generation
 ########################################
-RADIATION_MODES = [
-    {
-        "key":          "none",
-        "model":        None,
-        "label":        "None",
-        "enabled":      TRACK_NONE,
-        "needs_taper":  False,
-        "needs_rng":    False},
-    {
-        "key":          "mean",
-        "model":        "mean",
-        "label":        "Mean",
-        "enabled":      TRACK_MEAN,
-        "needs_taper":  True,
-        "needs_rng":    False},
-    {
-        "key":          "quantum",
-        "model":        "quantum",
-        "label":        "Quantum",
-        "enabled":      TRACK_QUANTUM,
-        "needs_taper":  True,
-        "needs_rng":    True},
-    {
-        "key":          "quantum_kick",
-        "model":        "quantum-kick",
-        "label":        "Quantum Kick",
-        "enabled":      TRACK_QUANTUM_KICK,
-        "needs_taper":  True,
-        "needs_rng":    True}]
-
+def make_tracker_contexts():
+    contexts    = []
+    if TRACK_CPU_SINGLE:
+        contexts.append({
+            "key":      "cpu_single",
+            "label":    "CPU Single Thread",
+            "context":  xo.context_default})
+    if TRACK_CPU_OPENMP:
+        contexts.append({
+            "key":      "cpu_openmp",
+            "label":    f"CPU OpenMP ({OPEN_MP_THREADS} Threads)",
+            "context":  xo.ContextCpu(omp_num_threads = OPEN_MP_THREADS)})
+    if TRACK_GPU_CUPY:
+        contexts.append({
+            "key":      "gpu_cupy",
+            "label":    "GPU CuPy",
+            "context":  xo.ContextCupy()})
+    return contexts
 
 ########################################
 # Particle Construction
@@ -105,7 +93,10 @@ def build_particles(line, context, n_particles):
         delta       = np.zeros(n_particles))
 
 
-def track_timing_scan(line, context, needs_rng):
+########################################
+# Scan tracking time
+########################################
+def track_timing_scan(line, context):
     tracking_times  = []
     n_particles     = []
     time_last_track = 0
@@ -116,7 +107,7 @@ def track_timing_scan(line, context, needs_rng):
         print(f"Tracking with {n_particles_track} particles...")
 
         particles = build_particles(line, context, n_particles_track)
-        if needs_rng:
+        if NEEDS_RNG:
             particles._init_random_number_generator()
 
         line.track(particles = particles, num_turns = N_TURNS, time = True)
@@ -133,24 +124,27 @@ def track_timing_scan(line, context, needs_rng):
     particle_turn_time  = tracking_times / N_TURNS / n_particles
     return n_particles, particle_turn_time
 
-
 ################################################################################
 # Lattice setup
 ################################################################################
 print("\n" + "#" * 80 + "\n" + "Loading Line" + "\n" + "#" * 80 + "\n")
 print(f"optimize_for_tracking = {OPTIMIZE_FOR_TRACKING}")
 
+tracker_contexts = make_tracker_contexts()
+
 env         = xt.load(ENV_PATH)
 line_base   = env.lines["fccee_p_ring"]
-line_base.build_tracker(_context=xo.context_default)
+line_base.build_tracker(_context = xo.context_default)
 
 if OPTIMIZE_FOR_TRACKING:
     line_base.optimize_for_tracking(compile = False, verbose = False)
 
-line_taper = line_base.copy()
-line_taper.configure_radiation(model="mean")
-line_taper.compensate_radiation_energy_loss()
-line_taper.discard_tracker()
+line_source = line_base
+if NEEDS_TAPER:
+    line_source = line_base.copy()
+    line_source.configure_radiation(model="mean")
+    line_source.compensate_radiation_energy_loss()
+    line_source.discard_tracker()
 
 ################################################################################
 # Build lines
@@ -159,16 +153,12 @@ print("\n" + "#" * 80 + "\n" + "Building Lines" + "\n" + "#" * 80 + "\n")
 
 lines = {}
 
-for mode in RADIATION_MODES:
-    if not mode["enabled"]:
-        continue
-
-    print(f"Creating line for radiation mode: {mode['label']}")
-    source_line = line_taper if mode["needs_taper"] else line_base
-    line_mode   = source_line.copy()
-    line_mode.configure_radiation(model=mode["model"])
-    line_mode.build_tracker(_context=CONTEXT)
-    lines[mode["key"]] = line_mode
+for context_info in tracker_contexts:
+    print(f"Creating line for {context_info['label']}")
+    line_mode = line_source.copy()
+    line_mode.configure_radiation(model=RADIATION_MODEL)
+    line_mode.build_tracker(_context=context_info["context"])
+    lines[context_info["key"]] = line_mode
 
 ################################################################################
 # Track
@@ -176,36 +166,28 @@ for mode in RADIATION_MODES:
 print("\n" + "#" * 80 + "\n" + "Tracking" + "\n" + "#" * 80 + "\n")
 
 results = {}
-for mode in RADIATION_MODES:
-    if not mode["enabled"]:
-        continue
-
+for context_info in tracker_contexts:
     print(
         "#" * 40
         + "\n"
-        + f"Tracking with radiation mode: {mode['label']}"
+        + f"Tracking with {context_info['label']}"
         + "\n"
         + "#" * 40)
-
-    results[mode["key"]] = track_timing_scan(
-        line        = lines[mode["key"]],
-        context     = CONTEXT,
-        needs_rng   = mode["needs_rng"])
+    results[context_info["key"]] = track_timing_scan(
+        line    = lines[context_info["key"]],
+        context = context_info["context"])
 
 ################################################################################
 # Plot
 ################################################################################
-fig, ax = plt.subplots(figsize = (10, 6))
+fig, ax = plt.subplots(figsize=(10, 6))
 
-for mode in RADIATION_MODES:
-    if not mode["enabled"]:
-        continue
-
-    n_particles, particle_turn_time = results[mode["key"]]
+for context_info in tracker_contexts:
+    n_particles, particle_turn_time = results[context_info["key"]]
     ax.plot(
         n_particles,
         particle_turn_time * 1e6,
-        label   = mode["label"],
+        label   = context_info["label"],
         marker  = "o")
 
 ax.set_xlabel("Number of Particles")
@@ -215,7 +197,7 @@ ax.set_yscale("log")
 ax.legend()
 
 fig.suptitle(
-    f"Tracking Time by Radiation Mode ({CONTEXT_LABEL}) - {N_TURNS} Turns")
+    f"Tracking Time by Tracker Context ({RADIATION_LABEL}) - {N_TURNS} Turns")
 fig.savefig(FIGURE_NAME)
 
 plt.show()

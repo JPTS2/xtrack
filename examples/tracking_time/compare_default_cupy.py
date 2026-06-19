@@ -24,6 +24,8 @@ import xobjects as xo
 TIME_LIMIT          = 20
 N_TURNS             = int(5E1)
 N_PARTICLES_INIT    = int(1)
+OPTIMIZE_FOR_TRACKING = False
+FIGURE_NAME         = "compare_default_cupy_all_radiations.png"
 
 ########################################
 # Line
@@ -54,21 +56,9 @@ RADIATION_MODES = [
         "needs_taper":  True,
         "needs_rng":    True},
     {
-        "key":          "efficient",
-        "model":        "quantum-efficient",
-        "label":        "Quantum Efficient",
-        "needs_taper":  True,
-        "needs_rng":    True},
-    {
-        "key":          "table32",
-        "model":        "quantum-efficient-table32",
-        "label":        "Quantum Efficient Table 32",
-        "needs_taper":  True,
-        "needs_rng":    True},
-    {
-        "key":          "table32_direct",
-        "model":        "quantum-efficient-table32-directsearch",
-        "label":        "Quantum Efficient Table 32 Direct Search",
+        "key":          "quantum-kick",
+        "model":        "quantum-kick",
+        "label":        "Quantum Kick",
         "needs_taper":  True,
         "needs_rng":    True}]
 
@@ -137,6 +127,7 @@ def track_timing_scan(line, context, needs_rng):
 # Lattice setup
 ################################################################################
 print("\n" + "#"*80 + "\n" + "Loading Line" + "\n" + "#"*80 + "\n")
+print(f"optimize_for_tracking = {OPTIMIZE_FOR_TRACKING}")
 
 ########################################
 # Load line from JSON
@@ -144,6 +135,9 @@ print("\n" + "#"*80 + "\n" + "Loading Line" + "\n" + "#"*80 + "\n")
 env         = xt.load(ENV_PATH)
 line_base   = env.lines["fccee_p_ring"]
 line_base.build_tracker(_context = xo.context_default)
+
+if OPTIMIZE_FOR_TRACKING:
+    line_base.optimize_for_tracking(compile=False, verbose=False)
 
 ########################################
 # Taper Line
@@ -220,8 +214,8 @@ ax.set_yscale("log")
 ax.legend()
 
 fig.suptitle(
-    f"compare_default_cupy_all_radiations - {N_TURNS} Turns")
+    f"Default CPU vs GPU CuPy by Radiation Mode - {N_TURNS} Turns")
 
-fig.savefig("compare_default_cupy_all_radiations.png")
+fig.savefig(FIGURE_NAME)
 
 plt.show()
