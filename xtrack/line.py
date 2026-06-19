@@ -4091,7 +4091,7 @@ class Line:
             if hasattr(ee, 'flag_bhabha'):
                 ee.flag_bhabha = bhabha_flag
 
-        if radiation_flag in (2, 3) or beamstrahlung_flag == 2 or bhabha_flag == 1:
+        if radiation_flag in (2, 3, 4, 5) or beamstrahlung_flag == 2 or bhabha_flag == 1:
             self._needs_rng = True
 
         self.config.XFIELDS_BB3D_NO_BEAMSTR = (beamstrahlung_flag == 0)
