@@ -28,7 +28,7 @@ MONITOR_POINT       = "ca1.1"
 # The FCC-ee H lattice is the same local test lattice used by the radiation
 # equilibrium tests. It is loaded fresh for each radiation mode so that the only
 # intentional difference between runs is the selected radiation model.
-REPO_ROOT           = Path(__file__).resolve().parents[2]
+REPO_ROOT           = Path(__file__).resolve().parents[3]
 ENV_PATH            = REPO_ROOT / "examples" / "fcc_ee_solenoid" / "fccee_z_lcc.json"
 
 TRACK_CPU_SINGLE    = True

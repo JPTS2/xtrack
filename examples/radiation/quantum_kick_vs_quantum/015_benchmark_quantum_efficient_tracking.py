@@ -145,7 +145,7 @@ if UNKNOWN_MODES:
 
 REQUESTS_TABLE32 = any("table32" in mode for mode in MODES_TO_RUN)
 HEADER_PATH = (
-    Path(__file__).resolve().parents[2]
+    Path(__file__).resolve().parents[3]
     / "xtrack" / "headers" / "synrad_total_energy_tables.h")
 HEADER_TEXT = HEADER_PATH.read_text() if HEADER_PATH.exists() else ""
 HAS_TABLE32_TABLES = (

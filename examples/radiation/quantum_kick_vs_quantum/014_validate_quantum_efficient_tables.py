@@ -122,7 +122,7 @@ def load_module(path, module_name):
 
 
 here        = Path(__file__).parent
-repo_root   = here.parents[1]
+repo_root   = here.parents[2]
 
 table_generator = load_module(
     repo_root / "xtrack" / "headers" / "_generate_synrad_total_energy_tables.py",
