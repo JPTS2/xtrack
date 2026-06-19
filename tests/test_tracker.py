@@ -131,26 +131,9 @@ def test_synrad_configuration(test_context):
         p.move(_context=xo.ContextCpu())
         assert np.all(p._rng_s1 + p._rng_s2 + p._rng_s3 + p._rng_s4 > 0)
 
-        line.configure_radiation(model='quantum-efficient')
+        line.configure_radiation(model='quantum-kick')
         for ee in line.elements:
             assert ee.radiation_flag == 3
-        p = xp.Particles(x=[0.01, 0.02], _context=test_context)
-        line.track(p)
-        p.move(_context=xo.ContextCpu())
-        assert np.all(p._rng_s1 + p._rng_s2 + p._rng_s3 + p._rng_s4 > 0)
-
-        line.configure_radiation(model='quantum-efficient-table32')
-        for ee in line.elements:
-            assert ee.radiation_flag == 4
-        p = xp.Particles(x=[0.01, 0.02], _context=test_context)
-        line.track(p)
-        p.move(_context=xo.ContextCpu())
-        assert np.all(p._rng_s1 + p._rng_s2 + p._rng_s3 + p._rng_s4 > 0)
-
-        line.configure_radiation(
-            model='quantum-efficient-table32-directsearch')
-        for ee in line.elements:
-            assert ee.radiation_flag == 5
         p = xp.Particles(x=[0.01, 0.02], _context=test_context)
         line.track(p)
         p.move(_context=xo.ContextCpu())

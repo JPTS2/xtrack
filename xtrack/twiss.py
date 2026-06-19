@@ -662,9 +662,7 @@ def twiss_line(line, particle_ref=None, method=None,
     if radiation_method is None and line._radiation_model is not None:
         if line._radiation_model in (
                 'quantum',
-                'quantum-efficient',
-                'quantum-efficient-table32',
-                'quantum-efficient-table32-directsearch'):
+                'quantum-kick'):
             raise ValueError(
                 'twiss cannot be called when the radiation model is stochastic')
         if method == '4d':
@@ -2221,9 +2219,7 @@ def _extract_sr_distribution_properties(twiss_res):
     radiation_flag = twiss_res['radiation_flag']
     if np.any(
             (radiation_flag == 2)
-            | (radiation_flag == 3)
-            | (radiation_flag == 4)
-            | (radiation_flag == 5)):
+            | (radiation_flag == 3)):
         raise ValueError('Incompatible radiation flag')
 
     hx, hy, kappa0_x, kappa0_y = _get_trajectory_curvatures(twiss_res)

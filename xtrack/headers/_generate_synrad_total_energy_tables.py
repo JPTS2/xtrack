@@ -7,15 +7,15 @@
 Generate deterministic inverse-CDF tables for total synchrotron-radiation
 energy loss.
 
-The runtime ``quantum-efficient`` radiation mode does not need individual
+The runtime ``quantum-kick`` radiation mode does not need individual
 photon energies. It only needs the total energy lost in a slice. For a fixed
 number of emitted photons N, this script tabulates the distribution of
 
     X_N = x_1 + x_2 + ... + x_N,
 
 where each ``x_i`` is an independent photon energy normalized by the critical
-energy, ``x_i = E_i / E_c``. Tables are generated for powers of two,
-``N = 1, 2, 4, ..., 256``.
+energy, ``x_i = E_i / E_c``. Tables are generated directly for low photon
+counts and for powers of two up to 256.
 
 The table generation is deterministic, not Monte Carlo:
 

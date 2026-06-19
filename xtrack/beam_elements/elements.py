@@ -3363,11 +3363,8 @@ class Magnet(_BendCommon, BeamElement):
         If zero, no radiation effects are simulated; if 1, the ``mean``
         model is used; if 2, the ``quantum`` model is used and the
         emitted photons are stored in the internal radiation record; if 3,
-        the ``quantum-efficient`` power-of-two table model is used and only
-        the total energy loss is generated; if 4, the temporary
-        ``quantum-efficient-table32`` direct fixed-count table model is used;
-        if 5, the temporary ``quantum-efficient-table32-directsearch`` model
-        is used.
+        the ``quantum-kick`` model is used and only the total radiation kick
+        is generated.
     delta_taper : float, optional
         A value added to delta for the purposes of tapering. Default is 0.
     """
