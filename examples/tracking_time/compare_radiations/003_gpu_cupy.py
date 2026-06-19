@@ -31,8 +31,12 @@ TRACK_TABLE32DIRECT = True
 ########################################
 # Time Limit
 ########################################
-TIME_LIMIT          = 20
-N_TURNS             = int(5E1)
+# Worst final time is 2 * TIME_LIMIT - 2 delta (for the case where it just missed the limit before)
+# Then the total time elapsed would be the geometric series sum of the times
+# So the total time is 4 * TIME_LIMIT for each of the tracking types used
+# So 24 * TIME_LIMIT with all enabled
+TIME_LIMIT          = 300
+N_TURNS             = int(1E1)
 N_PARTICLES_INIT    = int(1)
 
 ########################################
