@@ -23,22 +23,22 @@ import xobjects as xo
 ########################################
 TRACK_CPU_SINGLE    = True
 TRACK_CPU_OPENMP    = False
-TRACK_GPU_CUPY      = True
+TRACK_GPU_CUPY      = False
 
 OPEN_MP_THREADS     = 4
 
 ########################################
 # Time Limit
 ########################################
-TIME_LIMIT          = 30
-N_TURNS             = int(1E2)
+TIME_LIMIT          = 20
+N_TURNS             = int(5E1)
 N_PARTICLES_INIT    = int(1)
 
 ########################################
 # Line
 ########################################
-REPO_ROOT           = Path(__file__).resolve().parents[2]
-LINE_PATH           = REPO_ROOT / "test_data" / "fcc_ee" / "fccee_h_thick.json"
+REPO_ROOT           = Path(__file__).resolve().parents[3]
+ENV_PATH            = REPO_ROOT / "examples" / "fcc_ee_solenoid" / "fccee_z_lcc.json"
 
 ################################################################################
 # Contexts
@@ -52,16 +52,26 @@ if TRACK_GPU_CUPY:
 ################################################################################
 # Lattice setup
 ################################################################################
+print("\n" + "#"*80 + "\n" + "Loading Line" + "\n" + "#"*80 + "\n")
 
 ########################################
 # Load line from JSON
 ########################################
-line = xt.load(LINE_PATH)
+env     = xt.load(ENV_PATH)
+line    = env.lines["fccee_p_ring"]
 line.build_tracker(_context = CONTEXT_CPU_SINGLE)
+
+########################################
+# Taper Line
+########################################
+line.configure_radiation(model = "mean")
+line.compensate_radiation_energy_loss()
+line.discard_tracker()
 
 ################################################################################
 # Per context/radiation line setup
 ################################################################################
+print("\n" + "#"*80 + "\n" + "Building Lines" + "\n" + "#"*80 + "\n")
 
 ########################################
 # CPU Single Thread
@@ -70,7 +80,7 @@ if TRACK_CPU_SINGLE:
     print("Creating lines for CPU Single Thread")
 
     line_cpu_single = line.copy()
-    line_cpu_single.configure_radiation(model = None)
+    line_cpu_single.configure_radiation(model = "mean")
     line_cpu_single.build_tracker(_context = CONTEXT_CPU_SINGLE)
 
 ########################################
@@ -80,7 +90,7 @@ if TRACK_CPU_OPENMP:
     print("Creating lines for CPU OpenMP")
 
     line_cpu_openmp = line.copy()
-    line_cpu_openmp.configure_radiation(model = None)
+    line_cpu_openmp.configure_radiation(model = "mean")
     line_cpu_openmp.build_tracker(_context = CONTEXT_CPU_OPENMP)
 
 ########################################
@@ -90,18 +100,19 @@ if TRACK_GPU_CUPY:
     print("Creating lines for GPU CuPy")
 
     line_gpu_cupy   = line.copy()
-    line_gpu_cupy.configure_radiation(model = None)
+    line_gpu_cupy.configure_radiation(model = "mean")
     line_gpu_cupy.build_tracker(_context = CONTEXT_GPU_CUPY)
 
 ################################################################################
 # Track
 ################################################################################
+print("\n" + "#"*80 + "\n" + "Tracking" + "\n" + "#"*80 + "\n")
 
 ########################################
 # CPU Single Thread
 ########################################
 if TRACK_CPU_SINGLE:
-    print("Tracking with CPU single thread")
+    print("#"*40 + "\n" + "Tracking with CPU single thread" + "\n" + "#"*40)
 
     tracking_times_cpu_single   = []
     n_particles_cpu_single      = []
@@ -111,7 +122,7 @@ if TRACK_CPU_SINGLE:
     while time_last_track_cpu_single < TIME_LIMIT:
 
         n_particles_track   = int(N_PARTICLES_INIT * 2**iteration_cpu_single)
-        n_particles_cpu_single.append(n_particles_track)
+        print(f"Tracking with {n_particles_track} particles...")
 
         particles_cpu_single    = line_cpu_single.build_particles(
             _context    = CONTEXT_CPU_SINGLE,
@@ -126,9 +137,12 @@ if TRACK_CPU_SINGLE:
             particles       = particles_cpu_single,
             num_turns       = N_TURNS,
             time            = True)
-        
-        tracking_times_cpu_single.append(line_cpu_single.time_last_track)
+
+        assert np.all(particles_cpu_single.state == 1)
+
         time_last_track_cpu_single  = line_cpu_single.time_last_track
+        n_particles_cpu_single.append(n_particles_track)
+        tracking_times_cpu_single.append(line_cpu_single.time_last_track)
         iteration_cpu_single        += 1
 
     tracking_times_cpu_single     = np.array(tracking_times_cpu_single)
@@ -140,7 +154,7 @@ if TRACK_CPU_SINGLE:
 # CPU OpenMP
 ########################################
 if TRACK_CPU_OPENMP:
-    print("Tracking with CPU OpenMP")
+    print("#"*40 + "\n" + "Tracking with CPU OpenMP" + "\n" + "#"*40)
 
     tracking_times_cpu_openmp   = []
     n_particles_cpu_openmp      = []
@@ -150,7 +164,7 @@ if TRACK_CPU_OPENMP:
     while time_last_track_cpu_openmp < TIME_LIMIT:
 
         n_particles_track   = int(N_PARTICLES_INIT * 2**iteration_cpu_openmp)
-        n_particles_cpu_openmp.append(n_particles_track)
+        print(f"Tracking with {n_particles_track} particles...")
 
         particles_cpu_openmp    = line_cpu_openmp.build_particles(
             _context    = CONTEXT_CPU_OPENMP,
@@ -165,11 +179,14 @@ if TRACK_CPU_OPENMP:
             particles       = particles_cpu_openmp,
             num_turns       = N_TURNS,
             time            = True)
-        
-        tracking_times_cpu_openmp.append(line_cpu_openmp.time_last_track)
+
+        assert np.all(particles_cpu_openmp.state == 1)
+
         time_last_track_cpu_openmp  = line_cpu_openmp.time_last_track
+        n_particles_cpu_openmp.append(n_particles_track)
+        tracking_times_cpu_openmp.append(line_cpu_openmp.time_last_track)
         iteration_cpu_openmp        += 1
-    
+
     tracking_times_cpu_openmp     = np.array(tracking_times_cpu_openmp)
     n_particles_cpu_openmp        = np.array(n_particles_cpu_openmp)
     particle_turn_time_cpu_openmp = tracking_times_cpu_openmp \
@@ -179,7 +196,7 @@ if TRACK_CPU_OPENMP:
 # GPU CuPy
 ########################################
 if TRACK_GPU_CUPY:
-    print("Tracking with GPU CuPy")
+    print("#"*40 + "\n" + "Tracking with GPU CuPy" + "\n" + "#"*40)
 
     tracking_times_gpu_cupy     = []
     n_particles_gpu_cupy        = []
@@ -189,7 +206,7 @@ if TRACK_GPU_CUPY:
     while time_last_track_gpu_cupy < TIME_LIMIT:
 
         n_particles_track   = int(N_PARTICLES_INIT * 2**iteration_gpu_cupy)
-        n_particles_gpu_cupy.append(n_particles_track)
+        print(f"Tracking with {n_particles_track} particles...")
 
         particles_gpu_cupy    = line_gpu_cupy.build_particles(
             _context    = CONTEXT_GPU_CUPY,
@@ -204,11 +221,14 @@ if TRACK_GPU_CUPY:
             particles       = particles_gpu_cupy,
             num_turns       = N_TURNS,
             time            = True)
-        
-        tracking_times_gpu_cupy.append(line_gpu_cupy.time_last_track)
+
+        assert np.all(particles_gpu_cupy.state == 1)
+
         time_last_track_gpu_cupy  = line_gpu_cupy.time_last_track
+        n_particles_gpu_cupy.append(n_particles_track)
+        tracking_times_gpu_cupy.append(line_gpu_cupy.time_last_track)
         iteration_gpu_cupy        += 1
-    
+
     tracking_times_gpu_cupy     = np.array(tracking_times_gpu_cupy)
     n_particles_gpu_cupy        = np.array(n_particles_gpu_cupy)
     particle_turn_time_gpu_cupy = tracking_times_gpu_cupy \
@@ -225,7 +245,7 @@ if TRACK_CPU_SINGLE:
         particle_turn_time_cpu_single * 1E6,
         label   = "CPU Single Thread",
         marker  = "o")
-    
+
 if TRACK_CPU_OPENMP:
     ax.plot(
         n_particles_cpu_openmp,
@@ -248,6 +268,6 @@ ax.set_yscale("log")
 
 ax.legend()
 
-fig.suptitle(f"Tracking Time Comparison (No Radiation) - {N_TURNS} Turns")
+fig.suptitle(f"Tracking Time Comparison (Mean Radiation) - {N_TURNS} Turns")
 
 plt.show()

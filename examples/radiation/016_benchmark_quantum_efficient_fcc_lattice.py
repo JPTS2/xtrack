@@ -29,7 +29,7 @@ MONITOR_POINT       = "ca1.1"
 # equilibrium tests. It is loaded fresh for each radiation mode so that the only
 # intentional difference between runs is the selected radiation model.
 REPO_ROOT           = Path(__file__).resolve().parents[2]
-LINE_PATH           = REPO_ROOT / "test_data" / "fcc_ee" / "fccee_h_thick.json"
+ENV_PATH            = REPO_ROOT / "examples" / "fcc_ee_solenoid" / "fccee_z_lcc.json"
 
 TRACK_CPU_SINGLE    = True
 TRACK_CPU_OPENMP    = False
@@ -53,7 +53,8 @@ if TRACK_GPU_CUPY:
 ########################################
 # Load line from JSON
 ########################################
-line = xt.load(LINE_PATH)
+env     = xt.load(ENV_PATH)
+line    = env.lines["fccee_p_ring"]
 line.build_tracker(_context = CONTEXT_CPU_SINGLE)
 
 ########################################
