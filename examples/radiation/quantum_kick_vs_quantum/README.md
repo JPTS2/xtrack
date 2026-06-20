@@ -17,9 +17,9 @@ equivalent stochastic total-energy kick, so equivalence is expected only for
 total radiation kicks and downstream tracking observables, not for photon
 records.
 
-## Planned validation sequence
+## Validation sequence
 
-The intended end state is seven active examples:
+The implemented active sequence currently contains six examples:
 
 ```text
 001_review_total_energy_tables.py
@@ -28,14 +28,17 @@ The intended end state is seven active examples:
 004_regime_scan_kick_distribution.py
 005_sampler_call_counts.py
 006_fcc_emittance_cpu.py
-007_lifetime_tail_proxy.py
 ```
 
-Together these should replace the useful validation coverage from the
-historical `011` to `016` development files. An eighth file is not planned at
-this stage. If a very large statistics certification run is needed later, it
-should either be exposed through explicit user parameters in these examples or
-added as a deliberately heavy, non-default certification script.
+`007_lifetime_tail_proxy.py` is retained as a documented, non-executable
+placeholder. It should become active only when a machine acceptance and loss
+model are available for a defensible lattice-level lifetime comparison.
+
+Together the active examples replace the useful `quantum-kick` validation
+coverage from the historical `011` to `016` development files. If a very large
+statistics certification run is needed later, it should either be exposed
+through explicit user parameters in these examples or added as a deliberately
+heavy, non-default certification script.
 
 ### 001 Review total-energy tables
 
@@ -101,83 +104,103 @@ comparisons to `examples/tracking_time`.
 
 ### 006 FCC emittance CPU check
 
-Run a CPU-only FCC tracking-observable check:
+Run a CPU-only FCC-ee tt tracking-observable check:
 
 - `quantum` versus `quantum-kick`;
-- around `1E2` particles and `1E4` turns by default;
+- around `1E2` particles and `3E2` turns by default;
 - all particles initially at zero;
-- compare emittance or beam-size observables within an explicit tolerance.
+- compare normal modes I and III within explicit tolerances;
+- use an `xcoll.EmittanceMonitor` and configurable turn-window smoothing.
 
 This is a first lattice-level physics sanity check, not a high-statistics
-equilibrium-emittance certification.
+equilibrium-emittance certification. The current native tt sequence is an
+ideal planar lattice, so its equilibrium mode-II emittance is zero and only
+modes I and III are meaningful here. This should be upgraded to a committed,
+native-Xsuite, coupled FCC-ee tt LCC lattice when one becomes available, at
+which point the full I/II/III comparison should be restored.
 
 ### 007 Lifetime tail proxy
 
-Add a tail-sensitive observable aimed at lifetime risk:
+This file is intentionally a future-work specification. Examples 002-004
+already cover distribution and kick tails, so another standalone tail sampler
+would be redundant. A useful 007 must instead provide a lattice-level loss
+observable with:
 
-- compare the probability of exceeding selected energy/kick thresholds;
-- use thresholds derived from the `quantum` reference distribution where useful;
-- keep the default runtime reasonable, with clear knobs for certification-scale
-  Monte Carlo.
+- a documented RF bucket, momentum acceptance and physical aperture;
+- an explicit loss definition;
+- survival and loss-location comparisons for `quantum` and `quantum-kick`;
+- confidence intervals and PASS, FAIL or LOWSTAT reporting.
 
-This starts addressing the main remaining physics risk: rare events that can
-drive losses and lifetime.
+It must not present an arbitrary kick threshold as a machine lifetime.
 
 ## Historical development files
 
 The following files were moved here from the historical flat radiation folder
-and are kept for reference while the new sequence is implemented:
+and remain temporarily for retirement review:
 
-- `011_plot_total_energy_loss.py`
 - `012_prototype_total_energy_loss_power2.py`
 - `013_compare_quantum_efficient.py`
 - `014_validate_quantum_efficient_tables.py`
 - `015_benchmark_quantum_efficient_tracking.py`
 - `016_benchmark_quantum_efficient_fcc_lattice.py`
 
-These names still reflect the development branch. They should be mined for
-useful code and then either renamed, simplified, or removed from the active
+These names still reflect the development branch and are not part of the active
 example sequence.
 
-## Migration from historical files
+### Retirement status
 
-The useful content from the historical files should be folded into the seven
-active examples as follows:
+The retirement audit found that `012` to `016` can be removed:
+
+- `012` prototypes the superseded empirical power-of-two approach;
+- `013` and `014` are covered by examples 001-004;
+- `015` timing is covered by `examples/tracking_time`, while its kick checks are
+  covered by examples 003 and 004;
+- `016` timing is covered by `examples/tracking_time`, while its lattice-level
+  physics role is covered by example 006;
+- `013`, `015` and `016` also refer to radiation modes that no longer exist.
+
+The general educational content from `011` has been promoted to
+`examples/radiation/001_synchrotron_radiation_spectrum.py`. Its
+`quantum-kick`-specific sampling, compound-Poisson and tail checks are covered
+by examples 001 and 002 in this folder. No active example imports any of the
+remaining historical files.
+
+## Completed migration
+
+The useful `quantum-kick` validation content was migrated as follows:
 
 - `011_plot_total_energy_loss.py`
-  - contributes the single-photon spectrum, brute-force photon sampling, and
-    compound-Poisson total-loss Monte Carlo used by
-    `002_validate_table_sampling.py`;
-  - selected CDF or spectrum inspection may also feed
-    `001_review_total_energy_tables.py`.
+  - its general single-photon spectrum and analytic theory plots were promoted
+    to `examples/radiation/001_synchrotron_radiation_spectrum.py`;
+  - its brute-force photon sampling and compound-Poisson validation are covered
+    by `002_validate_table_sampling.py`.
 
 - `012_prototype_total_energy_loss_power2.py`
-  - contributes the explanation of sampler-call scaling and photon-count
-    decomposition to `005_sampler_call_counts.py`;
-  - the old power-of-two prototype should not remain an active public example
-    once the direct-table `quantum-kick` sequence is complete.
+  - its sampler-call scaling and photon-count decomposition are covered by
+    `005_sampler_call_counts.py`;
+  - its empirical power-of-two table construction is obsolete.
 
 - `013_compare_quantum_efficient.py`
-  - contributes the single-bend Monte Carlo comparison to
+  - its single-bend Monte Carlo comparison is covered by
     `003_single_bend_kick_distribution.py`;
-  - its broader case handling should feed
+  - its broader case handling is covered by
     `004_regime_scan_kick_distribution.py`.
 
 - `014_validate_quantum_efficient_tables.py`
-  - contributes stored-table checks and table-sampling validation to
+  - its stored-table checks and table-sampling validation are covered by
     `001_review_total_energy_tables.py` and
     `002_validate_table_sampling.py`;
   - full table regeneration should not be part of the default example path.
 
 - `015_benchmark_quantum_efficient_tracking.py`
-  - contributes single-bend histogram and diagnostic accumulation to
+  - its single-bend histogram and diagnostic accumulation are covered by
     `003_single_bend_kick_distribution.py` and
     `004_regime_scan_kick_distribution.py`;
   - real wall-clock timing belongs in `examples/tracking_time`, while only
     algorithmic call-count diagnostics belong here.
 
 - `016_benchmark_quantum_efficient_fcc_lattice.py`
-  - contributes the lattice-level setup to `006_fcc_emittance_cpu.py`;
-  - any tail-sensitive survival or loss observable should feed
+  - its lattice-level role is covered by `006_fcc_emittance_cpu.py`;
+  - a genuine survival or loss observable remains explicitly deferred in
     `007_lifetime_tail_proxy.py`;
   - CPU/GPU timing comparisons belong in `examples/tracking_time`.

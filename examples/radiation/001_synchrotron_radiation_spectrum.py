@@ -12,13 +12,34 @@ import matplotlib.pyplot as plt
 ################################################################################
 # User parameters
 ################################################################################
-RNG             = np.random.default_rng(12345)
-TEST_LAMBDAS    = np.array([0.05, 0.2, 1.0, 5.0, 20.0])
-N_PARTICLES     = int(1E6)
+
+########################################
+# Monte Carlo settings
+########################################
+SEED                    = 12345
+N_PARTICLES             = int(1E6)
+
+########################################
+# Photon-count regimes
+########################################
+TEST_LAMBDAS            = np.array([0.05, 0.2, 1.0, 5.0, 20.0])
+
+########################################
+# Plot settings
+########################################
+PLOT_RESULTS            = True
+TAIL_ENERGY_X_MIN       = 1E-2
+TAIL_RELATIVE_X_MIN     = 1E-1
+
+RNG                     = np.random.default_rng(SEED)
 
 ################################################################################
 # Synchrotron spectrum
 ################################################################################
+
+########################################
+# Evaluate normalized photon spectrum
+########################################
 def synrad(x):
     """Evaluate the normalized synchrotron-radiation photon spectrum.
 
@@ -232,10 +253,7 @@ def sample_total_loss_normalized(rng, lambdas, n_particles,
     2. draw ``N_gamma`` independent photon energies from ``SynRad(x)``;
     3. sum them to obtain the total normalized emitted energy.
 
-    This is the baseline process that the new table-based
-    ``quantum-efficient`` mode is intended to reproduce for total energy loss.
-    The default return value is kept as only ``out`` because other examples
-    import this helper.
+    This is the baseline process sampled by photon-by-photon quantum radiation.
     """
     lambdas = np.asarray(lambdas, dtype=float)
     out = np.empty((lambdas.size, n_particles))
@@ -520,6 +538,7 @@ def plot_total_loss_distributions(lambdas, total_loss, photon_counts):
     ax_linear.set_title("Bulk view")
     ax_log.set_title("Tail view")
     ax_log.set_xscale("log")
+    ax_log.set_xlim(left=TAIL_ENERGY_X_MIN)
     ax_linear.legend(fontsize=8)
 
     fig.suptitle(
@@ -603,6 +622,7 @@ def plot_tail_survival(lambdas, total_loss):
     ax.set_title("High-loss tail of the compound-Poisson process")
     ax.set_xscale("log")
     ax.set_yscale("log")
+    ax.set_xlim(left=TAIL_RELATIVE_X_MIN)
     ax.grid(True, which="both")
     ax.legend(fontsize=8)
     fig.tight_layout()
@@ -610,21 +630,20 @@ def plot_tail_survival(lambdas, total_loss):
 ################################################################################
 # Run
 ################################################################################
-if __name__ == "__main__":
-    total_loss, photon_counts = sample_total_loss_normalized(
-        RNG, TEST_LAMBDAS, N_PARTICLES, return_photon_counts=True)
 
-    print_summary(TEST_LAMBDAS, total_loss, photon_counts)
-    assert_baseline_checks(TEST_LAMBDAS, total_loss, photon_counts)
+total_loss, photon_counts = sample_total_loss_normalized(
+    RNG, TEST_LAMBDAS, N_PARTICLES, return_photon_counts=True)
 
-    print()
-    print("Baseline checks passed.")
+print_summary(TEST_LAMBDAS, total_loss, photon_counts)
+assert_baseline_checks(TEST_LAMBDAS, total_loss, photon_counts)
 
+print()
+print("OVERALL STATUS: PASS")
+
+if PLOT_RESULTS:
     plt.close("all")
-
     plot_single_photon_spectrum()
     plot_total_loss_distributions(TEST_LAMBDAS, total_loss, photon_counts)
     plot_moment_checks(TEST_LAMBDAS, total_loss)
     plot_tail_survival(TEST_LAMBDAS, total_loss)
-
     plt.show()

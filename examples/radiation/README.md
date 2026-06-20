@@ -2,6 +2,15 @@
 
 This folder contains examples related to synchrotron radiation in Xtrack.
 
+The sequence starts with the underlying photon spectrum and then moves to
+tracking examples:
+
+- `001_synchrotron_radiation_spectrum.py` demonstrates the normalized
+  single-photon SynRad spectrum, photon sampling, compound-Poisson total-energy
+  loss, analytic moments and high-loss tails;
+- `002_single_dipole.py` compares radiation in a tracked dipole against the
+  analytical spectrum.
+
 The current layout is historical and needs a wider cleanup. In particular,
 the tapering examples and radiation-integral examples should be reviewed
 together with this folder, because they are part of the same user workflow:
