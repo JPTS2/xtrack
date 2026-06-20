@@ -23,10 +23,10 @@ import xtrack as xt
 ########################################
 # Tracking settings
 ########################################
-N_PARTICLES             = int(2**9)
-N_TURNS                 = int(3E2)
+N_PARTICLES             = int(2**10)
+N_TURNS                 = int(1.5E2)
 SMOOTHING_WINDOW        = int(1E1)
-LATE_WINDOW             = int(3E1)
+EQ_WINDOW               = int(3E1)
 
 ########################################
 # FCC-ee tt lattice
@@ -311,7 +311,7 @@ def validate_mode(mode):
     theory = mode["theory_smooth"]
     equilibrium = mode["equilibrium"]
 
-    late_start = max(0, N_TURNS - LATE_WINDOW)
+    late_start = max(0, N_TURNS - EQ_WINDOW)
     late_mask = turns >= late_start
 
     trajectory_mask = theory >= TRAJECTORY_START_FRACTION * equilibrium
@@ -470,7 +470,7 @@ def print_setup():
     print(f"N_PARTICLES                 = {N_PARTICLES:g}")
     print(f"N_TURNS                     = {N_TURNS:g}")
     print(f"SMOOTHING_WINDOW            = {SMOOTHING_WINDOW:g}")
-    print(f"LATE_WINDOW                 = {LATE_WINDOW:g}")
+    print(f"EQ_WINDOW                   = {EQ_WINDOW:g}")
 
 
 ########################################

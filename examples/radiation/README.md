@@ -21,15 +21,16 @@ together with this folder, because they are part of the same user workflow:
 - validate and benchmark `quantum-kick` against `quantum`.
 
 For now, the existing general radiation examples are kept in place. The
-development examples specific to validating `quantum-kick` against `quantum`
-have been collected in:
+examples validating `quantum-kick` against `quantum` are collected in:
 
 ```text
 quantum_kick_vs_quantum/
 ```
 
 That subfolder is intentionally narrow. It should contain examples and checks
-that compare only the public radiation models `quantum` and `quantum-kick`,
-without reintroducing intermediate development modes. Some files currently in
-that folder still have historical names from the development branch; these
-should be renamed and simplified in the next cleanup pass.
+that compare only the public radiation models `quantum` and `quantum-kick`.
+Its numbered sequence reviews the stored tables, validates their sampling,
+compares element-level kicks across photon-count regimes, explains sampler-call
+scaling, and finishes with a lattice-level emittance comparison. A documented
+lifetime example is retained as future work until a defensible machine
+acceptance model is available.

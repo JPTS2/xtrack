@@ -22,7 +22,6 @@ import xtrack as xt
 ########################################
 # Monte Carlo settings
 ########################################
-SEED                    = 12345
 N_PARTICLES             = int(1E7)
 BATCH_SIZE              = int(1E6)
 

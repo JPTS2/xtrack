@@ -4021,8 +4021,12 @@ class Line:
         Parameters
         ----------
         model: str
-            Radiation model to use. Can be 'mean', 'quantum',
-            'quantum-kick' or None.
+            Radiation model to use. Can be 'mean', 'quantum', 'quantum-kick'
+            or None. ``'mean'`` applies the average radiation energy loss.
+            ``'quantum'`` samples individual emitted photons, which can be
+            captured through internal radiation logging. ``'quantum-kick'``
+            samples the equivalent stochastic total radiation kick without
+            generating individual photon records.
         model_beamstrahlung: str
             Beamstrahlung model to use. Can be 'mean', 'quantum' or None.
         model_bhabha: str
