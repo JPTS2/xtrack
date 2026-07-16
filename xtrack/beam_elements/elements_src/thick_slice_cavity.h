@@ -10,10 +10,82 @@
 #define XTRACK_THICK_SLICE_CAVITY_H
 
 #include "xtrack/beam_elements/elements_src/track_rf.h"
+#include "xtrack/beam_elements/elements_src/track_cavity_sagan.h"
+#include "xtrack/beam_elements/elements_src/track_cavity_rs.h"
+#include "xtrack/beam_elements/elements_src/track_cavity_sad_trpt.h"
+#include "xtrack/beam_elements/elements_src/track_cavity_sad_twiss_trpt.h"
 
 GPUFUN
 void ThickSliceCavity_track_local_particle(ThickSliceCavityData el, LocalParticle* part0)
 {
+    int64_t const cavity_model = ThickSliceCavityData_get__parent_model(el);
+    if (cavity_model == 1) {
+        track_cavity_rs_particles(
+            /*weight*/ ThickSliceCavityData_get_weight(el),
+            part0,
+            ThickSliceCavityData_get__parent_length(el),
+            ThickSliceCavityData_get__parent_voltage(el),
+            ThickSliceCavityData_get__parent_frequency(el),
+            ThickSliceCavityData_get__parent_harmonic(el),
+            ThickSliceCavityData_get__parent_lag(el),
+            ThickSliceCavityData_get__parent_phase(el),
+            ThickSliceCavityData_get__parent_absolute_time(el),
+            ThickSliceCavityData_get__parent_fringe_model(el),
+            /*sagan_edge_entry_active*/ ThickSliceCavityData_get__parent_edge_entry_active(el) && ThickSliceCavityData_get_slice_offset(el) == 0.,
+            /*sagan_edge_exit_active*/ ThickSliceCavityData_get__parent_edge_exit_active(el) && fabs(ThickSliceCavityData_get_slice_offset(el) + ThickSliceCavityData_get_weight(el) * ThickSliceCavityData_get__parent_length(el) - ThickSliceCavityData_get__parent_length(el)) < 1e-12,
+            ThickSliceCavityData_get__parent_lag_taper(el),
+            ThickSliceCavityData_get__parent_phase_taper(el));
+        return;
+    }
+    if (cavity_model == 2) {
+        track_cavity_sagan_particles(
+            /*weight*/ ThickSliceCavityData_get_weight(el),
+            part0,
+            ThickSliceCavityData_get__parent_length(el),
+            ThickSliceCavityData_get__parent_voltage(el),
+            ThickSliceCavityData_get__parent_frequency(el),
+            ThickSliceCavityData_get__parent_harmonic(el),
+            ThickSliceCavityData_get__parent_lag(el),
+            ThickSliceCavityData_get__parent_phase(el),
+            ThickSliceCavityData_get__parent_absolute_time(el),
+            ThickSliceCavityData_get__parent_num_kicks(el),
+            ThickSliceCavityData_get__parent_fringe_model(el),
+            ThickSliceCavityData_get__parent_cavity_type(el),
+            /*sagan_edge_entry_active*/ ThickSliceCavityData_get__parent_edge_entry_active(el) && ThickSliceCavityData_get_slice_offset(el) == 0.,
+            /*sagan_edge_exit_active*/ ThickSliceCavityData_get__parent_edge_exit_active(el) && fabs(ThickSliceCavityData_get_slice_offset(el) + ThickSliceCavityData_get_weight(el) * ThickSliceCavityData_get__parent_length(el) - ThickSliceCavityData_get__parent_length(el)) < 1e-12,
+            ThickSliceCavityData_get__parent_lag_taper(el),
+            ThickSliceCavityData_get__parent_phase_taper(el));
+        return;
+    }
+    if (cavity_model == 3) {
+        track_cavity_sad_trpt_particles(
+            /*weight*/ ThickSliceCavityData_get_weight(el),
+            /*part0*/ part0,
+            ThickSliceCavityData_get__parent_length(el), ThickSliceCavityData_get__parent_voltage(el),
+            ThickSliceCavityData_get__parent_frequency(el), ThickSliceCavityData_get__parent_harmonic(el),
+            ThickSliceCavityData_get__parent_lag(el), ThickSliceCavityData_get__parent_phase(el),
+            ThickSliceCavityData_get__parent_absolute_time(el), ThickSliceCavityData_get__parent_num_kicks(el),
+            ThickSliceCavityData_get__parent_fringe_model(el),
+            /*sagan_edge_entry_active*/ ThickSliceCavityData_get__parent_edge_entry_active(el) && ThickSliceCavityData_get_slice_offset(el) == 0.,
+            /*sagan_edge_exit_active*/ ThickSliceCavityData_get__parent_edge_exit_active(el) && fabs(ThickSliceCavityData_get_slice_offset(el) + ThickSliceCavityData_get_weight(el) * ThickSliceCavityData_get__parent_length(el) - ThickSliceCavityData_get__parent_length(el)) < 1e-12,
+            ThickSliceCavityData_get__parent_lag_taper(el), ThickSliceCavityData_get__parent_phase_taper(el));
+        return;
+    }
+    if (cavity_model == 4) {
+        track_cavity_sad_twiss_trpt_particles(
+            /*weight*/ ThickSliceCavityData_get_weight(el),
+            /*part0*/ part0,
+            ThickSliceCavityData_get__parent_length(el), ThickSliceCavityData_get__parent_voltage(el),
+            ThickSliceCavityData_get__parent_frequency(el), ThickSliceCavityData_get__parent_harmonic(el),
+            ThickSliceCavityData_get__parent_lag(el), ThickSliceCavityData_get__parent_phase(el),
+            ThickSliceCavityData_get__parent_absolute_time(el), ThickSliceCavityData_get__parent_num_kicks(el),
+            ThickSliceCavityData_get__parent_fringe_model(el),
+            /*sagan_edge_entry_active*/ ThickSliceCavityData_get__parent_edge_entry_active(el) && ThickSliceCavityData_get_slice_offset(el) == 0.,
+            /*sagan_edge_exit_active*/ ThickSliceCavityData_get__parent_edge_exit_active(el) && fabs(ThickSliceCavityData_get_slice_offset(el) + ThickSliceCavityData_get_weight(el) * ThickSliceCavityData_get__parent_length(el) - ThickSliceCavityData_get__parent_length(el)) < 1e-12,
+            ThickSliceCavityData_get__parent_lag_taper(el), ThickSliceCavityData_get__parent_phase_taper(el));
+        return;
+    }
+
     track_rf_particles(
         /*weight*/                ThickSliceCavityData_get_weight(el),
         /*part0*/                 part0,
@@ -35,7 +107,7 @@ void ThickSliceCavity_track_local_particle(ThickSliceCavityData el, LocalParticl
         /*phase_n*/               NULL,
         /*phase_s*/               NULL,
         /*num_kicks*/             ThickSliceCavityData_get__parent_num_kicks(el),
-        /*model*/                 ThickSliceCavityData_get__parent_model(el),
+        /*model*/                 ThickSliceCavityData_get__parent_drift_model(el),
         /*default_model*/         6, // drift-kick-drift-expanded
         /*integrator*/            ThickSliceCavityData_get__parent_integrator(el),
         /*default_integrator*/    3, // Uniform

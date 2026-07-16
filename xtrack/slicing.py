@@ -270,6 +270,26 @@ class Slicer:
     def _slice_element(self, name, element, chosen_slicing, _edge_markers=True) -> Optional[List[str]]:
         """Slice element and return slice names, or None if no slicing."""
 
+        resolved_element = (
+            element.resolve(self._line)
+            if isinstance(element, xt.Replica) else element
+        )
+        if (isinstance(resolved_element, xt.Cavity)
+                and resolved_element.model != "longitudinal-only"
+                and chosen_slicing.mode == "thin"):
+            return None
+
+        if (isinstance(resolved_element, xt.Cavity)
+                and resolved_element.model in ("sad-track-trpt", "sad-twiss-trpt")
+                and chosen_slicing.mode == "thick"):
+            raise NotImplementedError(
+                f"Thick-slicing element {name!r} is not supported for cavity "
+                f"model {resolved_element.model!r}: its internal "
+                f"nominal-reference bookkeeping does not yet compose "
+                f"correctly across externally split slices. Use `num_kicks` "
+                f"for internal resolution instead of external thick slicing."
+            )
+
         if isinstance(element, xt.Drift) or type(element).__name__.startswith('DriftSlice'):
             _edge_markers = False
 
