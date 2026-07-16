@@ -68,6 +68,38 @@ _INDEX_TO_MODEL_RF.pop(1)
 _INDEX_TO_MODEL_RF.pop(4)
 _MODEL_TO_INDEX_RF = {k: v for v, k in _INDEX_TO_MODEL_RF.items()}
 
+_INDEX_TO_CAVITY_MODEL = {
+    0: 'longitudinal-only',
+    1: 'rosenzweig-serafini',
+    2: 'sagan',
+    3: 'sad-track-trpt',
+    4: 'sad-twiss-trpt',
+}
+_CAVITY_MODEL_TO_INDEX = {
+    v: k for k, v in _INDEX_TO_CAVITY_MODEL.items()
+}
+
+_INDEX_TO_CAVITY_FRINGE_MODEL = {
+    0: 'auto',
+   -1: 'suppressed',
+    1: 'rosenzweig-serafini',
+    2: 'sagan',
+    3: 'sad-track-trpt',
+    4: 'sad-twiss-trpt',
+}
+_CAVITY_FRINGE_MODEL_TO_INDEX = {
+    v: k for k, v in _INDEX_TO_CAVITY_FRINGE_MODEL.items()
+}
+
+_INDEX_TO_CAVITY_TYPE = {
+    0: 'standing-wave',
+    1: 'traveling-wave',
+}
+_CAVITY_TYPE_TO_INDEX = {v: k for k, v in _INDEX_TO_CAVITY_TYPE.items()}
+# US spelling is canonical everywhere (storage, docs, C code); UK spelling is
+# accepted as an input alias only, normalised away at the earliest boundary.
+_CAVITY_TYPE_ALIASES = {'travelling-wave': 'traveling-wave'}
+
 
 _NOEXPR_FIELDS = {'model', 'integrator', 'edge_entry_model', 'edge_exit_model',
                   'name_associated_aperture', 'rbend_model'}
@@ -744,10 +776,36 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         If True, the cavity phase is computed from the absolute time of the
         simulation, otherwise the cavity is synchronized with the arrival time of
         the reference particle (zeta=0). Default is False.
+    model : str
+        RF cavity physics model. Available models are ``"longitudinal-only"``,
+        ``"rosenzweig-serafini"``, ``"sagan"``, and experimental
+        ``"sad-track-trpt"``. Default is
+        ``"longitudinal-only"``. ``"sad-track-trpt"`` reproduces SAD's
+        particle-tracking ``TCAV`` map. Experimental ``"sad-twiss-trpt"``
+        targets SAD's distinct ``TCAVE`` optics map; full-LINAC validation is
+        incomplete.
+    fringe_model : str
+        RF fringe model. Available models are ``"auto"``, ``"suppressed"``,
+        ``"rosenzweig-serafini"``, ``"sagan"``, and
+        ``"sad-track-trpt"``, and ``"sad-twiss-trpt"``. An explicit advanced
+        fringe model must match the selected advanced cavity model. Default is
+        ``"auto"``.
+    cavity_type : str
+        RF structure type. Available types are ``"standing-wave"`` and
+        ``"traveling-wave"`` (``"travelling-wave"`` is also accepted).
+        Sagan supports both. R&S and the two SAD-compatibility models
+        support standing-wave cavities only. Default is ``"standing-wave"``.
+    edge_entry_active : bool
+        Whether the RF entrance fringe is active. Default is ``True``.
+    edge_exit_active : bool
+        Whether the RF exit fringe is active. Default is ``True``.
+    drift_model : str
+        Drift approximation used internally by the longitudinal integration.
+        This was named ``model`` before improved cavity physics models were
+        introduced.
     '''.strip()
 
     __doc__ = '\n    '.join([_docstring_start,
-        _HasModelStraight._for_docstring,
         _HasIntegrator._for_docstring.replace(
             'num_multipole_kicks', 'num_kicks').replace('multipole kicks', 'kicks'),
         _for_docstring_alignment, '\n',
@@ -769,6 +827,11 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         'absolute_time': xo.Int64,
         'num_kicks': xo.Int64,
         'model': xo.Int64,
+        'fringe_model': xo.Int64,
+        'cavity_type': xo.Int64,
+        'edge_entry_active': xo.Int64,
+        'edge_exit_active': xo.Int64,
+        'drift_model': xo.Int64,
         'integrator': xo.Int64,
     }
 
@@ -780,6 +843,9 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
 
     _rename = {
         'model': '_model',
+        'fringe_model': '_fringe_model',
+        'cavity_type': '_cavity_type',
+        'drift_model': '_drift_model',
         'integrator': '_integrator',
         'frequency': '_frequency',
         'harmonic': '_harmonic',
@@ -798,16 +864,44 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
             return
 
         model = kwargs.pop('model', None)
+        fringe_model = kwargs.pop('fringe_model', None)
+        cavity_type = kwargs.pop('cavity_type', None)
+        drift_model = kwargs.pop('drift_model', None)
         integrator = kwargs.pop('integrator', None)
         frequency = kwargs.pop('frequency', None)
         harmonic = kwargs.pop('harmonic', None)
         lag = kwargs.pop('lag', None)
+        kwargs.setdefault('edge_entry_active', True)
+        kwargs.setdefault('edge_exit_active', True)
+
+        if model in _MODEL_TO_INDEX_RF:
+            if drift_model is not None:
+                raise ValueError(
+                    'Cannot provide both legacy Cavity.model and drift_model'
+                )
+            warn(
+                'Using Cavity.model for the drift approximation is deprecated; '
+                'use Cavity.drift_model instead.',
+                FutureWarning,
+                stacklevel=2,
+            )
+            drift_model = model
+            model = None
 
         self.xoinitialize(**kwargs)
 
         # Trigger properties
         if model is not None:
             self.model = model
+
+        if fringe_model is not None:
+            self.fringe_model = fringe_model
+
+        if cavity_type is not None:
+            self.cavity_type = cavity_type
+
+        if drift_model is not None:
+            self.drift_model = drift_model
 
         if integrator is not None:
             self.integrator = integrator
@@ -820,6 +914,102 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
 
         if lag is not None:
             self.lag = lag
+
+    @property
+    def model(self):
+        return _INDEX_TO_CAVITY_MODEL[self._model]
+
+    @model.setter
+    def model(self, value):
+        if value in _MODEL_TO_INDEX_RF:
+            warn(
+                'Using Cavity.model for the drift approximation is deprecated; '
+                'use Cavity.drift_model instead.',
+                FutureWarning,
+                stacklevel=2,
+            )
+            self.drift_model = value
+            self._model = _CAVITY_MODEL_TO_INDEX['longitudinal-only']
+            return
+        try:
+            model_index = _CAVITY_MODEL_TO_INDEX[value]
+        except KeyError:
+            raise ValueError(f'Invalid cavity model: {value}')
+        self._validate_physics_configuration(
+            value, self.fringe_model, self.cavity_type)
+        self._model = model_index
+
+    @staticmethod
+    def get_available_models():
+        return list(_CAVITY_MODEL_TO_INDEX)
+
+    @property
+    def fringe_model(self):
+        return _INDEX_TO_CAVITY_FRINGE_MODEL[self._fringe_model]
+
+    @fringe_model.setter
+    def fringe_model(self, value):
+        try:
+            fringe_model_index = _CAVITY_FRINGE_MODEL_TO_INDEX[value]
+        except KeyError:
+            raise ValueError(f'Invalid cavity fringe model: {value}')
+        self._validate_physics_configuration(
+            self.model, value, self.cavity_type)
+        self._fringe_model = fringe_model_index
+
+    @staticmethod
+    def get_available_fringe_models():
+        return list(_CAVITY_FRINGE_MODEL_TO_INDEX)
+
+    @property
+    def cavity_type(self):
+        return _INDEX_TO_CAVITY_TYPE[self._cavity_type]
+
+    @cavity_type.setter
+    def cavity_type(self, value):
+        value = self._normalize_cavity_type(value)
+        try:
+            cavity_type_index = _CAVITY_TYPE_TO_INDEX[value]
+        except KeyError:
+            raise ValueError(f'Invalid cavity type: {value}')
+        self._validate_physics_configuration(
+            self.model, self.fringe_model, value)
+        self._cavity_type = cavity_type_index
+
+    @staticmethod
+    def _normalize_cavity_type(value):
+        return _CAVITY_TYPE_ALIASES.get(value, value)
+
+    @staticmethod
+    def get_available_cavity_types():
+        return list(_CAVITY_TYPE_TO_INDEX)
+
+    @staticmethod
+    def _validate_physics_configuration(model, fringe_model, cavity_type):
+        if model == 'longitudinal-only':
+            return
+        if fringe_model not in ('auto', 'suppressed', model):
+            raise ValueError(
+                f'Cavity model {model!r} cannot use fringe model '
+                f'{fringe_model!r}'
+            )
+        if (model in ('rosenzweig-serafini', 'sad-track-trpt', 'sad-twiss-trpt')
+                and cavity_type != 'standing-wave'):
+            raise ValueError(
+                f'The {model} cavity model supports only standing-wave '
+                'cavities'
+            )
+
+    @property
+    def drift_model(self):
+        return _INDEX_TO_MODEL_RF[self._drift_model]
+
+    @drift_model.setter
+    def drift_model(self, value):
+        try:
+            self._drift_model = _MODEL_TO_INDEX_RF[value]
+        except KeyError:
+            raise ValueError(f'Invalid RF drift model: {value}')
 
     def track(self, particles, *args, **kwargs):
 

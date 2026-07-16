@@ -113,8 +113,35 @@ for td in to_do:
             out_lines[i_parent_line] = ln_parent_radiation_flag + generated_data_class + "_get__parent_radiation_flag(el),"
 
         # Disable edges where needed
+        found_sagan_edge_entry = 0
+        found_sagan_edge_exit = 0
         for i, line in enumerate(out_lines):
             if "edge_entry" in line or "edge_exit" in line:
+                if (parent_class == "Cavity" and generating == "thick_slice"
+                        and "sagan_edge_entry_active" in line):
+                    found_sagan_edge_entry += 1
+                    prefix = line.split(generated_data_class + '_get_')[0]
+                    out_lines[i] = (
+                        prefix
+                        + generated_data_class
+                        + "_get__parent_edge_entry_active(el)"
+                        + " && " + generated_data_class
+                        + "_get_slice_offset(el) == 0.,")
+                    continue
+                if (parent_class == "Cavity" and generating == "thick_slice"
+                        and "sagan_edge_exit_active" in line):
+                    found_sagan_edge_exit += 1
+                    prefix = line.split(generated_data_class + '_get_')[0]
+                    out_lines[i] = (
+                        prefix
+                        + generated_data_class
+                        + "_get__parent_edge_exit_active(el)"
+                        + " && fabs(" + generated_data_class
+                        + "_get_slice_offset(el) + " + generated_data_class
+                        + "_get_weight(el) * " + generated_data_class
+                        + "_get__parent_length(el) - " + generated_data_class
+                        + "_get__parent_length(el)) < 1e-12,")
+                    continue
                 if generating == 'entry_slice' and 'edge_entry' in line:
                     continue # leave untouched
                 if generating == 'exit_slice' and 'edge_exit' in line:
@@ -135,10 +162,21 @@ for td in to_do:
                         ll = ll.split(',')[0]
                     out_lines[i] = ll
 
+        # Every cavity-model dispatch block in cavity.h must carry both
+        # markers, or its thick slices silently lose slice-offset-aware
+        # fringe gating (this exact bug already happened once for one model).
+        if parent_class == "Cavity" and generating == "thick_slice":
+            assert found_sagan_edge_entry == found_sagan_edge_exit, (
+                f"Mismatched sagan_edge_entry/exit markers in {parent_source}: "
+                f"{found_sagan_edge_entry} vs {found_sagan_edge_exit}")
+            assert found_sagan_edge_entry > 0, (
+                f"No sagan_edge_entry/exit markers found in {parent_source} "
+                f"for thick-slice generation")
+
         # pass weight
         done_weight = False
         for i, line in enumerate(out_lines):
-            if "weight" in line:
+            if "/*weight*/" in line:
                 assert '1' in line, "Expected '1' in weight line"
                 ll = line
                 ll = ll.split('1')[0]

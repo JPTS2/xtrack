@@ -142,7 +142,12 @@ class ThinSliceCavity(_ThinSliceElementBase, BeamElement):
                      lag=self._parent.lag,
                      phase=self._parent.phase,
                      lag_taper=self._parent.lag_taper,
+                     phase_taper=self._parent.phase_taper,
                      absolute_time=self._parent.absolute_time,
+                     model=self._parent.model,
+                     fringe_model=self._parent.fringe_model,
+                     cavity_type=self._parent.cavity_type,
+                     drift_model=self._parent.drift_model,
                      _buffer=self._buffer)
 
         return out

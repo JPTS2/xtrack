@@ -7,10 +7,82 @@
 #define XTRACK_CAVITY_H
 
 #include "xtrack/beam_elements/elements_src/track_rf.h"
+#include "xtrack/beam_elements/elements_src/track_cavity_sagan.h"
+#include "xtrack/beam_elements/elements_src/track_cavity_rs.h"
+#include "xtrack/beam_elements/elements_src/track_cavity_sad_trpt.h"
+#include "xtrack/beam_elements/elements_src/track_cavity_sad_twiss_trpt.h"
 
 GPUFUN
 void Cavity_track_local_particle(CavityData el, LocalParticle* part0)
 {
+    int64_t const cavity_model = CavityData_get_model(el);
+    if (cavity_model == 1) {
+        track_cavity_rs_particles(
+            /*weight*/ 1.,
+            part0,
+            CavityData_get_length(el),
+            CavityData_get_voltage(el),
+            CavityData_get_frequency(el),
+            CavityData_get_harmonic(el),
+            CavityData_get_lag(el),
+            CavityData_get_phase(el),
+            CavityData_get_absolute_time(el),
+            CavityData_get_fringe_model(el),
+            /*sagan_edge_entry_active*/ CavityData_get_edge_entry_active(el),
+            /*sagan_edge_exit_active*/ CavityData_get_edge_exit_active(el),
+            CavityData_get_lag_taper(el),
+            CavityData_get_phase_taper(el));
+        return;
+    }
+    if (cavity_model == 2) {
+        track_cavity_sagan_particles(
+            /*weight*/ 1.,
+            part0,
+            CavityData_get_length(el),
+            CavityData_get_voltage(el),
+            CavityData_get_frequency(el),
+            CavityData_get_harmonic(el),
+            CavityData_get_lag(el),
+            CavityData_get_phase(el),
+            CavityData_get_absolute_time(el),
+            CavityData_get_num_kicks(el),
+            CavityData_get_fringe_model(el),
+            CavityData_get_cavity_type(el),
+            /*sagan_edge_entry_active*/ CavityData_get_edge_entry_active(el),
+            /*sagan_edge_exit_active*/ CavityData_get_edge_exit_active(el),
+            CavityData_get_lag_taper(el),
+            CavityData_get_phase_taper(el));
+        return;
+    }
+    if (cavity_model == 3) {
+        track_cavity_sad_trpt_particles(
+            /*weight*/ 1.,
+            /*part0*/ part0,
+            CavityData_get_length(el), CavityData_get_voltage(el),
+            CavityData_get_frequency(el), CavityData_get_harmonic(el),
+            CavityData_get_lag(el), CavityData_get_phase(el),
+            CavityData_get_absolute_time(el), CavityData_get_num_kicks(el),
+            CavityData_get_fringe_model(el),
+            /*sagan_edge_entry_active*/ CavityData_get_edge_entry_active(el),
+            /*sagan_edge_exit_active*/ CavityData_get_edge_exit_active(el),
+            CavityData_get_lag_taper(el), CavityData_get_phase_taper(el));
+        return;
+    }
+    if (cavity_model == 4) {
+        track_cavity_sad_twiss_trpt_particles(
+            /*weight*/ 1.,
+            /*part0*/ part0,
+            CavityData_get_length(el), CavityData_get_voltage(el),
+            CavityData_get_frequency(el), CavityData_get_harmonic(el),
+            CavityData_get_lag(el), CavityData_get_phase(el),
+            CavityData_get_absolute_time(el), CavityData_get_num_kicks(el),
+            CavityData_get_fringe_model(el),
+            /*sagan_edge_entry_active*/ CavityData_get_edge_entry_active(el),
+            /*sagan_edge_exit_active*/ CavityData_get_edge_exit_active(el),
+            CavityData_get_lag_taper(el), CavityData_get_phase_taper(el));
+        return;
+    }
+
     track_rf_particles(
         /*weight*/                1.,
         /*part0*/                 part0,
@@ -32,7 +104,7 @@ void Cavity_track_local_particle(CavityData el, LocalParticle* part0)
         /*phase_n*/               NULL,
         /*phase_s*/               NULL,
         /*num_kicks*/             CavityData_get_num_kicks(el),
-        /*model*/                 CavityData_get_model(el),
+        /*model*/                 CavityData_get_drift_model(el),
         /*default_model*/         6, // drift-kick-drift-expanded
         /*integrator*/            CavityData_get_integrator(el),
         /*default_integrator*/    3, // Uniform

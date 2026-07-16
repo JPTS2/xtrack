@@ -85,6 +85,7 @@ LINE_DOC_GROUP_ORDER = (
     "Tracking and Analysis",
     "Matching and Corrections",
     "Magnet Model Configuration",
+    "RF Model Configuration",
     "Radiation, Spin and Intra-Beam Scattering",
     "Energy & Longitudinal State",
     "Tracker Setup",
@@ -4234,6 +4235,99 @@ class Line:
         for ee in self._element_dict.values():
             if model is not None and isinstance(ee, xt.Drift):
                 ee.model = model
+
+    @doc_group("RF Model Configuration")
+    def configure_cavity_model(
+            self,
+            model=None,
+            fringe_model=None,
+            cavity_type=None,
+            edge_entry_active=None,
+            edge_exit_active=None,
+            drift_model=None,
+            num_kicks=None,
+            integrator=None,
+    ):
+
+        """Configure the physics model for all cavities in the line.
+
+        Parameters
+        ----------
+        model : str, optional
+            Cavity physics model: ``"longitudinal-only"``,
+            ``"rosenzweig-serafini"``, ``"sagan"``, or
+            ``"sad-track-trpt"``, or experimental ``"sad-twiss-trpt"``.
+        fringe_model : str, optional
+            RF fringe model: ``"auto"``, ``"suppressed"``,
+            ``"rosenzweig-serafini"``, ``"sagan"``, or
+            ``"sad-track-trpt"``, or ``"sad-twiss-trpt"``. Explicit advanced
+            fringe models must match the selected advanced cavity model.
+        cavity_type : str, optional
+            RF structure type: ``"standing-wave"`` or ``"traveling-wave"``
+            (``"travelling-wave"`` is also accepted). The R&S model
+            currently supports standing-wave cavities only.
+        edge_entry_active : bool, optional
+            Whether the RF entrance fringe is active.
+        edge_exit_active : bool, optional
+            Whether the RF exit fringe is active.
+        drift_model : str, optional
+            Drift approximation used by the cavity integration.
+        num_kicks : int, optional
+            Number of longitudinal integration kicks or Sagan RF steps.
+        integrator : str, optional
+            Integration scheme used by the longitudinal-only model.
+        """
+
+        self._method_incompatible_with_compose()
+
+        if model is not None and model not in xt.Cavity.get_available_models():
+            raise ValueError(f'Unknown cavity model {model}')
+        if (fringe_model is not None
+                and fringe_model not in xt.Cavity.get_available_fringe_models()):
+            raise ValueError(f'Unknown cavity fringe model {fringe_model}')
+        if cavity_type is not None:
+            cavity_type = xt.Cavity._normalize_cavity_type(cavity_type)
+            if cavity_type not in xt.Cavity.get_available_cavity_types():
+                raise ValueError(f'Unknown cavity type {cavity_type}')
+
+        cavity_configurations = []
+        for element in self._element_dict.values():
+            if not isinstance(element, xt.Cavity):
+                continue
+            target_model = model if model is not None else element.model
+            target_fringe_model = (
+                fringe_model if fringe_model is not None
+                else element.fringe_model)
+            target_cavity_type = (
+                cavity_type if cavity_type is not None
+                else element.cavity_type)
+            xt.Cavity._validate_physics_configuration(
+                target_model, target_fringe_model, target_cavity_type)
+            cavity_configurations.append(element)
+
+        for element in cavity_configurations:
+            # Route through 'longitudinal-only' first: its setter skips
+            # fringe/cavity_type validation, so this avoids tripping the
+            # per-setter checks on an intermediate (already fully validated
+            # above) combination while fringe_model/cavity_type are applied.
+            if model is not None:
+                element.model = 'longitudinal-only'
+            if fringe_model is not None:
+                element.fringe_model = fringe_model
+            if cavity_type is not None:
+                element.cavity_type = cavity_type
+            if model is not None:
+                element.model = model
+            if edge_entry_active is not None:
+                element.edge_entry_active = edge_entry_active
+            if edge_exit_active is not None:
+                element.edge_exit_active = edge_exit_active
+            if drift_model is not None:
+                element.drift_model = drift_model
+            if num_kicks is not None:
+                element.num_kicks = num_kicks
+            if integrator is not None:
+                element.integrator = integrator
 
     @doc_group("Magnet Model Configuration")
     def configure_bend_model(
