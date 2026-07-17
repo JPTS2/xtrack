@@ -855,8 +855,17 @@ def test_sagan_thick_slicing_preserves_map():
 
 
 @pytest.mark.parametrize("model", ["sad-track-trpt", "sad-twiss-trpt"])
-def test_sad_models_reject_thick_slicing(model):
-    # Nominal-reference bookkeeping doesn't compose across split slices.
+def test_sad_thick_slicing_preserves_map(model):
+    # Both SAD models' reference-phase progression is a property of the
+    # whole (unsliced) cavity, not of each external slice in isolation:
+    # the focusing coefficient uses the cavity's nominal (un-weight-scaled)
+    # voltage, and the reference-clock accumulator that tracks how far the
+    # synchronous particle has advanced starts from slice_offset/length,
+    # not zero, at every slice. See physics.md "Length and RF-step
+    # semantics". sad-twiss-trpt composes to a slightly looser floor
+    # (~1e-9) than sad-track-trpt (~1e-10) even at fine internal
+    # resolution -- both are of the same order as R&S's own accepted
+    # composition residual, not a remaining bug (see DEVLOG.md).
     cavity = xt.Cavity(
         length=1.270948,
         voltage=13696827.259102523,
@@ -864,14 +873,137 @@ def test_sad_models_reject_thick_slicing(model):
         phase=0.8726646259971647,
         model=model,
         fringe_model=model,
-        num_kicks=6,
+        num_kicks=20,
+    )
+    unsliced = xt.Line(elements={"cavity": cavity}, element_names=["cavity"])
+    sliced = unsliced.copy()
+    sliced.slice_thick_elements([
+        xt.Strategy(xt.Uniform(2, mode="thick")),
+    ])
+    particles = xp.Particles(
+        p0c=100e6,
+        mass0=xp.ELECTRON_MASS_EV,
+        x=0.3e-3,
+        px=2e-6,
+        y=-0.4e-3,
+        py=1e-6,
+        zeta=0.2e-3,
+        pzeta=5e-7,
+    )
+    expected = particles.copy()
+
+    unsliced.track(expected)
+    sliced.track(particles)
+
+    for coordinate in ("x", "px", "y", "py", "zeta", "pzeta", "p0c"):
+        np.testing.assert_allclose(
+            getattr(particles, coordinate),
+            getattr(expected, coordinate),
+            rtol=0,
+            atol=1e-8,
+        )
+
+
+@pytest.mark.parametrize("model", ["sad-track-trpt", "sad-twiss-trpt"])
+def test_sad_thick_slicing_backward_closure(model):
+    cavity = xt.Cavity(
+        length=1.270948,
+        voltage=13696827.259102523,
+        frequency=2.856e9,
+        phase=0.8726646259971647,
+        model=model,
+        fringe_model=model,
+        num_kicks=20,
     )
     line = xt.Line(elements={"cavity": cavity}, element_names=["cavity"])
+    line.slice_thick_elements([xt.Strategy(xt.Uniform(2, mode="thick"))])
 
-    with pytest.raises(NotImplementedError, match="Thick-slicing"):
-        line.slice_thick_elements([
-            xt.Strategy(xt.Uniform(2, mode="thick")),
-        ])
+    original = xp.Particles(
+        p0c=100e6,
+        mass0=xp.ELECTRON_MASS_EV,
+        x=0.3e-3,
+        px=2e-6,
+        y=-0.4e-3,
+        py=1e-6,
+        zeta=0.2e-3,
+        pzeta=5e-7,
+    )
+    particles = original.copy()
+
+    line.track(particles)
+    line.track(particles, backtrack=True)
+
+    for coordinate in ("x", "px", "y", "py", "zeta", "pzeta", "p0c"):
+        np.testing.assert_allclose(
+            getattr(particles, coordinate),
+            getattr(original, coordinate),
+            rtol=0,
+            atol=1e-12,
+        )
+
+
+@pytest.mark.parametrize("model", [
+    "longitudinal-only", "rosenzweig-serafini", "sagan",
+    "sad-track-trpt", "sad-twiss-trpt",
+])
+def test_slicing_structure_independent_of_cavity_model(model):
+    # Slicing behavior must not depend on which model is set: slice a
+    # generic cavity, then switch its model, and confirm the slice
+    # structure (names, count) is unaffected.
+    cavity = xt.Cavity(length=1.0, voltage=1e6, frequency=100e6, phase=0.5)
+    line = xt.Line(elements={"cavity": cavity}, element_names=["cavity"])
+    line.slice_thick_elements([xt.Strategy(xt.Uniform(3, mode="thick"))])
+    structure_before = list(line.element_names)
+
+    line.configure_cavity_model(
+        model=model,
+        fringe_model=(None if model == "longitudinal-only" else model),
+    )
+
+    assert line.element_names == structure_before
+    line.build_tracker()  # must not raise for any model
+
+
+def test_reference_energy_increase_between_sad_slices_is_rejected():
+    cavity = xt.Cavity(
+        length=1.270948, voltage=13696827.259102523, frequency=2.856e9,
+        phase=0.8726646259971647, model="sad-track-trpt",
+        fringe_model="sad-track-trpt", num_kicks=4,
+    )
+    line = xt.Line(elements={"cavity": cavity}, element_names=["cavity"])
+    line.slice_thick_elements([xt.Strategy(xt.Uniform(2, mode="thick"))])
+    # ['cavity_entry', 'cavity..0', 'cavity..1', 'cavity_exit']
+    assert line.element_dict["cavity..0"].parent_name == "cavity"
+    assert line.element_dict["cavity..1"].parent_name == "cavity"
+
+    # Insert a ReferenceEnergyIncrease between the cavity's own two slices.
+    line.element_dict["bad_energy_update"] = xt.ReferenceEnergyIncrease(
+        Delta_p0c=1e5)
+    names = list(line.element_names)
+    split_at = names.index("cavity..1")
+    line.element_names = (
+        names[:split_at] + ["bad_energy_update"] + names[split_at:])
+
+    with pytest.raises(ValueError, match="ReferenceEnergyIncrease"):
+        line.build_tracker()
+
+
+def test_reference_energy_increase_elsewhere_is_allowed():
+    # A ReferenceEnergyIncrease after a fully-sliced cavity (the normal,
+    # legitimate usage, e.g. sad2xs's own reference-energy bookkeeping)
+    # must not be flagged.
+    cavity = xt.Cavity(
+        length=1.270948, voltage=13696827.259102523, frequency=2.856e9,
+        phase=0.8726646259971647, model="sad-track-trpt",
+        fringe_model="sad-track-trpt", num_kicks=4,
+    )
+    line = xt.Line(elements={"cavity": cavity}, element_names=["cavity"])
+    line.slice_thick_elements([xt.Strategy(xt.Uniform(2, mode="thick"))])
+    line.element_dict["energy_update"] = xt.ReferenceEnergyIncrease(
+        Delta_p0c=1e5)
+    line.element_names = list(line.element_names) + ["energy_update"]
+
+    line.build_tracker()  # must not raise
 
 
 def test_rs_thick_slicing_preserves_map():

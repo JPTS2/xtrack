@@ -165,6 +165,9 @@ void cavity_sad_trpt_track_single_particle(
         LocalParticle* part,
         double length,
         double voltage,
+        double nominal_voltage,
+        double nominal_length,
+        double length_offset,
         double frequency,
         double harmonic,
         double lag,
@@ -239,19 +242,39 @@ void cavity_sad_trpt_track_single_particle(
     double const first_weight = weight;
 
     double previous_weight = 0.0;
-    double reference_sum = 0.0;
     double const normalized_voltage = q0_abs * voltage / mass0;
     double const normalized_energy_in = reference_energy_in / mass0;
     double const normalized_energy_out = reference_energy_out / mass0;
     double const normalized_momentum_in = p0c / mass0;
     double const normalized_momentum_out = sqrt(
         normalized_energy_out * normalized_energy_out - 1.0);
+    // Both the focusing coefficient and the reference-phase progression are
+    // properties of the whole (unsliced) cavity: SAD's own vcorr uses
+    // vnominal (never the local vc used for the actual kick strength
+    // below), and the reference particle's own clock does not reset at an
+    // externally-imposed slice boundary. nominal_voltage/nominal_length are
+    // the parent cavity's true, un-weight-scaled values (equal to
+    // voltage/length themselves when untracked, i.e. length_offset=0).
+    double const nominal_reference_gain = q0_abs * nominal_voltage
+        * sin(reference_phase);
+    double const nominal_normalized_energy_out = (
+        reference_energy_in + nominal_reference_gain) / mass0;
+    double const nominal_normalized_momentum_out = sqrt(
+        nominal_normalized_energy_out * nominal_normalized_energy_out - 1.0);
+    // Reference gain is linear in length under this model's own uniform-
+    // gradient assumption, so the fraction already applied by the time this
+    // slice begins is exactly length_offset/nominal_length -- no dependence
+    // on runtime p0c or any external reference-energy bookkeeping.
+    double const reference_sum_offset = (nominal_length > 0.0)
+        ? (length_offset / nominal_length) * nominal_reference_gain / mass0
+        : 0.0;
+    double reference_sum = reference_sum_offset;
     double const transverse_voltage = normalized_voltage * 0.25
         * wave_number * wave_number
         * (0.5 / normalized_momentum_in
-            + 0.5 / normalized_momentum_out)
+            + 0.5 / nominal_normalized_momentum_out)
         * (0.5 / normalized_momentum_in
-            + 0.5 / normalized_momentum_out);
+            + 0.5 / nominal_normalized_momentum_out);
     double const sad_phase = PI - reference_phase;
 
     if (backtrack) {
@@ -291,7 +314,7 @@ void cavity_sad_trpt_track_single_particle(
         LocalParticle_add_to_zeta(part,
             -longitudinal_change * effective_length + dv * drift_length);
 
-        double reverse_reference_sum = 0.0;
+        double reverse_reference_sum = reference_sum_offset;
         double reference_weight = first_weight;
         for (int64_t step = 0; step < num_steps; step++) {
             reverse_reference_sum += reference_gain * reference_weight / mass0;
@@ -515,6 +538,7 @@ void track_cavity_sad_trpt_particles(
         LocalParticle* part0,
         double length,
         double voltage,
+        double length_offset,
         double frequency,
         double harmonic,
         double lag,
@@ -535,6 +559,11 @@ void track_cavity_sad_trpt_particles(
         part0, XS_FLAG_BACKTRACK);
     int64_t const kill_energy_kick = LocalParticle_check_track_flag(
         part0, XS_FLAG_KILL_CAVITY_KICK);
+    // nominal_voltage/nominal_length are the whole (unsliced) cavity's
+    // values, captured before the local/per-slice scaling below -- see the
+    // comment at their use in cavity_sad_trpt_track_single_particle.
+    double const nominal_voltage = voltage;
+    double const nominal_length = length;
     length *= weight;
     voltage *= weight;
     if (weight != 1.0 && num_steps > 0) {
@@ -542,9 +571,10 @@ void track_cavity_sad_trpt_particles(
     }
     START_PER_PARTICLE_BLOCK(part0, part);
         cavity_sad_trpt_track_single_particle(
-            part, length, voltage, frequency, harmonic, lag, phase,
-            absolute_time, num_steps, fringe_model, edge_entry_active,
-            edge_exit_active, backtrack, kill_energy_kick);
+            part, length, voltage, nominal_voltage, nominal_length,
+            length_offset, frequency, harmonic, lag, phase, absolute_time,
+            num_steps, fringe_model, edge_entry_active, edge_exit_active,
+            backtrack, kill_energy_kick);
     END_PER_PARTICLE_BLOCK;
 }
 
