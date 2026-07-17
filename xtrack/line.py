@@ -1579,6 +1579,8 @@ class Line:
             and self.composer is not None):
             self.rebuild()
 
+        self._check_sad_cavity_slice_reference_energy_consistency()
+
         if _context is None and _buffer is None:
             _context = self.env._last_context
 
@@ -4328,6 +4330,41 @@ class Line:
                 element.num_kicks = num_kicks
             if integrator is not None:
                 element.integrator = integrator
+
+    def _check_sad_cavity_slice_reference_energy_consistency(self):
+        """Thick-slicing composition for sad-track-trpt/sad-twiss-trpt
+        assumes nothing changes the reference momentum partway through one
+        physical cavity's own generated slices (see physics.md, "Length and
+        RF-step semantics"). Catches the common case -- a
+        ReferenceEnergyIncrease wrongly placed between a cavity's own
+        slices; does not attempt to catch arbitrary custom elements that
+        might also modify p0c."""
+        slice_indices_by_parent = defaultdict(list)
+        for i, name in enumerate(self.element_names):
+            element = self._element_dict[name]
+            if (isinstance(element, (xt.ThickSliceCavity, xt.ThinSliceCavity))
+                    and element._parent.model in (
+                        'sad-track-trpt', 'sad-twiss-trpt')):
+                slice_indices_by_parent[element.parent_name].append(i)
+
+        for parent_name, indices in slice_indices_by_parent.items():
+            if len(indices) < 2:
+                continue
+            for i in range(indices[0], indices[-1] + 1):
+                if i in indices:
+                    continue
+                element = self._element_dict[self.element_names[i]]
+                if isinstance(element, xt.ReferenceEnergyIncrease):
+                    raise ValueError(
+                        f"{self.element_names[i]!r} (a ReferenceEnergyIncrease) "
+                        f"is placed between slices of cavity {parent_name!r}. "
+                        f"Thick-slicing composition for "
+                        f"'sad-track-trpt'/'sad-twiss-trpt' assumes nothing "
+                        f"changes the reference momentum partway through one "
+                        f"cavity's own slices -- place reference-energy "
+                        f"updates between elements, not inside a sliced "
+                        f"cavity's own slice sequence."
+                    )
 
     @doc_group("Magnet Model Configuration")
     def configure_bend_model(
