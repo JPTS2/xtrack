@@ -86,7 +86,7 @@ double cavity_sad_trpt_fringe_forward(
     double const momentum_ratio_after = momentum_ratio_before
         * (1.0 + relative_momentum_change);
     double const delta_after = momentum_ratio_after - 1.0;
-    LocalParticle_set_delta(part, delta_after);
+    LocalParticle_update_delta(part, delta_after);
     LocalParticle_set_zeta(part, zeta_before
         * momentum_ratio_after / momentum_ratio_before
         * energy_before / energy_after);
@@ -152,7 +152,7 @@ double cavity_sad_trpt_fringe_inverse(
 
     LocalParticle_add_to_px(part, -x * transverse_kick);
     LocalParticle_add_to_py(part, -y * transverse_kick);
-    LocalParticle_set_delta(part, delta_before);
+    LocalParticle_update_delta(part, delta_before);
     LocalParticle_set_zeta(part, -particle_time
         * momentum_before / energy_before);
     return -(1.0 + momentum_ratio_before) / energy_before
@@ -369,7 +369,7 @@ void cavity_sad_trpt_track_single_particle(
                 (py_after * momentum_ratio_after
                     - 2.0 * transverse_voltage * y * kick_scale)
                 / momentum_ratio_before);
-            LocalParticle_set_delta(part, delta_before);
+            LocalParticle_update_delta(part, delta_before);
             LocalParticle_set_zeta(part, -particle_time
                 * momentum_before / energy_before + reference_zeta);
             dv = -(1.0 + momentum_ratio_before) / energy_before
@@ -488,7 +488,7 @@ void cavity_sad_trpt_track_single_particle(
         double const kick_scale = -cos(2.0 * 0.5 * wave_number
             * particle_time - sad_phase) * weight
             / (wave_number * normalized_momentum_in);
-        LocalParticle_set_delta(part, momentum_ratio_after - 1.0);
+        LocalParticle_update_delta(part, momentum_ratio_after - 1.0);
         LocalParticle_set_px(part, (px_before * momentum_ratio_before
             + 2.0 * transverse_voltage * x * kick_scale)
             / momentum_ratio_after);
