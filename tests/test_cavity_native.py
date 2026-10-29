@@ -1067,3 +1067,168 @@ def test_native_cavity_factory_declared_source_identity():
     assert native.preparation['reference_charge_e'] == -1.
     assert native.preparation['counter_phase'] == .3
     assert not native.accepted_production_return
+
+
+@pytest.mark.parametrize('cells',[1,8])
+def test_native_cavity_schott_response_observational_word(tmp_path,cells):
+    data,launch = native_p16_case(cells)
+    # Pinned selected-species rest energies; Pb is the fully stripped nucleus.
+    masses = np.array([510998.95069,510998.95069,938272089.43,
+                       193687691340.1,510998.95069])
+    charges = np.array([-1.,1.,1.,82.,-1.])
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        particle = xt.Particles(_context=context,**launch,
+            mass_ratio=masses/launch['mass0'],charge_ratio=charges/launch['q0'],
+            particle_id=[11,7,19,3,23])
+        set_spin_rng(particle)
+        particle.state[0] = -7
+        before = spin_rng_values(particle)
+        result = element.observe_schott_response(particle)
+        ids = result['particle_id']
+        active = result['status']==1
+        assert np.count_nonzero(active)==4
+        assert result['status'][ids==11] == 0
+        assert np.all(np.isnan(result['canonical_response'][~active]))
+        for name,value in before.items():
+            np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+        tracked = particle.copy()
+        element.track(tracked)
+        by_tracked_id = {int(identity):index for index,identity
+                         in enumerate(tracked.particle_id)}
+        for i,identity in enumerate(ids):
+            if not active[i]:
+                continue
+            j = by_tracked_id[int(identity)]
+            native = np.array([getattr(tracked,name)[j] for name in
+                              ('x','px','y','py','zeta','delta')])
+            np.testing.assert_array_equal(result['nominal_endpoint'][i],native)
+            m = float(particle.mass0*particle.charge_ratio[i]/particle.chi[i])
+            q = float(particle.q0*particle.charge_ratio[i])
+            rho = result['rho_unit_eV']*q*q/m
+            assert result['actual_rho'][i] == rho
+            np.testing.assert_array_equal(result['rho_native_response'][i],
+                rho*result['native_response'][i])
+            np.testing.assert_array_equal(result['work_eV'][i],
+                m*rho*result['work_coefficients'][i])
+            work = result['work_coefficients'][i]
+            assert work[1]>0
+            np.testing.assert_allclose(result['canonical_response'][i,5],
+                work[0]-work[1]+work[2],rtol=0.,atol=8e-16)
+        assert np.all(result['residual'][active]<element.tolerance)
+        assert np.all(result['response_residual'][active]<2e-13)
+        assert np.all(np.linalg.norm(result['canonical_response'][active],axis=1)>0)
+        assert np.all(np.linalg.norm(result['rho_native_response'][active],axis=1)>0)
+        if cells==8:
+            # Independent dense-stage/full-six defect oracle retained by the
+            # primitive review; this regression detects resets of global xi.
+            electron = int(np.flatnonzero(ids==23)[0])
+            expected = np.array([5.558934116726809e-5,-4.3654785363073266e-5,
+                .006375417393381074,6.134130421297311e-6,
+                -3.594849508804475e-6,-.007452551098143457])
+            np.testing.assert_allclose(result['canonical_response'][electron],
+                                       expected,rtol=0.,atol=2e-13)
+            assert result['work_eV'][electron,1]>0
+        assert not element.accepted_production_return
+
+
+def test_native_cavity_schott_response_boundary_chain(tmp_path):
+    _,fixture,data,launch,_ = prepared_case()
+    owner = pytest.importorskip('verification.maps.phase_resolved.providers')
+    reference = owner.TotalFieldReference(fixture,(0.,0.,0.),conservative=True)
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        particle = xt.Particles(_context=context,**launch)
+        result = element.observe_schott_response(particle)
+        audit = element.audit_first_cell(particle)
+        assert result['status'][0] == audit['status'][0] == 1
+        q,r = audit['qout'][0],result['canonical_response'][0]
+        z = data['mesh'][-1]
+        potential = sum(reference.jets(z,q[:3]))[:,0]
+        assert np.linalg.norm(potential[:2])>1e-10  # Interior boundary is not free.
+        Q = audit['effective_Q'][0]
+        kappa = launch['p0c']/launch['mass0']
+        beta = particle.beta0[0]
+        clock = data['clock_origin']+(z-data['mesh'][0])/beta
+
+        def decode(state):
+            A = sum(reference.jets(z,state[:3]))[:,0]
+            gamma = state[5]-Q*A[3]
+            return np.array([state[0]/data['k'],(state[3]-Q*A[0])/kappa,
+                state[1]/data['k'],(state[4]-Q*A[1])/kappa,
+                beta/data['k']*(clock-state[2]),
+                np.sqrt((gamma-1)*(gamma+1))/kappa-1])
+
+        estimates = [(decode(q+h*r)-decode(q-h*r))/(2*h)
+                     for h in (1e-3,5e-4)]
+        richardson = (4*estimates[1]-estimates[0])/3
+        np.testing.assert_allclose(result['native_response'][0],richardson,
+                                   rtol=2e-7,atol=2e-10)
+        # The actual first-cell A pullback is small but many output ulps.
+        # Independent provider jets resolve it more tightly than the finite
+        # difference diagnostic and detect dropping it from the C chain.
+        jets = sum(reference.jets(z,q[:3]))
+        columns = [owner.INDICES.index((axis,)) for axis in (0,1,3)]
+        dA = jets[:,columns]@r[:3]
+        gamma = q[5]-Q*potential[3]
+        factor = gamma/(kappa*np.sqrt((gamma-1)*(gamma+1)))
+        expected = np.array([r[0]/data['k'],(r[3]-Q*dA[0])/kappa,
+            r[1]/data['k'],(r[4]-Q*dA[1])/kappa,-beta/data['k']*r[2],
+            factor*(r[5]-Q*dA[3])])
+        np.testing.assert_allclose(result['native_response'][0],expected,
+                                   rtol=3e-12,atol=1e-19)
+        assert abs(expected[1]-r[3]/kappa)>100*abs(np.spacing(expected[1]))
+
+
+def test_native_cavity_schott_response_failure_and_zero_rho(tmp_path):
+    data,launch = native_p16_case()
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        particle = xt.Particles(_context=context,**launch)
+        set_spin_rng(particle)
+        before = spin_rng_values(particle)
+        failed = element.observe_schott_response(particle,
+                                                response_tolerance=1e-300)
+        assert element.maximum_iterations == 80
+        assert failed['status'][0] == -2
+        for name in ('nominal_endpoint','canonical_response','native_response',
+                     'rho_native_response','work_coefficients','work_eV',
+                     'actual_rho','residual','response_residual'):
+            assert np.all(np.isnan(failed[name])), name
+        for name,value in before.items():
+            np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+        normal = element.observe_schott_response(particle)
+        assert normal['status'][0] == 1
+        output = context.nparray_to_context_array(np.full((1,33),np.nan))
+        statuses = context.nparray_to_context_array(np.zeros(1,dtype=np.int64))
+        element.native_schott_response(particle,rho_unit_eV=0.,
+            response_tolerance=2e-13,output=output,statuses=statuses)
+        assert statuses[0] == 1
+        np.testing.assert_array_equal(output[0,:18],np.r_[
+            normal['nominal_endpoint'][0],normal['canonical_response'][0],
+            normal['native_response'][0]])
+        np.testing.assert_array_equal(output[0,18:24],np.zeros(6))
+        np.testing.assert_array_equal(output[0,27:31],np.zeros(4))
+        tracked = particle.copy()
+        element.track(tracked)
+        assert tracked.state[0] == 1  # Failure was the positive auxiliary solve.
+
+
+def test_native_cavity_schott_response_discontinuous_faces(tmp_path):
+    """Global xi needs global endpoint Schott work even for a raw table."""
+    data,launch = native_p16_case(2)
+    profiles = data['profiles'].copy()
+    profiles[1] *= 1.3
+    assert not np.array_equal(profiles[0,3],profiles[1,0])
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**dict(data,profiles=profiles))
+        particle = xt.Particles(_context=context,**launch)
+        result = element.observe_schott_response(particle)
+        assert result['status'][0] == 1
+        work = result['work_coefficients'][0]
+        # Summing local face differences leaves an interface jump here and
+        # fails this identity; reporting the actual global endpoints obeys it.
+        np.testing.assert_allclose(result['canonical_response'][0,5],
+            work[0]-work[1]+work[2],rtol=0.,atol=8e-16)
+        assert element.preparation == {}
+        assert not element.physical_source_qualified

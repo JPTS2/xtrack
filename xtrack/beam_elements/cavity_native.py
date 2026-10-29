@@ -224,6 +224,7 @@ class CavityNativeDiagnostic(BeamElement):
         '#define XTRACK_CAVITY_NATIVE_SECONDARY\n'
         '#define XTRACK_CAVITY_NATIVE_SPIN\n'
         '#define XTRACK_CAVITY_NATIVE_AUDIT\n'
+        '#define XTRACK_CAVITY_NATIVE_RESPONSE\n'
         '#include "xtrack/beam_elements/elements_src/cavity_native_adapter.h"']
     _per_particle_kernels = {
         'native_tangent': xo.Kernel(
@@ -242,6 +243,12 @@ class CavityNativeDiagnostic(BeamElement):
             c_name='CavityNativeDiagnostic_audit_first_cell_local_particle',args=[
                 xo.Arg(xo.Float64,pointer=True,name='output'),
                 xo.Arg(xo.Float64,pointer=True,name='word'),
+                xo.Arg(xo.Int64,pointer=True,name='statuses')]),
+        'native_schott_response': xo.Kernel(
+            c_name='CavityNativeDiagnostic_schott_response_local_particle',args=[
+                xo.Arg(xo.Float64,name='rho_unit_eV'),
+                xo.Arg(xo.Float64,name='response_tolerance'),
+                xo.Arg(xo.Float64,pointer=True,name='output'),
                 xo.Arg(xo.Int64,pointer=True,name='statuses')]),
     }
 
@@ -362,6 +369,58 @@ class CavityNativeDiagnostic(BeamElement):
         self.native_secondary(particles,position=position,profile=profile,
             rho_unit_eV=rho_unit,output=output,statuses=statuses)
         return dict(values=context.nparray_from_context_array(output).copy(),
+            status=context.nparray_from_context_array(statuses).copy(),
+            particle_id=context.nparray_from_context_array(
+                particles.particle_id).copy(),rho_unit_eV=rho_unit)
+
+    def observe_schott_response(self, particles, *, response_tolerance=2e-13):
+        """Observe the new first-rho Schott-coordinate forward Gauss word.
+
+        Physical canonical response starts at zero. Its Schott coordinate
+        xi=-s_in is initialized once and carried across the whole word;
+        the returned canonical response is xi+s_out, not xi. native_response
+        applies the full final physical-boundary Jacobian in the declared
+        zero-native-A mechanical chart. rho_native_response remains separate
+        from the nominal endpoint to avoid losing a small response in addition.
+
+        work_coefficients columns are changed RF work, forward emitted energy
+        and GLOBAL Schott endpoint change; work_eV scales each by actualmass*rho.
+        The latter is s_finalE-s_initialE, not a sum of per-cell face jumps:
+        raw tables may have inconsistent shared faces and have no qualified
+        continuous physical source interpretation.
+        Their defining energy identity is r_E=RF-emission+Schott for physical
+        initial r=0, up to finite solve/arithmetic defects of THIS new word.
+        This does not assert the old direct-LL-word quadrature identity, a
+        nonlinear LL map, feedback, reaction spin or numerical/physical
+        admission. Residuals are diagnostics, not error bounds.
+
+        No particle state, orbit, spin or RNG is changed. Results follow the
+        returned post-callback IDs; inactive status0 and failed outputs retain
+        NaNs. This CPU observation ignores optional passive spin and requires
+        the same no-concurrent-mutation assumption as audit_first_cell.
+        """
+        response_tolerance = _scalar(response_tolerance,
+                                     'response tolerance',positive=True)
+        context = self._context
+        if not isinstance(context,xo.ContextCpu):
+            raise NotImplementedError('Schott response currently supports CPU')
+        if particles._context is not context:
+            raise ValueError('response particles and source require one context')
+        rho_unit = (_DIAGNOSTIC_ELEMENTARY_CHARGE_C*self.omega
+            /(6*np.pi*_DIAGNOSTIC_EPSILON0_F_M*C_LIGHT))
+        output = context.nparray_to_context_array(
+            np.full((particles._capacity,33),np.nan))
+        statuses = context.nparray_to_context_array(
+            np.zeros(particles._capacity,dtype=np.int64))
+        self.native_schott_response(particles,rho_unit_eV=rho_unit,
+            response_tolerance=response_tolerance,output=output,statuses=statuses)
+        values = context.nparray_from_context_array(output).copy()
+        return dict(nominal_endpoint=values[:,:6],
+            canonical_response=values[:,6:12],native_response=values[:,12:18],
+            rho_native_response=values[:,18:24],
+            work_coefficients=values[:,24:27],work_eV=values[:,27:30],
+            actual_rho=values[:,30],residual=values[:,31],
+            response_residual=values[:,32],
             status=context.nparray_from_context_array(statuses).copy(),
             particle_id=context.nparray_from_context_array(
                 particles.particle_id).copy(),rho_unit_eV=rho_unit)
