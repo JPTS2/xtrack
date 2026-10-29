@@ -197,6 +197,11 @@ class CavityNativeDiagnostic(BeamElement):
     coherent alternate source or an intentional bypass of preparation.
     Interior native px/py are mechanical in the declared zero-native-A chart;
     the derivative is not standard canonical interior native Twiss.
+    High-level read-only observations copy Particles in the same context:
+    their cost includes the full particle capacity. CPU callbacks may compact
+    that copy; returned IDs/readbacks follow its order. Caller storage, order,
+    counters and clock remain untouched. Raw native_* per-particle kernels
+    retain their ordinary CPU reorganization behavior.
     """
 
     _xofields = {
@@ -356,8 +361,8 @@ class CavityNativeDiagnostic(BeamElement):
         is already per Z; Schott row21 is an endpoint energy. This point
         observer applies no additional clock multiplier to any row.
 
-        Results are indexed by the returned post-callback particle_id array:
-        native active-particle reordering can change storage order. Status0
+        Results are indexed by the returned post-callback particle_id array
+        of the working copy; caller storage is unchanged. Status0
         means inactive/unvisited. Failed outputs retain NaNs and no particle
         coordinates or spin are changed by identity. Raw private-kernel calls
         may stress rho_unit; this factory route uses actual tau0*storedomega.
@@ -366,6 +371,7 @@ class CavityNativeDiagnostic(BeamElement):
         if particles._context is not self._context:
             raise ValueError('observer particles and source require one context')
         context = self._context
+        particles = particles.copy(_context=context)
         profile = context.nparray_to_context_array(
             self.profile_at(position,maximum=5))
         rho_unit = (_DIAGNOSTIC_ELEMENTARY_CHARGE_C*self.omega
@@ -403,7 +409,8 @@ class CavityNativeDiagnostic(BeamElement):
         admission. Residuals are diagnostics, not error bounds.
 
         No particle state, orbit, spin or RNG is changed. Results follow the
-        returned post-callback IDs; inactive status0 and failed outputs retain
+        returned post-callback IDs of the copy; caller storage is unchanged.
+        Inactive status0 and failed outputs retain
         NaNs. This CPU observation ignores optional passive spin and requires
         the same no-concurrent-mutation assumption as audit_first_cell.
         """
@@ -414,6 +421,7 @@ class CavityNativeDiagnostic(BeamElement):
             raise NotImplementedError('Schott response currently supports CPU')
         if particles._context is not context:
             raise ValueError('response particles and source require one context')
+        particles = particles.copy(_context=context)
         rho_unit = (_DIAGNOSTIC_ELEMENTARY_CHARGE_C*self.omega
             /(6*np.pi*_DIAGNOSTIC_EPSILON0_F_M*C_LIGHT))
         output = context.nparray_to_context_array(
@@ -462,7 +470,7 @@ class CavityNativeDiagnostic(BeamElement):
         certificates. No finite-rho mean/spin feedback, stochastic law, spin
         optics, physical-source qualification or map acceptance is supplied.
         All output/status is external, CPU-only, forward-only and indexed by
-        post-callback particle IDs. No particle field is changed by identity.
+        post-callback particle IDs of the copy. Caller storage is unchanged.
         The no-concurrent-mutation assumption of audit_first_cell also applies.
         """
         context = self._context
@@ -470,6 +478,7 @@ class CavityNativeDiagnostic(BeamElement):
             raise NotImplementedError('Schott spin response currently supports CPU')
         if particles._context is not context:
             raise ValueError('spin response particles and source require one context')
+        particles = particles.copy(_context=context)
         response_tolerance = _scalar(response_tolerance,'response tolerance',positive=True)
         spin_tolerance = _scalar(self.spin_tolerance if spin_tolerance is None
             else spin_tolerance,'spin tolerance',positive=True)
@@ -530,7 +539,8 @@ class CavityNativeDiagnostic(BeamElement):
         CPU operation and no concurrent source/control/private-buffer mutation
         are supported assumptions, not memory or permission enforcement.
         Failed output and word buffers retain NaNs; status0 is unvisited.
-        All arrays are indexed by the returned POST-callback particle IDs.
+        All arrays use the working copy's returned POST-callback particle IDs;
+        caller storage/order/counters/clock are unchanged.
         native_input contains post-callback physical/reference readbacks from
         that same event, under the nonmutation and no-concurrency assumptions
         above. x, y, zeta and s are metres; p0c and mass0 are eV; time_s is
@@ -542,6 +552,7 @@ class CavityNativeDiagnostic(BeamElement):
             raise NotImplementedError('native candidate audit currently supports CPU')
         if particles._context is not context:
             raise ValueError('audit particles and source require one context')
+        particles = particles.copy(_context=context)
 
         def frozen(value, dtype=float):
             array = np.asarray(value,dtype=dtype)

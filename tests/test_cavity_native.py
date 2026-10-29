@@ -103,6 +103,16 @@ def particle_values(particle):
             for name in PRIMARY_AND_AUX}
 
 
+def particle_storage_fingerprint(particle):
+    """Exact declared storage/order/counters/clock, without ID sorting."""
+    fields = (*particle.size_vars,*particle.scalar_vars,*particle.per_particle_vars)
+    result = {}
+    for _,name in fields:
+        value = np.asarray(getattr(particle,name))
+        result[name] = (value.dtype.str,value.shape,value.tobytes())
+    return result
+
+
 def reference_endpoint(fixture, canonical, mesh):
     """Same finite Gauss word with the existing conservative Python owner."""
     from verification.maps.phase_resolved.providers import TotalFieldReference
@@ -1001,7 +1011,11 @@ def test_native_cavity_audit_physical_clock_readback(tmp_path):
                 if name in ('mass0','q0','time_s'):
                     assert value == getattr(particle,name)
                 else:
-                    np.testing.assert_array_equal(value,getattr(particle,name))
+                    original_ids = np.asarray(particle.particle_id)
+                    rows = [int(np.flatnonzero(original_ids==identity)[0])
+                            for identity in audit['particle_id']]
+                    np.testing.assert_array_equal(value,np.asarray(
+                        getattr(particle,name))[rows])
                     assert not value.flags.writeable
             index = by_id[3]
             omega,k = map(exact,(snapshot['omega'],snapshot['k']))
@@ -1873,3 +1887,110 @@ def test_native_cavity_global_spin_observer_refusal_and_zero_rho(tmp_path):
             assert element.observe_schott_spin_response(faulty)['status'][0] == code
             for field,value in original.items():
                 np.testing.assert_array_equal(spin_rng_values(faulty)[field],value)
+
+
+def test_native_cavity_observer_line_reference_clock_purity(tmp_path):
+    """Observer copies preserve storage and the subsequent shared Line clock.
+
+    Distinct runtime reference momenta are deliberately retained. This is an
+    observer-purity/consumer test, not a reference orbit or physical campaign.
+    """
+    data,launch = native_p16_case(8)
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        mass = launch['mass0']
+        momenta = mass*np.sqrt(np.array([2.,2.4])**2-1)
+        launch.pop('p0c')
+        beta = momenta/np.hypot(mass,momenta)
+        launch['zeta'] = beta/data['k']*(data['clock_origin']-.4)
+        initial = xt.Particles(_context=context,**launch,p0c=momenta,
+                               particle_id=[17,3])
+        initial.state[0] = -7
+        baseline,observed = initial.copy(),initial.copy()
+        storage_before = particle_storage_fingerprint(observed)
+        ids_before = np.asarray(observed.particle_id).copy()
+        beta_before = float(observed.beta0[0])
+        audit = element.audit_first_cell(observed)
+        repeated = element.audit_first_cell(observed)
+        ids_after = np.asarray(observed.particle_id).copy()
+        beta_after = float(observed.beta0[0])
+        np.testing.assert_array_equal(ids_before,ids_after)
+        assert beta_before == beta_after
+        assert particle_storage_fingerprint(observed) == storage_before
+        assert not np.array_equal(audit['particle_id'],ids_after)
+        np.testing.assert_array_equal(audit['qin'],repeated['qin'])
+        np.testing.assert_array_equal(audit['qout'],repeated['qout'])
+        assert audit['status'][audit['particle_id']==3] == 1
+        line = xt.Line(elements=[element])
+        assert line.reset_s_at_end_turn
+        line.build_tracker(_context=context)
+        line.track(baseline,num_turns=2)
+        line.track(observed,num_turns=2)
+        times = np.array([baseline.time_s,observed.time_s])
+        expected = 2*element.length/(np.array([beta_before,beta_after])*299792458.)
+        np.testing.assert_allclose(times,expected,rtol=8*np.finfo(float).eps,atol=0.)
+        first = int(np.flatnonzero(np.asarray(baseline.particle_id)==3)[0])
+        second = int(np.flatnonzero(np.asarray(observed.particle_id)==3)[0])
+        assert baseline.state[first] == observed.state[second] == 1
+        names = ('x','px','y','py','zeta','delta')
+        left = np.array([getattr(baseline,name)[first] for name in names])
+        right = np.array([getattr(observed,name)[second] for name in names])
+        np.testing.assert_array_equal(left,right)
+        assert particle_storage_fingerprint(baseline) == particle_storage_fingerprint(observed)
+        print(dict(regression='observer preserves subsequent Line clock',
+            ids_before=ids_before.tolist(),ids_after=ids_after.tolist(),
+            time_s_before_observer_route=times[0],time_s_after_observer_route=times[1],
+            native_endpoint_difference=(right-left).tolist(),
+            common_reference_momentum=False,source_or_ODE_campaign=False))
+
+
+def test_native_cavity_readonly_observers_preserve_storage(tmp_path):
+    with native_context(tmp_path) as context:
+        reference = factory_reference(context)
+        element = xt.Cavity(length=.05,voltage=20e3,frequency=400e6,
+            phase=-np.pi,absolute_time=True)._prepare_native_diagnostic(
+                reference,eta=.25,counter_phase=.3,radius_m=.001,num_cells=8,
+                _context=context)
+        _,launch = native_p16_case(8)
+        mass = launch['mass0']
+        momenta = mass*np.sqrt(np.array([2.,2.4])**2-1)
+        launch.pop('p0c')
+        beta = momenta/np.hypot(mass,momenta)
+        launch['zeta'] = beta/element.k*(element.clock_origin-.4)
+        initial = xt.Particles(_context=context,**launch,p0c=momenta,
+                               particle_id=[17,3])
+        set_spin_rng(initial)
+        initial.state[0] = -7
+        methods = (lambda p:element.audit_first_cell(p),
+            lambda p:element.observe_secondary(p,element.mesh[0]),
+            lambda p:element.observe_schott_response(p),
+            lambda p:element.observe_schott_spin_response(p))
+        for observe in methods:
+            particle = initial.copy()
+            before = particle_storage_fingerprint(particle)
+            first,second = observe(particle),observe(particle)
+            assert particle_storage_fingerprint(particle) == before
+            np.testing.assert_array_equal(first['particle_id'],[3,17])
+            np.testing.assert_array_equal(second['particle_id'],first['particle_id'])
+            np.testing.assert_array_equal(first['status'],[1,0])
+            np.testing.assert_array_equal(second['status'],first['status'])
+            for key in ('qin','qout','values','canonical_response',
+                        'physical_spin_response','nominal_endpoint'):
+                if key in first:
+                    np.testing.assert_array_equal(first[key],second[key])
+        # The new high-level mean route still returns the exact low-level
+        # finite values/statuses, but only the explicit working copy compacts.
+        working = initial.copy()
+        output = context.nparray_to_context_array(np.full((2,33),np.nan))
+        statuses = context.nparray_to_context_array(np.zeros(2,dtype=np.int64))
+        mean = element.observe_schott_response(initial)
+        element.native_schott_response(working,rho_unit_eV=mean['rho_unit_eV'],
+            response_tolerance=2e-13,output=output,statuses=statuses)
+        np.testing.assert_array_equal(mean['status'],statuses)
+        np.testing.assert_array_equal(mean['particle_id'],working.particle_id)
+        slices = dict(nominal_endpoint=slice(0,6),canonical_response=slice(6,12),
+            native_response=slice(12,18),rho_native_response=slice(18,24),
+            work_coefficients=slice(24,27),work_eV=slice(27,30),
+            actual_rho=30,residual=31,response_residual=32)
+        for key,selection in slices.items():
+            np.testing.assert_array_equal(mean[key],output[:,selection])
