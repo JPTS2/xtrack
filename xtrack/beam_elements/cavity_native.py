@@ -18,6 +18,11 @@ from ..base_element import BeamElement
 
 C_LIGHT = 299792458.
 GAUSS_NODES = np.array([0.21132486540518713, 0.7886751345948129])
+# Retained diagnostic SI context, matching the scientific reference. These
+# represented values do not update Xtrack's global/native constants or supply
+# coherent-SI or physical preparation qualification.
+_DIAGNOSTIC_ELEMENTARY_CHARGE_C = 1.602176634e-19
+_DIAGNOSTIC_EPSILON0_F_M = 8.8541878128e-12
 
 
 def _scalar(value, name, *, positive=False):
@@ -34,7 +39,7 @@ def _scalar(value, name, *, positive=False):
 
 def _p16_derivatives():
     polynomials = [(1,)]
-    for order in range(4):
+    for order in range(5):
         following = [0]*(len(polynomials[-1])+1)
         for power, coefficient in enumerate(polynomials[-1]):
             if power:
@@ -47,23 +52,25 @@ def _p16_derivatives():
 P16_DERIVATIVES = _p16_derivatives()
 
 
-def _envelope_derivatives(z, H):
+def _envelope_derivatives(z, H, maximum=4):
+    if type(maximum) is not int or not 0<=maximum<=5:
+        raise ValueError('private P16 preparation supports derivative orders0..5')
     if abs(z)>=H:
-        return np.zeros(5)
+        return np.zeros(maximum+1)
     u = z/H
     return np.array([(1-u*u)**(16-j)
         *np.polynomial.polynomial.polyval(u,P16_DERIVATIVES[j])/H**j
-        for j in range(5)])
+        for j in range(maximum+1)])
 
 
-def _profile(z, H, forward, backward, counter_phase):
-    envelope = _envelope_derivatives(z,H)
+def _profile(z, H, forward, backward, counter_phase, maximum=4):
+    envelope = _envelope_derivatives(z,H,maximum)
     derivatives = np.array([sum(amplitude*np.exp(1j*(carrier*z+phase))
         *sum(comb(j,ell)*envelope[ell]*(1j*carrier)**(j-ell)
              for ell in range(j+1))
         for amplitude,carrier,phase in ((forward,1.,0.),
                                        (backward,-1.,-counter_phase)))
-        for j in range(5)])
+        for j in range(maximum+1)])
     return np.r_[derivatives.real,derivatives.imag]
 
 
@@ -151,6 +158,8 @@ def prepare_p16_native_data(cavity, particle_ref, *, eta,
         calibration_beta=calibration_beta,reference_charge_e=q0,
         source_mass_eV=mass0,reference_p0c_eV=float(p0c[0]),
         runtime_radius_guard_m=radius_m,radial_order=2,carrier_nu=1.,
+        profile_half_span=float(H),forward_strength=float(forward),
+        backward_strength=float(backward),
         absolute_time=True,num_cells=num_cells,
         source_qualified=False,numerical_error_certified=False,
         backend_arithmetic_qualified=False,accepted_production_return=False))
@@ -210,11 +219,19 @@ class CavityNativeDiagnostic(BeamElement):
     _repr_fields = ('length', 'cells', 'tolerance')
     _extra_c_sources = [
         '#define XTRACK_CAVITY_NATIVE_TANGENT\n'
+        '#define XTRACK_CAVITY_NATIVE_SECONDARY\n'
         '#include "xtrack/beam_elements/elements_src/cavity_native_adapter.h"']
     _per_particle_kernels = {
         'native_tangent': xo.Kernel(
             c_name='CavityNativeDiagnostic_tangent_local_particle', args=[
                 xo.Arg(xo.Int64, name='reverse'),
+                xo.Arg(xo.Float64, pointer=True, name='output'),
+                xo.Arg(xo.Int64, pointer=True, name='statuses')]),
+        'native_secondary': xo.Kernel(
+            c_name='CavityNativeDiagnostic_secondary_local_particle', args=[
+                xo.Arg(xo.Float64, name='position'),
+                xo.Arg(xo.Float64, pointer=True, name='profile'),
+                xo.Arg(xo.Float64, name='rho_unit_eV'),
                 xo.Arg(xo.Float64, pointer=True, name='output'),
                 xo.Arg(xo.Int64, pointer=True, name='statuses')]),
     }
@@ -275,6 +292,64 @@ class CavityNativeDiagnostic(BeamElement):
         data = super().to_dict(**kwargs)
         data['preparation'] = dict(self.preparation)
         return data
+
+    def profile_at(self, position, *, maximum=4):
+        """Return immutable same-source spatial jets at a declared plane.
+
+        Explicit-data construction alone supplies no analytic source binding;
+        this method requires the factory's frozen P16 preparation metadata.
+        Higher requested slots are not invented by extending a cached table.
+        """
+        position = _scalar(position,'normalized source plane')
+        source = self.preparation
+        required = ('profile_half_span','forward_strength',
+                    'backward_strength','counter_phase')
+        if any(name not in source for name in required):
+            raise ValueError('factory P16 source metadata required for query jets')
+        result = _profile(position,source['profile_half_span'],
+            source['forward_strength'],source['backward_strength'],
+            source['counter_phase'],maximum)
+        if not np.all(np.isfinite(result)):
+            raise ValueError('finite query profile jets required')
+        return np.frombuffer(result.tobytes(),dtype=float)
+
+    def observe_secondary(self, particles, position):
+        """Observe classical LL/BMT/accounting at one same-event source point.
+
+        This does not advance orbit or spin and supplies no photon law. Rows
+        0:6 are canonical LL source per Z; 6:9/9:12 are Lorentz/reacted BMT
+        omega per T; 12:18 are uncharged SOURCE-mass-normalized E/B. Rows
+        18:25 contain external/reaction/Lorentz-emission powers, Schott ENERGY,
+        Lorentz remainder, actual-LL emission and actual remainder. Powers
+        are per T; Schott energy is not a rate. Only per-T omega/power rows
+        need gamma/uz once in a spatial history quadrature. Canonical LL0:6
+        is already per Z; Schott row21 is an endpoint energy. This point
+        observer applies no additional clock multiplier to any row.
+
+        Results are indexed by the returned post-callback particle_id array:
+        native active-particle reordering can change storage order. Status0
+        means inactive/unvisited. Failed outputs retain NaNs and no particle
+        coordinates or spin are changed by identity. Raw private-kernel calls
+        may stress rho_unit; this factory route uses actual tau0*storedomega.
+        """
+        position = _scalar(position,'normalized source plane')
+        if particles._context is not self._context:
+            raise ValueError('observer particles and source require one context')
+        context = self._context
+        profile = context.nparray_to_context_array(
+            self.profile_at(position,maximum=5))
+        rho_unit = (_DIAGNOSTIC_ELEMENTARY_CHARGE_C*self.omega
+            /(6*np.pi*_DIAGNOSTIC_EPSILON0_F_M*C_LIGHT))
+        output = context.nparray_to_context_array(
+            np.full((particles._capacity,25),np.nan))
+        statuses = context.nparray_to_context_array(
+            np.zeros(particles._capacity,dtype=np.int64))
+        self.native_secondary(particles,position=position,profile=profile,
+            rho_unit_eV=rho_unit,output=output,statuses=statuses)
+        return dict(values=context.nparray_from_context_array(output).copy(),
+            status=context.nparray_from_context_array(statuses).copy(),
+            particle_id=context.nparray_from_context_array(
+                particles.particle_id).copy(),rho_unit_eV=rho_unit)
 
 
 def _source_readback(name):

@@ -78,7 +78,8 @@ int CavityNative_adapter_input(CavityNativeDiagnosticData el, LocalParticle* par
     *clock = CavityNativeDiagnosticData_get_omega(el)
         *(LocalParticle_get_time_s(part)+anchor_s/(*beta0*C_LIGHT))
         +CavityNativeDiagnosticData_get_clock_origin(el);
-    if (!(isfinite(*Q) && isfinite(*kappa0) && *kappa0>0.
+    if (!(isfinite(mass0) && mass0>0.
+            && isfinite(*Q) && isfinite(*kappa0) && *kappa0>0.
             && isfinite(*beta0) && *beta0>0. && *beta0<1.
             && isfinite(mass_ratio) && mass_ratio>0.
             && isfinite(LocalParticle_get_time_s(part)) && isfinite(s)
@@ -282,6 +283,53 @@ void CavityNativeDiagnostic_tangent_local_particle(CavityNativeDiagnosticData el
             for (int j=0; j<36; ++j) target[6+j]=product[j];
             target[42]=worst; target[43]=derivative_worst;
         }
+    END_PER_PARTICLE_BLOCK;
+}
+#endif
+
+#ifdef XTRACK_CAVITY_NATIVE_SECONDARY
+#include "xtrack/beam_elements/elements_src/cavity_native_secondary.h"
+
+// Same-event source observation only. Profile input is compact Re0..5/Im0..5;
+// the boundary source uses Re0..4/Im0..4 and therefore needs an explicit remap.
+// Actual rho is reconstructed from runtime species AFTER any wrapper reordering.
+// No source-Q-squared shortcut or separately indexed species buffer is used.
+GPUFUN
+void CavityNativeDiagnostic_secondary_local_particle(CavityNativeDiagnosticData el,
+        LocalParticle* part0, double position, GPUGLMEM const double* profile,
+        double rho_unit_eV, GPUGLMEM double* output, GPUGLMEM int64_t* statuses) {
+    int controls = CavityNative_adapter_controls(el);
+    if (!isfinite(position) || !isfinite(rho_unit_eV) || rho_unit_eV<0.)
+        controls=CAVITY_NATIVE_ARGUMENT;
+    double local_profile[12], orbit_profile[10];
+    for (int j=0; j<12; ++j) local_profile[j]=profile[j];
+    for (int j=0; j<5; ++j) {
+        orbit_profile[j]=local_profile[j];
+        orbit_profile[j+5]=local_profile[j+6];
+    }
+    START_PER_PARTICLE_BLOCK(part0,part);
+        int status=controls;
+        double q[6], Q, kappa0, beta0, clock, result[25];
+        if (status==CAVITY_NATIVE_OK)
+            status=CavityNative_adapter_input(el,part,position,orbit_profile,
+                q,&Q,&kappa0,&beta0,&clock);
+        if (status==CAVITY_NATIVE_OK) {
+            const double mass=LocalParticle_get_mass0(part)
+                *LocalParticle_get_charge_ratio(part)/LocalParticle_get_chi(part);
+            const double charge=LocalParticle_get_q0(part)
+                *LocalParticle_get_charge_ratio(part);
+            const double rho=rho_unit_eV*charge*charge/mass;
+            if (!(isfinite(mass) && mass>0. && isfinite(charge)
+                    && isfinite(rho) && rho>=0.))
+                status=CAVITY_NATIVE_NONFINITE;
+            else
+                status=CavityNative_secondary(q,Q,rho,
+                    LocalParticle_get_anomalous_magnetic_moment(part),
+                    local_profile,CavityNativeDiagnosticData_get_aperture(el),result);
+        }
+        statuses[part->ipart]=status;
+        if (status==CAVITY_NATIVE_OK)
+            for (int j=0; j<25; ++j) output[25*part->ipart+j]=result[j];
     END_PER_PARTICLE_BLOCK;
 }
 #endif

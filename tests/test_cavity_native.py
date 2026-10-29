@@ -593,3 +593,100 @@ def test_cavity_native_explicit_class_line_roundtrip():
     np.testing.assert_array_equal(restored.element_dict['rf'].profiles,
                                   native.profiles)
     assert dict(restored.element_dict['rf'].preparation) == dict(native.preparation)
+
+
+def secondary_case(context):
+    reference = factory_reference(context)
+    cavity = xt.Cavity(_context=context, length=.05, voltage=20e3,
+        frequency=400e6, phase=-np.pi, absolute_time=True)
+    element = cavity._prepare_native_diagnostic(reference, eta=.25,
+        counter_phase=.3, radius_m=.001, _context=context)
+    kappa = reference.p0c[0]/reference.mass0
+    beta0 = reference.beta0[0]
+    position = 0.
+    physical_s = element.anchor_s+(position-element.mesh[0])/element.k
+    zeta = beta0/element.k*(element.clock_origin
+        +(position-element.mesh[0])/beta0-.4)
+    particle = xt.Particles(_context=context, mass0=reference.mass0,
+        p0c=reference.p0c[0], q0=-1., x=.0004, y=-.0003,
+        px=.005/kappa, py=-.004/kappa, delta=0., zeta=zeta, s=physical_s,
+        anomalous_magnetic_moment=.00115965218059,
+        spin_x=.2, spin_y=-.1, spin_z=.9)
+    return element,particle,position
+
+
+def raw_secondary_output(element, particle, position, profile, rho_unit):
+    context = particle._context
+    output = context.nparray_to_context_array(
+        np.full((particle._capacity,25),np.nan))
+    statuses = context.nparray_to_context_array(
+        np.zeros(particle._capacity,dtype=np.int64))
+    element.native_secondary(particle,position=position,
+        profile=context.nparray_to_context_array(profile),
+        rho_unit_eV=rho_unit,output=output,statuses=statuses)
+    return np.asarray(output).copy(),np.asarray(statuses).copy()
+
+
+def test_native_cavity_secondary_factory_same_event(tmp_path):
+    with native_context(tmp_path) as context:
+        element,particle,position = secondary_case(context)
+        profile4 = element.profile_at(position)
+        profile5 = element.profile_at(position,maximum=5)
+        np.testing.assert_array_equal(profile4[:5],profile5[:5])
+        np.testing.assert_array_equal(profile4[5:],profile5[6:11])
+        np.testing.assert_array_equal(profile4,element.profiles[4,0])
+        assert not profile5.flags.writeable
+        before = particle_values(particle)
+        extra = {name: np.asarray(getattr(particle,name)).copy() for name in
+                 ('spin_x','spin_y','spin_z','ax','ay')}
+        result = element.observe_secondary(particle,position)
+        assert result['status'][0] == 1
+        assert result['particle_id'][0] == particle.particle_id[0]
+        assert np.all(np.isfinite(result['values']))
+        np.testing.assert_array_equal(result['values'][0,:3],np.zeros(3))
+        assert np.linalg.norm(result['values'][0,12:18])>0
+        assert np.linalg.norm(result['values'][0,:6])>0
+        assert result['values'][0,20]>0
+        for name,value in before.items():
+            np.testing.assert_array_equal(particle_values(particle)[name],value)
+        for name,value in extra.items():
+            np.testing.assert_array_equal(getattr(particle,name),value)
+        zero,status = raw_secondary_output(element,particle,position,
+            profile5,0.)
+        assert status[0] == 1
+        np.testing.assert_array_equal(zero[0,:6],np.zeros(6))
+        np.testing.assert_array_equal(zero[0,6:9],result['values'][0,6:9])
+        np.testing.assert_array_equal(zero[0,9:12],np.zeros(3))
+
+
+def test_native_cavity_secondary_refusal_preserves_particle(tmp_path):
+    with native_context(tmp_path) as context:
+        element,original,position = secondary_case(context)
+        profile = element.profile_at(position,maximum=5)
+        rho_unit = element.observe_secondary(original,position)['rho_unit_eV']
+        for fault,status in (('plane',-4),('profile5',-3),('rho',-4),
+                             ('radius',-1),('mass0',-3)):
+            particle = original.copy()
+            data = profile.copy()
+            query,rho = position,rho_unit
+            if fault=='plane':
+                query += .001
+            elif fault=='profile5':
+                data[5] = np.nan
+            elif fault=='rho':
+                rho = -1.
+            elif fault=='radius':
+                particle.x = .002
+            elif fault=='mass0':
+                # Deliberate private backend fault: ratio remains positive,
+                # but a negative reference mass is physically inadmissible.
+                particle._xobject.mass0 = -particle.mass0
+                particle._xobject.p0c[0] = -particle.p0c[0]
+            before = particle_values(particle)
+            values,statuses = raw_secondary_output(element,particle,query,data,rho)
+            assert statuses[0] == status, fault
+            assert np.all(np.isnan(values)), fault
+            assert particle.state[0] == 1
+            for name,value in before.items():
+                np.testing.assert_array_equal(particle_values(particle)[name],
+                                              value,err_msg=fault+':'+name)
