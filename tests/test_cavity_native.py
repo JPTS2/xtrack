@@ -1232,3 +1232,241 @@ def test_native_cavity_schott_response_discontinuous_faces(tmp_path):
             work[0]-work[1]+work[2],rtol=0.,atol=8e-16)
         assert element.preparation == {}
         assert not element.physical_source_qualified
+
+
+def coherent_native_input_boxes(audit,parent,context):
+    """Test-only joint boundary/source/clock/FP point comparison.
+
+    parent is the original full factory snapshot, not a raw metadata claim.
+    Exact parent subarrays authenticate a derived interior observation here;
+    this is neither private-buffer attestation nor source/map qualification.
+    The PUBLIC SI support centre is original anchor+represented length/2;
+    the stored-implied mesh/k centre and its exact displacement are retained
+    separately. beta0 is the native reference coordinate convention, not the
+    tracked particle velocity.
+    phase_rad is the exact represented resolved factory input: current tests
+    use lag0 and never replace represented -np.pi by mathematical -pi.
+    """
+    from types import SimpleNamespace
+    localized = pytest.importorskip('verification.maps.phase_resolved.localized')
+    controls = pytest.importorskip('verification.maps.phase_resolved.stage_controls')
+    fields = pytest.importorskip('verification.maps.phase_resolved.localized_controls')
+    providers = pytest.importorskip('verification.maps.phase_resolved.providers')
+    intervals = pytest.importorskip('verification.support.intervals')
+    snapshot = audit['source_snapshot']
+    metadata = dict(parent.preparation)
+    if not metadata or snapshot['preparation']!=metadata:
+        raise ValueError('original full factory preparation required')
+    full_mesh,full_profiles = parent.mesh,parent.profiles
+    matches = np.flatnonzero(full_mesh==snapshot['mesh'][0])
+    if len(matches)!=1:
+        raise ValueError('source planes do not bind the original factory')
+    start,cells = int(matches[0]),snapshot['cells']
+    if (not np.array_equal(snapshot['mesh'],full_mesh[start:start+cells+1])
+            or not np.array_equal(snapshot['profiles'],full_profiles[start:start+cells])
+            or any(snapshot[name]!=getattr(parent,name) for name in
+                   ('k','omega','clock_origin','source_mass_eV','aperture'))):
+        raise ValueError('source does not bind the original factory snapshot')
+    if (metadata['carrier_nu']!=1. or parent.cells!=metadata['num_cells']
+            or full_mesh[0]!=-metadata['profile_half_span']
+            or full_mesh[-1]!=metadata['profile_half_span']):
+        raise ValueError('complete original nu1 factory source required')
+    exact = lambda value: controls.exact_control(value,'actual native input')
+    box = lambda value: controls.represented(context,value)
+    centre = exact(parent.anchor_s)+exact(metadata['length_m'])/2
+    stored_centre = exact(parent.anchor_s)-exact(full_mesh[0])/exact(parent.k)
+    inputs = audit['native_input']
+    active = np.flatnonzero(audit['status']==1)
+    positions = tuple(exact(inputs['s'][i])-centre for i in active)
+    setup = localized.LocalizedCavitySetup(eta=metadata['eta'],
+        frequency_hz=metadata['frequency_hz'],voltage_v=abs(metadata['voltage_v']),
+        length_m=metadata['length_m'],design_beta=metadata['calibration_beta'],
+        nu=metadata['carrier_nu'],counter_phase=metadata['counter_phase'],
+        mass_eV=metadata['source_mass_eV'],charge_e=metadata['reference_charge_e'])
+    packet = localized.coherent_preparation(setup,positions,context=context)
+    coherent = packet['normative']
+    calibration_sign = 1 if metadata['reference_charge_e']>0 else -1
+    origin = (box(exact(metadata['phase_rad']))-calibration_sign*context.pi/2
+        -context.atan2(coherent['unit_phasor_imag'],coherent['unit_phasor_real']))
+    source = fields.P16StageField(SimpleNamespace(fixture=setup.fixture(2),
+        providers=providers.provider_functions(2),magnet=(0.,0.,0.),gauge=0.))
+    data = source._provider_data(2)
+    arguments = data['rf_arguments']
+    count = (len(arguments)-4)//2
+    results = []
+    for ordinal,i in enumerate(active):
+        native = {name: exact(value[i]) for name,value in inputs.items()
+                  if name not in ('mass0','q0','time_s')}
+        native.update({name:exact(inputs[name]) for name in ('mass0','q0','time_s')})
+        time = native['time_s']+(native['s']-native['zeta'])/(native['beta0']*299792458)
+        kappa = native['p0c']/native['mass0']
+        Q = native['q0']*native['chi']*exact(metadata['source_mass_eV'])/native['mass0']
+        mass = native['mass0']*native['charge_ratio']/native['chi']
+        charge = native['q0']*native['charge_ratio']
+        assert Q == charge*exact(metadata['source_mass_eV'])/mass
+        phase = coherent['omega']*box(time)+origin
+        X,Y,Z = (coherent['k']*box(value) for value in
+                 (native['x'],native['y'],positions[ordinal]))
+        profile = packet['profile_jets'][ordinal]
+        sign = -1 if metadata['voltage_v']<0 else 1
+        bindings = dict(zip(arguments[:4],(X,Y,Z,phase)))
+        bindings.update({arguments[4+component*count+j]:sign*profile[component*5+j]
+                         for component in range(2) for j in range(5)})
+        A = tuple(intervals.interval_expression(
+            data['rf_jets'][component*len(fields.INDICES)],bindings,context)
+            for component in range(4))
+        gamma = context.sqrt(1+(box(kappa)*(1+box(native['delta'])))**2)
+        q = (X,Y,phase,box(kappa*native['px'])+box(Q)*A[0],
+             box(kappa*native['py'])+box(Q)*A[1],gamma+box(Q)*A[3])
+        difference = tuple(box(exact(value))-target
+                           for value,target in zip(audit['qin'][i],q))
+        results.append(dict(particle_id=int(audit['particle_id'][i]),
+            qin=q,native_minus_coherent=difference,potential=A,
+            time_s=time,centered_position_m=positions[ordinal],
+            physical_source_centre_s=centre,stored_source_centre_s=stored_centre,
+            stored_minus_declared_centre_m=stored_centre-centre,
+            kappa=kappa,Q=Q,native=native,
+            preparation=packet,clock_origin=origin,
+            map_error_certified=False,physical_source_error_certified=False,
+            uniform_clock_error_certified=False))
+    return results
+
+
+def independent_coherent_native_input(record,metadata,mp):
+    """Independent high-precision quadrature and explicit M2 potential."""
+    def real(value):
+        numerator,denominator = value.as_numer_denom()
+        return mp.mpf(int(numerator))/int(denominator)
+
+    exact = pytest.importorskip(
+        'verification.maps.phase_resolved.stage_controls').exact_control
+    value = lambda name: real(exact(metadata[name],'factory input'))
+    native = record['native']
+    omega = 2*mp.pi*value('frequency_hz')
+    k,H = omega/299792458,omega/299792458*value('length_m')/2
+    beta_cal,nu,counter = (value(name) for name in
+                           ('calibration_beta','carrier_nu','counter_phase'))
+    ratio = mp.sqrt(value('eta'))
+    ws,wf = 1/(1+ratio),ratio/(1+ratio)
+
+    def integral(w):
+        return H*mp.quad(lambda u:(1-u*u)**16*mp.cos(w*H*u),[-1,0,1])
+
+    phasor = mp.exp(1j*H/beta_cal)*(ws*integral(1/beta_cal-nu)
+        +wf*mp.exp(1j*counter)*integral(1/beta_cal+nu))
+    amplitude = value('voltage_v')/value('source_mass_eV')/abs(phasor)
+    sign = 1 if metadata['reference_charge_e']>0 else -1
+    origin = value('phase_rad')-sign*mp.pi/2-mp.arg(phasor)
+    T = omega*real(record['time_s'])+origin
+    X,Y,Z = (k*real(v) for v in
+             (native['x'],native['y'],record['centered_position_m']))
+
+    def profile(z):
+        return (1-(z/H)**2)**16*amplitude*(
+            ws*mp.exp(1j*nu*z)+wf*mp.exp(-1j*(nu*z+counter)))
+
+    inside = abs(2*record['centered_position_m'])<exact(
+        metadata['length_m'],'physical length')
+    jets = ([mp.diff(profile,Z,j)*mp.exp(-1j*T) for j in range(5)]
+            if inside else [mp.mpc(0)]*5)
+    I = [v.imag for v in jets]
+    radius2 = X*X+Y*Y
+    ar = -I[1]/2+radius2*(I[1]+I[3])/16
+    A = (X*ar,Y*ar,
+         I[0]-radius2*(I[0]+I[2])/4
+             +radius2**2*(I[0]+2*I[2]+I[4])/64,mp.mpf(0))
+    kappa,Q = real(record['kappa']),real(record['Q'])
+    gamma = mp.sqrt(1+(kappa*(1+real(native['delta'])))**2)
+    return (X,Y,T,kappa*real(native['px'])+Q*A[0],
+            kappa*real(native['py'])+Q*A[1],gamma+Q*A[3])
+
+
+@pytest.mark.parametrize('start',[0,1])
+def test_native_cavity_coherent_full_input_boundary(tmp_path,start):
+    controls = pytest.importorskip('verification.maps.phase_resolved.stage_controls')
+    import mpmath as mp
+    from mpmath.ctx_iv import MPIntervalContext
+    from sympy import Rational
+    exact = lambda value: controls.exact_control(value,'actual input')
+    context_iv = MPIntervalContext()
+    context_iv.dps = 60
+    with native_context(tmp_path) as context:
+        cavity = xt.Cavity(length=.05,voltage=20e3,frequency=400e6,
+                           phase=-np.pi,lag=0.,absolute_time=True)
+        parent = cavity._prepare_native_diagnostic(factory_reference(context),
+            eta=.25,counter_phase=.3,radius_m=.001,num_cells=8,anchor_s=.125,
+            _context=context)
+        metadata = dict(parent.preparation)
+        assert cavity.lag == 0. and metadata['phase_rad'] == cavity.phase
+        assert metadata['reference_charge_e'] == -1.
+        anchor = float(exact(parent.anchor_s)
+            +(exact(parent.mesh[start])-exact(parent.mesh[0]))/exact(parent.k))
+        element = NativeCavityProbe(_context=context,
+            mesh=parent.mesh[start:start+2],profiles=parent.profiles[start:start+1],
+            k=parent.k,omega=parent.omega,source_mass_eV=parent.source_mass_eV,
+            anchor_s=anchor,clock_origin=parent.clock_origin,
+            aperture=parent.aperture,preparation=metadata)
+        _,launch = native_p16_case()
+        beta = launch['p0c']/np.hypot(launch['p0c'],launch['mass0'])
+        time = 3e-10
+        zeta = beta/parent.k*(parent.omega*(time+anchor/(beta*299792458.))
+                             +parent.clock_origin-.4)
+        launch.update(s=anchor,time_s=time,zeta=zeta)
+        particle = xt.Particles(_context=context,**launch,
+            mass_ratio=[1.,938272089.43/launch['mass0']],
+            charge_ratio=[1.,-1.],particle_id=[9,2])
+        maxima = np.zeros(6)
+        for shift in (0.,2e-10):
+            particle.time_s = time+shift
+            particle.zeta[:] = zeta+beta*299792458.*shift
+            before = spin_rng_values(particle)
+            audit = element.audit_first_cell(particle)
+            assert np.all(audit['status']==1)
+            records = coherent_native_input_boxes(audit,parent,context_iv)
+            if not shift:
+                raw = dict(audit,source_snapshot=dict(audit['source_snapshot'],
+                                                      preparation={}))
+                with pytest.raises(ValueError,match='factory preparation'):
+                    coherent_native_input_boxes(raw,parent,context_iv)
+                altered = audit['source_snapshot']['profiles'].copy()
+                altered[0,1,0] = np.nextafter(altered[0,1,0],np.inf)
+                stale = dict(audit,source_snapshot=dict(audit['source_snapshot'],
+                                                        profiles=altered))
+                with pytest.raises(ValueError,match='factory snapshot'):
+                    coherent_native_input_boxes(stale,parent,context_iv)
+            assert {r['particle_id'] for r in records} == {2,9}
+            for record in records:
+                declared = exact(parent.anchor_s)+exact(metadata['length_m'])/2
+                assert record['physical_source_centre_s'] == declared
+                assert record['stored_minus_declared_centre_m'] == (
+                    exact(parent.anchor_s)-exact(parent.mesh[0])/exact(parent.k)
+                    -declared)
+                assert record['stored_minus_declared_centre_m'] != 0
+                with mp.workdps(90):
+                    truth = independent_coherent_native_input(record,metadata,mp)
+                    for j,(target,value) in enumerate(zip(record['qin'],truth)):
+                        lo,hi = controls.rational_interval(target)
+                        assert lo <= Rational(str(value)) <= hi
+                        delta = record['native_minus_coherent'][j]
+                        maxima[j] = max(maxima[j],float(max(map(abs,
+                            controls.rational_interval(delta)))))
+                assert not record['map_error_certified']
+                assert not record['physical_source_error_certified']
+                assert not record['uniform_clock_error_certified']
+                if start:
+                    assert max(float(max(map(abs,controls.rational_interval(A))))
+                               for A in record['potential'][:2])>1e-10
+            for name,value in before.items():
+                np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+        phase_remainder = controls.represented(context_iv,exact(metadata['phase_rad']))
+        phase_remainder += context_iv.pi
+        assert controls.rational_interval(phase_remainder)[0]>0
+        # No application tolerance or map acceptance is inferred from these
+        # sampled componentwise dimensionless differences.
+        assert np.all(np.isfinite(maxima)) and np.max(maxima)>0
+        print(dict(native_input_joint_SI_difference=maxima.tolist(),
+            stored_minus_declared_centre_m=str(records[0][
+                'stored_minus_declared_centre_m']),
+            public_phase_minus_ideal_negative_pi=tuple(map(str,
+                controls.rational_interval(phase_remainder))),
+            coherent_public_input_point_only=True,map_error_certified=False))
