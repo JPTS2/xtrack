@@ -717,7 +717,7 @@ def set_spin_rng(particle):
 
 @pytest.mark.parametrize('cells',[1,8])
 def test_native_cavity_passive_spin_actual_line(tmp_path,cells):
-    _, _, data, launch, _ = prepared_case(cells)
+    data,launch = native_p16_case(cells)
     with native_context(tmp_path) as context:
         source = NativeCavityProbe(_context=context,**data)
         spin_source = NativeCavityProbe(_context=context,**data).enable_passive_spin()
@@ -778,7 +778,7 @@ def test_native_cavity_passive_spin_actual_line(tmp_path,cells):
 
 
 def test_native_cavity_passive_spin_transactional_failure(tmp_path):
-    _, _, data, launch, _ = prepared_case(8)
+    data,launch = native_p16_case(8)
     with native_context(tmp_path) as context:
         for fault,expected in (('spin_iterations',-99702),
                 ('spin_nonfinite',-99703),('anomaly',-99704),
@@ -813,7 +813,7 @@ def test_native_cavity_passive_spin_transactional_failure(tmp_path):
 
 
 def test_native_cavity_passive_spin_mixed_loss_by_id(tmp_path):
-    _, _, data, launch, _ = prepared_case()
+    data,launch = native_p16_case()
     with native_context(tmp_path) as context:
         element = NativeCavityProbe(_context=context,**data).enable_passive_spin()
         particle = xt.Particles(_context=context,particle_id=[17,3],**launch)
@@ -828,3 +828,128 @@ def test_native_cavity_passive_spin_mixed_loss_by_id(tmp_path):
             np.testing.assert_array_equal(after[name][1],value[1],err_msg=name)
         for name in SPIN_AND_RNG[3:]:
             np.testing.assert_array_equal(after[name],before[name])
+
+
+def native_p16_case(cells=1):
+    """The original hardware/launch using only the shipped private factory."""
+    reference = factory_reference()
+    cavity = xt.Cavity(length=.05,voltage=20e3,frequency=400e6,
+                       phase=-np.pi,absolute_time=True)
+    native = cavity._prepare_native_diagnostic(reference,eta=.25,
+        counter_phase=.3,radius_m=.001,num_cells=8)
+    data = dict(mesh=native.mesh[:cells+1],profiles=native.profiles[:cells],
+        k=native.k,omega=native.omega,source_mass_eV=native.source_mass_eV,
+        anchor_s=native.anchor_s,clock_origin=native.clock_origin,
+        aperture=native.aperture)
+    kappa = np.sqrt(2.4**2-1)
+    beta = kappa/2.4
+    launch = dict(mass0=510998.95069,p0c=510998.95069*kappa,q0=-1.,
+        x=.0004,y=-.0003,px=.005/kappa,py=-.004/kappa,delta=0.,s=0.,time_s=0.,
+        zeta=beta/native.k*(native.clock_origin-.4))
+    return data,launch
+
+
+def test_native_cavity_first_cell_audit_actual_candidate(tmp_path):
+    data,launch = drift_case()
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        particle = xt.Particles(_context=context,**launch)
+        set_spin_rng(particle)
+        before = spin_rng_values(particle)
+        audit = element.audit_first_cell(particle)
+        assert audit['status'][0] == 1
+        assert audit['cell_index'][0] == 0
+        assert audit['particle_id'][0] == particle.particle_id[0]
+        assert audit['start'][0] == data['mesh'][0]
+        assert audit['step'][0] == data['mesh'][1]-data['mesh'][0]
+        assert audit['effective_Q'][0] == -1.
+        assert audit['residual'][0] < element.tolerance
+        for name,value in before.items():
+            np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+        q = audit['qin'][0]
+        assert abs(q[2]-.4)>.01  # Actual native clock, not the ideal legacy launch.
+        assert abs(q[5]-2.4)>.001
+        uz = np.sqrt((q[5]-1)*(q[5]+1)-q[3]**2-q[4]**2)
+        flow = np.r_[q[3:5]/uz,q[5]/uz,np.zeros(3)]
+        h = audit['step'][0]
+        np.testing.assert_allclose(audit['qout'][0],q+h*flow,rtol=0.,atol=3e-15)
+        np.testing.assert_allclose(audit['stages'][0],
+            q+audit['tableau']['C'][:,None]*h*flow,rtol=0.,atol=3e-15)
+        tracked = particle.copy()
+        element.track(tracked)
+        out = audit['qout'][0]
+        kappa = launch['p0c']/launch['mass0']
+        beta = particle.beta0[0]
+        clock = data['omega']*(launch['time_s']
+            +data['anchor_s']/(beta*299792458.))+data['clock_origin']
+        expected_native = np.array([out[0]/data['k'],out[3]/kappa,
+            out[1]/data['k'],out[4]/kappa,
+            beta/data['k']*(clock+h/beta-out[2]),
+            np.sqrt((out[5]-1)*(out[5]+1))/kappa-1])
+        actual = np.array([getattr(tracked,name)[0] for name in
+                           ('x','px','y','py','zeta','delta')])
+        np.testing.assert_allclose(actual,expected_native,rtol=0.,atol=3e-15)
+        snapshot = audit['source_snapshot']
+        np.testing.assert_array_equal(snapshot['mesh'],data['mesh'])
+        np.testing.assert_array_equal(snapshot['profiles'],data['profiles'])
+        np.testing.assert_array_equal(snapshot['cached_row_ids'],np.arange(4))
+        np.testing.assert_array_equal(snapshot['cached_plane_positions'],
+            np.r_[data['mesh'][0],data['mesh'][0]+audit['tableau']['C']*h,
+                  data['mesh'][1]])
+        assert snapshot['cached_plane_position_convention'] == (
+            'forward_numpy_float64_left_plus_stored_C_times_h_replay')
+        assert not snapshot['profiles'].flags.writeable
+        assert not element.accepted_production_return
+
+
+def test_native_cavity_first_cell_audit_failure_and_ids(tmp_path):
+    data,launch = native_p16_case()
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data,maximum_iterations=1)
+        particle = xt.Particles(_context=context,**launch)
+        set_spin_rng(particle)
+        before = spin_rng_values(particle)
+        audit = element.audit_first_cell(particle)
+        assert audit['status'][0] == -2
+        assert np.all(np.isnan(audit['qin']))
+        assert np.all(np.isnan(audit['stages']))
+        assert np.all(np.isnan(audit['qout']))
+        assert np.all(np.isnan(audit['start']))
+        assert particle.state[0] == 1
+        for name,value in before.items():
+            np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+        element.maximum_iterations = 80
+        batch = xt.Particles(_context=context,particle_id=[17,3],**launch)
+        set_spin_rng(batch)
+        batch.state[0] = -7
+        before = spin_rng_values(batch)
+        audit = element.audit_first_cell(batch)
+        by_id = {int(identity):index for index,identity in enumerate(audit['particle_id'])}
+        assert audit['status'][by_id[3]] == 1
+        assert audit['status'][by_id[17]] == 0
+        assert np.all(np.isnan(audit['qout'][by_id[17]]))
+        for name,value in before.items():
+            np.testing.assert_array_equal(spin_rng_values(batch)[name],value)
+
+
+def test_native_cavity_first_cell_audit_fresh_snapshot(tmp_path):
+    data,launch = native_p16_case()
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        particle = xt.Particles(_context=context,**launch)
+        first = element.audit_first_cell(particle)
+        assert first['status'][0] == 1
+        old_input = first['qin'].copy()
+        old_profiles = first['source_snapshot']['profiles'].copy()
+        particle.x += 1e-5
+        second = element.audit_first_cell(particle)
+        assert second['status'][0] == 1
+        assert not np.array_equal(first['qin'],second['qin'])
+        np.testing.assert_array_equal(first['qin'],old_input)
+        changed = NativeCavityProbe(_context=context,
+            **dict(data,profiles=2*data['profiles']))
+        third = changed.audit_first_cell(particle)
+        assert third['status'][0] == 1
+        np.testing.assert_array_equal(third['source_snapshot']['profiles'],2*old_profiles)
+        np.testing.assert_array_equal(first['source_snapshot']['profiles'],old_profiles)
+        assert not np.array_equal(third['qout'],second['qout'])

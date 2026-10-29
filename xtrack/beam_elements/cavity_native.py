@@ -18,6 +18,7 @@ from ..base_element import BeamElement
 
 C_LIGHT = 299792458.
 GAUSS_NODES = np.array([0.21132486540518713, 0.7886751345948129])
+_STORED_GAUSS_A = ((.25,-.038675134594812866),(.5386751345948129,.25))
 # Retained diagnostic SI context, matching the scientific reference. These
 # represented values do not update Xtrack's global/native constants or supply
 # coherent-SI or physical preparation qualification.
@@ -222,6 +223,7 @@ class CavityNativeDiagnostic(BeamElement):
         '#define XTRACK_CAVITY_NATIVE_TANGENT\n'
         '#define XTRACK_CAVITY_NATIVE_SECONDARY\n'
         '#define XTRACK_CAVITY_NATIVE_SPIN\n'
+        '#define XTRACK_CAVITY_NATIVE_AUDIT\n'
         '#include "xtrack/beam_elements/elements_src/cavity_native_adapter.h"']
     _per_particle_kernels = {
         'native_tangent': xo.Kernel(
@@ -236,6 +238,11 @@ class CavityNativeDiagnostic(BeamElement):
                 xo.Arg(xo.Float64, name='rho_unit_eV'),
                 xo.Arg(xo.Float64, pointer=True, name='output'),
                 xo.Arg(xo.Int64, pointer=True, name='statuses')]),
+        'native_audit_first_cell': xo.Kernel(
+            c_name='CavityNativeDiagnostic_audit_first_cell_local_particle',args=[
+                xo.Arg(xo.Float64,pointer=True,name='output'),
+                xo.Arg(xo.Float64,pointer=True,name='word'),
+                xo.Arg(xo.Int64,pointer=True,name='statuses')]),
     }
 
     def __init__(self, *, mesh=None, profiles=None, k=None, omega=None,
@@ -377,6 +384,76 @@ class CavityNativeDiagnostic(BeamElement):
             _scalar(self.spin_tolerance,'spin tolerance',positive=True)
         self.spin_tracking = 1
         return self
+
+    def audit_first_cell(self, particles):
+        """Return one actual native orbit candidate without changing particles.
+
+        qin, accepted stages and qout are copied in C before boundary decode;
+        no ideal launch, host solve or reconstructed native endpoint replaces
+        them. Only the FIRST FORWARD cell is observed, regardless of optional
+        spin tracking. This is not a spin, boundary, ODE, physical-source or
+        global backend-arithmetic certificate and sets no acceptance flag.
+
+        The actual source/control data are frozen in the returned snapshot.
+        Cached-plane positions replay the exact forward NumPy preparation
+        convention from that snapshot and the stored binary C; they are not
+        independent device position measurements or reverse affine nodes.
+        CPU operation and no concurrent source/control/private-buffer mutation
+        are supported assumptions, not memory or permission enforcement.
+        Failed output and word buffers retain NaNs; status0 is unvisited.
+        All arrays are indexed by the returned POST-callback particle IDs.
+        """
+        context = self._context
+        if not isinstance(context,xo.ContextCpu):
+            raise NotImplementedError('native candidate audit currently supports CPU')
+        if particles._context is not context:
+            raise ValueError('audit particles and source require one context')
+
+        def frozen(value, dtype=float):
+            array = np.asarray(value,dtype=dtype)
+            return np.frombuffer(array.tobytes(),dtype=dtype).reshape(array.shape)
+
+        mesh = frozen(context.nparray_from_context_array(self._source_mesh))
+        raw = frozen(context.nparray_from_context_array(self._source_profiles))
+        cells = int(self.cells)
+        profiles = (raw.reshape(cells,4,10)
+            if cells>0 and cells==len(mesh)-1 and raw.size%40==0
+                and cells==raw.size//40 else raw)
+        planes = np.full(4,np.nan)
+        if len(mesh)>1:
+            h = mesh[1]-mesh[0]
+            planes = np.r_[mesh[0],mesh[0]+GAUSS_NODES*h,mesh[1]]
+        snapshot = dict(mesh=mesh,profiles=profiles,cells=cells,
+            k=self.k,omega=self.omega,anchor_s=self.anchor_s,
+            clock_origin=self.clock_origin,source_mass_eV=self.source_mass_eV,
+            aperture=self.aperture,tolerance=self.tolerance,
+            maximum_iterations=int(self.maximum_iterations),
+            spin_tracking=int(self.spin_tracking),preparation=dict(self.preparation),
+            cached_row_ids=frozen(np.arange(4),dtype=np.int64),
+            cached_plane_positions=frozen(planes),
+            cached_plane_position_convention=
+                'forward_numpy_float64_left_plus_stored_C_times_h_replay')
+        output = context.nparray_to_context_array(
+            np.full((particles._capacity,24),np.nan))
+        word = context.nparray_to_context_array(
+            np.full((particles._capacity,5),np.nan))
+        statuses = context.nparray_to_context_array(
+            np.zeros(particles._capacity,dtype=np.int64))
+        self.native_audit_first_cell(particles,output=output,word=word,
+                                     statuses=statuses)
+        values = context.nparray_from_context_array(output).copy()
+        words = context.nparray_from_context_array(word).copy()
+        status = context.nparray_from_context_array(statuses).copy()
+        cell_index = np.full(particles._capacity,-1,dtype=np.int64)
+        cell_index[status==1] = words[status==1,0].astype(np.int64)
+        return dict(qin=values[:,:6].copy(),
+            stages=values[:,6:18].reshape(-1,2,6).copy(),
+            qout=values[:,18:24].copy(),status=status,
+            particle_id=context.nparray_from_context_array(particles.particle_id).copy(),
+            cell_index=cell_index,start=words[:,1].copy(),step=words[:,2].copy(),
+            effective_Q=words[:,3].copy(),residual=words[:,4].copy(),
+            tableau=dict(A=frozen(_STORED_GAUSS_A),C=frozen(GAUSS_NODES),
+                         b=frozen((.5,.5))),source_snapshot=snapshot)
 
 
 def _source_readback(name):

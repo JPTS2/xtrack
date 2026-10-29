@@ -421,4 +421,44 @@ void CavityNativeDiagnostic_secondary_local_particle(CavityNativeDiagnosticData 
     END_PER_PARTICLE_BLOCK;
 }
 #endif
+
+#ifdef XTRACK_CAVITY_NATIVE_AUDIT
+// Nonmutating FIRST FORWARD cell candidate. All canonical values originate in
+// this actual native call; there is no host reconstruction or endpoint decode.
+// output24 = qin6, accepted stages12, qout6; word5 = cell,a,h,Q,residual.
+GPUFUN
+void CavityNativeDiagnostic_audit_first_cell_local_particle(
+        CavityNativeDiagnosticData el,LocalParticle* part0,
+        GPUGLMEM double* output,GPUGLMEM double* word,
+        GPUGLMEM int64_t* statuses) {
+    const int controls=CavityNative_adapter_controls(el);
+    START_PER_PARTICLE_BLOCK(part0,part);
+        int status=controls;
+        double qin[6], qout[6], stages[12], Q, kappa0, beta0, clock;
+        double data[40], a=0., h=0., residual=0.;
+        if (status==CAVITY_NATIVE_OK) {
+            a=CavityNativeDiagnosticData_get_mesh(el,0);
+            h=CavityNativeDiagnosticData_get_mesh(el,1)-a;
+            CavityNative_adapter_profiles(el,0,0,data);
+            status=CavityNative_adapter_input(el,part,a,data,
+                qin,&Q,&kappa0,&beta0,&clock);
+        }
+        if (status==CAVITY_NATIVE_OK)
+            status=CavityNative_gauss_stages(qin,h,Q,data,
+                CavityNativeDiagnosticData_get_aperture(el),
+                CavityNativeDiagnosticData_get_maximum_iterations(el),
+                CavityNativeDiagnosticData_get_tolerance(el),qout,&residual,stages);
+        statuses[part->ipart]=status;
+        if (status==CAVITY_NATIVE_OK) {
+            GPUGLMEM double* target=output+24*part->ipart;
+            for (int j=0; j<6; ++j) target[j]=qin[j];
+            for (int j=0; j<12; ++j) target[6+j]=stages[j];
+            for (int j=0; j<6; ++j) target[18+j]=qout[j];
+            GPUGLMEM double* identity=word+5*part->ipart;
+            identity[0]=0.; identity[1]=a; identity[2]=h;
+            identity[3]=Q; identity[4]=residual;
+        }
+    END_PER_PARTICLE_BLOCK;
+}
+#endif
 #endif
