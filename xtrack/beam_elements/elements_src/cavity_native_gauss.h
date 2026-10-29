@@ -11,10 +11,10 @@
 // Only nonzero signed cells are supported; unlike the generic reference helper,
 // this private native entry point explicitly refuses a zero-length step.
 GPUFUN
-int CavityNative_gauss(const double q[6], double h, double Q,
+int CavityNative_gauss_stages(const double q[6], double h, double Q,
                        const double profiles[40], double aperture,
                        int64_t max_iter, double tol, double out[6],
-                       double* residual) {
+                       double* residual, double* accepted_stages) {
     if (!isfinite(h) || h == 0. || !isfinite(Q) || !isfinite(aperture)
         || aperture <= 0. || !isfinite(tol) || tol <= 0. || max_iter <= 0)
         return CAVITY_NATIVE_ARGUMENT;
@@ -73,6 +73,10 @@ int CavityNative_gauss(const double q[6], double h, double Q,
                 status = CavityNative_source(result, Q, profiles+30,
                                              aperture, final_flow);
                 if (status != CAVITY_NATIVE_OK) return status;
+                if (accepted_stages)
+                    for (int i=0; i<2; ++i)
+                        for (int k=0; k<6; ++k)
+                            accepted_stages[i*6+k] = stages[i][k];
                 for (int k=0; k<6; ++k) out[k] = result[k];
                 *residual = actual;
                 return CAVITY_NATIVE_OK;
@@ -80,5 +84,15 @@ int CavityNative_gauss(const double q[6], double h, double Q,
         }
     }
     return CAVITY_NATIVE_ITERATIONS;
+}
+
+// F-only entry point: identical arithmetic, no optional Jacobian/tangent work.
+GPUFUN
+int CavityNative_gauss(const double q[6], double h, double Q,
+                       const double profiles[40], double aperture,
+                       int64_t max_iter, double tol, double out[6],
+                       double* residual) {
+    return CavityNative_gauss_stages(q, h, Q, profiles, aperture, max_iter,
+                                     tol, out, residual, 0);
 }
 #endif

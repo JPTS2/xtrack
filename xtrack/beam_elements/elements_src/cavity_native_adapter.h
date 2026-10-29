@@ -6,150 +6,283 @@
 #include "xtrack/headers/track.h"
 #include "xtrack/beam_elements/elements_src/cavity_native_gauss.h"
 
+// Validate mutable native data before any array indexing. This is not a
+// source/preparation certificate; profiles are explicitly supplied finite data.
 GPUFUN
-void NativeCavityProbe_track_local_particle(
-        NativeCavityProbeData el, LocalParticle* part0) {
+int CavityNative_adapter_controls(NativeCavityProbeData el) {
     const int64_t cells = NativeCavityProbeData_get_cells(el);
-    const int64_t maximum_iterations =
-        NativeCavityProbeData_get_maximum_iterations(el);
+    const int64_t mesh_length = NativeCavityProbeData_len_mesh(el);
+    const int64_t profile_length = NativeCavityProbeData_len_profiles(el);
     const double k = NativeCavityProbeData_get_k(el);
     const double omega = NativeCavityProbeData_get_omega(el);
-    const double anchor_s = NativeCavityProbeData_get_anchor_s(el);
-    const double clock_origin = NativeCavityProbeData_get_clock_origin(el);
-    const double mass_scale = NativeCavityProbeData_get_source_mass_eV(el);
+    const double mass = NativeCavityProbeData_get_source_mass_eV(el);
     const double tolerance = NativeCavityProbeData_get_tolerance(el);
     const double aperture = NativeCavityProbeData_get_aperture(el);
     const double length = NativeCavityProbeData_get_length(el);
-    const int64_t mesh_length = NativeCavityProbeData_len_mesh(el);
-    const int64_t profile_length = NativeCavityProbeData_len_profiles(el);
-    int controls = cells>0 && mesh_length>1 && cells==mesh_length-1
-        && profile_length%40==0 && cells==profile_length/40
-        && isfinite(k) && k>0. && isfinite(omega) && omega>0.
-        && isfinite(anchor_s) && isfinite(clock_origin)
-        && isfinite(mass_scale) && mass_scale>0.
-        && isfinite(tolerance) && tolerance>0. && maximum_iterations>0
-        && isfinite(aperture) && aperture>0.
-        && isfinite(length) && length>0.;
-    if (!controls) {
-        START_PER_PARTICLE_BLOCK(part0, part);
-            LocalParticle_set_state(part, -99704);
-        END_PER_PARTICLE_BLOCK;
-        return;
+    if (!(cells>0 && mesh_length>1 && cells==mesh_length-1
+            && profile_length%40==0 && cells==profile_length/40
+            && isfinite(k) && k>0. && isfinite(omega) && omega>0.
+            && isfinite(NativeCavityProbeData_get_anchor_s(el))
+            && isfinite(NativeCavityProbeData_get_clock_origin(el))
+            && isfinite(mass) && mass>0.
+            && isfinite(tolerance) && tolerance>0.
+            && NativeCavityProbeData_get_maximum_iterations(el)>0
+            && isfinite(aperture) && aperture>0.
+            && isfinite(length) && length>0.)) return CAVITY_NATIVE_ARGUMENT;
+    for (int64_t j=0; j<mesh_length; ++j) {
+        const double value = NativeCavityProbeData_get_mesh(el, j);
+        if (!isfinite(value) || (j>0
+                && !(value>NativeCavityProbeData_get_mesh(el,j-1))))
+            return CAVITY_NATIVE_ARGUMENT;
     }
-    GPUGLMEM const double* mesh = NativeCavityProbeData_getp1_mesh(el, 0);
-    GPUGLMEM const double* profiles = NativeCavityProbeData_getp1_profiles(el, 0);
-    for (int64_t j=0; controls && j<mesh_length; ++j)
-        if (!isfinite(mesh[j]) || (j>0 && !(mesh[j]>mesh[j-1]))) controls=0;
-    const double computed_length = (mesh[cells]-mesh[0])/k;
+    const double computed_length = (NativeCavityProbeData_get_mesh(el,cells)
+        -NativeCavityProbeData_get_mesh(el,0))/k;
     if (!isfinite(computed_length)
             || fabs(length-computed_length)>16.*DBL_EPSILON
-                *fmax(length, computed_length)
+                *fmax(length,computed_length)
             || fabs(omega/k-C_LIGHT)>16.*DBL_EPSILON*C_LIGHT)
-        controls=0;
-    if (!controls) {
-        START_PER_PARTICLE_BLOCK(part0, part);
-            LocalParticle_set_state(part, -99704);
-        END_PER_PARTICLE_BLOCK;
-        return;
-    }
-    const int reverse = LocalParticle_check_track_flag(part0, XS_FLAG_BACKTRACK);
+        return CAVITY_NATIVE_ARGUMENT;
+    return CAVITY_NATIVE_OK;
+}
 
-    START_PER_PARTICLE_BLOCK(part0, part);
-        int status = 1;
-        const double beta0 = LocalParticle_get_beta0(part);
-        const double mass0 = LocalParticle_get_mass0(part);
-        const double chi = LocalParticle_get_chi(part);
-        const double charge_ratio = LocalParticle_get_charge_ratio(part);
-        const double mass_ratio = chi != 0. ? charge_ratio/chi : -1.;
-        const double kappa0 = LocalParticle_get_p0c(part) / mass0;
-        const double Q = LocalParticle_get_q0(part)*chi*mass_scale/mass0;
-        const double s_in = LocalParticle_get_s(part);
-        const double time_s = LocalParticle_get_time_s(part);
-        const double Z_in = reverse ? mesh[cells] : mesh[0];
-        const double expected_s = anchor_s + (Z_in-mesh[0])/k;
-        const double clock = omega * (time_s + anchor_s/(beta0*C_LIGHT))
-            + clock_origin;
-        const double sigma = 1. + LocalParticle_get_delta(part);
-        double q[6] = {
-            k*LocalParticle_get_x(part), k*LocalParticle_get_y(part),
-            clock + (Z_in-mesh[0])/beta0
-                - k*LocalParticle_get_zeta(part)/beta0,
-            kappa0*LocalParticle_get_px(part),
-            kappa0*LocalParticle_get_py(part), hypot(1., kappa0*sigma)};
-        double boundary[10], potential[4];
-        const int64_t entrance_offset = reverse ? 40*(cells-1)+30 : 0;
-        for (int j=0; j<10; ++j) boundary[j] = profiles[entrance_offset+j];
-        if (!(isfinite(Q) && isfinite(kappa0) && kappa0>0.
-                && isfinite(beta0) && beta0>0. && beta0<1.
-                && isfinite(mass_ratio) && mass_ratio>0.
-                && isfinite(time_s) && isfinite(s_in) && sigma>0.)) {
-            status = -3;
-        } else if (LocalParticle_get_ax(part) != 0.
-                || LocalParticle_get_ay(part) != 0.
-                || fabs(s_in-expected_s) > 32.*DBL_EPSILON
-                    *fmax(1., fmax(fabs(s_in), fabs(expected_s)))) {
-            // This private adapter declares the zero native boundary gauge
-            // and an explicit physical anchor; it never ignores either.
-            status = -4;
-        } else {
-            status = CavityNative_potential(q, boundary, potential);
-            if (status == 1) {
-                q[3] += Q*potential[0];
-                q[4] += Q*potential[1];
-                q[5] += Q*potential[3];
-            }
+GPUFUN
+void CavityNative_adapter_profiles(NativeCavityProbeData el, int64_t cell,
+                                   int reverse, double data[40]) {
+    for (int plane=0; plane<4; ++plane) {
+        const int source_plane = reverse ? 3-plane : plane;
+        for (int j=0; j<10; ++j)
+            data[plane*10+j] = NativeCavityProbeData_get_profiles(
+                el, cell*40+source_plane*10+j);
+    }
+}
+
+// Physical zero-native-A chart. Interior px/py here store mechanical momenta;
+// this is not a declaration of standard canonical native Twiss coordinates.
+GPUFUN
+int CavityNative_adapter_input(NativeCavityProbeData el, LocalParticle* part,
+        double Z, const double profile[10], double q[6], double* Q,
+        double* kappa0, double* beta0, double* clock) {
+    const double k = NativeCavityProbeData_get_k(el);
+    const double mass0 = LocalParticle_get_mass0(part);
+    const double chi = LocalParticle_get_chi(part);
+    const double mass_ratio = chi!=0.
+        ? LocalParticle_get_charge_ratio(part)/chi : -1.;
+    const double s = LocalParticle_get_s(part);
+    const double sigma = 1.+LocalParticle_get_delta(part);
+    const double anchor_s = NativeCavityProbeData_get_anchor_s(el);
+    const double anchor_Z = NativeCavityProbeData_get_mesh(el,0);
+    *beta0 = LocalParticle_get_beta0(part);
+    *kappa0 = LocalParticle_get_p0c(part)/mass0;
+    *Q = LocalParticle_get_q0(part)*chi
+        *NativeCavityProbeData_get_source_mass_eV(el)/mass0;
+    *clock = NativeCavityProbeData_get_omega(el)
+        *(LocalParticle_get_time_s(part)+anchor_s/(*beta0*C_LIGHT))
+        +NativeCavityProbeData_get_clock_origin(el);
+    if (!(isfinite(*Q) && isfinite(*kappa0) && *kappa0>0.
+            && isfinite(*beta0) && *beta0>0. && *beta0<1.
+            && isfinite(mass_ratio) && mass_ratio>0.
+            && isfinite(LocalParticle_get_time_s(part)) && isfinite(s)
+            && sigma>0.)) return CAVITY_NATIVE_NONFINITE;
+    const double expected_s = anchor_s+(Z-anchor_Z)/k;
+    if (LocalParticle_get_ax(part)!=0. || LocalParticle_get_ay(part)!=0.
+            || fabs(s-expected_s)>32.*DBL_EPSILON
+                *fmax(1.,fmax(fabs(s),fabs(expected_s))))
+        return CAVITY_NATIVE_ARGUMENT;
+    q[0] = k*LocalParticle_get_x(part);
+    q[1] = k*LocalParticle_get_y(part);
+    q[2] = *clock+(Z-anchor_Z)/ *beta0
+        -k*LocalParticle_get_zeta(part)/ *beta0;
+    q[3] = *kappa0*LocalParticle_get_px(part);
+    q[4] = *kappa0*LocalParticle_get_py(part);
+    q[5] = hypot(1.,*kappa0*sigma);
+    double potential[4];
+    const int status = CavityNative_potential(q,profile,potential);
+    if (status!=CAVITY_NATIVE_OK) return status;
+    q[3] += *Q*potential[0];
+    q[4] += *Q*potential[1];
+    q[5] += *Q*potential[3];
+    return CAVITY_NATIVE_OK;
+}
+
+GPUFUN
+int CavityNative_adapter_output(NativeCavityProbeData el, const double q[6],
+        double Z, const double profile[10], double Q, double kappa0,
+        double beta0, double clock, double result[6]) {
+    double potential[4];
+    const int status = CavityNative_potential(q,profile,potential);
+    if (status!=CAVITY_NATIVE_OK) return status;
+    const double gamma = q[5]-Q*potential[3];
+    const double ux = q[3]-Q*potential[0], uy = q[4]-Q*potential[1];
+    const double total2 = (gamma-1.)*(gamma+1.);
+    if (!(gamma>1. && total2>ux*ux+uy*uy)) return CAVITY_NATIVE_DOMAIN;
+    const double k = NativeCavityProbeData_get_k(el);
+    result[0] = q[0]/k;
+    result[1] = ux/kappa0;
+    result[2] = q[1]/k;
+    result[3] = uy/kappa0;
+    result[4] = beta0/k*(clock
+        +(Z-NativeCavityProbeData_get_mesh(el,0))/beta0-q[2]);
+    result[5] = sqrt(total2)/kappa0-1.;
+    for (int j=0; j<6; ++j)
+        if (!isfinite(result[j])) return CAVITY_NATIVE_NONFINITE;
+    return CAVITY_NATIVE_OK;
+}
+
+GPUFUN
+void NativeCavityProbe_track_local_particle(
+        NativeCavityProbeData el, LocalParticle* part0) {
+    const int controls = CavityNative_adapter_controls(el);
+    const int64_t cells = NativeCavityProbeData_get_cells(el);
+    const int reverse = LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
+    START_PER_PARTICLE_BLOCK(part0,part);
+        int status = controls;
+        double q[6], Q, kappa0, beta0, clock, data[40], result[6];
+        if (status==CAVITY_NATIVE_OK) {
+            const int64_t first = reverse ? cells-1 : 0;
+            CavityNative_adapter_profiles(el,first,reverse,data);
+            status = CavityNative_adapter_input(el,part,
+                NativeCavityProbeData_get_mesh(el,reverse ? cells : 0),
+                data,q,&Q,&kappa0,&beta0,&clock);
         }
-        // Work entirely on local trial state until every cell and the final
-        // boundary chart succeeds. In particular exhaustion cannot leak s,
-        // delta, or dependent pzeta/rpp/rvv updates into the particle.
-        for (int64_t order=0; status==1 && order<cells; ++order) {
+        for (int64_t order=0; status==CAVITY_NATIVE_OK && order<cells; ++order) {
             const int64_t cell = reverse ? cells-1-order : order;
-            const double h = reverse ? mesh[cell]-mesh[cell+1]
-                                     : mesh[cell+1]-mesh[cell];
-            double data[40], out[6], residual;
-            for (int plane=0; plane<4; ++plane) {
-                const int source_plane = reverse ? 3-plane : plane;
-                for (int j=0; j<10; ++j)
-                    data[plane*10+j] = profiles[cell*40+source_plane*10+j];
-            }
-            status = CavityNative_gauss(q, h, Q, data, aperture,
-                maximum_iterations, tolerance, out, &residual);
-            if (status==1) for (int j=0; j<6; ++j) q[j] = out[j];
+            const double h = NativeCavityProbeData_get_mesh(el,cell+1)
+                -NativeCavityProbeData_get_mesh(el,cell);
+            double out[6], residual;
+            CavityNative_adapter_profiles(el,cell,reverse,data);
+            status = CavityNative_gauss(q,reverse ? -h : h,Q,data,
+                NativeCavityProbeData_get_aperture(el),
+                NativeCavityProbeData_get_maximum_iterations(el),
+                NativeCavityProbeData_get_tolerance(el),out,&residual);
+            if (status==CAVITY_NATIVE_OK)
+                for (int j=0; j<6; ++j) q[j]=out[j];
         }
-        if (status==1) {
-            const int64_t exit_offset = reverse ? 0 : 40*(cells-1)+30;
-            for (int j=0; j<10; ++j) boundary[j] = profiles[exit_offset+j];
-            status = CavityNative_potential(q, boundary, potential);
-        }
-        double delta_out=0., px_out=0., py_out=0., zeta_out=0.;
-        const double Z_out = reverse ? mesh[0] : mesh[cells];
-        if (status==1) {
-            const double gamma = q[5]-Q*potential[3];
-            const double ux = q[3]-Q*potential[0];
-            const double uy = q[4]-Q*potential[1];
-            const double total2 = (gamma-1.)*(gamma+1.);
-            if (!(gamma>1. && total2>ux*ux+uy*uy)) status=-1;
-            else {
-                delta_out = sqrt(total2)/kappa0-1.;
-                px_out = ux/kappa0;
-                py_out = uy/kappa0;
-                zeta_out = beta0/k*(clock+(Z_out-mesh[0])/beta0-q[2]);
-                if (!(isfinite(delta_out) && isfinite(px_out)
-                        && isfinite(py_out) && isfinite(zeta_out))) status=-3;
-            }
-        }
-        if (status==1) {
-            LocalParticle_set_x(part, q[0]/k);
-            LocalParticle_set_y(part, q[1]/k);
-            LocalParticle_set_px(part, px_out);
-            LocalParticle_set_py(part, py_out);
-            LocalParticle_set_zeta(part, zeta_out);
-            LocalParticle_update_delta(part, delta_out);
-            LocalParticle_add_to_s(part, reverse ? -length : length);
+        if (status==CAVITY_NATIVE_OK)
+            status = CavityNative_adapter_output(el,q,
+                NativeCavityProbeData_get_mesh(el,reverse ? 0 : cells),
+                data+30,Q,kappa0,beta0,clock,result);
+        if (status==CAVITY_NATIVE_OK) {
+            LocalParticle_set_x(part,result[0]);
+            LocalParticle_set_px(part,result[1]);
+            LocalParticle_set_y(part,result[2]);
+            LocalParticle_set_py(part,result[3]);
+            LocalParticle_set_zeta(part,result[4]);
+            LocalParticle_update_delta(part,result[5]);
+            LocalParticle_add_to_s(part,(reverse ? -1. : 1.)
+                *NativeCavityProbeData_get_length(el));
         } else {
             // Test-only statuses; no claim of reserved public loss codes.
-            LocalParticle_set_state(part, -99700+status);
+            LocalParticle_set_state(part,-99700+status);
         }
     END_PER_PARTICLE_BLOCK;
 }
+
+#ifdef XTRACK_CAVITY_NATIVE_TANGENT
+#include "xtrack/beam_elements/elements_src/cavity_native_tangent.h"
+
+// A separate observational consumer: no J workspace/call in the orbit path.
+// Layout per physical particle slot: native endpoint6, native M36, residual,
+// derivative residual. It differentiates the implicit finite root at the
+// accepted approximate stages, not floating stopping branches or an ODE.
+GPUFUN
+void NativeCavityProbe_tangent_local_particle(NativeCavityProbeData el,
+        LocalParticle* part0, int64_t reverse, GPUGLMEM double* output,
+        GPUGLMEM int64_t* statuses) {
+    const int controls = CavityNative_adapter_controls(el);
+    const int64_t cells = NativeCavityProbeData_get_cells(el);
+    const double k = NativeCavityProbeData_get_k(el);
+    const double derivative_tol = NativeCavityProbeData_get_derivative_tolerance(el);
+    START_PER_PARTICLE_BLOCK(part0,part);
+        int status = controls;
+        double q[6], Q, kappa0, beta0, clock, data[40], result[6];
+        double matrix[36], product[36], potential[4], jet[12];
+        double worst=0., derivative_worst=0.;
+        if (!(isfinite(derivative_tol) && derivative_tol>0.)
+                || (reverse!=0 && reverse!=1)) status=CAVITY_NATIVE_ARGUMENT;
+        if (status==CAVITY_NATIVE_OK) {
+            CavityNative_adapter_profiles(el,reverse ? cells-1 : 0,reverse,data);
+            status = CavityNative_adapter_input(el,part,
+                NativeCavityProbeData_get_mesh(el,reverse ? cells : 0),
+                data,q,&Q,&kappa0,&beta0,&clock);
+        }
+        if (status==CAVITY_NATIVE_OK)
+            status = CavityNative_potential_jacobian(q,data,jet);
+        if (status==CAVITY_NATIVE_OK)
+            status = CavityNative_potential(q,data,potential);
+        if (status==CAVITY_NATIVE_OK) {
+            for (int j=0; j<36; ++j) matrix[j]=0.;
+            matrix[0]=k; matrix[1*6+2]=k; matrix[2*6+4]=-k/beta0;
+            const int columns[3]={0,2,4};
+            const double scales[3]={k,k,-k/beta0};
+            for (int axis=0; axis<3; ++axis) {
+                matrix[3*6+columns[axis]]=Q*jet[axis]*scales[axis];
+                matrix[4*6+columns[axis]]=Q*jet[3+axis]*scales[axis];
+                matrix[5*6+columns[axis]]=Q*jet[9+axis]*scales[axis];
+            }
+            matrix[3*6+1]=matrix[4*6+3]=kappa0;
+            matrix[5*6+5]=kappa0*kappa0*(1.+LocalParticle_get_delta(part))
+                /(q[5]-Q*potential[3]);
+        }
+        for (int64_t order=0; status==CAVITY_NATIVE_OK && order<cells; ++order) {
+            const int64_t cell = reverse ? cells-1-order : order;
+            const double h = NativeCavityProbeData_get_mesh(el,cell+1)
+                -NativeCavityProbeData_get_mesh(el,cell);
+            double out[6], local[36], residual, derivative_residual;
+            CavityNative_adapter_profiles(el,cell,reverse,data);
+            status = CavityNative_gauss_tangent(q,reverse ? -h : h,Q,data,
+                NativeCavityProbeData_get_aperture(el),
+                NativeCavityProbeData_get_maximum_iterations(el),
+                NativeCavityProbeData_get_tolerance(el),derivative_tol,
+                out,local,&residual,&derivative_residual);
+            if (status==CAVITY_NATIVE_OK) {
+                for (int i=0; i<6; ++i) for (int j=0; j<6; ++j) {
+                    product[i*6+j]=0.;
+                    for (int a=0; a<6; ++a)
+                        product[i*6+j]+=local[i*6+a]*matrix[a*6+j];
+                }
+                for (int j=0; j<36; ++j) matrix[j]=product[j];
+                for (int j=0; j<6; ++j) q[j]=out[j];
+                worst=fmax(worst,residual);
+                derivative_worst=fmax(derivative_worst,derivative_residual);
+            }
+        }
+        if (status==CAVITY_NATIVE_OK)
+            status = CavityNative_adapter_output(el,q,
+                NativeCavityProbeData_get_mesh(el,reverse ? 0 : cells),
+                data+30,Q,kappa0,beta0,clock,result);
+        if (status==CAVITY_NATIVE_OK)
+            status = CavityNative_potential_jacobian(q,data+30,jet);
+        if (status==CAVITY_NATIVE_OK)
+            status = CavityNative_potential(q,data+30,potential);
+        if (status==CAVITY_NATIVE_OK) {
+            double boundary[36];
+            for (int j=0; j<36; ++j) boundary[j]=0.;
+            boundary[0]=boundary[2*6+1]=1./k;
+            boundary[4*6+2]=-beta0/k;
+            boundary[1*6+3]=boundary[3*6+4]=1./kappa0;
+            const double gamma=q[5]-Q*potential[3];
+            const double factor=gamma/(kappa0*sqrt((gamma-1.)*(gamma+1.)));
+            for (int axis=0; axis<3; ++axis) {
+                boundary[1*6+axis]=-Q*jet[axis]/kappa0;
+                boundary[3*6+axis]=-Q*jet[3+axis]/kappa0;
+                boundary[5*6+axis]=-factor*Q*jet[9+axis];
+            }
+            boundary[5*6+5]=factor;
+            for (int i=0; i<6; ++i) for (int j=0; j<6; ++j) {
+                product[i*6+j]=0.;
+                for (int a=0; a<6; ++a)
+                    product[i*6+j]+=boundary[i*6+a]*matrix[a*6+j];
+                if (!isfinite(product[i*6+j])) status=CAVITY_NATIVE_NONFINITE;
+            }
+        }
+        statuses[part->ipart]=status;
+        if (status==CAVITY_NATIVE_OK) {
+            GPUGLMEM double* target=output+44*part->ipart;
+            for (int j=0; j<6; ++j) target[j]=result[j];
+            for (int j=0; j<36; ++j) target[6+j]=product[j];
+            target[42]=worst; target[43]=derivative_worst;
+        }
+    END_PER_PARTICLE_BLOCK;
+}
+#endif
 #endif

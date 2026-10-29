@@ -25,17 +25,26 @@ class NativeCavityProbe(xt.BeamElement):
         'anchor_s': xo.Float64, 'clock_origin': xo.Float64,
         'source_mass_eV': xo.Float64, 'aperture': xo.Float64,
         'tolerance': xo.Float64, 'maximum_iterations': xo.Int64,
+        'derivative_tolerance': xo.Float64,
         'cells': xo.Int64, 'mesh': xo.Float64[:], 'profiles': xo.Float64[:],
     }
     isthick = True
     has_backtrack = True
     allow_rot_and_shift = False
     _extra_c_sources = [
+        '#define XTRACK_CAVITY_NATIVE_TANGENT\n'
         '#include "xtrack/beam_elements/elements_src/cavity_native_adapter.h"']
+    _per_particle_kernels = {
+        'native_tangent': xo.Kernel(
+            c_name='NativeCavityProbe_tangent_local_particle', args=[
+                xo.Arg(xo.Int64, name='reverse'),
+                xo.Arg(xo.Float64, pointer=True, name='output'),
+                xo.Arg(xo.Int64, pointer=True, name='statuses')]),
+    }
 
     def __init__(self, *, mesh, profiles, k, omega, source_mass_eV,
                  anchor_s=0., clock_origin=0., aperture=1., tolerance=2e-13,
-                 maximum_iterations=80, **kwargs):
+                 maximum_iterations=80, derivative_tolerance=2e-13, **kwargs):
         mesh = np.asarray(mesh, dtype=float)
         profiles = np.asarray(profiles, dtype=float)
         if (mesh.ndim != 1 or len(mesh)<2 or not np.all(np.isfinite(mesh))
@@ -46,7 +55,8 @@ class NativeCavityProbe(xt.BeamElement):
             raise ValueError('finite cell profiles require shape(cells,4,10)')
         for name, value in (('k', k), ('omega', omega),
                             ('source_mass_eV', source_mass_eV),
-                            ('aperture', aperture), ('tolerance', tolerance)):
+                            ('aperture', aperture), ('tolerance', tolerance),
+                            ('derivative_tolerance', derivative_tolerance)):
             if not np.isscalar(value) or not np.isfinite(value) or value<=0:
                 raise ValueError(name+' must be finite and positive')
         if (isinstance(maximum_iterations, (bool, np.bool_))
@@ -62,6 +72,7 @@ class NativeCavityProbe(xt.BeamElement):
             source_mass_eV=source_mass_eV, anchor_s=anchor_s,
             clock_origin=clock_origin, aperture=aperture,
             tolerance=tolerance, maximum_iterations=maximum_iterations,
+            derivative_tolerance=derivative_tolerance,
             **kwargs)
 
 
@@ -329,3 +340,138 @@ def test_native_cavity_standalone_domain_and_gauge_refusal(tmp_path):
             for name, original in before.items():
                 np.testing.assert_array_equal(particle_values(particle)[name],
                                               original, err_msg=name)
+
+
+def tangent_output(element, particles, *, reverse=False):
+    """Run the observational kernel; buffers use physical particle slots."""
+    context = particles._context
+    output = context.nparray_to_context_array(
+        np.full((particles._capacity, 44), np.nan))
+    statuses = context.nparray_to_context_array(
+        np.zeros(particles._capacity, dtype=np.int64))
+    element.native_tangent(particles, reverse=int(reverse), output=output,
+                           statuses=statuses)
+    return np.asarray(output).copy(), np.asarray(statuses).copy()
+
+
+def test_native_cavity_own_finite_root_derivative(tmp_path):
+    _, _, data, launch, _ = prepared_case()
+    scales = np.array([1/data['k'], 1/np.sqrt(2.4**2-1),
+        1/data['k'], 1/np.sqrt(2.4**2-1),
+        (np.sqrt(2.4**2-1)/2.4)/data['k'], 1.])
+    names = ('x', 'px', 'y', 'py', 'zeta', 'delta')
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context, **data)
+        particle = xt.Particles(_context=context, **launch)
+        original = particle_values(particle)
+        output, statuses = tangent_output(element, particle)
+        assert statuses[0] == 1
+        for name, value in original.items():
+            np.testing.assert_array_equal(particle_values(particle)[name], value)
+        element.track(particle)
+        endpoint = np.array([getattr(particle, name)[0] for name in names])
+        np.testing.assert_array_equal(output[0, :6], endpoint)
+        assert output[0, 42] < element.tolerance
+        assert output[0, 43] < element.derivative_tolerance
+        matrix = output[0, 6:42].reshape(6, 6)
+        normalized = matrix*scales[np.newaxis, :]/scales[:, np.newaxis]
+        stencils = []
+        for h in (2e-6, 1e-6):
+            columns = []
+            for column, name in enumerate(names):
+                plus = xt.Particles(_context=context, **dict(launch,
+                    **{name: launch[name]+h*scales[column]}))
+                minus = xt.Particles(_context=context, **dict(launch,
+                    **{name: launch[name]-h*scales[column]}))
+                element.track(plus)
+                element.track(minus)
+                assert plus.state[0] == minus.state[0] == 1
+                columns.append(np.array([getattr(plus, row)[0]
+                    -getattr(minus, row)[0] for row in names])/(2*h*scales))
+            stencils.append(np.column_stack(columns))
+        extrapolated = (4*stencils[1]-stencils[0])/3
+        # A dimensionless finite-difference diagnostic, not a derivative error
+        # certificate or differentiation of the floating stopping program.
+        np.testing.assert_allclose(normalized, extrapolated,
+                                   rtol=2e-7, atol=2e-8)
+        backward, backward_status = tangent_output(element, particle,
+                                                    reverse=True)
+        assert backward_status[0] == 1
+        reverse_matrix = backward[0, 6:42].reshape(6, 6)
+        product = reverse_matrix@matrix
+        product = product*scales[np.newaxis, :]/scales[:, np.newaxis]
+        np.testing.assert_allclose(product, np.eye(6), rtol=0., atol=3e-11)
+
+
+def test_native_cavity_derivative_failure_is_observational(tmp_path):
+    data, launch = drift_case()
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context, **data)
+        element.derivative_tolerance = 0.
+        particle = xt.Particles(_context=context, **launch)
+        before = particle_values(particle)
+        output, statuses = tangent_output(element, particle)
+        assert statuses[0] == -4
+        assert np.all(np.isnan(output))
+        assert particle.state[0] == 1
+        for name, value in before.items():
+            np.testing.assert_array_equal(particle_values(particle)[name], value)
+
+
+def test_native_cavity_variational_exhaustion_is_observational(tmp_path):
+    _, _, data, launch, _ = prepared_case()
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,
+            derivative_tolerance=1e-300, **data)
+        # The nominal stages use the ordinary positive tolerance/80-iteration
+        # contract. This separate diagnostic requests an unattainably tight
+        # variational residual on a nontrivial interior RF cell.
+        particle = xt.Particles(_context=context, **launch)
+        before = particle_values(particle)
+        output, statuses = tangent_output(element, particle)
+        assert statuses[0] == -2
+        assert np.all(np.isnan(output))
+        assert particle.state[0] == 1
+        for name, value in before.items():
+            np.testing.assert_array_equal(particle_values(particle)[name], value)
+        element.track(particle)
+        assert particle.state[0] == 1
+
+
+def test_native_cavity_actual_species_shared_hardware(tmp_path):
+    _, fixture, data, launch, canonical = prepared_case()
+    species_owner = pytest.importorskip('validation.species')
+    # A heterogeneous batch under the same electron reference; all species
+    # have the same normalized launch, not the same absolute momentum.
+    species = [species_owner.SPECIES_BY_NAME[name]
+               for name in ('e-', 'e+', 'p+', 'Pb208')]
+    mass_eV = np.array([item.mass_eV for item in species])
+    charge_e = np.array([item.charge_e for item in species])
+    mass_ratio = mass_eV/launch['mass0']
+    charge_ratio = charge_e/launch['q0']
+    expected = []
+    for mass, charge in zip(mass_eV, charge_e):
+        selected = dict(fixture, charge=charge*launch['mass0']/mass)
+        endpoint, reference = reference_endpoint(selected, canonical,
+                                                 data['mesh'])
+        rf, magnetic = reference.jets(data['mesh'][-1], endpoint[:3])
+        potential = selected['charge']*(rf+magnetic)[:, 0]
+        gamma = endpoint[5]-potential[3]
+        kappa = launch['p0c']/launch['mass0']
+        beta = kappa/2.4
+        expected.append([endpoint[0]/data['k'],
+            (endpoint[3]-potential[0])/kappa,
+            endpoint[1]/data['k'], (endpoint[4]-potential[1])/kappa,
+            beta/data['k']*(data['clock_origin']
+                +(data['mesh'][-1]-data['mesh'][0])/beta-endpoint[2]),
+            np.sqrt((gamma-1.)*(gamma+1.))/kappa-1.])
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context, **data)
+        particle = xt.Particles(_context=context, **launch,
+            mass_ratio=mass_ratio, charge_ratio=charge_ratio,
+            particle_id=np.arange(4))
+        element.track(particle)
+        assert np.all(particle.state == 1)
+        actual = np.column_stack([getattr(particle, name) for name in
+                                  ('x', 'px', 'y', 'py', 'zeta', 'delta')])
+        np.testing.assert_allclose(actual, expected, rtol=0., atol=3e-13)
