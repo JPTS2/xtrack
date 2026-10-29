@@ -151,13 +151,14 @@ int CavityNative_gauss_response(const double q[6], const double rin[6],
 // Schott quadrature defect or numerical/physical accuracy certificate.
 // q, xi, physical response, work and both residual outputs are transactional.
 GPUFUN
-int CavityNative_gauss_schott_response_stages(const double q[6],
+int CavityNative_gauss_schott_response_stage_data(const double q[6],
         const double xi_in[6],
         double h, double Q, const double profiles[40], double aperture,
         int64_t max_iter, double tol, double response_tol, double out[6],
         double xi_out[6], double physical_response[6], double work[3],
         double* residual, double* response_residual,
-        double* accepted_orbit_stages, double* accepted_physical_stages) {
+        double* accepted_orbit_stages, double* accepted_physical_stages,
+        double* accepted_auxiliary_stages) {
     if (!isfinite(response_tol) || response_tol <= 0.)
         return CAVITY_NATIVE_ARGUMENT;
     for (int k=0; k<6; ++k)
@@ -273,11 +274,30 @@ int CavityNative_gauss_schott_response_stages(const double q[6],
                 if (accepted_physical_stages != 0)
                     for (int k=0; k<12; ++k)
                         accepted_physical_stages[k] = physical_stages[k];
+                if (accepted_auxiliary_stages != 0)
+                    for (int i=0; i<2; ++i)
+                        for (int k=0; k<6; ++k)
+                            accepted_auxiliary_stages[i*6+k] = xi[i][k];
                 return CAVITY_NATIVE_OK;
             }
         }
     }
     return CAVITY_NATIVE_ITERATIONS;
+}
+
+// Compatibility stage interface; only the new global spin chart requests
+// xi directly, avoiding subtraction of a resolved Schott term from r=xi+s.
+GPUFUN
+int CavityNative_gauss_schott_response_stages(const double q[6],
+        const double xi_in[6], double h, double Q, const double profiles[40],
+        double aperture, int64_t max_iter, double tol, double response_tol,
+        double out[6], double xi_out[6], double physical_response[6],
+        double work[3], double* residual, double* response_residual,
+        double* accepted_orbit_stages, double* accepted_physical_stages) {
+    return CavityNative_gauss_schott_response_stage_data(q, xi_in, h, Q,
+        profiles, aperture, max_iter, tol, response_tol, out, xi_out,
+        physical_response, work, residual, response_residual,
+        accepted_orbit_stages, accepted_physical_stages, 0);
 }
 
 GPUFUN
@@ -459,6 +479,251 @@ int CavityNative_gauss_schott_spin_response(const double q[6],
                 residuals[1] = auxiliary_residual;
                 residuals[2] = passive_residual;
                 residuals[3] = actual;
+                return CAVITY_NATIVE_OK;
+            }
+        }
+    }
+    return CAVITY_NATIVE_ITERATIONS;
+}
+
+// Optional product in the NEW global Schott-spin coordinate only.
+GPUFUN
+int CavityNative_spin_chart_product(const double generator[9],
+        const double response[9], const double forcing[9], double product[9]) {
+    double result[9];
+    for (int row=0; row<3; ++row)
+        for (int col=0; col<3; ++col) {
+            double value = forcing[row*3+col];
+            for (int k=0; k<3; ++k)
+                value += generator[row*3+k]*response[k*3+col];
+            if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+            result[row*3+col] = value;
+        }
+    for (int k=0; k<9; ++k) product[k] = result[k];
+    return CAVITY_NATIVE_OK;
+}
+
+// Another, explicitly DIFFERENT radiative finite word: GLOBAL Y=P-K*R0,
+// K=skew(k), using the independently proved Schott-spin source27.
+// Initialize Yin=Pin-Kin*Rin ONCE at the global entrance, then carry Yout
+// directly across all cells. Physical P=Y+K*R0 is reconstructed one-sided
+// from each cell's actual endpoint profile. Raw discontinuous cached faces
+// therefore never cause a hidden per-cell rematch/reset of Y or xi.
+//
+// Accepted local passive stages are multiplied by Rin; the actual global
+// defining residual is separately checked against absolute spin_tol.
+// Accepted xi stages are recorded directly, NEVER recovered as (xi+s)-s.
+// Yi=Yin+h sum_j Aij(G0j Yj+skew(Dqg0j*xij+Bj)*R0j).
+// Rout=U0*Rin, Pout=Yout+Kout*Rout. Incoming R/Y are arbitrary finite
+// matrices; very large inputs can fail the explicit absolute residual gates.
+// No normalization/projection, finite-rho feedback or stochastic law.
+// residuals=(nominal,xi,local_passive,global_passive,Y), not error bounds.
+// Every output is untouched on failure. Profiles40 are TRUE Re/Im0..4;
+// no material-D5 padding or evaluation is part of this NEW consumer.
+GPUFUN
+int CavityNative_gauss_schott_spin_chart(const double q[6],
+        const double xi_in[6], const double rotation_in[9],
+        const double shifted_spin_in[9], double h, double Q, double anomaly,
+        const double profiles[40], double aperture, int64_t max_iter,
+        double tol, double response_tol, double spin_tol, double shifted_tol,
+        double out[6], double xi_out[6], double physical_response[6],
+        double rotation_out[9], double shifted_spin_out[9],
+        double physical_spin_response[9], double work[3], double residuals[5]) {
+    if (!isfinite(shifted_tol) || shifted_tol <= 0.)
+        return CAVITY_NATIVE_ARGUMENT;
+    for (int k=0; k<9; ++k)
+        if (!isfinite(rotation_in[k]) || !isfinite(shifted_spin_in[k]))
+            return CAVITY_NATIVE_NONFINITE;
+    double spin_endpoint[6], mean_endpoint[6], local_rotation[9];
+    double spin_qstages[12], mean_qstages[12], local_spin_stages[18];
+    double auxiliary_stages[12], auxiliary[6], physical[6], local_work[3];
+    double nominal_residual, mean_nominal_residual, auxiliary_residual;
+    double local_passive_residual;
+    int status = CavityNative_gauss_spin_stages(q, h, Q, anomaly, profiles,
+        aperture, max_iter, tol, spin_tol, spin_endpoint, local_rotation,
+        &nominal_residual, &local_passive_residual, spin_qstages,
+        local_spin_stages);
+    if (status != CAVITY_NATIVE_OK) return status;
+    status = CavityNative_gauss_schott_response_stage_data(q, xi_in, h, Q,
+        profiles, aperture, max_iter, tol, response_tol, mean_endpoint,
+        auxiliary, physical, local_work, &mean_nominal_residual,
+        &auxiliary_residual, mean_qstages, 0, auxiliary_stages);
+    if (status != CAVITY_NATIVE_OK) return status;
+    for (int k=0; k<6; ++k)
+        if (spin_endpoint[k] != mean_endpoint[k]
+                || signbit(spin_endpoint[k]) != signbit(mean_endpoint[k]))
+            return CAVITY_NATIVE_ARGUMENT;
+    for (int k=0; k<12; ++k)
+        if (spin_qstages[k] != mean_qstages[k]
+                || signbit(spin_qstages[k]) != signbit(mean_qstages[k]))
+            return CAVITY_NATIVE_ARGUMENT;
+    const double C[2] = {0.21132486540518713, 0.7886751345948129};
+    const double A[2][2] = {{0.25, -0.038675134594812866},
+                            {0.5386751345948129, 0.25}};
+    double global_stages[2][9], generators[2][9], global_products[2][9];
+    double global_rotation[9];
+    for (int row=0; row<3; ++row)
+        for (int col=0; col<3; ++col) {
+            double value = 0.;
+            for (int k=0; k<3; ++k)
+                value += local_rotation[row*3+k]*rotation_in[k*3+col];
+            if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+            global_rotation[row*3+col] = value;
+        }
+    for (int i=0; i<2; ++i) {
+        status = CavityNative_spin_generator(spin_qstages+i*6, Q, anomaly,
+            profiles+(i+1)*10, aperture, generators[i]);
+        if (status != CAVITY_NATIVE_OK) return status;
+        for (int row=0; row<3; ++row)
+            for (int col=0; col<3; ++col) {
+                double value = 0.;
+                for (int k=0; k<3; ++k)
+                    value += local_spin_stages[i*9+row*3+k]
+                        *rotation_in[k*3+col];
+                if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+                global_stages[i][row*3+col] = value;
+            }
+        const double zero[9] = {0.,0.,0.,0.,0.,0.,0.,0.,0.};
+        status = CavityNative_spin_chart_product(generators[i],
+            global_stages[i], zero, global_products[i]);
+        if (status != CAVITY_NATIVE_OK) return status;
+    }
+    double global_passive_residual = 0.;
+    for (int i=0; i<2; ++i)
+        for (int k=0; k<9; ++k) {
+            double defect = global_stages[i][k]-rotation_in[k]-h*(
+                A[i][0]*global_products[0][k]+A[i][1]*global_products[1][k]);
+            if (!isfinite(defect)) return CAVITY_NATIVE_NONFINITE;
+            global_passive_residual = fmax(global_passive_residual,
+                                           fabs(defect));
+        }
+    if (!(global_passive_residual < spin_tol))
+        return CAVITY_NATIVE_ITERATIONS;
+    double entrance_generator[9], entrance_packet[27], entrance_vector[3];
+    status = CavityNative_spin_generator(q, Q, anomaly, profiles, aperture,
+                                         entrance_generator);
+    if (status != CAVITY_NATIVE_OK) return status;
+    status = CavityNative_spin_schott_source(q, Q, anomaly, profiles,
+                                            aperture, entrance_packet);
+    if (status != CAVITY_NATIVE_OK) return status;
+    for (int row=0; row<3; ++row) {
+        double value = entrance_packet[24+row];
+        for (int k=0; k<6; ++k)
+            value += entrance_packet[3+row*6+k]*xi_in[k];
+        if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+        entrance_vector[row] = value;
+    }
+    double entrance_matrix[9] = {
+        0., -entrance_vector[2], entrance_vector[1],
+        entrance_vector[2], 0., -entrance_vector[0],
+        -entrance_vector[1], entrance_vector[0], 0.};
+    double entrance_forcing[9], entrance_rhs[9], forcing[2][9];
+    for (int row=0; row<3; ++row)
+        for (int col=0; col<3; ++col) {
+            double value = 0.;
+            for (int k=0; k<3; ++k)
+                value += entrance_matrix[row*3+k]*rotation_in[k*3+col];
+            if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+            entrance_forcing[row*3+col] = value;
+        }
+    status = CavityNative_spin_chart_product(entrance_generator,
+        shifted_spin_in, entrance_forcing, entrance_rhs);
+    if (status != CAVITY_NATIVE_OK) return status;
+    for (int i=0; i<2; ++i) {
+        double packet[27], vector[3];
+        status = CavityNative_spin_schott_source(spin_qstages+i*6, Q, anomaly,
+            profiles+(i+1)*10, aperture, packet);
+        if (status != CAVITY_NATIVE_OK) return status;
+        for (int row=0; row<3; ++row) {
+            double value = packet[24+row];
+            for (int k=0; k<6; ++k)
+                value += packet[3+row*6+k]*auxiliary_stages[i*6+k];
+            if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+            vector[row] = value;
+        }
+        double matrix[9] = {0., -vector[2], vector[1],
+            vector[2], 0., -vector[0], -vector[1], vector[0], 0.};
+        for (int row=0; row<3; ++row)
+            for (int col=0; col<3; ++col) {
+                double value = 0.;
+                for (int k=0; k<3; ++k)
+                    value += matrix[row*3+k]*global_stages[i][k*3+col];
+                if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+                forcing[i][row*3+col] = value;
+            }
+    }
+    double shifted[2][9], proposed[2][9], products[2][9];
+    for (int i=0; i<2; ++i)
+        for (int k=0; k<9; ++k) {
+            shifted[i][k] = shifted_spin_in[k]+C[i]*h*entrance_rhs[k];
+            if (!isfinite(shifted[i][k])) return CAVITY_NATIVE_NONFINITE;
+        }
+    for (int64_t iteration=0; iteration<max_iter; ++iteration) {
+        for (int i=0; i<2; ++i) {
+            status = CavityNative_spin_chart_product(generators[i],
+                shifted[i], forcing[i], products[i]);
+            if (status != CAVITY_NATIVE_OK) return status;
+        }
+        double change = 0.;
+        for (int i=0; i<2; ++i)
+            for (int k=0; k<9; ++k) {
+                proposed[i][k] = shifted_spin_in[k]+h*(
+                    A[i][0]*products[0][k]+A[i][1]*products[1][k]);
+                if (!isfinite(proposed[i][k])) return CAVITY_NATIVE_NONFINITE;
+                change = fmax(change, fabs(proposed[i][k]-shifted[i][k]));
+            }
+        for (int i=0; i<2; ++i)
+            for (int k=0; k<9; ++k) shifted[i][k] = proposed[i][k];
+        if (change < shifted_tol) {
+            for (int i=0; i<2; ++i) {
+                status = CavityNative_spin_chart_product(generators[i],
+                    shifted[i], forcing[i], products[i]);
+                if (status != CAVITY_NATIVE_OK) return status;
+            }
+            double actual = 0.;
+            for (int i=0; i<2; ++i)
+                for (int k=0; k<9; ++k) {
+                    double defect = shifted[i][k]-shifted_spin_in[k]-h*(
+                        A[i][0]*products[0][k]+A[i][1]*products[1][k]);
+                    if (!isfinite(defect)) return CAVITY_NATIVE_NONFINITE;
+                    actual = fmax(actual, fabs(defect));
+                }
+            if (actual < shifted_tol) {
+                double result[9], endpoint_packet[27], physical_spin[9];
+                status = CavityNative_spin_schott_source(spin_endpoint, Q,
+                    anomaly, profiles+30, aperture, endpoint_packet);
+                if (status != CAVITY_NATIVE_OK) return status;
+                double k_matrix[9] = {0., -endpoint_packet[23],
+                    endpoint_packet[22], endpoint_packet[23], 0.,
+                    -endpoint_packet[21], -endpoint_packet[22],
+                    endpoint_packet[21], 0.};
+                for (int k=0; k<9; ++k) {
+                    result[k] = shifted_spin_in[k]
+                        +h*((products[0][k]+products[1][k])*0.5);
+                    if (!isfinite(result[k])) return CAVITY_NATIVE_NONFINITE;
+                }
+                for (int row=0; row<3; ++row)
+                    for (int col=0; col<3; ++col) {
+                        double value = result[row*3+col];
+                        for (int k=0; k<3; ++k)
+                            value += k_matrix[row*3+k]
+                                *global_rotation[k*3+col];
+                        if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+                        physical_spin[row*3+col] = value;
+                    }
+                for (int k=0; k<6; ++k) out[k] = spin_endpoint[k];
+                for (int k=0; k<6; ++k) xi_out[k] = auxiliary[k];
+                for (int k=0; k<6; ++k) physical_response[k] = physical[k];
+                for (int k=0; k<9; ++k) rotation_out[k] = global_rotation[k];
+                for (int k=0; k<9; ++k) shifted_spin_out[k] = result[k];
+                for (int k=0; k<9; ++k)
+                    physical_spin_response[k] = physical_spin[k];
+                for (int k=0; k<3; ++k) work[k] = local_work[k];
+                residuals[0] = nominal_residual;
+                residuals[1] = auxiliary_residual;
+                residuals[2] = local_passive_residual;
+                residuals[3] = global_passive_residual;
+                residuals[4] = actual;
                 return CAVITY_NATIVE_OK;
             }
         }

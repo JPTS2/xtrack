@@ -942,3 +942,247 @@ def test_native_spin_schott_source_independent_cancellation(tmp_path):
                 context, state, -1., anomaly, data, aperture=aperture)
             assert status == expected
             np.testing.assert_array_equal(value, sentinel)
+
+
+def compile_spin_chart_query(context):
+    """Expose GLOBAL Y and direct accepted auxiliary stages, without reset."""
+    context.add_kernels(sources=[r'''
+        #include "xobjects/headers/common.h"
+        #include "xtrack/beam_elements/elements_src/cavity_native_response.h"
+        GPUKERN
+        void cavity_spin_chart_review(double* q, double* xi, double* Rin,
+                double* Yin, double h, double charge, double anomaly,
+                double* profiles, double Ytol, int64_t stages, double* output,
+                double* qs, double* Rs, double* xs, double* rs,
+                int64_t* status) {
+            if (!stages) {
+                status[0] = CavityNative_gauss_schott_spin_chart(q, xi,
+                    Rin, Yin, h, charge, anomaly, profiles, .1, 80,
+                    2e-13, 2e-13, 2e-13, Ytol, output, output+6,
+                    output+12, output+18, output+27, output+36,
+                    output+45, output+48);
+                return;
+            }
+            double meanq[6], meanqs[12], nominal_residual;
+            status[0] = CavityNative_gauss_spin_stages(q, h, charge,
+                anomaly, profiles, .1, 80, 2e-13, 2e-13, output, output+18,
+                output+48, output+50, qs, Rs);
+            if (status[0] != 1) return;
+            status[0] = CavityNative_gauss_schott_response_stage_data(q, xi,
+                h, charge, profiles, .1, 80, 2e-13, 2e-13, meanq, output+6,
+                output+12, output+45, &nominal_residual, output+49,
+                meanqs, rs, xs);
+            if (status[0] != 1) return;
+            for (int j=0; j<6; ++j)
+                if (output[j] != meanq[j]
+                        || signbit(output[j]) != signbit(meanq[j]))
+                    status[0] = -4;
+            for (int j=0; j<12; ++j)
+                if (qs[j] != meanqs[j]
+                        || signbit(qs[j]) != signbit(meanqs[j]))
+                    status[0] = -4;
+        }
+    '''], kernels={'cavity_spin_chart_review': xo.Kernel(args=[
+        xo.Arg(xo.Float64, pointer=True, name='q'),
+        xo.Arg(xo.Float64, pointer=True, name='xi'),
+        xo.Arg(xo.Float64, pointer=True, name='Rin'),
+        xo.Arg(xo.Float64, pointer=True, name='Yin'),
+        xo.Arg(xo.Float64, name='h'),
+        xo.Arg(xo.Float64, name='charge'),
+        xo.Arg(xo.Float64, name='anomaly'),
+        xo.Arg(xo.Float64, pointer=True, name='profiles'),
+        xo.Arg(xo.Float64, name='Ytol'),
+        xo.Arg(xo.Int64, name='stages'),
+        xo.Arg(xo.Float64, pointer=True, name='output'),
+        xo.Arg(xo.Float64, pointer=True, name='qs'),
+        xo.Arg(xo.Float64, pointer=True, name='Rs'),
+        xo.Arg(xo.Float64, pointer=True, name='xs'),
+        xo.Arg(xo.Float64, pointer=True, name='rs'),
+        xo.Arg(xo.Int64, pointer=True, name='status')], n_threads=1)})
+
+
+def spin_chart_query(context, q, xi, rotation, shifted, h, charge, anomaly,
+                     profiles, *, stages=False, shifted_tol=2e-13):
+    """Keep all 53 public outputs transactional, along with input buffers."""
+    inputs = [np.asarray(value, dtype=float).ravel().copy()
+              for value in (q, xi, rotation, shifted, profiles)]
+    buffers = [context.nparray_to_context_array(value) for value in inputs]
+    sentinels = [np.arange(size, dtype=float)+461.25+i
+                 for i, size in enumerate((53, 12, 18, 12, 12))]
+    outputs = [context.nparray_to_context_array(value.copy())
+               for value in sentinels]
+    status = context.nparray_to_context_array(np.zeros(1, dtype=np.int64))
+    context.kernels.cavity_spin_chart_review(q=buffers[0], xi=buffers[1],
+        Rin=buffers[2], Yin=buffers[3], h=h, charge=charge, anomaly=anomaly,
+        profiles=buffers[4], Ytol=shifted_tol, stages=int(stages),
+        output=outputs[0], qs=outputs[1], Rs=outputs[2], xs=outputs[3],
+        rs=outputs[4], status=status)
+    for before, after in zip(inputs, buffers):
+        np.testing.assert_array_equal(before, np.asarray(after))
+    return ([np.asarray(value).copy() for value in outputs],
+            int(np.asarray(status)[0]), sentinels)
+
+
+def independent_profile_event(context, element, z, q, charge, profile):
+    """Read only E/B, with actual D5 and an explicit D5-invariance witness.
+
+    The new word has ten-slot true profiles. The field-only observer requires
+    twelve slots: retain the analytic fixture's D5 and overwrite the supplied
+    one-sided raw 0..4 values. No material-derivative row is used as an oracle.
+    """
+    full_profile = profile_at(z).copy()
+    full_profile[:5] = profile[:5]
+    full_profile[6:11] = profile[5:]
+    u = mechanical_event(q, charge, full_profile)
+    particles = event_particles(context, element, z, q[:3], momentum=u)
+    values, status, _ = observe(element, particles, z, full_profile, 0.)
+    assert status[0] == 1
+    alternate = full_profile.copy()
+    alternate[5] += 1.7
+    alternate[11] -= .9
+    varied, status, _ = observe(element, particles, z, alternate, 0.)
+    assert status[0] == 1
+    np.testing.assert_array_equal(values[0, 12:18], varied[0, 12:18])
+    E, B = values[0, 12:15], values[0, 15:18]
+    gamma = q[5]
+    force = charge*(E+np.cross(u/gamma, B))
+    schott = np.r_[np.zeros(3), gamma*force[:2], charge*(u@E)]
+    k = np.cross(gamma*force, u)/(gamma+1)
+    return u, E, B, schott, k
+
+
+def canonical_spin_direction(context, element, z, q, charge, anomaly, xi):
+    """Normalize the direction before differencing weak-ion generators."""
+    size = np.max(abs(xi))
+    if size == 0:
+        return np.zeros(3)
+    direction = xi/size
+    derivatives = []
+    for h in (2e-4, 1e-4):
+        plus = covariant_spin_generator(context, element, z, q+h*direction,
+            charge, anomaly, 0.)[0]/charge
+        minus = covariant_spin_generator(context, element, z, q-h*direction,
+            charge, anomaly, 0.)[0]/charge
+        derivatives.append((plus-minus)/(2*h))
+    return charge*size*(4*derivatives[1]-derivatives[0])/3
+
+
+def test_native_global_spin_chart_independent_dense_carry(tmp_path):
+    """Check the distinct GLOBAL Y word, not a per-cell physical-P reset.
+
+    The deliberately inconsistent raw face below distinguishes finite-word
+    definitions. It supplies no physical source jump or impulse admission.
+    Coefficients remain rho-free, with Pb physical zero-spin readback only.
+    """
+    with native_context(tmp_path) as context:
+        compile_spin_chart_query(context)
+        element = observer_element(context)
+        point = np.array((.003, -.002, .4))
+        momentum = np.array((.2, -.1, 2.))
+        mesh = np.array((-.04, .02, .08))
+        nodes = np.array((.5-np.sqrt(3)/6, .5+np.sqrt(3)/6))
+        axis = np.array((1., 2., -1.))/np.sqrt(6)
+        skew = cross_matrix(axis)
+        initial_rotation = (np.eye(3)+np.sin(.31)*skew
+                            +(1-np.cos(.31))*(skew@skew))
+        tangent = cross_matrix(np.array((.017, -.011, .023)))
+        cases = ((-1., .001, True), (1., .002, True),
+                 (MASS0/938272088.16, .3, True),
+                 (82*MASS0/193687272900., 0., True),
+                 (MASS0/938272088.16, .3, False))
+        strict_case = None
+        for charge, anomaly, nonzero in cases:
+            q = canonical_event(point, momentum, charge, profile_at(mesh[0], 4))
+            _, _, _, schott, k = independent_profile_event(
+                context, element, mesh[0], q, charge, profile_at(mesh[0], 4))
+            physical_r = (np.array((.03, -.02, .01, .02, -.01, .025))
+                          if nonzero else np.zeros(6))
+            rotation = initial_rotation.copy() if nonzero else np.eye(3)
+            physical_P = tangent@rotation if nonzero else np.zeros((3, 3))
+            xi = physical_r-schott
+            shifted = physical_P-cross_matrix(k)@rotation
+            tolerance = 2e-13 if nonzero else 1e-20
+            for cell, (start, stop) in enumerate(zip(mesh[:-1], mesh[1:])):
+                h = stop-start
+                planes = np.r_[start, start+h*nodes, stop]
+                profiles = np.array([profile_at(z, 4) for z in planes])
+                raw_face = charge == -1. and cell == 1
+                if raw_face:
+                    profiles[0] *= .5
+                inputs = (q.copy(), xi.copy(), rotation.copy(), shifted.copy(),
+                          h, charge, anomaly, profiles.ravel().copy())
+                outputs, status, _ = spin_chart_query(
+                    context, *inputs, shifted_tol=tolerance)
+                assert status == 1
+                data = outputs[0]
+                accepted, status, _ = spin_chart_query(
+                    context, *inputs, stages=True, shifted_tol=tolerance)
+                assert status == 1
+                old, qs, Rs, xs, rs = accepted
+                for left, right in ((data[:18], old[:18]),
+                                    (data[45:51], old[45:51])):
+                    np.testing.assert_array_equal(
+                        left.view(np.uint64), right.view(np.uint64))
+                if np.array_equal(rotation, np.eye(3)):
+                    np.testing.assert_array_equal(data[18:27].view(np.uint64),
+                                                  old[18:27].view(np.uint64))
+                generators, forcing = [], []
+                for z, state, auxiliary, physical, jets in zip(planes[1:3],
+                        qs.reshape(2, 6), xs.reshape(2, 6), rs.reshape(2, 6),
+                        profiles[1:3]):
+                    u, E, B, s, _ = independent_profile_event(
+                        context, element, z, state, charge, jets)
+                    np.testing.assert_allclose(physical, auxiliary+s,
+                                               rtol=2e-12, atol=2e-13)
+                    _, residue, _, _ = unit_spin_schott_oracle(
+                        u, anomaly, E, B)
+                    direction = canonical_spin_direction(context, element,
+                        z, state, charge, anomaly, auxiliary)
+                    g0 = covariant_field_generator(u, charge, anomaly, E, B)
+                    generators.append(cross_matrix(g0))
+                    forcing.append(cross_matrix(direction+charge**2*residue))
+                expected_R, expected_Y, stage_R = dense_spin_word(generators,
+                    forcing, h, rotation, shifted)
+                accepted_R = Rs.reshape(2, 3, 3)@rotation
+                np.testing.assert_allclose(accepted_R, stage_R,
+                                           rtol=2e-11, atol=2e-13)
+                _, _, _, _, kout = independent_profile_event(
+                    context, element, stop, data[:6], charge, profiles[-1])
+                expected_P = expected_Y+cross_matrix(kout)@expected_R
+                native_R = data[18:27].reshape(3, 3)
+                native_Y = data[27:36].reshape(3, 3)
+                native_P = data[36:45].reshape(3, 3)
+                np.testing.assert_allclose(native_R, expected_R,
+                                           rtol=2e-11, atol=2e-13)
+                np.testing.assert_allclose(native_Y, expected_Y,
+                                           rtol=3e-8, atol=3e-11)
+                if nonzero:
+                    np.testing.assert_allclose(native_P, expected_P,
+                                               rtol=3e-8, atol=3e-11)
+                else:
+                    np.testing.assert_allclose(native_P/charge**2,
+                        expected_P/charge**2, rtol=3e-6, atol=3e-9)
+                    assert np.max(abs(native_P/charge**2)) > 1e-7
+                np.testing.assert_allclose(native_P,
+                    native_Y+cross_matrix(kout)@native_R,
+                    rtol=2e-12, atol=2e-13)
+                if raw_face:
+                    _, _, _, _, kin_new = independent_profile_event(
+                        context, element, start, q, charge, profiles[0])
+                    wrong_reset = physical_P-cross_matrix(kin_new)@rotation
+                    _, wrong_Y, _ = dense_spin_word(generators, forcing,
+                        h, rotation, wrong_reset)
+                    assert np.max(abs(wrong_Y-expected_Y)) > 1e-7
+                np.testing.assert_allclose(native_R.T@native_P
+                    + native_P.T@native_R, 0., atol=2e-11)
+                np.testing.assert_array_equal(native_P@np.zeros(3), 0.)
+                q, xi = data[:6].copy(), data[6:12].copy()
+                rotation, shifted = native_R.copy(), native_Y.copy()
+                physical_P = native_P.copy()
+                if strict_case is None:
+                    strict_case = inputs
+        failed, status, sentinels = spin_chart_query(
+            context, *strict_case, shifted_tol=1e-300)
+        assert status == -2
+        for output, sentinel in zip(failed, sentinels):
+            np.testing.assert_array_equal(output, sentinel)
