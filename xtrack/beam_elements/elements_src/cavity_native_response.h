@@ -133,4 +133,133 @@ int CavityNative_gauss_response(const double q[6], const double rin[6],
     }
     return CAVITY_NATIVE_ITERATIONS;
 }
+
+// A DIFFERENT radiative finite word in the Schott-shifted response coordinate.
+// Existing particle_response.local_split supplies S1=D0s-ell; set xi=r-s.
+// xi'=J*xi+J*s-ell. Initialize xi=physical_rin-s_in ONCE at the global
+// entrance, then carry xi_out directly between contiguous cells. Physical
+// stage response is xi_i+s_i; physical endpoint response is xi_out+s_out.
+// All six components and nonzero interior boundary s values are retained.
+// This is not the direct-word derivative above or an endpoint-energy repair.
+// Profiles40 are the true Re/Im0..4 values; no material D5 is consumed.
+//
+// work=(changed_RF_work1, positive_forward_emission1, Schott_boundary1).
+// For Phi=0, the transformed defining E equation gives
+// physical_rout_E-physical_rin_E=work[0]-work[1]+work[2], up to FP/solve
+// defects. This is a property of THIS new word, not a removed direct-word
+// Schott quadrature defect or numerical/physical accuracy certificate.
+// q, xi, physical response, work and both residual outputs are transactional.
+GPUFUN
+int CavityNative_gauss_schott_response(const double q[6], const double xi_in[6],
+        double h, double Q, const double profiles[40], double aperture,
+        int64_t max_iter, double tol, double response_tol, double out[6],
+        double xi_out[6], double physical_response[6], double work[3],
+        double* residual, double* response_residual) {
+    if (!isfinite(response_tol) || response_tol <= 0.)
+        return CAVITY_NATIVE_ARGUMENT;
+    for (int k=0; k<6; ++k)
+        if (!isfinite(xi_in[k])) return CAVITY_NATIVE_NONFINITE;
+    double endpoint[6], stages[12], nominal_residual;
+    int status = CavityNative_gauss_stages(q, h, Q, profiles, aperture,
+        max_iter, tol, endpoint, &nominal_residual, stages);
+    if (status != CAVITY_NATIVE_OK) return status;
+    double entrance[12], exit[12], entrance_jacobian[36], entrance_rhs[6];
+    status = CavityNative_schott_source(q, Q, profiles, aperture, entrance);
+    if (status != CAVITY_NATIVE_OK) return status;
+    status = CavityNative_schott_source(endpoint, Q, profiles+30, aperture, exit);
+    if (status != CAVITY_NATIVE_OK) return status;
+    status = CavityNative_jacobian(q, Q, profiles, aperture, entrance_jacobian);
+    if (status != CAVITY_NATIVE_OK) return status;
+    for (int row=0; row<6; ++row) {
+        double value = -entrance[6+row];
+        for (int col=0; col<6; ++col)
+            value += entrance_jacobian[row*6+col]
+                *(xi_in[col]+entrance[col]);
+        if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+        entrance_rhs[row] = value;
+    }
+    double jacobian[2][36], split[2][12];
+    for (int i=0; i<2; ++i) {
+        status = CavityNative_jacobian(stages+i*6, Q, profiles+(i+1)*10,
+                                       aperture, jacobian[i]);
+        if (status != CAVITY_NATIVE_OK) return status;
+        status = CavityNative_schott_source(stages+i*6, Q, profiles+(i+1)*10,
+                                            aperture, split[i]);
+        if (status != CAVITY_NATIVE_OK) return status;
+    }
+    const double C[2] = {0.21132486540518713, 0.7886751345948129};
+    const double A[2][2] = {{0.25, -0.038675134594812866},
+                            {0.5386751345948129, 0.25}};
+    double xi[2][6], proposed[2][6], products[2][6];
+    for (int i=0; i<2; ++i)
+        for (int k=0; k<6; ++k) {
+            xi[i][k] = xi_in[k]+C[i]*h*entrance_rhs[k];
+            if (!isfinite(xi[i][k])) return CAVITY_NATIVE_NONFINITE;
+        }
+    for (int64_t iteration=0; iteration<max_iter; ++iteration) {
+        for (int i=0; i<2; ++i)
+            for (int row=0; row<6; ++row) {
+                double value = 0.;
+                for (int col=0; col<6; ++col)
+                    value += jacobian[i][row*6+col]*(xi[i][col]+split[i][col]);
+                if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+                products[i][row] = value;
+            }
+        double change = 0.;
+        for (int i=0; i<2; ++i)
+            for (int k=0; k<6; ++k) {
+                proposed[i][k] = xi_in[k]+h*(
+                    A[i][0]*(products[0][k]-split[0][6+k])
+                    +A[i][1]*(products[1][k]-split[1][6+k]));
+                if (!isfinite(proposed[i][k])) return CAVITY_NATIVE_NONFINITE;
+                change = fmax(change, fabs(proposed[i][k]-xi[i][k]));
+            }
+        for (int i=0; i<2; ++i)
+            for (int k=0; k<6; ++k) xi[i][k] = proposed[i][k];
+        if (change < response_tol) {
+            for (int i=0; i<2; ++i)
+                for (int row=0; row<6; ++row) {
+                    double value = 0.;
+                    for (int col=0; col<6; ++col)
+                        value += jacobian[i][row*6+col]
+                            *(xi[i][col]+split[i][col]);
+                    if (!isfinite(value)) return CAVITY_NATIVE_NONFINITE;
+                    products[i][row] = value;
+                }
+            double actual = 0.;
+            for (int i=0; i<2; ++i)
+                for (int k=0; k<6; ++k) {
+                    const double defect = xi[i][k]-xi_in[k]-h*(
+                        A[i][0]*(products[0][k]-split[0][6+k])
+                        +A[i][1]*(products[1][k]-split[1][6+k]));
+                    if (!isfinite(defect)) return CAVITY_NATIVE_NONFINITE;
+                    actual = fmax(actual, fabs(defect));
+                }
+            if (actual < response_tol) {
+                double auxiliary[6], physical[6], local_work[3];
+                for (int k=0; k<6; ++k) {
+                    auxiliary[k] = xi_in[k]+h*0.5*(
+                        (products[0][k]-split[0][6+k])
+                        +(products[1][k]-split[1][6+k]));
+                    physical[k] = auxiliary[k]+exit[k];
+                    if (!isfinite(auxiliary[k]) || !isfinite(physical[k]))
+                        return CAVITY_NATIVE_NONFINITE;
+                }
+                local_work[0] = h*((products[0][5]+products[1][5])*0.5);
+                local_work[1] = h*((split[0][11]+split[1][11])*0.5);
+                local_work[2] = exit[5]-entrance[5];
+                for (int k=0; k<3; ++k)
+                    if (!isfinite(local_work[k])) return CAVITY_NATIVE_NONFINITE;
+                for (int k=0; k<6; ++k) out[k] = endpoint[k];
+                for (int k=0; k<6; ++k) xi_out[k] = auxiliary[k];
+                for (int k=0; k<6; ++k) physical_response[k] = physical[k];
+                for (int k=0; k<3; ++k) work[k] = local_work[k];
+                *residual = nominal_residual;
+                *response_residual = actual;
+                return CAVITY_NATIVE_OK;
+            }
+        }
+    }
+    return CAVITY_NATIVE_ITERATIONS;
+}
 #endif
