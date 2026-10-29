@@ -1234,25 +1234,9 @@ def test_native_cavity_schott_response_discontinuous_faces(tmp_path):
         assert not element.physical_source_qualified
 
 
-def coherent_native_input_boxes(audit,parent,context):
-    """Test-only joint boundary/source/clock/FP point comparison.
-
-    parent is the original full factory snapshot, not a raw metadata claim.
-    Exact parent subarrays authenticate a derived interior observation here;
-    this is neither private-buffer attestation nor source/map qualification.
-    The PUBLIC SI support centre is original anchor+represented length/2;
-    the stored-implied mesh/k centre and its exact displacement are retained
-    separately. beta0 is the native reference coordinate convention, not the
-    tracked particle velocity.
-    phase_rad is the exact represented resolved factory input: current tests
-    use lag0 and never replace represented -np.pi by mathematical -pi.
-    """
-    from types import SimpleNamespace
-    localized = pytest.importorskip('verification.maps.phase_resolved.localized')
+def coherent_factory_binding(audit,parent):
+    """Authenticate original full factory/subslice for two point comparisons."""
     controls = pytest.importorskip('verification.maps.phase_resolved.stage_controls')
-    fields = pytest.importorskip('verification.maps.phase_resolved.localized_controls')
-    providers = pytest.importorskip('verification.maps.phase_resolved.providers')
-    intervals = pytest.importorskip('verification.support.intervals')
     snapshot = audit['source_snapshot']
     metadata = dict(parent.preparation)
     if not metadata or snapshot['preparation']!=metadata:
@@ -1272,12 +1256,20 @@ def coherent_native_input_boxes(audit,parent,context):
             or full_mesh[-1]!=metadata['profile_half_span']):
         raise ValueError('complete original nu1 factory source required')
     exact = lambda value: controls.exact_control(value,'actual native input')
-    box = lambda value: controls.represented(context,value)
     centre = exact(parent.anchor_s)+exact(metadata['length_m'])/2
     stored_centre = exact(parent.anchor_s)-exact(full_mesh[0])/exact(parent.k)
-    inputs = audit['native_input']
-    active = np.flatnonzero(audit['status']==1)
-    positions = tuple(exact(inputs['s'][i])-centre for i in active)
+    return metadata,centre,stored_centre,start
+
+
+def coherent_factory_point_data(metadata,positions,context):
+    """Shared linked preparation/calibration and actual M2 donor leaves."""
+    from types import SimpleNamespace
+    localized = pytest.importorskip('verification.maps.phase_resolved.localized')
+    controls = pytest.importorskip('verification.maps.phase_resolved.stage_controls')
+    fields = pytest.importorskip('verification.maps.phase_resolved.localized_controls')
+    providers = pytest.importorskip('verification.maps.phase_resolved.providers')
+    exact = lambda value: controls.exact_control(value,'actual native input')
+    box = lambda value: controls.represented(context,value)
     setup = localized.LocalizedCavitySetup(eta=metadata['eta'],
         frequency_hz=metadata['frequency_hz'],voltage_v=abs(metadata['voltage_v']),
         length_m=metadata['length_m'],design_beta=metadata['calibration_beta'],
@@ -1293,6 +1285,33 @@ def coherent_native_input_boxes(audit,parent,context):
     data = source._provider_data(2)
     arguments = data['rf_arguments']
     count = (len(arguments)-4)//2
+    return packet,coherent,origin,data,arguments,count
+
+
+def coherent_native_input_boxes(audit,parent,context):
+    """Test-only joint boundary/source/clock/FP point comparison.
+
+    parent is the original full factory snapshot, not a raw metadata claim.
+    Exact parent subarrays authenticate a derived interior observation here;
+    this is neither private-buffer attestation nor source/map qualification.
+    The PUBLIC SI support centre is original anchor+represented length/2;
+    the stored-implied mesh/k centre and its exact displacement are retained
+    separately. beta0 is the native reference coordinate convention, not the
+    tracked particle velocity.
+    phase_rad is the exact represented resolved factory input: current tests
+    use lag0 and never replace represented -np.pi by mathematical -pi.
+    """
+    controls = pytest.importorskip('verification.maps.phase_resolved.stage_controls')
+    fields = pytest.importorskip('verification.maps.phase_resolved.localized_controls')
+    intervals = pytest.importorskip('verification.support.intervals')
+    metadata,centre,stored_centre,_ = coherent_factory_binding(audit,parent)
+    exact = lambda value: controls.exact_control(value,'actual native input')
+    box = lambda value: controls.represented(context,value)
+    inputs = audit['native_input']
+    active = np.flatnonzero(audit['status']==1)
+    positions = tuple(exact(inputs['s'][i])-centre for i in active)
+    packet,coherent,origin,data,arguments,count = coherent_factory_point_data(
+        metadata,positions,context)
     results = []
     for ordinal,i in enumerate(active):
         native = {name: exact(value[i]) for name,value in inputs.items()
@@ -1379,6 +1398,130 @@ def independent_coherent_native_input(record,metadata,mp):
     gamma = mp.sqrt(1+(kappa*(1+real(native['delta'])))**2)
     return (X,Y,T,kappa*real(native['px'])+Q*A[0],
             kappa*real(native['py'])+Q*A[1],gamma+Q*A[3])
+
+
+def coherent_native_output_boxes(audit,parent,tracked,context):
+    """Compare two output charts at the SAME exact actual canonical qout.
+
+    This conditional point function does not identify a coherent trajectory.
+    The original public support/node is primary; the actual native s and
+    stored mesh/k geometry remain separate. T is the exact qout argument in
+    A, while the coherent calibration origin enters only T-to-time conversion.
+    Cached beta0 is a reference coordinate convention, not tracked velocity.
+    """
+    controls = pytest.importorskip('verification.maps.phase_resolved.stage_controls')
+    fields = pytest.importorskip('verification.maps.phase_resolved.localized_controls')
+    intervals = pytest.importorskip('verification.support.intervals')
+    metadata,centre,stored_centre,start = coherent_factory_binding(audit,parent)
+    if audit['source_snapshot']['cells']!=1:
+        raise ValueError('first-cell audit requires an actual one-cell transport')
+    exact = lambda value: controls.exact_control(value,'actual native output')
+    box = lambda value: controls.represented(context,value)
+    exit_s = exact(parent.anchor_s)+exact(metadata['length_m'])*(start+1)/metadata['num_cells']
+    position = exit_s-centre
+    active = np.flatnonzero(audit['status']==1)
+    packet,coherent,origin,data,arguments,count = coherent_factory_point_data(
+        metadata,(position,)*len(active),context)
+    ids = np.asarray(tracked.particle_id)
+    by_id = {int(identity):j for j,identity in enumerate(ids)}
+    results = []
+    for ordinal,i in enumerate(active):
+        identity = int(audit['particle_id'][i])
+        j = by_id[identity]
+        assert tracked.state[j]>0
+        native = {name:exact(np.asarray(getattr(tracked,name))[j]) for name in
+                  ('x','px','y','py','zeta','delta','s','p0c','beta0','charge_ratio','chi')}
+        native.update({name:exact(getattr(tracked,name)) for name in
+                       ('mass0','q0','time_s')})
+        for name in ('p0c','beta0','charge_ratio','chi'):
+            assert native[name] == exact(audit['native_input'][name][i])
+        for name in ('mass0','q0','time_s'):
+            assert native[name] == exact(audit['native_input'][name])
+        canonical = tuple(exact(value) for value in audit['qout'][i])
+        X,Y,T,Px,Py,E = tuple(box(value) for value in canonical)
+        Z = coherent['k']*box(position)
+        bindings = dict(zip(arguments[:4],(X,Y,Z,T)))
+        profile = packet['profile_jets'][ordinal]
+        sign = -1 if metadata['voltage_v']<0 else 1
+        bindings.update({arguments[4+component*count+n]:sign*profile[component*5+n]
+                         for component in range(2) for n in range(5)})
+        A = tuple(intervals.interval_expression(
+            data['rf_jets'][component*len(fields.INDICES)],bindings,context)
+            for component in range(4))
+        kappa = native['p0c']/native['mass0']
+        Q = native['q0']*native['chi']*exact(metadata['source_mass_eV'])/native['mass0']
+        gamma = E-box(Q)*A[3]
+        ux,uy = Px-box(Q)*A[0],Py-box(Q)*A[1]
+        shell = (gamma-1)*(gamma+1)-ux**2-uy**2
+        assert controls.rational_interval(gamma)[0]>1
+        assert controls.rational_interval(shell)[0]>0
+        physical_time = (T-origin)/coherent['omega']
+        beta_c = native['beta0']*299792458
+        output = (X/coherent['k'],ux/box(kappa),Y/coherent['k'],uy/box(kappa),
+            box(exit_s)-box(beta_c)*(physical_time-box(native['time_s'])),
+            context.sqrt((gamma-1)*(gamma+1))/box(kappa)-1)
+        actual = tuple(native[name] for name in ('x','px','y','py','zeta','delta'))
+        differences = tuple(box(value)-target for value,target in zip(actual,output))
+        geometry = native['s']-exit_s
+        actual_time = native['time_s']+(native['s']-native['zeta'])/beta_c
+        clock_zeta = -box(beta_c)*(box(actual_time)-physical_time)
+        decomposition = differences[4]-box(geometry)-clock_zeta
+        lo,hi = controls.rational_interval(decomposition)
+        assert lo<=0<=hi
+        stored_exit = stored_centre+exact(audit['source_snapshot']['mesh'][1])/exact(parent.k)
+        results.append(dict(particle_id=identity,output=output,
+            native_minus_coherent=differences,potential=A,canonical=canonical,
+            native=native,kappa=kappa,Q=Q,centered_position_m=position,
+            declared_exit_s=exit_s,actual_native_s_minus_declared_exit_m=geometry,
+            stored_minus_declared_centre_m=stored_centre-centre,
+            stored_exit_minus_declared_m=stored_exit-exit_s,
+            physical_time_s=physical_time,actual_native_time_s=actual_time,
+            clock_zeta_difference_m=clock_zeta,preparation=packet,
+            output_units=('m','1','m','1','m','1'),same_canonical_argument=True,
+            coherent_trajectory=False,map_error_certified=False,
+            physical_source_error_certified=False,uniform_clock_error_certified=False))
+    return results
+
+
+def independent_coherent_native_output(record,metadata,mp):
+    """Independent90-digit conditional chart, physical quadrature and M2 A."""
+    controls = pytest.importorskip('verification.maps.phase_resolved.stage_controls')
+    def real(value):
+        numerator,denominator = value.as_numer_denom()
+        return mp.mpf(int(numerator))/int(denominator)
+
+    value = lambda name: real(controls.exact_control(metadata[name],'factory input'))
+    omega = 2*mp.pi*value('frequency_hz')
+    k,H = omega/299792458,omega/299792458*value('length_m')/2
+    beta_cal,nu,counter = (value(name) for name in
+                           ('calibration_beta','carrier_nu','counter_phase'))
+    ratio = mp.sqrt(value('eta'))
+    ws,wf = 1/(1+ratio),ratio/(1+ratio)
+    integral = lambda w:H*mp.quad(lambda u:(1-u*u)**16*mp.cos(w*H*u),[-1,0,1])
+    phasor = mp.exp(1j*H/beta_cal)*(ws*integral(1/beta_cal-nu)
+        +wf*mp.exp(1j*counter)*integral(1/beta_cal+nu))
+    origin = value('phase_rad')-(1 if metadata['reference_charge_e']>0 else -1)*mp.pi/2
+    origin -= mp.arg(phasor)
+    amplitude = value('voltage_v')/value('source_mass_eV')/abs(phasor)
+    X,Y,T,Px,Py,E = map(real,record['canonical'])
+    Z = k*real(record['centered_position_m'])
+
+    def profile(z):
+        return (1-(z/H)**2)**16*amplitude*(
+            ws*mp.exp(1j*nu*z)+wf*mp.exp(-1j*(nu*z+counter)))
+
+    I = [(mp.diff(profile,Z,n)*mp.exp(-1j*T)).imag for n in range(5)]
+    r2 = X*X+Y*Y
+    ar = -I[1]/2+r2*(I[1]+I[3])/16
+    Ax,Ay,Phi = X*ar,Y*ar,mp.mpf(0)
+    kappa,Q = real(record['kappa']),real(record['Q'])
+    gamma = E-Q*Phi
+    native = record['native']
+    time = (T-origin)/omega
+    zeta = real(record['declared_exit_s'])-real(native['beta0'])*299792458*(
+        time-real(native['time_s']))
+    return (X/k,(Px-Q*Ax)/kappa,Y/k,(Py-Q*Ay)/kappa,zeta,
+            mp.sqrt((gamma-1)*(gamma+1))/kappa-1)
 
 
 @pytest.mark.parametrize('start',[0,1])
@@ -1470,6 +1613,101 @@ def test_native_cavity_coherent_full_input_boundary(tmp_path,start):
             public_phase_minus_ideal_negative_pi=tuple(map(str,
                 controls.rational_interval(phase_remainder))),
             coherent_public_input_point_only=True,map_error_certified=False))
+
+
+@pytest.mark.parametrize('start',[0,1])
+def test_native_cavity_coherent_output_point_chart(tmp_path,start):
+    controls = pytest.importorskip('verification.maps.phase_resolved.stage_controls')
+    import mpmath as mp
+    from mpmath.ctx_iv import MPIntervalContext
+    from sympy import Rational
+    exact = lambda value: controls.exact_control(value,'actual output event')
+    context_iv = MPIntervalContext()
+    context_iv.dps = 60
+    with native_context(tmp_path) as context:
+        cavity = xt.Cavity(length=.05,voltage=20e3,frequency=400e6,
+                           phase=-np.pi,lag=0.,absolute_time=True)
+        parent = cavity._prepare_native_diagnostic(factory_reference(context),
+            eta=.25,counter_phase=.3,radius_m=.001,num_cells=8,anchor_s=.125,
+            _context=context)
+        metadata = dict(parent.preparation)
+        assert cavity.lag == 0. and metadata['phase_rad'] == -np.pi
+        assert metadata['reference_charge_e'] == -1.
+        anchor = float(exact(parent.anchor_s)
+            +(exact(parent.mesh[start])-exact(parent.mesh[0]))/exact(parent.k))
+        element = NativeCavityProbe(_context=context,
+            mesh=parent.mesh[start:start+2],profiles=parent.profiles[start:start+1],
+            k=parent.k,omega=parent.omega,source_mass_eV=parent.source_mass_eV,
+            anchor_s=anchor,clock_origin=parent.clock_origin,
+            aperture=parent.aperture,preparation=metadata)
+        _,launch = native_p16_case()
+        beta = launch['p0c']/np.hypot(launch['p0c'],launch['mass0'])
+        time = 3e-10
+        zeta = beta/parent.k*(parent.omega*(time+anchor/(beta*299792458.))
+                             +parent.clock_origin-.4)
+        launch.update(s=anchor,time_s=time,zeta=zeta)
+        particle = xt.Particles(_context=context,**launch,
+            mass_ratio=[1.,938272089.43/launch['mass0']],
+            charge_ratio=[1.,-1.],particle_id=[9,2])
+        maxima = np.zeros(6)
+        geometries = []
+        for shift in (0.,2e-10):
+            particle.time_s = time+shift
+            particle.zeta[:] = zeta+beta*299792458.*shift
+            before = spin_rng_values(particle)
+            audit = element.audit_first_cell(particle)
+            assert np.all(audit['status']==1)
+            for name,value in before.items():
+                np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+            canonical_bits = audit['qout'].copy().view(np.uint64)
+            tracked = particle.copy()
+            element.track(tracked)
+            assert np.all(tracked.state==1)
+            after = spin_rng_values(tracked)
+            records = coherent_native_output_boxes(audit,parent,tracked,context_iv)
+            np.testing.assert_array_equal(audit['qout'].view(np.uint64),canonical_bits)
+            for record in records:
+                declared_exit = exact(parent.anchor_s)+exact(metadata['length_m'])*(
+                    start+1)/metadata['num_cells']
+                assert record['declared_exit_s'] == declared_exit
+                geometry = record['native']['s']-declared_exit
+                assert record['actual_native_s_minus_declared_exit_m'] == geometry
+                geometries.append(str(geometry))
+                with mp.workdps(90):
+                    truth = independent_coherent_native_output(record,metadata,mp)
+                    for n,(target,value) in enumerate(zip(record['output'],truth)):
+                        lo,hi = controls.rational_interval(target)
+                        point = Rational(str(value))
+                        assert lo<=point<=hi
+                        delta = record['native_minus_coherent'][n]
+                        actual = record['native'][('x','px','y','py','zeta','delta')[n]]
+                        low,high = controls.rational_interval(delta)
+                        assert low<=actual-point<=high
+                        maxima[n] = max(maxima[n],float(max(abs(low),abs(high))))
+                assert record['output_units'] == ('m','1','m','1','m','1')
+                assert record['same_canonical_argument']
+                assert not record['coherent_trajectory']
+                assert not record['map_error_certified']
+                assert not record['physical_source_error_certified']
+                assert not record['uniform_clock_error_certified']
+                assert controls.rational_interval(record['potential'][3]) == (0,0)
+                assert max(float(max(map(abs,controls.rational_interval(A))))
+                           for A in record['potential'][:2])>1e-10
+            for name,value in after.items():
+                np.testing.assert_array_equal(spin_rng_values(tracked)[name],value)
+            if not shift:
+                wrong = dict(audit,source_snapshot=dict(audit['source_snapshot'],
+                    cells=2,mesh=parent.mesh[start:start+3],
+                    profiles=parent.profiles[start:start+2]))
+                with pytest.raises(ValueError,match='one-cell'):
+                    coherent_native_output_boxes(wrong,parent,tracked,context_iv)
+        assert any(Rational(g)!=0 for g in geometries)
+        assert np.all(np.isfinite(maxima)) and np.max(maxima)>0
+        print(dict(native_output_joint_SI_difference=maxima.tolist(),
+            native_output_units=('m','1','m','1','m','1'),
+            actual_s_minus_declared_exit_m=geometries,
+            conditional_same_canonical_argument=True,coherent_trajectory=False,
+            map_error_certified=False))
 
 
 @pytest.mark.parametrize('cells',[1,8])
