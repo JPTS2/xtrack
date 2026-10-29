@@ -129,9 +129,97 @@ int CavityNative_adapter_output(CavityNativeDiagnosticData el, const double q[6]
     return CAVITY_NATIVE_OK;
 }
 
+#ifdef XTRACK_CAVITY_NATIVE_SPIN
+#include "xtrack/beam_elements/elements_src/cavity_native_spin.h"
+
+// Passive rest-spin transport in fixed straight-element axes. This separate
+// function owns all R workspace; the ordinary orbit consumer never calls it
+// unless explicitly selected. No LL/Thomas reaction or RNG is used.
+GPUFUN
+void CavityNativeDiagnostic_spin_track_local_particle(
+        CavityNativeDiagnosticData el, LocalParticle* part0) {
+    int controls=CavityNative_adapter_controls(el);
+    const double spin_tol=CavityNativeDiagnosticData_get_spin_tolerance(el);
+    if (!(isfinite(spin_tol) && spin_tol>0.)) controls=CAVITY_NATIVE_ARGUMENT;
+    const int64_t cells=CavityNativeDiagnosticData_get_cells(el);
+    const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
+    START_PER_PARTICLE_BLOCK(part0,part);
+        int status=controls;
+        double q[6], Q, kappa0, beta0, clock, data[40], result[6];
+        double spin[3]={LocalParticle_get_spin_x(part),
+            LocalParticle_get_spin_y(part),LocalParticle_get_spin_z(part)};
+        const double anomaly=LocalParticle_get_anomalous_magnetic_moment(part);
+        if (!isfinite(anomaly)) status=CAVITY_NATIVE_ARGUMENT;
+        for (int j=0; j<3; ++j)
+            if (!isfinite(spin[j])) status=CAVITY_NATIVE_NONFINITE;
+        if (status==CAVITY_NATIVE_OK) {
+            CavityNative_adapter_profiles(el,reverse ? cells-1 : 0,reverse,data);
+            status=CavityNative_adapter_input(el,part,
+                CavityNativeDiagnosticData_get_mesh(el,reverse ? cells : 0),
+                data,q,&Q,&kappa0,&beta0,&clock);
+        }
+        for (int64_t order=0; status==CAVITY_NATIVE_OK && order<cells; ++order) {
+            const int64_t cell=reverse ? cells-1-order : order;
+            const double h=CavityNativeDiagnosticData_get_mesh(el,cell+1)
+                -CavityNativeDiagnosticData_get_mesh(el,cell);
+            double out[6], rotation[9], residual, spin_residual, next[3];
+            CavityNative_adapter_profiles(el,cell,reverse,data);
+            status=CavityNative_gauss_spin(q,reverse ? -h : h,Q,anomaly,data,
+                CavityNativeDiagnosticData_get_aperture(el),
+                CavityNativeDiagnosticData_get_maximum_iterations(el),
+                CavityNativeDiagnosticData_get_tolerance(el),spin_tol,
+                out,rotation,&residual,&spin_residual);
+            if (status==CAVITY_NATIVE_OK) {
+                for (int i=0; i<3; ++i) {
+                    next[i]=0.;
+                    for (int j=0; j<3; ++j) next[i]+=rotation[3*i+j]*spin[j];
+                    if (!isfinite(next[i])) status=CAVITY_NATIVE_NONFINITE;
+                }
+                if (status==CAVITY_NATIVE_OK) {
+                    for (int j=0; j<6; ++j) q[j]=out[j];
+                    for (int j=0; j<3; ++j) spin[j]=next[j];
+                }
+            }
+        }
+        if (status==CAVITY_NATIVE_OK)
+            status=CavityNative_adapter_output(el,q,
+                CavityNativeDiagnosticData_get_mesh(el,reverse ? 0 : cells),
+                data+30,Q,kappa0,beta0,clock,result);
+        if (status==CAVITY_NATIVE_OK) {
+            LocalParticle_set_x(part,result[0]);
+            LocalParticle_set_px(part,result[1]);
+            LocalParticle_set_y(part,result[2]);
+            LocalParticle_set_py(part,result[3]);
+            LocalParticle_set_zeta(part,result[4]);
+            LocalParticle_update_delta(part,result[5]);
+            LocalParticle_add_to_s(part,(reverse ? -1. : 1.)
+                *CavityNativeDiagnosticData_get_length(el));
+            LocalParticle_set_spin_x(part,spin[0]);
+            LocalParticle_set_spin_y(part,spin[1]);
+            LocalParticle_set_spin_z(part,spin[2]);
+        } else {
+            LocalParticle_set_state(part,-99700+status);
+        }
+    END_PER_PARTICLE_BLOCK;
+}
+#endif
+
 GPUFUN
 void CavityNativeDiagnostic_track_local_particle(
         CavityNativeDiagnosticData el, LocalParticle* part0) {
+    const int64_t spin_tracking=CavityNativeDiagnosticData_get_spin_tracking(el);
+    #ifdef XTRACK_CAVITY_NATIVE_SPIN
+    if (spin_tracking==1) {
+        CavityNativeDiagnostic_spin_track_local_particle(el,part0);
+        return;
+    }
+    #endif
+    if (spin_tracking!=0) {
+        START_PER_PARTICLE_BLOCK(part0,part);
+            LocalParticle_set_state(part,-99704);
+        END_PER_PARTICLE_BLOCK;
+        return;
+    }
     const int controls = CavityNative_adapter_controls(el);
     const int64_t cells = CavityNativeDiagnosticData_get_cells(el);
     const int reverse = LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);

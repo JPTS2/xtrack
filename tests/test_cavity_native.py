@@ -24,6 +24,8 @@ from xtrack.beam_elements.cavity_native import (
 @contextmanager
 def native_context(directory):
     """Use diagnosed process-local linker repair and context-local JIT only."""
+    checkout = Path(__file__).resolve().parents[1]
+    assert Path(xt.__file__).resolve() == checkout/'xtrack'/'__init__.py'
     config = sysconfig.get_config_vars()
     previous = {name: config.get(name) for name in
                 ('LDSHARED', 'LDCXXSHARED', 'BLDSHARED', 'LDFLAGS')}
@@ -690,3 +692,139 @@ def test_native_cavity_secondary_refusal_preserves_particle(tmp_path):
             for name,value in before.items():
                 np.testing.assert_array_equal(particle_values(particle)[name],
                                               value,err_msg=fault+':'+name)
+
+
+SPIN_AND_RNG = ('spin_x','spin_y','spin_z',
+                '_rng_s1','_rng_s2','_rng_s3','_rng_s4')
+
+
+def spin_rng_values(particle):
+    order = np.argsort(np.asarray(particle.particle_id))
+    values = particle_values(particle)
+    values.update({name: np.asarray(getattr(particle,name))[order].copy()
+                   for name in (*SPIN_AND_RNG,'anomalous_magnetic_moment','ax','ay')})
+    return values
+
+
+def set_spin_rng(particle):
+    particle.spin_x = 2.
+    particle.spin_y = -1.
+    particle.spin_z = .5
+    particle.anomalous_magnetic_moment = .00115965218059
+    for j,name in enumerate(SPIN_AND_RNG[3:]):
+        getattr(particle,name)[:] = np.arange(particle._capacity,dtype=np.uint32)+23+j
+
+
+@pytest.mark.parametrize('cells',[1,8])
+def test_native_cavity_passive_spin_actual_line(tmp_path,cells):
+    _, _, data, launch, _ = prepared_case(cells)
+    with native_context(tmp_path) as context:
+        source = NativeCavityProbe(_context=context,**data)
+        spin_source = NativeCavityProbe(_context=context,**data).enable_passive_spin()
+        particle = xt.Particles(_context=context,**launch)
+        set_spin_rng(particle)
+        initial = particle.copy()
+        before = spin_rng_values(particle)
+        standalone = particle.copy()
+        source.track(standalone)
+        conservative = particle.copy()
+        orbit_line = xt.Line(elements=[source])
+        orbit_line.reset_s_at_end_turn = False
+        orbit_line.build_tracker(_context=context)
+        orbit_line.track(conservative,num_turns=1)
+        line = xt.Line(elements=[spin_source])
+        line.reset_s_at_end_turn = False
+        line.build_tracker(_context=context)
+        line.track(particle,num_turns=1)
+        assert particle.state[0] == 1
+        assert particle.time_s == conservative.time_s
+        # End-turn actions advance time_s and rebase zeta even when s is
+        # unwrapped. Compare identical Line frames, and separately verify the
+        # physical event against standalone tracking in its original frame.
+        physical_time = particle.time_s+(particle.s[0]-particle.zeta[0])/(\
+            particle.beta0[0]*299792458.)
+        standalone_time = standalone.time_s+(standalone.s[0]-standalone.zeta[0])/(\
+            standalone.beta0[0]*299792458.)
+        np.testing.assert_allclose(physical_time,standalone_time,
+            rtol=32*np.finfo(float).eps,atol=0.)
+        # Passive spin cannot change the nominal conservative word/energy.
+        for name in PRIMARY_AND_AUX:
+            np.testing.assert_array_equal(getattr(particle,name),
+                                          getattr(conservative,name))
+        for name in SPIN_AND_RNG[:3]:
+            np.testing.assert_array_equal(getattr(conservative,name),
+                                          getattr(initial,name))
+        spin_before = np.array([getattr(initial,name)[0] for name in SPIN_AND_RNG[:3]])
+        spin_after = np.array([getattr(particle,name)[0] for name in SPIN_AND_RNG[:3]])
+        assert np.max(abs(spin_after-spin_before))>1e-14
+        # These are finite residual/tableau diagnostics, not an admitted spin
+        # accuracy or an exact norm theorem for represented arithmetic.
+        scale = np.linalg.norm(spin_before)
+        np.testing.assert_allclose(np.linalg.norm(spin_after),scale,
+            rtol=0.,atol=32*np.finfo(float).eps*scale)
+        for name in SPIN_AND_RNG[3:]:
+            np.testing.assert_array_equal(spin_rng_values(particle)[name],before[name])
+        line.track(particle,num_turns=1,backtrack=True)
+        assert particle.state[0] == 1
+        after = spin_rng_values(particle)
+        for name in PRIMARY_AND_AUX:
+            np.testing.assert_allclose(after[name],before[name],rtol=0.,atol=2e-12,
+                                       err_msg=name)
+        for name in SPIN_AND_RNG[:3]:
+            np.testing.assert_allclose(after[name],before[name],rtol=0.,
+                atol=5e-13*scale,err_msg=name)
+        for name in SPIN_AND_RNG[3:]:
+            np.testing.assert_array_equal(after[name],before[name])
+
+
+def test_native_cavity_passive_spin_transactional_failure(tmp_path):
+    _, _, data, launch, _ = prepared_case(8)
+    with native_context(tmp_path) as context:
+        for fault,expected in (('spin_iterations',-99702),
+                ('spin_nonfinite',-99703),('anomaly',-99704),
+                ('mode',-99704),('tolerance',-99704),('radius',-99701)):
+            element = NativeCavityProbe(_context=context,**data).enable_passive_spin()
+            particle = xt.Particles(_context=context,**launch)
+            set_spin_rng(particle)
+            if fault=='spin_iterations':
+                element.spin_tolerance = 1e-300
+                assert element.maximum_iterations == 80
+                # The same valid positive nominal solve still succeeds; only
+                # the independently requested spin matrix residual exhausts.
+                baseline = particle.copy()
+                NativeCavityProbe(_context=context,**data).track(baseline)
+                assert baseline.state[0] == 1
+            elif fault=='spin_nonfinite':
+                particle.spin_y = np.nan
+            elif fault=='anomaly':
+                particle.anomalous_magnetic_moment = np.nan
+            elif fault=='mode':
+                element.spin_tracking = 2
+            elif fault=='tolerance':
+                element.spin_tolerance = 0.
+            elif fault=='radius':
+                particle.x = .002
+            before = spin_rng_values(particle)
+            element.track(particle)
+            assert particle.state[0] == expected,fault
+            after = spin_rng_values(particle)
+            for name,value in before.items():
+                np.testing.assert_array_equal(after[name],value,err_msg=fault+':'+name)
+
+
+def test_native_cavity_passive_spin_mixed_loss_by_id(tmp_path):
+    _, _, data, launch, _ = prepared_case()
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data).enable_passive_spin()
+        particle = xt.Particles(_context=context,particle_id=[17,3],**launch)
+        set_spin_rng(particle)
+        particle.spin_x[0] = np.nan
+        before = spin_rng_values(particle)
+        element.track(particle)
+        order = np.argsort(np.asarray(particle.particle_id))
+        np.testing.assert_array_equal(np.asarray(particle.state)[order],[1,-99703])
+        after = spin_rng_values(particle)
+        for name,value in before.items():
+            np.testing.assert_array_equal(after[name][1],value[1],err_msg=name)
+        for name in SPIN_AND_RNG[3:]:
+            np.testing.assert_array_equal(after[name],before[name])

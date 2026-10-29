@@ -144,9 +144,10 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         """Prepare a separate private full-root M2/P16 Gauss diagnostic.
 
         Existing Cavity tracking and selectors retain their meanings. This
-        explicit snapshot has no numerical/source/backend admission and no
-        radiation or spin transport. Changing settings requires preparation
-        again. Only the documented fixed-alignment absolute-time subset is
+        explicit snapshot has no numerical/source/backend admission. Passive
+        BMT spin is a separate prepared-object opt-in; radiation feedback and
+        noise remain unfinished. Changing settings requires preparation again.
+        Only the documented fixed-alignment absolute-time subset is
         currently supported; radius_m is a runtime guard, not a qualified
         physical aperture. This is an experimental private interface.
         """

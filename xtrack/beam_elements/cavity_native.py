@@ -204,6 +204,7 @@ class CavityNativeDiagnostic(BeamElement):
         'source_mass_eV': xo.Float64, 'aperture': xo.Float64,
         'tolerance': xo.Float64, 'maximum_iterations': xo.Int64,
         'derivative_tolerance': xo.Float64,
+        'spin_tracking': xo.Int64, 'spin_tolerance': xo.Float64,
         'cells': xo.Int64, 'mesh': xo.Float64[:], 'profiles': xo.Float64[:],
     }
     _source_fields = ('length', 'k', 'omega', 'anchor_s', 'clock_origin',
@@ -220,6 +221,7 @@ class CavityNativeDiagnostic(BeamElement):
     _extra_c_sources = [
         '#define XTRACK_CAVITY_NATIVE_TANGENT\n'
         '#define XTRACK_CAVITY_NATIVE_SECONDARY\n'
+        '#define XTRACK_CAVITY_NATIVE_SPIN\n'
         '#include "xtrack/beam_elements/elements_src/cavity_native_adapter.h"']
     _per_particle_kernels = {
         'native_tangent': xo.Kernel(
@@ -239,7 +241,8 @@ class CavityNativeDiagnostic(BeamElement):
     def __init__(self, *, mesh=None, profiles=None, k=None, omega=None,
             source_mass_eV=None, anchor_s=0., clock_origin=0., aperture=1.,
             tolerance=2e-13, maximum_iterations=80,
-            derivative_tolerance=2e-13, preparation=None, **kwargs):
+            derivative_tolerance=2e-13, spin_tracking=0, spin_tolerance=2e-13,
+            preparation=None, **kwargs):
         metadata = dict(preparation or {})
         for flag in ('source_qualified', 'numerical_error_certified',
                      'backend_arithmetic_qualified', 'accepted_production_return'):
@@ -261,8 +264,12 @@ class CavityNativeDiagnostic(BeamElement):
             raise ValueError('finite cell profiles require shape(cells,4,10)')
         for name,value in (('k',k), ('omega',omega),
                 ('source_mass_eV',source_mass_eV), ('aperture',aperture),
-                ('tolerance',tolerance), ('derivative_tolerance',derivative_tolerance)):
+                ('tolerance',tolerance), ('derivative_tolerance',derivative_tolerance),
+                ('spin_tolerance',spin_tolerance)):
             _scalar(value,name,positive=True)
+        if (not isinstance(spin_tracking,(int,np.integer,bool,np.bool_))
+                or int(spin_tracking) not in (0,1)):
+            raise ValueError('spin_tracking must be zero or one')
         if (isinstance(maximum_iterations,(bool,np.bool_))
                 or not isinstance(maximum_iterations,(int,np.integer))
                 or maximum_iterations<=0):
@@ -281,7 +288,8 @@ class CavityNativeDiagnostic(BeamElement):
             cells=cells, k=k, omega=omega, source_mass_eV=source_mass_eV,
             anchor_s=anchor_s, clock_origin=clock_origin, aperture=aperture,
             tolerance=tolerance, maximum_iterations=maximum_iterations,
-            derivative_tolerance=derivative_tolerance, **kwargs)
+            derivative_tolerance=derivative_tolerance,
+            spin_tracking=int(spin_tracking),spin_tolerance=spin_tolerance,**kwargs)
 
     @property
     def preparation(self):
@@ -350,6 +358,25 @@ class CavityNativeDiagnostic(BeamElement):
             status=context.nparray_from_context_array(statuses).copy(),
             particle_id=context.nparray_from_context_array(
                 particles.particle_id).copy(),rho_unit_eV=rho_unit)
+
+    def enable_passive_spin(self, *, tolerance=None):
+        """Opt into same-Gauss Lorentz BMT transport on the conservative orbit.
+
+        This rotates the supplied finite dimensionless spin vector in the
+        fixed straight-element frame, using the actual particle anomaly.
+        It does not normalize spin or infer an anomaly from species metadata.
+        Spin and orbit are committed together only after the whole word passes.
+        LL/Thomas reaction, mean orbit feedback and photon noise are absent.
+        The tolerance is an operator-stage residual, not a physical spin-error
+        bound. native_tangent still returns the six-dimensional orbit derivative
+        only; spin launch derivatives are not supplied by that observer.
+        """
+        if tolerance is not None:
+            self.spin_tolerance = _scalar(tolerance,'spin tolerance',positive=True)
+        else:
+            _scalar(self.spin_tolerance,'spin tolerance',positive=True)
+        self.spin_tracking = 1
+        return self
 
 
 def _source_readback(name):
