@@ -268,6 +268,13 @@ def compile_schott_query(context):
             status[0] = CavityNative_spin_response_source(
                 q, charge, anomaly, profile, aperture, output);
         }
+        GPUKERN
+        void cavity_spin_schott_source_review(double* q, double charge,
+                double anomaly, double* profile, double aperture,
+                double* output, int64_t* status) {
+            status[0] = CavityNative_spin_schott_source(
+                q, charge, anomaly, profile, aperture, output);
+        }
     '''], kernels={'cavity_schott_source_review': xo.Kernel(args=[
         xo.Arg(xo.Float64, pointer=True, name='q'),
         xo.Arg(xo.Float64, name='charge'),
@@ -276,6 +283,14 @@ def compile_schott_query(context):
         xo.Arg(xo.Float64, pointer=True, name='output'),
         xo.Arg(xo.Int64, pointer=True, name='status')], n_threads=1),
         'cavity_spin_response_source_review': xo.Kernel(args=[
+            xo.Arg(xo.Float64, pointer=True, name='q'),
+            xo.Arg(xo.Float64, name='charge'),
+            xo.Arg(xo.Float64, name='anomaly'),
+            xo.Arg(xo.Float64, pointer=True, name='profile'),
+            xo.Arg(xo.Float64, name='aperture'),
+            xo.Arg(xo.Float64, pointer=True, name='output'),
+            xo.Arg(xo.Int64, pointer=True, name='status')], n_threads=1),
+        'cavity_spin_schott_source_review': xo.Kernel(args=[
             xo.Arg(xo.Float64, pointer=True, name='q'),
             xo.Arg(xo.Float64, name='charge'),
             xo.Arg(xo.Float64, name='anomaly'),
@@ -773,3 +788,157 @@ def test_native_schott_spin_word_independent_dense_carry(tmp_path):
         assert status == -2
         for output, sentinel in zip(failed, sentinels):
             np.testing.assert_array_equal(output, sentinel)
+
+
+def spin_schott_source_query(context, q, charge, anomaly, profile, *,
+                             aperture=.1):
+    """Retain all 27 output sentinels on any source refusal."""
+    state = context.nparray_to_context_array(np.asarray(q, dtype=float).copy())
+    jets = context.nparray_to_context_array(
+        np.asarray(profile, dtype=float).copy())
+    sentinel = np.arange(27, dtype=float)+331.25
+    output = context.nparray_to_context_array(sentinel.copy())
+    status = context.nparray_to_context_array(np.zeros(1, dtype=np.int64))
+    context.kernels.cavity_spin_schott_source_review(q=state, charge=charge,
+        anomaly=anomaly, profile=jets, aperture=aperture, output=output,
+        status=status)
+    np.testing.assert_array_equal(np.asarray(state), q)
+    np.testing.assert_array_equal(np.asarray(jets), profile)
+    return np.asarray(output).copy(), int(np.asarray(status)[0]), sentinel
+
+
+def covariant_field_generator(u, charge, anomaly, E, B):
+    """The independent rest-spin generator with its actual per-Z clock."""
+    _, omega = point_oracle(u, charge, 0., anomaly, E, B,
+                            np.zeros(3), np.zeros(3))
+    return np.hypot(1., np.linalg.norm(u))/u[2]*omega
+
+
+def unit_spin_schott_oracle(u, anomaly, E, B):
+    """Resolve the quadratic coefficient using a unit-charge direction.
+
+    At fixed mechanical event k is linear and B is quadratic in signed Q.
+    Differentiating unit-charge generators avoids subtracting O(Q) numbers
+    along O(Q) directions for ions. No actual small radiation is divided out.
+    """
+    gamma = np.hypot(1., np.linalg.norm(u))
+    beta = u/gamma
+    force = E+np.cross(beta, B)
+    schott_momentum = gamma*force
+    k = np.cross(schott_momentum, u)/(gamma+1)
+    g0 = covariant_field_generator(u, 1., anomaly, E, B)
+    directions = []
+    for h in (2e-4, 1e-4):
+        plus = covariant_field_generator(
+            u+h*schott_momentum, 1., anomaly, E, B)
+        minus = covariant_field_generator(
+            u-h*schott_momentum, 1., anomaly, E, B)
+        directions.append((plus-minus)/(2*h))
+    derivative = (4*directions[1]-directions[0])/3
+    clock = gamma/u[2]
+    residue = (derivative+clock*k*(beta@E)/(gamma+1)
+               + np.cross(g0, k))
+    return k, residue, derivative, g0
+
+
+def test_native_spin_schott_source_independent_cancellation(tmp_path):
+    """Check new k/B coefficients, charge scaling and full D0k cancellation.
+
+    The shifted events form a Lorentz tangent curve with actual source jets,
+    rather than holding profiles fixed when Z changes. This tests a local
+    coordinate identity, not the accuracy of a new finite response word.
+    """
+    with native_context(tmp_path) as context:
+        compile_schott_query(context)
+        element = observer_element(context)
+        z = .03
+        point = np.array((.003, -.002, .4))
+        u = np.array((.2, -.1, 2.))
+        gamma = np.hypot(1., np.linalg.norm(u))
+        beta = u/gamma
+        clock = gamma/u[2]
+        profile = profile_at(z, 4)
+        E, B, DE, DB = material_field_probes(
+            context, element, z, point, u)
+        for anomaly in (.001, .3):
+            k, residue, direction, g0 = unit_spin_schott_oracle(
+                u, anomaly, E, B)
+            assert np.linalg.norm(k) > 1e-5
+            assert np.linalg.norm(residue) > 1e-7
+            for charge in (-1., 1., MASS0/938272088.16,
+                           82*MASS0/193687272900.):
+                q = canonical_event(point, u, charge, profile)
+                source, status, _ = spin_schott_source_query(
+                    context, q, charge, anomaly, profile)
+                assert status == 1
+                np.testing.assert_allclose(source[:3]/charge, g0,
+                                           rtol=2e-11, atol=2e-13)
+                np.testing.assert_allclose(source[21:24]/charge, k,
+                                           rtol=2e-11, atol=2e-13)
+                np.testing.assert_allclose(source[24:]/charge**2, residue,
+                                           rtol=3e-7, atol=3e-10)
+                schott = np.r_[np.zeros(3), gamma*charge*(
+                    E+np.cross(beta, B))[:2], gamma*charge*(beta@E)]
+                native_direction = source[3:21].reshape(3, 6)@schott
+                np.testing.assert_allclose(native_direction/charge**2,
+                                           direction, rtol=3e-7, atol=3e-10)
+            # Signed total derivatives include the material field derivative
+            # that the new residue has eliminated analytically, not omitted.
+            for charge in (-1., 1.):
+                force = charge*(E+np.cross(beta, B))
+                velocity = np.r_[u[:2]/u[2], clock]
+                derivatives = []
+                for h in (2e-4, 1e-4):
+                    shifted_k = []
+                    for sign in (1., -1.):
+                        shifted_z = z+sign*h
+                        shifted_point = point+sign*h*velocity
+                        shifted_u = u+sign*h*clock*force
+                        particles = event_particles(context, element,
+                            shifted_z, shifted_point, momentum=shifted_u)
+                        values, status, _ = observe(element, particles,
+                            shifted_z, profile_at(shifted_z), 0.)
+                        assert status[0] == 1
+                        raw_E, raw_B = values[0, 12:15], values[0, 15:18]
+                        shifted_gamma = np.hypot(
+                            1., np.linalg.norm(shifted_u))
+                        shifted_force = charge*(raw_E+np.cross(
+                            shifted_u/shifted_gamma, raw_B))
+                        shifted_k.append(np.cross(
+                            shifted_gamma*shifted_force, shifted_u)
+                            /(shifted_gamma+1))
+                    derivatives.append((shifted_k[0]-shifted_k[1])/(2*h))
+                D0k = (4*derivatives[1]-derivatives[0])/3
+                np.testing.assert_allclose(derivatives[1], D0k,
+                                           rtol=3e-7, atol=3e-10)
+                _, omega0 = point_oracle(
+                    u, charge, 0., anomaly, E, B, DE, DB)
+                # Unit formal rho extracts an exactly linear covariant spin
+                # coefficient; it does not represent a physical LL launch.
+                _, omega1 = point_oracle(
+                    u, charge, 1., anomaly, E, B, DE, DB)
+                expected = (clock*(omega1-omega0)
+                    - clock*(charge*k)*(beta@(charge*E))/(gamma+1))
+                np.testing.assert_allclose(D0k, expected,
+                                           rtol=3e-7, atol=3e-10)
+        for charge, data in ((0., profile), (1., np.zeros(10))):
+            q = canonical_event(point, u, charge, data)
+            value, status, _ = spin_schott_source_query(
+                context, q, charge, .001, data)
+            assert status == 1
+            np.testing.assert_array_equal(value, 0.)
+        q = canonical_event(point, u, -1., profile)
+        low_energy = q.copy()
+        low_energy[5] = .9
+        invalid_profile = profile.copy()
+        invalid_profile[4] = np.nan
+        for state, data, anomaly, aperture, expected in (
+            (low_energy, profile, .001, .1, -1),
+            (q, invalid_profile, .001, .1, -3),
+            (q, profile, np.nan, .1, -4),
+            (q, profile, .001, -1., -4),
+        ):
+            value, status, sentinel = spin_schott_source_query(
+                context, state, -1., anomaly, data, aperture=aperture)
+            assert status == expected
+            np.testing.assert_array_equal(value, sentinel)
