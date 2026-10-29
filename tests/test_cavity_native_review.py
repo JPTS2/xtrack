@@ -261,13 +261,28 @@ def compile_schott_query(context):
             status[0] = CavityNative_schott_source(
                 q, charge, profile, aperture, output);
         }
+        GPUKERN
+        void cavity_spin_response_source_review(double* q, double charge,
+                double anomaly, double* profile, double aperture,
+                double* output, int64_t* status) {
+            status[0] = CavityNative_spin_response_source(
+                q, charge, anomaly, profile, aperture, output);
+        }
     '''], kernels={'cavity_schott_source_review': xo.Kernel(args=[
         xo.Arg(xo.Float64, pointer=True, name='q'),
         xo.Arg(xo.Float64, name='charge'),
         xo.Arg(xo.Float64, pointer=True, name='profile'),
         xo.Arg(xo.Float64, name='aperture'),
         xo.Arg(xo.Float64, pointer=True, name='output'),
-        xo.Arg(xo.Int64, pointer=True, name='status')], n_threads=1)})
+        xo.Arg(xo.Int64, pointer=True, name='status')], n_threads=1),
+        'cavity_spin_response_source_review': xo.Kernel(args=[
+            xo.Arg(xo.Float64, pointer=True, name='q'),
+            xo.Arg(xo.Float64, name='charge'),
+            xo.Arg(xo.Float64, name='anomaly'),
+            xo.Arg(xo.Float64, pointer=True, name='profile'),
+            xo.Arg(xo.Float64, name='aperture'),
+            xo.Arg(xo.Float64, pointer=True, name='output'),
+            xo.Arg(xo.Int64, pointer=True, name='status')], n_threads=1)})
 
 
 def schott_query(context, q, charge, profile, *, aperture=.1):
@@ -298,6 +313,54 @@ def canonical_event(point, momentum, charge, profile):
         -imaginary[1]/2 + radial*(imaginary[1]+imaginary[3])/16)
     gamma = np.hypot(1., np.linalg.norm(momentum))
     return np.r_[point, momentum[:2]+charge*transverse, gamma]
+
+
+def spin_source_query(context, q, charge, anomaly, profile, *, aperture=.1):
+    """Query all 24 rho-free coefficients; protect outputs on failure."""
+    state = context.nparray_to_context_array(np.asarray(q, dtype=float).copy())
+    jets = context.nparray_to_context_array(
+        np.asarray(profile, dtype=float).copy())
+    sentinel = np.arange(24, dtype=float) + 117.25
+    output = context.nparray_to_context_array(sentinel.copy())
+    status = context.nparray_to_context_array(np.zeros(1, dtype=np.int64))
+    context.kernels.cavity_spin_response_source_review(q=state, charge=charge,
+        anomaly=anomaly, profile=jets, aperture=aperture, output=output,
+        status=status)
+    np.testing.assert_array_equal(np.asarray(state), q)
+    np.testing.assert_array_equal(np.asarray(jets), profile)
+    return np.asarray(output).copy(), int(np.asarray(status)[0]), sentinel
+
+
+def mechanical_event(q, charge, profile):
+    """Invert the declared temporal M2 chart at fixed source and fixed Z."""
+    profile10 = np.r_[profile[:5], profile[6:11]]
+    offset = canonical_event(q[:3], np.zeros(3), charge, profile10)[3:5]
+    transverse = q[3:5]-offset
+    uz = np.sqrt((q[5]-1)*(q[5]+1)-transverse@transverse)
+    return np.r_[transverse, uz]
+
+
+def covariant_spin_generator(context, element, z, q, charge, anomaly, rho):
+    """Decode each physical event, boost its spin basis and include its clock.
+
+    The field algebra is shared with the observer. Differentiation, covariant
+    BMT/Fermi-Walker and the rest-spin boost use independent vector operations.
+    Positive formal rho is solely an algebraic directional-derivative probe.
+    """
+    u = mechanical_event(q, charge, profile_at(z))
+    if rho:
+        E, B, DE, DB = material_field_probes(
+            context, element, z, q[:3], u)
+    else:
+        particles = event_particles(context, element, z, q[:3], momentum=u)
+        values, statuses, _ = observe(
+            element, particles, z, profile_at(z), 0.)
+        assert statuses[0] == 1
+        E, B = values[0, 12:15], values[0, 15:18]
+        DE = DB = np.zeros(3)
+    _, omega = point_oracle(u, charge, rho, anomaly, E, B, DE, DB)
+    clock = q[5]/u[2]
+    return clock*omega, clock, u, E, B
 
 
 def test_native_schott_source_independent_coefficients(tmp_path):
@@ -370,5 +433,112 @@ def test_native_schott_source_independent_coefficients(tmp_path):
         ):
             value, status, sentinel = schott_query(
                 context, state, -1., data, aperture=aperture)
+            assert status == expected
+            np.testing.assert_array_equal(value, sentinel)
+
+
+def test_native_spin_response_independent_directional_law(tmp_path):
+    """Check full clock/physical-response coupling against covariant spin.
+
+    This is a rho-free local source check, not a transported spin-response
+    word or physical finite-rho acceptance. The two formal steps resolve the
+    derivative without subtracting tiny actual-species radiation increments.
+    """
+    with native_context(tmp_path) as context:
+        compile_schott_query(context)
+        element = observer_element(context)
+        z = .03
+        point = np.array((.003, -.002, .4))
+        u = np.array((.2, -.1, 2.))
+        profile = profile_at(z)
+        profile10 = np.r_[profile[:5], profile[6:11]]
+        masses = (MASS0, MASS0, 938272088.16, 193687272900.)
+        charges = (-1., 1., 1., 82.)
+        anomalies = (.001, .002, .3, 0.)
+        xi = np.array((.03, -.02, .01, .02, -.01, .025))
+        steps = (2e-4, 1e-4)
+        for mass, physical_charge, anomaly in zip(masses, charges, anomalies):
+            charge = physical_charge*MASS0/mass
+            scale = abs(charge)
+            q = canonical_event(point, u, charge, profile10)
+            source, status, _ = spin_source_query(
+                context, q, charge, anomaly, profile)
+            assert status == 1
+            g0, clock, actual_u, E, B = covariant_spin_generator(
+                context, element, z, q, charge, anomaly, 0.)
+            np.testing.assert_allclose(source[:3]/scale, g0/scale,
+                                       rtol=2e-11, atol=2e-13)
+            np.testing.assert_allclose(actual_u, u, atol=2e-15)
+            jacobians, clock_jacobians = [], []
+            for h in steps:
+                columns, clock_columns = [], []
+                for column in range(6):
+                    direction = np.eye(6)[column]
+                    plus = covariant_spin_generator(context, element, z,
+                        q+h*direction, charge, anomaly, 0.)
+                    minus = covariant_spin_generator(context, element, z,
+                        q-h*direction, charge, anomaly, 0.)
+                    columns.append((plus[0]-minus[0])/(2*h))
+                    clock_columns.append((plus[1]-minus[1])/(2*h))
+                jacobians.append(np.array(columns).T)
+                clock_jacobians.append(np.array(clock_columns))
+            jacobian = (4*jacobians[1]-jacobians[0])/3
+            clock_jacobian = (4*clock_jacobians[1]-clock_jacobians[0])/3
+            np.testing.assert_allclose(jacobians[1]/scale, jacobian/scale,
+                                       rtol=3e-7, atol=3e-10)
+            native_jacobian = source[3:21].reshape(3, 6)
+            np.testing.assert_allclose(native_jacobian/scale, jacobian/scale,
+                                       rtol=3e-7, atol=3e-10)
+            assert np.linalg.norm(jacobian/scale) > 1e-3
+            beta = u/q[5]
+            force = charge*(E+np.cross(beta, B))
+            # This independent physical Schott event vector restores all six
+            # canonical coordinates; xi alone is not the physical response.
+            s = np.r_[np.zeros(3), q[5]*force[:2], q[5]*charge*(beta@E)]
+            response = xi+s
+            g1_steps, full_steps = [], []
+            for h in steps:
+                g1 = covariant_spin_generator(context, element, z, q,
+                    charge, anomaly, h)[0]
+                full = covariant_spin_generator(context, element, z,
+                    q+h*response, charge, anomaly, h)[0]
+                g1_steps.append((g1-g0)/h)
+                full_steps.append((full-g0)/h)
+            g1_reference = 2*g1_steps[1]-g1_steps[0]
+            full_reference = 2*full_steps[1]-full_steps[0]
+            np.testing.assert_allclose(source[21:]/scale,
+                g1_reference/scale, rtol=3e-7, atol=3e-10)
+            full_native = native_jacobian@response+source[21:]
+            np.testing.assert_allclose(full_native/scale,
+                full_reference/scale, rtol=3e-7, atol=3e-10)
+            changed_anomaly, status, _ = spin_source_query(
+                context, q, charge, anomaly+.137, profile)
+            assert status == 1
+            np.testing.assert_array_equal(changed_anomaly[21:], source[21:])
+            if abs(charge) == 1:
+                error = np.linalg.norm(full_reference-full_steps[1])
+                assert np.linalg.norm(native_jacobian@s) > 100*(error+1e-12)
+                clock_fault = (g0/clock)*(clock_jacobian@response)
+                assert np.linalg.norm(clock_fault) > 100*(error+1e-12)
+        for charge, data in ((0., profile), (1., np.zeros(12))):
+            q = canonical_event(point, u, charge,
+                                np.r_[data[:5], data[6:11]])
+            source, status, _ = spin_source_query(
+                context, q, charge, .001, data)
+            assert status == 1
+            np.testing.assert_array_equal(source, 0.)
+        q = canonical_event(point, u, -1., profile10)
+        low_energy = q.copy()
+        low_energy[5] = .9
+        invalid_profile = profile.copy()
+        invalid_profile[5] = np.nan
+        for state, data, anomaly, aperture, expected in (
+            (low_energy, profile, .001, .1, -1),
+            (q, invalid_profile, .001, .1, -3),
+            (q, profile, np.nan, .1, -4),
+            (q, profile, .001, -1., -4),
+        ):
+            value, status, sentinel = spin_source_query(
+                context, state, -1., anomaly, data, aperture=aperture)
             assert status == expected
             np.testing.assert_array_equal(value, sentinel)
