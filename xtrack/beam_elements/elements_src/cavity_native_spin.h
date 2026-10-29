@@ -34,10 +34,11 @@ int CavityNative_spin_generator(const double q[6], double Q, double anomaly,
 // continuous-history, source, backend or numerical-error admission is claimed.
 // Every output is untouched on any nominal/source/spin refusal.
 GPUFUN
-int CavityNative_gauss_spin(const double q[6], double h, double Q,
+int CavityNative_gauss_spin_stages(const double q[6], double h, double Q,
         double anomaly, const double profiles[40], double aperture,
         int64_t max_iter, double tol, double spin_tol, double out[6],
-        double rotation[9], double* residual, double* spin_residual) {
+        double rotation[9], double* residual, double* spin_residual,
+        double* accepted_orbit_stages, double* accepted_spin_stages) {
     if (!isfinite(anomaly) || !isfinite(spin_tol) || spin_tol <= 0.)
         return CAVITY_NATIVE_ARGUMENT;
     double endpoint[6], stages[12], nominal_residual;
@@ -125,10 +126,27 @@ int CavityNative_gauss_spin(const double q[6], double h, double Q,
                 for (int k=0; k<9; ++k) rotation[k] = result[k];
                 *residual = nominal_residual;
                 *spin_residual = actual;
+                if (accepted_orbit_stages != 0)
+                    for (int k=0; k<12; ++k)
+                        accepted_orbit_stages[k] = stages[k];
+                if (accepted_spin_stages != 0)
+                    for (int i=0; i<2; ++i)
+                        for (int k=0; k<9; ++k)
+                            accepted_spin_stages[i*9+k] = spin[i][k];
                 return CAVITY_NATIVE_OK;
             }
         }
     }
     return CAVITY_NATIVE_ITERATIONS;
+}
+
+GPUFUN
+int CavityNative_gauss_spin(const double q[6], double h, double Q,
+        double anomaly, const double profiles[40], double aperture,
+        int64_t max_iter, double tol, double spin_tol, double out[6],
+        double rotation[9], double* residual, double* spin_residual) {
+    return CavityNative_gauss_spin_stages(q, h, Q, anomaly, profiles,
+        aperture, max_iter, tol, spin_tol, out, rotation, residual,
+        spin_residual, 0, 0);
 }
 #endif

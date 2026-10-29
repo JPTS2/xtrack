@@ -542,3 +542,234 @@ def test_native_spin_response_independent_directional_law(tmp_path):
                 context, state, -1., anomaly, data, aperture=aperture)
             assert status == expected
             np.testing.assert_array_equal(value, sentinel)
+
+
+def compile_spin_word_query(context):
+    """Expose the actual word and its existing accepted-stage consumers."""
+    context.add_kernels(sources=[r'''
+        #include "xobjects/headers/common.h"
+        #include "xtrack/beam_elements/elements_src/cavity_native_response.h"
+        GPUKERN
+        void cavity_spin_word_review(double* q, double* xi, double h,
+                double charge, double anomaly, double* profiles,
+                double response_tol, int64_t stages, double* output,
+                double* qs, double* Rs, double* rs, int64_t* status) {
+            if (!stages) {
+                status[0] = CavityNative_gauss_schott_spin_response(
+                    q, xi, h, charge, anomaly, profiles, .1, 80,
+                    2e-13, 2e-13, 2e-13, response_tol, output, output+6,
+                    output+12, output+18, output+27, output+36, output+39);
+                return;
+            }
+            double p[40], meanq[6], meanqs[12], nominal_residual;
+            for (int plane=0; plane<4; ++plane)
+                for (int j=0; j<5; ++j) {
+                    p[plane*10+j] = profiles[plane*12+j];
+                    p[plane*10+j+5] = profiles[plane*12+j+6];
+                }
+            status[0] = CavityNative_gauss_spin_stages(q, h, charge,
+                anomaly, p, .1, 80, 2e-13, 2e-13, output, output+18,
+                output+39, output+41, qs, Rs);
+            if (status[0] != 1) return;
+            status[0] = CavityNative_gauss_schott_response_stages(q, xi,
+                h, charge, p, .1, 80, 2e-13, 2e-13, meanq, output+6,
+                output+12, output+36, &nominal_residual, output+40,
+                meanqs, rs);
+            if (status[0] != 1) return;
+            for (int j=0; j<6; ++j)
+                if (output[j] != meanq[j]
+                        || signbit(output[j]) != signbit(meanq[j]))
+                    status[0] = -4;
+            for (int j=0; j<12; ++j)
+                if (qs[j] != meanqs[j]
+                        || signbit(qs[j]) != signbit(meanqs[j]))
+                    status[0] = -4;
+        }
+    '''], kernels={'cavity_spin_word_review': xo.Kernel(args=[
+        xo.Arg(xo.Float64, pointer=True, name='q'),
+        xo.Arg(xo.Float64, pointer=True, name='xi'),
+        xo.Arg(xo.Float64, name='h'),
+        xo.Arg(xo.Float64, name='charge'),
+        xo.Arg(xo.Float64, name='anomaly'),
+        xo.Arg(xo.Float64, pointer=True, name='profiles'),
+        xo.Arg(xo.Float64, name='response_tol'),
+        xo.Arg(xo.Int64, name='stages'),
+        xo.Arg(xo.Float64, pointer=True, name='output'),
+        xo.Arg(xo.Float64, pointer=True, name='qs'),
+        xo.Arg(xo.Float64, pointer=True, name='Rs'),
+        xo.Arg(xo.Float64, pointer=True, name='rs'),
+        xo.Arg(xo.Int64, pointer=True, name='status')], n_threads=1)})
+
+
+def spin_word_query(context, q, xi, h, charge, anomaly, profiles, *,
+                    stages=False, response_tol=2e-13):
+    """Keep every public output sentinel, including unused stage buffers."""
+    inputs = [np.asarray(value, dtype=float).copy()
+              for value in (q, xi, profiles)]
+    buffers = [context.nparray_to_context_array(value) for value in inputs]
+    sentinels = [np.arange(size, dtype=float)+211.25+i
+                 for i, size in enumerate((43, 12, 18, 12))]
+    outputs = [context.nparray_to_context_array(value.copy())
+               for value in sentinels]
+    status = context.nparray_to_context_array(np.zeros(1, dtype=np.int64))
+    context.kernels.cavity_spin_word_review(q=buffers[0], xi=buffers[1], h=h,
+        charge=charge, anomaly=anomaly, profiles=buffers[2],
+        response_tol=response_tol, stages=int(stages), output=outputs[0],
+        qs=outputs[1], Rs=outputs[2], rs=outputs[3], status=status)
+    for before, after in zip(inputs, buffers):
+        np.testing.assert_array_equal(before, np.asarray(after))
+    return ([np.asarray(value).copy() for value in outputs],
+            int(np.asarray(status)[0]), sentinels)
+
+
+def dense_spin_word(generators, forcing, h, incoming, incoming_response):
+    """Solve each vector column with the defining two-stage Gauss matrix."""
+    A = np.array(((.25, .25-np.sqrt(3)/6),
+                  (.25+np.sqrt(3)/6, .25)))
+    identity = np.eye(3)
+    system = np.block([[identity-h*A[0, 0]*generators[0],
+                        -h*A[0, 1]*generators[1]],
+                       [-h*A[1, 0]*generators[0],
+                        identity-h*A[1, 1]*generators[1]]])
+    rotation = np.linalg.solve(system, np.vstack((incoming, incoming)))
+    rotation = rotation.reshape(2, 3, 3)
+    source = [forcing[j]@rotation[j] for j in range(2)]
+    rhs = np.vstack([incoming_response+h*(A[i, 0]*source[0]
+                        + A[i, 1]*source[1]) for i in range(2)])
+    response = np.linalg.solve(system, rhs).reshape(2, 3, 3)
+    out_rotation = incoming+h/2*sum(
+        generators[j]@rotation[j] for j in range(2))
+    out_response = incoming_response+h/2*sum(
+        generators[j]@response[j]+source[j] for j in range(2))
+    return out_rotation, out_response, rotation
+
+
+def independent_schott_event(context, element, z, q, charge):
+    """The physical event vector fixes xi=r-s without a generated split."""
+    _, _, u, E, B = covariant_spin_generator(
+        context, element, z, q, charge, .001, 0.)
+    force = charge*(E+np.cross(u/q[5], B))
+    return np.r_[np.zeros(3), q[5]*force[:2], charge*(u@E)]
+
+
+def test_native_schott_spin_word_independent_dense_carry(tmp_path):
+    """Check actual accepted stages, dense covariant spin and global carry.
+
+    Matrix coefficients below are formal gyro diagnostics for the supplied
+    anomalies. In particular the Pb lane has zero physical input spin; its
+    zero-spin readback remains zero. No physical finite-rho claim is made.
+    """
+    with native_context(tmp_path) as context:
+        compile_spin_word_query(context)
+        element = observer_element(context)
+        point = np.array((.003, -.002, .4))
+        momentum = np.array((.2, -.1, 2.))
+        mesh = np.array((-.04, .02, .08))
+        nodes = np.array((.5-np.sqrt(3)/6, .5+np.sqrt(3)/6))
+        masses = (MASS0, MASS0, 938272088.16, 193687272900.)
+        charges = (-1., 1., 1., 82.)
+        anomalies = (.001, .002, .3, 0.)
+        angle = .31
+        axis = np.array((1., 2., -1.))/np.sqrt(6)
+        skew = cross_matrix(axis)
+        initial_rotation = (np.eye(3)+np.sin(angle)*skew
+                            +(1-np.cos(angle))*(skew@skew))
+        tangent = cross_matrix(np.array((.017, -.011, .023)))
+        initial_response = tangent@initial_rotation
+        strict_case = None
+        for mass, physical_charge, anomaly in zip(masses, charges, anomalies):
+            charge = physical_charge*MASS0/mass
+            scale = abs(charge)
+            p0 = profile_at(mesh[0], 4)
+            q = canonical_event(point, momentum, charge, p0)
+            incoming_r = np.array((.03, -.02, .01, .02, -.01, .025))
+            xi = incoming_r-independent_schott_event(
+                context, element, mesh[0], q, charge)
+            rotation = initial_rotation.copy()
+            response = initial_response.copy()
+            for start, stop in zip(mesh[:-1], mesh[1:]):
+                h = stop-start
+                planes = np.r_[start, start+h*nodes, stop]
+                profiles = np.concatenate([profile_at(z) for z in planes])
+                inputs = (q.copy(), xi.copy(), h, charge, anomaly,
+                          profiles.copy())
+                outputs, status, _ = spin_word_query(context, *inputs)
+                assert status == 1
+                data = outputs[0]
+                accepted, status, _ = spin_word_query(
+                    context, *inputs, stages=True)
+                assert status == 1
+                nominal, qs, Rs, rs = accepted
+                for left, right in ((data[:27], nominal[:27]),
+                                    (data[36:42], nominal[36:42])):
+                    np.testing.assert_array_equal(
+                        left.view(np.uint64), right.view(np.uint64))
+                states = qs.reshape(2, 6)
+                physical = rs.reshape(2, 6)
+                generators, forcing, auxiliary_forcing = [], [], []
+                for z, state, r in zip(planes[1:3], states, physical):
+                    g0 = covariant_spin_generator(context, element, z,
+                        state, charge, anomaly, 0.)[0]
+                    derivatives = []
+                    for step in (2e-4, 1e-4):
+                        altered = covariant_spin_generator(context, element,
+                            z, state+step*r, charge, anomaly, step)[0]
+                        derivatives.append((altered-g0)/step)
+                    H1 = 2*derivatives[1]-derivatives[0]
+                    generators.append(cross_matrix(g0))
+                    forcing.append(cross_matrix(H1))
+                    if abs(charge) == 1:
+                        s = independent_schott_event(
+                            context, element, z, state, charge)
+                        derivatives = []
+                        for step in (2e-4, 1e-4):
+                            plus = covariant_spin_generator(context, element,
+                                z, state+step*s, charge, anomaly, 0.)[0]
+                            minus = covariant_spin_generator(
+                                context, element, z, state-step*s,
+                                charge, anomaly, 0.)[0]
+                            derivatives.append((plus-minus)/(2*step))
+                        schott_direction = (4*derivatives[1]
+                                            - derivatives[0])/3
+                        auxiliary_forcing.append(
+                            cross_matrix(H1-schott_direction))
+                U0, U1, local_stages = dense_spin_word(generators, forcing,
+                    h, np.eye(3), np.zeros((3, 3)))
+                np.testing.assert_allclose(Rs.reshape(2, 3, 3), local_stages,
+                                           rtol=2e-11, atol=2e-13)
+                np.testing.assert_allclose(data[18:27].reshape(3, 3), U0,
+                                           rtol=2e-11, atol=2e-13)
+                np.testing.assert_allclose(data[27:36].reshape(3, 3)/scale,
+                    U1/scale, rtol=3e-6, atol=3e-10)
+                expected_R, expected_P, _ = dense_spin_word(generators,
+                    forcing, h, rotation, response)
+                native_U0 = data[18:27].reshape(3, 3)
+                native_U1 = data[27:36].reshape(3, 3)
+                carried_R = native_U0@rotation
+                carried_P = native_U1@rotation+native_U0@response
+                np.testing.assert_allclose(carried_R, expected_R,
+                                           rtol=2e-11, atol=2e-13)
+                np.testing.assert_allclose(carried_P, expected_P,
+                                           rtol=3e-8, atol=3e-11)
+                if abs(charge) == 1:
+                    # Wrong multiplication order or resetting incoming P
+                    # cannot masquerade as the global defining-word result.
+                    wrong = rotation@native_U1+response@native_U0
+                    assert np.max(abs(carried_P-wrong)) > 1e-9
+                    assert np.max(abs(native_U1)) > 1e-8
+                    _, wrong_auxiliary, _ = dense_spin_word(generators,
+                        auxiliary_forcing, h, np.eye(3), np.zeros((3, 3)))
+                    assert np.max(abs(U1-wrong_auxiliary)) > 1e-10
+                np.testing.assert_allclose(carried_R.T@carried_P
+                    + carried_P.T@carried_R, 0., atol=2e-11)
+                np.testing.assert_array_equal(carried_P@np.zeros(3), 0.)
+                q, xi = data[:6].copy(), data[6:12].copy()
+                rotation, response = carried_R, carried_P
+                if strict_case is None:
+                    strict_case = inputs
+            assert np.max(abs(response-initial_response)) > 1e-10*scale
+        failed, status, sentinels = spin_word_query(context, *strict_case,
+                                                   response_tol=1e-300)
+        assert status == -2
+        for output, sentinel in zip(failed, sentinels):
+            np.testing.assert_array_equal(output, sentinel)
