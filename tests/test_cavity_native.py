@@ -10,70 +10,15 @@ import os
 from pathlib import Path
 import shlex
 import sysconfig
+import sys
 
 import numpy as np
 import pytest
 import xobjects as xo
 import xtrack as xt
-
-
-class NativeCavityProbe(xt.BeamElement):
-    """Test-owned opt-in consumer of the shared native conservative kernel."""
-
-    _xofields = {
-        'length': xo.Float64, 'k': xo.Float64, 'omega': xo.Float64,
-        'anchor_s': xo.Float64, 'clock_origin': xo.Float64,
-        'source_mass_eV': xo.Float64, 'aperture': xo.Float64,
-        'tolerance': xo.Float64, 'maximum_iterations': xo.Int64,
-        'derivative_tolerance': xo.Float64,
-        'cells': xo.Int64, 'mesh': xo.Float64[:], 'profiles': xo.Float64[:],
-    }
-    isthick = True
-    has_backtrack = True
-    allow_rot_and_shift = False
-    _extra_c_sources = [
-        '#define XTRACK_CAVITY_NATIVE_TANGENT\n'
-        '#include "xtrack/beam_elements/elements_src/cavity_native_adapter.h"']
-    _per_particle_kernels = {
-        'native_tangent': xo.Kernel(
-            c_name='NativeCavityProbe_tangent_local_particle', args=[
-                xo.Arg(xo.Int64, name='reverse'),
-                xo.Arg(xo.Float64, pointer=True, name='output'),
-                xo.Arg(xo.Int64, pointer=True, name='statuses')]),
-    }
-
-    def __init__(self, *, mesh, profiles, k, omega, source_mass_eV,
-                 anchor_s=0., clock_origin=0., aperture=1., tolerance=2e-13,
-                 maximum_iterations=80, derivative_tolerance=2e-13, **kwargs):
-        mesh = np.asarray(mesh, dtype=float)
-        profiles = np.asarray(profiles, dtype=float)
-        if (mesh.ndim != 1 or len(mesh)<2 or not np.all(np.isfinite(mesh))
-                or not np.all(np.diff(mesh)>0)):
-            raise ValueError('finite strictly increasing mesh required')
-        cells = len(mesh)-1
-        if profiles.shape != (cells, 4, 10) or not np.all(np.isfinite(profiles)):
-            raise ValueError('finite cell profiles require shape(cells,4,10)')
-        for name, value in (('k', k), ('omega', omega),
-                            ('source_mass_eV', source_mass_eV),
-                            ('aperture', aperture), ('tolerance', tolerance),
-                            ('derivative_tolerance', derivative_tolerance)):
-            if not np.isscalar(value) or not np.isfinite(value) or value<=0:
-                raise ValueError(name+' must be finite and positive')
-        if (isinstance(maximum_iterations, (bool, np.bool_))
-                or not isinstance(maximum_iterations, (int, np.integer))
-                or maximum_iterations<=0):
-            raise ValueError('maximum_iterations must be a positive integer')
-        if not np.isfinite(anchor_s) or not np.isfinite(clock_origin):
-            raise ValueError('finite physical anchor and clock required')
-        if not np.isclose(omega/k, 299792458., rtol=8*np.finfo(float).eps):
-            raise ValueError('k and omega must describe the same physical clock')
-        super().__init__(length=(mesh[-1]-mesh[0])/k, mesh=mesh,
-            profiles=profiles.ravel(), cells=cells, k=k, omega=omega,
-            source_mass_eV=source_mass_eV, anchor_s=anchor_s,
-            clock_origin=clock_origin, aperture=aperture,
-            tolerance=tolerance, maximum_iterations=maximum_iterations,
-            derivative_tolerance=derivative_tolerance,
-            **kwargs)
+from xtrack.beam_elements.cavity_native import (
+    CavityNativeDiagnostic as NativeCavityProbe,
+)
 
 
 @contextmanager
@@ -87,7 +32,7 @@ def native_context(directory):
             continue
         tokens, clean, seen = shlex.split(value), [], set()
         for token in tokens:
-            if token.startswith('-Wl,-rpath,'):
+            if token == '-Wl,-rpath,'+str(Path(sys.prefix)/'lib'):
                 if token in seen:
                     continue
                 seen.add(token)
@@ -248,7 +193,7 @@ def test_native_cavity_mutable_controls_refuse_safely(tmp_path):
                 ('maximum_iterations', 0, -99704),
                 ('anchor_s', .1, -99704)):
             element = NativeCavityProbe(_context=context, **data)
-            setattr(element, field, value)
+            setattr(element._xobject, field, value)
             particle = xt.Particles(_context=context, **launch)
             before = particle_values(particle)
             element.track(particle)
@@ -257,7 +202,7 @@ def test_native_cavity_mutable_controls_refuse_safely(tmp_path):
                 np.testing.assert_array_equal(particle_values(particle)[name],
                                               original, err_msg=field+':'+name)
         element = NativeCavityProbe(_context=context, **data)
-        element.profiles[0] = np.nan
+        element._xobject.profiles[0] = np.nan
         particle = xt.Particles(_context=context, **launch)
         before = particle_values(particle)
         element.track(particle)
@@ -475,3 +420,176 @@ def test_native_cavity_actual_species_shared_hardware(tmp_path):
         actual = np.column_stack([getattr(particle, name) for name in
                                   ('x', 'px', 'y', 'py', 'zeta', 'delta')])
         np.testing.assert_allclose(actual, expected, rtol=0., atol=3e-13)
+
+
+def factory_reference(context=None, *, q0=-1., mass0=510998.95069):
+    return xt.Particles(_context=context, mass0=mass0,
+        p0c=mass0*np.sqrt(2.4**2-1), q0=q0)
+
+
+def test_cavity_native_factory_same_hardware(tmp_path):
+    _, _, reference_data, launch, _ = prepared_case(8)
+    with native_context(tmp_path) as context:
+        reference = factory_reference(context)
+        # Historical preparation used calibration q0=+1,phase=0. With native
+        # electron q0=-1 this explicit phase conversion preserves its FIELD.
+        cavity = xt.Cavity(length=.05, voltage=20e3, frequency=400e6,
+                            phase=-np.pi, absolute_time=True)
+        element = cavity._prepare_native_diagnostic(reference, eta=.25,
+            counter_phase=.3, calibration_beta=1., num_cells=8,
+            radius_m=.001, _context=context)
+        for name in ('k', 'omega', 'source_mass_eV', 'clock_origin', 'aperture'):
+            assert getattr(element, name) == reference_data[name], name
+        np.testing.assert_array_equal(element.mesh, reference_data['mesh'])
+        np.testing.assert_array_equal(element.profiles, reference_data['profiles'])
+        assert not element.accepted_production_return
+        assert not element.preparation['accepted_production_return']
+        assert element.preparation['reference_charge_e'] == -1.
+        actual = xt.Particles(_context=context, **launch)
+        original = actual.copy()
+        element.track(actual)
+        NativeCavityProbe(_context=context, **reference_data).track(original)
+        for name in PRIMARY_AND_AUX:
+            np.testing.assert_array_equal(getattr(actual, name),
+                                          getattr(original, name))
+
+
+@pytest.mark.parametrize('q0,voltage,eta,beta_cal', [
+    (-1., 20e3, .25, 1.), (1., -20e3, 1., .8),
+    (-1., -20e3, 0., .9), (1., 20e3, np.inf, 1.),
+])
+def test_cavity_native_factory_electric_crest(q0, voltage, eta, beta_cal):
+    from scipy.integrate import quad
+    phase, counter_phase = .37, .3
+    reference = factory_reference(q0=q0)
+    cavity = xt.Cavity(length=.05, voltage=voltage, frequency=400e6,
+                       phase=phase, absolute_time=True)
+    element = cavity._prepare_native_diagnostic(reference, eta=eta,
+        counter_phase=counter_phase, calibration_beta=beta_cal,
+        radius_m=.001)
+    # Independent real-axis quadrature of the PREPARED electric field on
+    # the prescribed calibration ray, not an accelerated-particle gain.
+    H = element.mesh[-1]
+    ratio = np.sqrt(eta)
+    weights = (0., 1.) if np.isinf(eta) else (1/(1+ratio), ratio/(1+ratio))
+    # Recover the actual prepared on-axis amplitudes without using its
+    # Fourier formula: evaluate at Z=0 and solve the two known wave weights.
+    # The mesh has a centre boundary at cell4, whose profile is prepared data.
+    phasor0 = element.profiles[4, 0, 0]+1j*element.profiles[4, 0, 5]
+    denominator = weights[0]+weights[1]*np.exp(-1j*counter_phase)
+    amplitude = phasor0/denominator
+    assert abs(amplitude.imag) < 2e-15*max(1., abs(amplitude.real))
+
+    def electric(z):
+        envelope = (1-(z/H)**2)**16
+        phasor = amplitude.real*envelope*(weights[0]*np.exp(1j*z)
+            +weights[1]*np.exp(-1j*(z+counter_phase)))
+        return float(np.real(phasor*np.exp(-1j*(element.clock_origin
+            +(z+H)/beta_cal))))*reference.mass0
+
+    integral, quadrature_error = quad(electric, -H, H, epsabs=1e-9,
+                                      epsrel=2e-13)
+    expected = np.sign(q0)*voltage*np.sin(phase)
+    np.testing.assert_allclose(integral, expected, rtol=2e-12, atol=1e-8)
+    assert quadrature_error < 1e-7
+
+
+def test_cavity_native_factory_snapshot_copy_and_serialization():
+    reference = factory_reference()
+    cavity = xt.Cavity(length=.05, voltage=20e3, frequency=400e6,
+                       phase=-np.pi, absolute_time=True)
+    native = cavity._prepare_native_diagnostic(reference, eta=.25,
+        counter_phase=.3, radius_m=.001)
+    mesh, profiles = native.mesh, native.profiles
+    with pytest.raises(ValueError):
+        mesh[0] = 0.
+    with pytest.raises(ValueError):
+        profiles[0, 0, 0] = 0.
+    with pytest.raises(AttributeError):
+        native.k = 1.
+    with pytest.raises(TypeError):
+        native.preparation['frequency_hz'] = 1.
+    cavity.voltage = 40e3
+    newer = cavity._prepare_native_diagnostic(reference, eta=.25,
+        counter_phase=.3, radius_m=.001)
+    np.testing.assert_array_equal(native.profiles, profiles)
+    np.testing.assert_array_equal(newer.profiles, 2*profiles)
+    copied = native.copy()
+    restored = type(native).from_dict(native.to_dict())
+    for candidate in (copied, restored):
+        np.testing.assert_array_equal(candidate.mesh, mesh)
+        np.testing.assert_array_equal(candidate.profiles, profiles)
+        assert dict(candidate.preparation) == dict(native.preparation)
+        with pytest.raises(TypeError):
+            candidate.preparation['voltage_v'] = 1.
+
+
+@pytest.mark.parametrize('changes', [
+    dict(absolute_time=False), dict(length=0.), dict(frequency=0.),
+    dict(frequency=0., harmonic=4.), dict(phase_taper=.1),
+    dict(lag_taper=.1), dict(shift_x=.001),
+    dict(model='rot-kick-rot-low-order'), dict(integrator='uniform'),
+])
+def test_cavity_native_factory_refuses_unsupported_settings(changes):
+    settings = dict(length=.05, voltage=20e3, frequency=400e6,
+                     phase=-np.pi, absolute_time=True)
+    settings.update(changes)
+    cavity = xt.Cavity(**settings)
+    with pytest.raises(ValueError):
+        cavity._prepare_native_diagnostic(factory_reference(), eta=.25,
+                                          radius_m=.001)
+
+
+def test_cavity_native_factory_legacy_compiled_isolation(tmp_path):
+    with native_context(tmp_path) as context:
+        with pytest.warns(FutureWarning, match='lag'):
+            cavity = xt.Cavity(_context=context, length=.05, voltage=20e3,
+                frequency=400e6, phase=.37, lag=17., absolute_time=True)
+        original = cavity.copy()
+        offset, size = cavity._xobject._offset, cavity._xobject._size
+        before_bytes = cavity._buffer.buffer[offset:offset+size].copy()
+        reference = factory_reference(context)
+        native = cavity._prepare_native_diagnostic(reference, eta=.25,
+            counter_phase=.3, radius_m=.001, _context=context)
+        np.testing.assert_array_equal(
+            cavity._buffer.buffer[offset:offset+size], before_bytes)
+        without_lag = xt.Cavity(_context=context, length=.05, voltage=20e3,
+            frequency=400e6, phase=.37+np.pi/180*17., absolute_time=True)
+        combined = without_lag._prepare_native_diagnostic(reference, eta=.25,
+            counter_phase=.3, radius_m=.001, _context=context)
+        assert native.clock_origin == combined.clock_origin
+        np.testing.assert_array_equal(native.profiles, combined.profiles)
+        source_path = tmp_path/'legacy-cavity.c'
+        cavity.compile_kernels(save_source_as=str(source_path))
+        source = source_path.read_text()
+        assert 'cavity_native_' not in source
+        assert 'CavityNative' not in source
+        values = dict(mass0=510998.95069,
+            p0c=510998.95069*np.sqrt(2.4**2-1), q0=-1.,
+            x=.0004, px=.001, y=-.0003, py=-.002, delta=.001,
+            zeta=.01, s=0., time_s=3.1e-10)
+        actual = xt.Particles(_context=context, **values)
+        expected = xt.Particles(_context=context, **values)
+        cavity.track(actual)
+        original.track(expected)
+        assert actual.state[0] == expected.state[0] == 1
+        for name in PRIMARY_AND_AUX:
+            np.testing.assert_array_equal(getattr(actual, name),
+                                          getattr(expected, name))
+
+
+def test_cavity_native_explicit_class_line_roundtrip():
+    reference = factory_reference()
+    cavity = xt.Cavity(length=.05, voltage=20e3, frequency=400e6,
+                       phase=-np.pi, absolute_time=True)
+    native = cavity._prepare_native_diagnostic(reference, eta=.25,
+        counter_phase=.3, radius_m=.001)
+    line = xt.Line(elements=[native], element_names=['rf'], particle_ref=reference)
+    # This is explicit custom-class lookup, not an assertion of automatic
+    # public registration or fresh-process default Line deserialization.
+    restored = xt.Line.from_dict(line.to_dict(), classes=(type(native),),
+                                verbose=False, with_progress=False)
+    np.testing.assert_array_equal(restored.element_dict['rf'].mesh, native.mesh)
+    np.testing.assert_array_equal(restored.element_dict['rf'].profiles,
+                                  native.profiles)
+    assert dict(restored.element_dict['rf'].preparation) == dict(native.preparation)

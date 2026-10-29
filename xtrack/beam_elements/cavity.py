@@ -138,6 +138,24 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
                                " of harmonic.")
         return super().track(particles, *args, **kwargs)
 
+    def _prepare_native_diagnostic(self, particle_ref, *, eta, radius_m,
+            counter_phase=0., calibration_beta=1., num_cells=8, anchor_s=0.,
+            _context=None):
+        """Prepare a separate private full-root M2/P16 Gauss diagnostic.
+
+        Existing Cavity tracking and selectors retain their meanings. This
+        explicit snapshot has no numerical/source/backend admission and no
+        radiation or spin transport. Changing settings requires preparation
+        again. Only the documented fixed-alignment absolute-time subset is
+        currently supported; radius_m is a runtime guard, not a qualified
+        physical aperture. This is an experimental private interface.
+        """
+        from .cavity_native import prepare_native_diagnostic
+        return prepare_native_diagnostic(self, particle_ref, eta=eta,
+            radius_m=radius_m, counter_phase=counter_phase,
+            calibration_beta=calibration_beta, num_cells=num_cells,
+            anchor_s=anchor_s, _context=_context)
+
     @property
     def frequency(self):
         return self._frequency
