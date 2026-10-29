@@ -7,6 +7,7 @@ of the generated LL/BMT expressions. No cavity-modelling import is needed.
 Point agreement establishes neither transport, noise, nor numerical admission.
 """
 import numpy as np
+import xobjects as xo
 import xtrack as xt
 
 from test_cavity_native import native_context, particle_values
@@ -246,3 +247,128 @@ def test_native_secondary_independent_point_laws(tmp_path):
         np.testing.assert_allclose(values[:, 9:12]/1e-8, 0., atol=2e-12)
         assert np.all(values[:, 20] > 0)
         np.testing.assert_allclose(values[:, 20]/1e-8, 1., atol=2e-12)
+
+
+def compile_schott_query(context):
+    """A thin direct C-source consumer, without a new tracking element."""
+    context.add_kernels(sources=[r'''
+        #include "xobjects/headers/common.h"
+        #include "xtrack/beam_elements/elements_src/cavity_native_secondary.h"
+        GPUKERN
+        void cavity_schott_source_review(double* q, double charge,
+                double* profile, double aperture, double* output,
+                int64_t* status) {
+            status[0] = CavityNative_schott_source(
+                q, charge, profile, aperture, output);
+        }
+    '''], kernels={'cavity_schott_source_review': xo.Kernel(args=[
+        xo.Arg(xo.Float64, pointer=True, name='q'),
+        xo.Arg(xo.Float64, name='charge'),
+        xo.Arg(xo.Float64, pointer=True, name='profile'),
+        xo.Arg(xo.Float64, name='aperture'),
+        xo.Arg(xo.Float64, pointer=True, name='output'),
+        xo.Arg(xo.Int64, pointer=True, name='status')], n_threads=1)})
+
+
+def schott_query(context, q, charge, profile, *, aperture=.1):
+    """Retain finite sentinels to expose any partial source write on refusal."""
+    state = context.nparray_to_context_array(np.asarray(q, dtype=float).copy())
+    jets = context.nparray_to_context_array(
+        np.asarray(profile, dtype=float).copy())
+    sentinel = np.arange(12, dtype=float) + 81.25
+    output = context.nparray_to_context_array(sentinel.copy())
+    status = context.nparray_to_context_array(np.zeros(1, dtype=np.int64))
+    context.kernels.cavity_schott_source_review(q=state, charge=charge,
+        profile=jets, aperture=aperture, output=output, status=status)
+    np.testing.assert_array_equal(np.asarray(state), q)
+    np.testing.assert_array_equal(np.asarray(jets), profile)
+    return np.asarray(output).copy(), int(np.asarray(status)[0]), sentinel
+
+
+def canonical_event(point, momentum, charge, profile):
+    """Encode the declared temporal M2 potential, independently in Python.
+
+    Only the common source/gauge/chart is shared here. The Schott and emitted
+    flux formula below is independent of the generated source expressions.
+    """
+    values = np.asarray(profile[:5]) + 1j*np.asarray(profile[5:])
+    imaginary = np.imag(values*np.exp(-1j*point[2]))
+    radial = point[0]**2 + point[1]**2
+    transverse = point[:2]*(
+        -imaginary[1]/2 + radial*(imaginary[1]+imaginary[3])/16)
+    gamma = np.hypot(1., np.linalg.norm(momentum))
+    return np.r_[point, momentum[:2]+charge*transverse, gamma]
+
+
+def test_native_schott_source_independent_coefficients(tmp_path):
+    """Check rho-free full-six s/ell, nonzero faces and transactional refusal.
+
+    These are local impressed-source points, not admitted cavity boundaries.
+    The source's classical emitted momentum is W*beta; replacing it by an
+    on-shell photon energy decrement gives a different vector and must fail.
+    """
+    with native_context(tmp_path) as context:
+        compile_schott_query(context)
+        element = observer_element(context)
+        # This local law fixture excites transverse Schott momentum above
+        # its stated nonzero guard; it is not the gamma=2.4 cavity launch.
+        u = np.array((.2, -.1, 10.))
+        gamma = np.hypot(1., np.linalg.norm(u))
+        beta = u/gamma
+        boundary_s = []
+        for z, point in ((-.08, np.array((.003, -.002, .4))),
+                         (.09, np.array((.004, -.001, .7)))):
+            profile = profile_at(z, 4)
+            particles = event_particles(context, element, z, point, momentum=u)
+            fields, statuses, _ = observe(
+                element, particles, z, profile_at(z), 0.)
+            assert statuses[0] == 1
+            raw_e, raw_b = fields[0, 12:15], fields[0, 15:18]
+            signed = []
+            for charge in (-1., 1.):
+                e, b = charge*raw_e, charge*raw_b
+                force = e+np.cross(beta, b)
+                direction = u/np.linalg.norm(u)
+                parallel = direction@force
+                perpendicular = force-parallel*direction
+                power = parallel**2 + gamma**2*(perpendicular@perpendicular)
+                s = np.r_[np.zeros(3), gamma*force[:2], gamma*(beta@e)]
+                ell = np.r_[np.zeros(3), power*beta[:2], power]/beta[2]
+                q = canonical_event(point, u, charge, profile)
+                value, status, _ = schott_query(context, q, charge, profile)
+                assert status == 1 and power > 0
+                assert np.linalg.norm(s[3:5]) > 1e-5
+                assert abs(s[5]) > 1e-3
+                np.testing.assert_allclose(value[:6], s,
+                                           rtol=2e-12, atol=2e-13)
+                np.testing.assert_allclose(value[6:], ell,
+                                           rtol=2e-12, atol=2e-13)
+                np.testing.assert_allclose(value[9:11]/value[11], beta[:2],
+                                           rtol=2e-13, atol=2e-15)
+                signed.append(value)
+            np.testing.assert_allclose(signed[0][:6], -signed[1][:6],
+                                       rtol=2e-12, atol=2e-13)
+            np.testing.assert_allclose(signed[0][6:], signed[1][6:],
+                                       rtol=2e-12, atol=2e-13)
+            boundary_s.append(signed[0][:6])
+        assert np.max(abs(boundary_s[1]-boundary_s[0])) > 1e-3
+        for charge, data in ((0., profile), (1., np.zeros(10))):
+            q = canonical_event(point, u, charge, data)
+            value, status, _ = schott_query(context, q, charge, data)
+            assert status == 1
+            np.testing.assert_array_equal(value, 0.)
+        q = canonical_event(point, u, -1., profile)
+        low_energy = q.copy()
+        low_energy[5] = .9
+        invalid_profile = profile.copy()
+        invalid_profile[4] = np.nan
+        for state, data, aperture, expected in (
+            (low_energy, profile, .1, -1),
+            (q, profile, .001, -1),
+            (q, invalid_profile, .1, -3),
+            (q, profile, -1., -4),
+        ):
+            value, status, sentinel = schott_query(
+                context, state, -1., data, aperture=aperture)
+            assert status == expected
+            np.testing.assert_array_equal(value, sentinel)

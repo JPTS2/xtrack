@@ -527,4 +527,106 @@ int CavityNative_reaction_coefficient(const double q[6], double Q,
     for (int i=0; i<6; ++i) coefficient[i] = result[i];
     return CAVITY_NATIVE_OK;
 }
+
+// Full canonical Schott s[6] followed by emitted-flux projection ell[6],
+// both coefficients with rho divided out analytically. s is an EVENT vector,
+// ell a source PER Z. S1=D0s-ell includes an explicit Z derivative in D0s.
+// These VALUES use only true Re/Im0..4; no LL material-derivative work.
+// Used by a named NEW Schott-coordinate response word; not an old-word fix,
+// energy-only correction, physical accepted return or photon/recoil law.
+GPUFUN
+int CavityNative_schott_source(const double q[6], double Q,
+        const double profile[10], double aperture, double output[12]) {
+    double flow[6];
+    int status = CavityNative_source(q, Q, profile, aperture, flow);
+    if (status != CAVITY_NATIVE_OK) return status;
+    double result[12];
+    const double q0 = q[0];
+    const double q1 = q[1];
+    const double q2 = q[2];
+    const double q3 = q[3];
+    const double q4 = q[4];
+    const double q5 = q[5];
+    const double p0 = profile[0];
+    const double p1 = profile[1];
+    const double p2 = profile[2];
+    const double p3 = profile[3];
+    const double p4 = profile[4];
+    const double p5 = profile[5];
+    const double p6 = profile[6];
+    const double p7 = profile[7];
+    const double p8 = profile[8];
+    const double p9 = profile[9];
+    const double v0 = cos(q2);
+    const double v1 = pow(q0, 2) + pow(q1, 2);
+    const double v2 = (1.0/16.0)*v1;
+    const double v3 = v0*v2;
+    const double v4 = (1.0/2.0)*p1*v0 - p1*v3 - p3*v3;
+    const double v5 = sin(q2);
+    const double v6 = v2*v5;
+    const double v7 = (1.0/2.0)*p6*v5 - p6*v6 - p8*v6;
+    const double v8 = Q*(-q0*v4 - q0*v7);
+    const double v9 = (1.0/2.0)*p1*v5 - p1*v6 - p3*v6;
+    const double v10 = -1.0/2.0*p6*v0 + p6*v3 + p8*v3;
+    const double v11 = -Q*(q1*v10 + q1*v9) + q4;
+    const double v12 = (1.0/8.0)*q1;
+    const double v13 = v12*v5;
+    const double v14 = v0*v12;
+    const double v15 = (1.0/8.0)*q0;
+    const double v16 = v15*v5;
+    const double v17 = v0*v15;
+    const double v18 = 1.0/q5;
+    const double v19 = Q*v18;
+    const double v20 = v19*(-q0*(-p1*v13 - p3*v13) - q0*(p6*v14 + p8*v14) + q1*(-p1*v16 - p3*v16) + q1*(p6*v17 + p8*v17));
+    const double v21 = (1.0/2.0)*q0;
+    const double v22 = p2*v5;
+    const double v23 = p5*v0;
+    const double v24 = p7*v0;
+    const double v25 = (1.0/2.0)*v24;
+    const double v26 = p0*v6;
+    const double v27 = v1*v15;
+    const double v28 = p4*v6;
+    const double v29 = p9*v3;
+    const double v30 = (1.0/2.0)*p2*v5 - v2*v22 - v28;
+    const double v31 = v2*v24 - v25 + v29;
+    const double v32 = -p0*v21*v5 - p5*q0*v3 - 1.0/2.0*q0*v22 + q0*v25 + q0*v26 + q0*v28 - q0*v29 + q0*v30 + q0*v31 + v21*v23 + v22*v27 - v24*v27;
+    const double v33 = pow(q5, 2);
+    const double v34 = -Q*(q0*v10 + q0*v9) + q3;
+    const double v35 = sqrt(-pow(v11, 2) + v33 - pow(v34, 2) - 1);
+    const double v36 = v19*v35;
+    const double v37 = v11*v20 - v32*v36 + v8;
+    const double v38 = Q*(-q1*v4 - q1*v7);
+    const double v39 = (1.0/2.0)*p0*q1*v5 + (1.0/2.0)*p2*q1*v5 + (1.0/16.0)*p5*q1*v0*v1 + (1.0/8.0)*p7*q1*v0*v1 + (1.0/16.0)*p9*q1*v0*v1 - 1.0/2.0*q1*v23 - q1*v25 - q1*v26 - q1*v28 - q1*v30 - q1*v31 - v1*v12*v22;
+    const double v40 = -v20*v34 + v36*v39 + v38;
+    const double v41 = p0*v0;
+    const double v42 = p5*v5;
+    const double v43 = (1.0/4.0)*v1;
+    const double v44 = p2*v0;
+    const double v45 = p7*v5;
+    const double v46 = pow(v1, 2);
+    const double v47 = (1.0/64.0)*v46;
+    const double v48 = (1.0/32.0)*v46;
+    const double v49 = Q*(p4*v0*v47 + p9*v47*v5 - v41*v43 + v41*v47 + v41 - v42*v43 + v42*v47 + v42 - v43*v44 - v43*v45 + v44*v48 + v45*v48);
+    const double v50 = 1.0/(v33 - 1);
+    const double v51 = -v11*v19*v39 + v19*v32*v34 + v49;
+    const double v52 = v11*v40 + v34*v37 + v35*v51;
+    const double v53 = v50*v52;
+    const double v54 = (v33*(pow(-v11*v53 + v40, 2) + pow(-v34*v53 + v37, 2) + pow(-v35*v53 + v51, 2)) + v50*pow(v52, 2))/v35;
+    result[0] = 0;
+    result[1] = 0;
+    result[2] = 0;
+    result[3] = q5*v37;
+    result[4] = q5*v40;
+    result[5] = q5*(v11*v18*v38 + v18*v34*v8 + v18*v35*v49);
+    result[6] = 0;
+    result[7] = 0;
+    result[8] = 0;
+    result[9] = v34*v54;
+    result[10] = v11*v54;
+    result[11] = q5*v54;
+    for (int i=0; i<12; ++i)
+        if (!isfinite(result[i])) return CAVITY_NATIVE_NONFINITE;
+    for (int i=0; i<12; ++i) output[i] = result[i];
+    return CAVITY_NATIVE_OK;
+}
 #endif
