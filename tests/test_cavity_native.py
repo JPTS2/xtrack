@@ -953,3 +953,117 @@ def test_native_cavity_first_cell_audit_fresh_snapshot(tmp_path):
         np.testing.assert_array_equal(third['source_snapshot']['profiles'],2*old_profiles)
         np.testing.assert_array_equal(first['source_snapshot']['profiles'],old_profiles)
         assert not np.array_equal(third['qout'],second['qout'])
+
+
+def test_native_cavity_audit_physical_clock_readback(tmp_path):
+    """Separate represented clock structure from C floating-point rounding.
+
+    Exact fractions bind actual binary64 readbacks; independent decimal
+    arithmetic checks the physical-event expression. Neither is a source,
+    force-conversion, normative coherent-SI or boundary-map certificate.
+    """
+    from decimal import Decimal, localcontext
+    from fractions import Fraction
+
+    def exact(value):
+        return Fraction.from_float(float(value))
+
+    def decimal(value):
+        return Decimal(value.numerator)/Decimal(value.denominator)
+
+    data,launch = native_p16_case()
+    anchor, initial_time, shift = .125, 3e-10, 2e-10
+    data = dict(data,anchor_s=anchor)
+    launch = dict(launch,s=anchor,time_s=initial_time)
+    beta = launch['p0c']/np.hypot(launch['mass0'],launch['p0c'])
+    launch['zeta'] = beta/data['k']*(data['omega']
+        *(initial_time+anchor/(beta*299792458.))+data['clock_origin']-.4)
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        particle = xt.Particles(_context=context,particle_id=[17,3],**launch)
+        particle.state[0] = -7
+        records = []
+        physical_clocks = []
+        for frame_shift in (0.,shift):
+            particle.time_s = initial_time+frame_shift
+            particle.zeta[:] = launch['zeta']+beta*299792458.*frame_shift
+            before = spin_rng_values(particle)
+            audit = element.audit_first_cell(particle)
+            records.append(audit)
+            inputs,snapshot = audit['native_input'],audit['source_snapshot']
+            by_id = {int(identity):index for index,identity
+                     in enumerate(audit['particle_id'])}
+            assert audit['status'][by_id[3]] == 1
+            assert audit['status'][by_id[17]] == 0
+            for name,value in before.items():
+                np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+            for name,value in inputs.items():
+                if name in ('mass0','q0','time_s'):
+                    assert value == getattr(particle,name)
+                else:
+                    np.testing.assert_array_equal(value,getattr(particle,name))
+                    assert not value.flags.writeable
+            index = by_id[3]
+            omega,k = map(exact,(snapshot['omega'],snapshot['k']))
+            beta0,zeta,s = (exact(inputs[name][index])
+                           for name in ('beta0','zeta','s'))
+            time,anchor_s,phase = map(exact,(inputs['time_s'],
+                snapshot['anchor_s'],snapshot['clock_origin']))
+            Z,Za = map(exact,(audit['start'][index],snapshot['mesh'][0]))
+            c = Fraction(299792458)
+            mixed = omega*(time+anchor_s/(beta0*c))+phase
+            mixed += (Z-Za)/beta0-k*zeta/beta0
+            physical = omega*(time+(s-zeta)/(beta0*c))+phase
+            physical_clocks.append(physical)
+            structural = (omega*(anchor_s-s)/c+(Z-Za)
+                          +(omega/c-k)*zeta)/beta0
+            assert mixed-physical == structural
+            assert omega-c*k != 0 and structural != 0
+            actual = exact(audit['qin'][index,2])
+            floating = actual-mixed
+            assert actual-physical == floating+structural
+            # Only a loose diagnostic for this finite evaluation expression;
+            # the exact nonzero structural discrepancy is retained separately.
+            scale = sum(map(abs,(omega*time,omega*anchor_s/(beta0*c),
+                                 phase,k*zeta/beta0)))
+            assert abs(float(floating)) < 32*np.finfo(float).eps*float(scale)
+            with localcontext() as decimal_context:
+                decimal_context.prec = 90
+                physical_decimal = (decimal(omega)*(
+                    decimal(time)+(decimal(s)-decimal(zeta))
+                    /decimal(beta0)/Decimal(299792458))+decimal(phase))
+                assert abs(physical_decimal-decimal(physical)) < Decimal('1e-85')
+                mixed_decimal = (decimal(omega)*decimal(time)
+                    +decimal(omega)*decimal(anchor_s)/decimal(beta0)
+                    /Decimal(299792458)+decimal(phase)
+                    +(decimal(Z)-decimal(Za))/decimal(beta0)
+                    -decimal(k)*decimal(zeta)/decimal(beta0))
+                assert abs(mixed_decimal-decimal(mixed)) < Decimal('1e-85')
+            assert snapshot['preparation'] == {}  # Raw packet has no analytic identity.
+            assert not element.accepted_production_return
+        # A frame rebase uses rounded stored inputs; preserve their actual
+        # physical events rather than replacing either clock with ideal .4.
+        old = records[0]['native_input']
+        assert old['time_s'] == initial_time
+        assert records[1]['native_input']['time_s'] == initial_time+shift
+        assert old['zeta'][0] != records[1]['native_input']['zeta'][0]
+        new = records[1]['native_input']
+        # The ideal clock rebase cancels. Its actual stored-input remainder
+        # follows exactly from the rounded time and zeta increments.
+        dt = exact(new['time_s'])-exact(old['time_s'])
+        dzeta = exact(new['zeta'][0])-exact(old['zeta'][0])
+        assert physical_clocks[1]-physical_clocks[0] == omega*(
+            dt-dzeta/(beta0*c))
+        assert abs(float(physical_clocks[1]-physical_clocks[0])) < 3e-15
+
+
+def test_native_cavity_factory_declared_source_identity():
+    cavity = xt.Cavity(length=.05,voltage=20e3,frequency=400e6,
+                       phase=-np.pi,absolute_time=True)
+    native = cavity._prepare_native_diagnostic(factory_reference(),eta=.25,
+        counter_phase=.3,radius_m=.001,num_cells=8)
+    assert native.preparation['carrier_nu'] == 1.
+    assert native.preparation['phase_rad'] == -np.pi
+    assert native.preparation['reference_charge_e'] == -1.
+    assert native.preparation['counter_phase'] == .3
+    assert not native.accepted_production_return

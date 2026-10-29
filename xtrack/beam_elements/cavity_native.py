@@ -402,6 +402,11 @@ class CavityNativeDiagnostic(BeamElement):
         are supported assumptions, not memory or permission enforcement.
         Failed output and word buffers retain NaNs; status0 is unvisited.
         All arrays are indexed by the returned POST-callback particle IDs.
+        native_input contains post-callback physical/reference readbacks from
+        that same event, under the nonmutation and no-concurrency assumptions
+        above. x, y, zeta and s are metres; p0c and mass0 are eV; time_s is
+        seconds; px/py retain native reference-momentum normalization. This
+        does not qualify the SI clock or force embedding.
         """
         context = self._context
         if not isinstance(context,xo.ContextCpu):
@@ -444,6 +449,12 @@ class CavityNativeDiagnostic(BeamElement):
         values = context.nparray_from_context_array(output).copy()
         words = context.nparray_from_context_array(word).copy()
         status = context.nparray_from_context_array(statuses).copy()
+        native_input = {name: frozen(context.nparray_from_context_array(
+            getattr(particles,name)),dtype=(np.int64 if name=='state' else float))
+            for name in ('x','px','y','py','zeta','delta','s','p0c','beta0',
+                         'gamma0','charge_ratio','chi','state')}
+        native_input.update({name: float(getattr(particles,name))
+                             for name in ('mass0','q0','time_s')})
         cell_index = np.full(particles._capacity,-1,dtype=np.int64)
         cell_index[status==1] = words[status==1,0].astype(np.int64)
         return dict(qin=values[:,:6].copy(),
@@ -453,7 +464,8 @@ class CavityNativeDiagnostic(BeamElement):
             cell_index=cell_index,start=words[:,1].copy(),step=words[:,2].copy(),
             effective_Q=words[:,3].copy(),residual=words[:,4].copy(),
             tableau=dict(A=frozen(_STORED_GAUSS_A),C=frozen(GAUSS_NODES),
-                         b=frozen((.5,.5))),source_snapshot=snapshot)
+                         b=frozen((.5,.5))),source_snapshot=snapshot,
+            native_input=native_input)
 
 
 def _source_readback(name):
