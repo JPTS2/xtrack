@@ -425,6 +425,79 @@ void CavityNativeDiagnostic_secondary_local_particle(CavityNativeDiagnosticData 
 #ifdef XTRACK_CAVITY_NATIVE_RESPONSE
 #include "xtrack/beam_elements/elements_src/cavity_native_response.h"
 
+// Value-only helpers shared by the two observational response consumers.
+// They do not impose spin/anomaly requirements on the existing mean observer.
+GPUFUN
+int CavityNative_adapter_response_species(LocalParticle* part,double rho_unit_eV,
+        double* mass,double* rho) {
+    const double charge=LocalParticle_get_q0(part)*LocalParticle_get_charge_ratio(part);
+    *mass=LocalParticle_get_mass0(part)*LocalParticle_get_charge_ratio(part)
+        /LocalParticle_get_chi(part);
+    *rho=rho_unit_eV*charge*charge/ *mass;
+    if (!(isfinite(*mass) && *mass>0. && isfinite(charge)
+            && isfinite(*rho) && *rho>=0.)) return CAVITY_NATIVE_NONFINITE;
+    return CAVITY_NATIVE_OK;
+}
+
+GPUFUN
+int CavityNative_adapter_response_finish(CavityNativeDiagnosticData el,
+        const double q[6],const double profile[10],double Q,double kappa0,
+        double beta0,double clock,const double physical[6],double mass,double rho,
+        double initial_sE,const double work_in[2],double worst,
+        double response_worst,double target[33]) {
+    double result[6],native_response[6],work[3]={work_in[0],work_in[1],0.};
+    int status=CavityNative_adapter_output(el,q,
+        CavityNativeDiagnosticData_get_mesh(el,CavityNativeDiagnosticData_get_cells(el)),
+        profile,Q,kappa0,beta0,clock,result);
+    if (status==CAVITY_NATIVE_OK) {
+        double final_split[12];
+        status=CavityNative_schott_source(q,Q,profile,
+            CavityNativeDiagnosticData_get_aperture(el),final_split);
+        if (status==CAVITY_NATIVE_OK) work[2]=final_split[5]-initial_sE;
+    }
+    if (status==CAVITY_NATIVE_OK) {
+        double potential[4],jet[12];
+        status=CavityNative_potential(q,profile,potential);
+        if (status==CAVITY_NATIVE_OK)
+            status=CavityNative_potential_jacobian(q,profile,jet);
+        if (status==CAVITY_NATIVE_OK) {
+            const double k=CavityNativeDiagnosticData_get_k(el);
+            const double gamma=q[5]-Q*potential[3];
+            const double factor=gamma/(kappa0*sqrt((gamma-1.)*(gamma+1.)));
+            double dAx=0.,dAy=0.,dPhi=0.;
+            for (int j=0; j<3; ++j) {
+                dAx+=jet[j]*physical[j];
+                dAy+=jet[3+j]*physical[j];
+                dPhi+=jet[9+j]*physical[j];
+            }
+            native_response[0]=physical[0]/k;
+            native_response[1]=(physical[3]-Q*dAx)/kappa0;
+            native_response[2]=physical[1]/k;
+            native_response[3]=(physical[4]-Q*dAy)/kappa0;
+            native_response[4]=-beta0/k*physical[2];
+            native_response[5]=factor*(physical[5]-Q*dPhi);
+            for (int j=0; j<6; ++j)
+                if (!isfinite(physical[j]) || !isfinite(native_response[j])
+                        || !isfinite(rho*native_response[j]))
+                    status=CAVITY_NATIVE_NONFINITE;
+            for (int j=0; j<3; ++j)
+                if (!isfinite(work[j]) || !isfinite(mass*rho*work[j]))
+                    status=CAVITY_NATIVE_NONFINITE;
+        }
+    }
+    if (status==CAVITY_NATIVE_OK) {
+        for (int j=0; j<6; ++j) {
+            target[j]=result[j]; target[6+j]=physical[j];
+            target[12+j]=native_response[j]; target[18+j]=rho*native_response[j];
+        }
+        for (int j=0; j<3; ++j) {
+            target[24+j]=work[j]; target[27+j]=mass*rho*work[j];
+        }
+        target[30]=rho; target[31]=worst; target[32]=response_worst;
+    }
+    return status;
+}
+
 // Nonmutating forward Schott-coordinate first-rho word, physical rin=0.
 // output33: native endpoint6, canonical r6, native r6, rho*native r6,
 // work3, actualmass*rho*work3, actualrho, nominal/response residuals.
@@ -441,7 +514,7 @@ void CavityNativeDiagnostic_schott_response_local_particle(
     START_PER_PARTICLE_BLOCK(part0,part);
         int status=controls;
         double q[6],Q,kappa0,beta0,clock,data[40],xi[6],physical[6];
-        double result[6],native_response[6],work[3]={0.,0.,0.};
+        double target[33],work[3]={0.,0.,0.};
         double mass=0.,rho=0.,worst=0.,response_worst=0.,initial_sE=0.;
         if (status==CAVITY_NATIVE_OK) {
             CavityNative_adapter_profiles(el,0,0,data);
@@ -449,15 +522,8 @@ void CavityNativeDiagnostic_schott_response_local_particle(
                 CavityNativeDiagnosticData_get_mesh(el,0),data,
                 q,&Q,&kappa0,&beta0,&clock);
         }
-        if (status==CAVITY_NATIVE_OK) {
-            const double charge=LocalParticle_get_q0(part)
-                *LocalParticle_get_charge_ratio(part);
-            mass=LocalParticle_get_mass0(part)*LocalParticle_get_charge_ratio(part)
-                /LocalParticle_get_chi(part);
-            rho=rho_unit_eV*charge*charge/mass;
-            if (!(isfinite(mass) && mass>0. && isfinite(charge)
-                    && isfinite(rho) && rho>=0.)) status=CAVITY_NATIVE_NONFINITE;
-        }
+        if (status==CAVITY_NATIVE_OK)
+            status=CavityNative_adapter_response_species(part,rho_unit_eV,&mass,&rho);
         if (status==CAVITY_NATIVE_OK) {
             double split[12];
             status=CavityNative_schott_source(q,Q,data,
@@ -485,58 +551,107 @@ void CavityNativeDiagnostic_schott_response_local_particle(
             }
         }
         if (status==CAVITY_NATIVE_OK)
-            status=CavityNative_adapter_output(el,q,
-                CavityNativeDiagnosticData_get_mesh(el,cells),data+30,
-                Q,kappa0,beta0,clock,result);
-        if (status==CAVITY_NATIVE_OK) {
-            double final_split[12];
-            status=CavityNative_schott_source(q,Q,data+30,
-                CavityNativeDiagnosticData_get_aperture(el),final_split);
-            if (status==CAVITY_NATIVE_OK) work[2]=final_split[5]-initial_sE;
-        }
-        if (status==CAVITY_NATIVE_OK) {
-            double potential[4],jet[12];
-            status=CavityNative_potential(q,data+30,potential);
-            if (status==CAVITY_NATIVE_OK)
-                status=CavityNative_potential_jacobian(q,data+30,jet);
-            if (status==CAVITY_NATIVE_OK) {
-                const double k=CavityNativeDiagnosticData_get_k(el);
-                const double gamma=q[5]-Q*potential[3];
-                const double factor=gamma/(kappa0*sqrt((gamma-1.)*(gamma+1.)));
-                double dAx=0.,dAy=0.,dPhi=0.;
-                for (int j=0; j<3; ++j) {
-                    dAx+=jet[j]*physical[j];
-                    dAy+=jet[3+j]*physical[j];
-                    dPhi+=jet[9+j]*physical[j];
-                }
-                native_response[0]=physical[0]/k;
-                native_response[1]=(physical[3]-Q*dAx)/kappa0;
-                native_response[2]=physical[1]/k;
-                native_response[3]=(physical[4]-Q*dAy)/kappa0;
-                native_response[4]=-beta0/k*physical[2];
-                native_response[5]=factor*(physical[5]-Q*dPhi);
-                for (int j=0; j<6; ++j)
-                    if (!isfinite(physical[j]) || !isfinite(native_response[j])
-                            || !isfinite(rho*native_response[j]))
-                        status=CAVITY_NATIVE_NONFINITE;
-                for (int j=0; j<3; ++j)
-                    if (!isfinite(work[j]) || !isfinite(mass*rho*work[j]))
-                        status=CAVITY_NATIVE_NONFINITE;
-            }
-        }
+            status=CavityNative_adapter_response_finish(el,q,data+30,Q,kappa0,
+                beta0,clock,physical,mass,rho,initial_sE,work,worst,response_worst,target);
         statuses[part->ipart]=status;
         if (status==CAVITY_NATIVE_OK) {
-            GPUGLMEM double* target=output+33*part->ipart;
-            for (int j=0; j<6; ++j) {
-                target[j]=result[j]; target[6+j]=physical[j];
-                target[12+j]=native_response[j];
-                target[18+j]=rho*native_response[j];
-            }
-            for (int j=0; j<3; ++j) {
-                target[24+j]=work[j]; target[27+j]=mass*rho*work[j];
-            }
-            target[30]=rho; target[31]=worst; target[32]=response_worst;
+            for (int j=0; j<33; ++j) output[33*part->ipart+j]=target[j];
         }
+    END_PER_PARTICLE_BLOCK;
+}
+
+// Observational GLOBAL Y=P-KR word: physical r/P initially zero, R=I.
+// output69=mean33,R9,Snom3,P9,rhoP9,rhoPS3,localR/globalR/Y residual3.
+GPUFUN
+void CavityNativeDiagnostic_schott_spin_response_local_particle(
+        CavityNativeDiagnosticData el,LocalParticle* part0,double rho_unit_eV,
+        double response_tolerance,double spin_tolerance,double shifted_spin_tolerance,
+        GPUGLMEM double* output,GPUGLMEM int64_t* statuses) {
+    int controls=CavityNative_adapter_controls(el);
+    if (!(isfinite(rho_unit_eV) && rho_unit_eV>=0.
+            && isfinite(response_tolerance) && response_tolerance>0.
+            && isfinite(spin_tolerance) && spin_tolerance>0.
+            && isfinite(shifted_spin_tolerance) && shifted_spin_tolerance>0.))
+        controls=CAVITY_NATIVE_ARGUMENT;
+    const int64_t cells=CavityNativeDiagnosticData_get_cells(el);
+    START_PER_PARTICLE_BLOCK(part0,part);
+        int status=controls;
+        const double anomaly=LocalParticle_get_anomalous_magnetic_moment(part);
+        const double spin[3]={LocalParticle_get_spin_x(part),
+            LocalParticle_get_spin_y(part),LocalParticle_get_spin_z(part)};
+        if (!isfinite(anomaly)) status=CAVITY_NATIVE_ARGUMENT;
+        for (int j=0; j<3; ++j)
+            if (!isfinite(spin[j])) status=CAVITY_NATIVE_NONFINITE;
+        double q[6],Q,kappa0,beta0,clock,data[40],xi[6],physical[6];
+        double rotation[9]={1.,0.,0.,0.,1.,0.,0.,0.,1.},shifted[9],P[9];
+        double target[69],work[2]={0.,0.},worst[5]={0.,0.,0.,0.,0.};
+        double mass=0.,rho=0.,initial_sE=0.;
+        if (status==CAVITY_NATIVE_OK) {
+            CavityNative_adapter_profiles(el,0,0,data);
+            status=CavityNative_adapter_input(el,part,
+                CavityNativeDiagnosticData_get_mesh(el,0),data,
+                q,&Q,&kappa0,&beta0,&clock);
+        }
+        if (status==CAVITY_NATIVE_OK)
+            status=CavityNative_adapter_response_species(part,rho_unit_eV,&mass,&rho);
+        if (status==CAVITY_NATIVE_OK) {
+            double split[12],packet[27];
+            status=CavityNative_schott_source(q,Q,data,
+                CavityNativeDiagnosticData_get_aperture(el),split);
+            if (status==CAVITY_NATIVE_OK)
+                status=CavityNative_spin_schott_source(q,Q,anomaly,data,
+                    CavityNativeDiagnosticData_get_aperture(el),packet);
+            if (status==CAVITY_NATIVE_OK) {
+                for (int j=0; j<6; ++j) xi[j]=-split[j];
+                initial_sE=split[5];
+                const double initial[9]={0.,packet[23],-packet[22],
+                    -packet[23],0.,packet[21],packet[22],-packet[21],0.};
+                for (int j=0; j<9; ++j) shifted[j]=initial[j];
+            }
+        }
+        for (int64_t cell=0; status==CAVITY_NATIVE_OK && cell<cells; ++cell) {
+            CavityNative_adapter_profiles(el,cell,0,data);
+            const double h=CavityNativeDiagnosticData_get_mesh(el,cell+1)
+                -CavityNativeDiagnosticData_get_mesh(el,cell);
+            double endpoint[6],xi_out[6],Rout[9],Yout[9],local_work[3],residuals[5];
+            status=CavityNative_gauss_schott_spin_chart(q,xi,rotation,shifted,
+                h,Q,anomaly,data,CavityNativeDiagnosticData_get_aperture(el),
+                CavityNativeDiagnosticData_get_maximum_iterations(el),
+                CavityNativeDiagnosticData_get_tolerance(el),response_tolerance,
+                spin_tolerance,shifted_spin_tolerance,endpoint,xi_out,physical,
+                Rout,Yout,P,local_work,residuals);
+            if (status==CAVITY_NATIVE_OK) {
+                for (int j=0; j<6; ++j) {q[j]=endpoint[j]; xi[j]=xi_out[j];}
+                for (int j=0; j<9; ++j) {rotation[j]=Rout[j]; shifted[j]=Yout[j];}
+                for (int j=0; j<2; ++j) work[j]+=local_work[j];
+                for (int j=0; j<5; ++j) worst[j]=fmax(worst[j],residuals[j]);
+            }
+        }
+        if (status==CAVITY_NATIVE_OK)
+            status=CavityNative_adapter_response_finish(el,q,data+30,Q,kappa0,
+                beta0,clock,physical,mass,rho,initial_sE,work,worst[0],worst[1],target);
+        if (status==CAVITY_NATIVE_OK) {
+            for (int j=0; j<9; ++j) {
+                target[33+j]=rotation[j]; target[45+j]=P[j];
+                target[54+j]=rho*P[j];
+                if (!isfinite(rotation[j]) || !isfinite(P[j])
+                        || !isfinite(target[54+j])) status=CAVITY_NATIVE_NONFINITE;
+            }
+            for (int row=0; row<3; ++row) {
+                double nominal=0.,response=0.;
+                for (int j=0; j<3; ++j) {
+                    nominal+=rotation[row*3+j]*spin[j];
+                    response+=P[row*3+j]*spin[j];
+                }
+                target[42+row]=nominal; target[63+row]=rho*response;
+                if (!isfinite(nominal) || !isfinite(response)
+                        || !isfinite(target[63+row])) status=CAVITY_NATIVE_NONFINITE;
+            }
+            for (int j=0; j<3; ++j) target[66+j]=worst[j+2];
+        }
+        statuses[part->ipart]=status;
+        if (status==CAVITY_NATIVE_OK)
+            for (int j=0; j<69; ++j) output[69*part->ipart+j]=target[j];
     END_PER_PARTICLE_BLOCK;
 }
 #endif

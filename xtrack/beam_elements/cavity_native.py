@@ -250,6 +250,14 @@ class CavityNativeDiagnostic(BeamElement):
                 xo.Arg(xo.Float64,name='response_tolerance'),
                 xo.Arg(xo.Float64,pointer=True,name='output'),
                 xo.Arg(xo.Int64,pointer=True,name='statuses')]),
+        'native_schott_spin_response': xo.Kernel(
+            c_name='CavityNativeDiagnostic_schott_spin_response_local_particle',args=[
+                xo.Arg(xo.Float64,name='rho_unit_eV'),
+                xo.Arg(xo.Float64,name='response_tolerance'),
+                xo.Arg(xo.Float64,name='spin_tolerance'),
+                xo.Arg(xo.Float64,name='shifted_spin_tolerance'),
+                xo.Arg(xo.Float64,pointer=True,name='output'),
+                xo.Arg(xo.Int64,pointer=True,name='statuses')]),
     }
 
     def __init__(self, *, mesh=None, profiles=None, k=None, omega=None,
@@ -415,6 +423,11 @@ class CavityNativeDiagnostic(BeamElement):
         self.native_schott_response(particles,rho_unit_eV=rho_unit,
             response_tolerance=response_tolerance,output=output,statuses=statuses)
         values = context.nparray_from_context_array(output).copy()
+        return self._response_readback(values,statuses,particles,rho_unit)
+
+    def _response_readback(self,values,statuses,particles,rho_unit):
+        """Common value readback for the two explicit response observers."""
+        context = self._context
         return dict(nominal_endpoint=values[:,:6],
             canonical_response=values[:,6:12],native_response=values[:,12:18],
             rho_native_response=values[:,18:24],
@@ -424,6 +437,63 @@ class CavityNativeDiagnostic(BeamElement):
             status=context.nparray_from_context_array(statuses).copy(),
             particle_id=context.nparray_from_context_array(
                 particles.particle_id).copy(),rho_unit_eV=rho_unit)
+
+    def observe_schott_spin_response(self, particles, *, response_tolerance=2e-13,
+            spin_tolerance=None, shifted_spin_tolerance=1e-20):
+        """Observe the GLOBAL Y=P-KR first-rho spin/mean forward word.
+
+        Physical r and P start at zero, R at identity: xi=-s_in and Y=-K_in
+        are initialized ONCE and carried across all cached faces. P=Y+K_out R
+        is reconstructed from the actual final face; raw inconsistent faces
+        never trigger an implicit Y reset. This is a different finite word
+        from the older per-cell physical-P response. Mean outputs follow
+        observe_schott_response including the full physical boundary Jacobian.
+
+        nominal_rotation and nominal_spin=R*S_in are separate from physical
+        P, rho*P and rho*P*S_in. No tiny response is added to a nominal state.
+        Actual per-particle anomaly and arbitrary finite supplied spin are
+        used, without normalization, species inference or RNG. A formal
+        coefficient for a spinless nucleus is not a physical spin observable.
+
+        The explicit default Y tolerance1e-20 is for this zero-entry,
+        field-free target. Interior/nonzero-Y initializations require an
+        explicit realizable tolerance; no tolerance is silently relaxed.
+        Residuals and sampled accuracy comparisons are diagnostics, not error
+        certificates. No finite-rho mean/spin feedback, stochastic law, spin
+        optics, physical-source qualification or map acceptance is supplied.
+        All output/status is external, CPU-only, forward-only and indexed by
+        post-callback particle IDs. No particle field is changed by identity.
+        The no-concurrent-mutation assumption of audit_first_cell also applies.
+        """
+        context = self._context
+        if not isinstance(context,xo.ContextCpu):
+            raise NotImplementedError('Schott spin response currently supports CPU')
+        if particles._context is not context:
+            raise ValueError('spin response particles and source require one context')
+        response_tolerance = _scalar(response_tolerance,'response tolerance',positive=True)
+        spin_tolerance = _scalar(self.spin_tolerance if spin_tolerance is None
+            else spin_tolerance,'spin tolerance',positive=True)
+        shifted_spin_tolerance = _scalar(shifted_spin_tolerance,
+                                         'shifted spin tolerance',positive=True)
+        rho_unit = (_DIAGNOSTIC_ELEMENTARY_CHARGE_C*self.omega
+            /(6*np.pi*_DIAGNOSTIC_EPSILON0_F_M*C_LIGHT))
+        output = context.nparray_to_context_array(
+            np.full((particles._capacity,69),np.nan))
+        statuses = context.nparray_to_context_array(
+            np.zeros(particles._capacity,dtype=np.int64))
+        self.native_schott_spin_response(particles,rho_unit_eV=rho_unit,
+            response_tolerance=response_tolerance,spin_tolerance=spin_tolerance,
+            shifted_spin_tolerance=shifted_spin_tolerance,output=output,statuses=statuses)
+        values = context.nparray_from_context_array(output).copy()
+        result = self._response_readback(values,statuses,particles,rho_unit)
+        result.update(nominal_rotation=values[:,33:42].reshape(-1,3,3),
+            nominal_spin=values[:,42:45],
+            physical_spin_response=values[:,45:54].reshape(-1,3,3),
+            rho_spin_response=values[:,54:63].reshape(-1,3,3),
+            rho_spin_vector_response=values[:,63:66],
+            local_spin_residual=values[:,66],global_spin_residual=values[:,67],
+            shifted_spin_residual=values[:,68])
+        return result
 
     def enable_passive_spin(self, *, tolerance=None):
         """Opt into same-Gauss Lorentz BMT transport on the conservative orbit.

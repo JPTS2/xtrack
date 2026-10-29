@@ -1470,3 +1470,168 @@ def test_native_cavity_coherent_full_input_boundary(tmp_path,start):
             public_phase_minus_ideal_negative_pi=tuple(map(str,
                 controls.rational_interval(phase_remainder))),
             coherent_public_input_point_only=True,map_error_certified=False))
+
+
+@pytest.mark.parametrize('cells',[1,8])
+def test_native_cavity_global_spin_observer_species(tmp_path,cells):
+    data,launch = native_p16_case(cells)
+    masses = np.array([510998.95069,510998.95069,938272089.43,
+                       193687691340.1,510998.95069])
+    charges = np.array([-1.,1.,1.,82.,-1.])
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        particle = xt.Particles(_context=context,**launch,
+            mass_ratio=masses/launch['mass0'],charge_ratio=charges/launch['q0'],
+            particle_id=[11,7,19,3,23])
+        set_spin_rng(particle)
+        particle.anomalous_magnetic_moment[:] = [.00115965218059,
+            .00115965218059,1.79284734463,0.,.00115965218059]
+        particle.spin_x[3]=particle.spin_y[3]=particle.spin_z[3]=0.
+        particle.state[0] = -7
+        before = spin_rng_values(particle)
+        mean = element.observe_schott_response(particle)
+        result = element.observe_schott_spin_response(particle)
+        old_order,new_order = (np.argsort(value['particle_id'])
+                               for value in (mean,result))
+        for name,value in mean.items():
+            if np.ndim(value):
+                np.testing.assert_array_equal(result[name][new_order],value[old_order])
+            else:
+                np.testing.assert_array_equal(result[name],value)
+        active = result['status']==1
+        assert np.count_nonzero(active)==4
+        assert result['status'][result['particle_id']==11] == 0
+        assert np.all(np.isnan(result['physical_spin_response'][~active]))
+        spin = np.column_stack([getattr(particle,'spin_'+axis) for axis in 'xyz'])
+        R,P,rho = (result[name] for name in
+                   ('nominal_rotation','physical_spin_response','actual_rho'))
+        np.testing.assert_array_equal(result['rho_spin_response'][active],
+            rho[active,None,None]*P[active])
+        np.testing.assert_allclose(result['nominal_spin'][active],
+            np.einsum('nij,nj->ni',R[active],spin[active]),rtol=2e-15,atol=2e-15)
+        np.testing.assert_allclose(result['rho_spin_vector_response'][active],
+            rho[active,None]*np.einsum('nij,nj->ni',P[active],spin[active]),
+            rtol=3e-14,atol=1e-32)
+        assert np.all(result['local_spin_residual'][active]<element.spin_tolerance)
+        assert np.all(result['global_spin_residual'][active]<element.spin_tolerance)
+        assert np.all(result['shifted_spin_residual'][active]<1e-20)
+        assert np.max(np.abs(R[active]-np.eye(3)))>1e-12
+        assert np.max(np.abs(P[active]))>0
+        # Formal Pb coefficients do not assert a physical spin observable.
+        lead = int(np.flatnonzero(result['particle_id']==3)[0])
+        np.testing.assert_array_equal(result['nominal_spin'][lead],np.zeros(3))
+        np.testing.assert_array_equal(result['rho_spin_vector_response'][lead],np.zeros(3))
+        tracked = particle.copy()
+        element.enable_passive_spin()
+        element.track(tracked)
+        by_id = {int(identity):i for i,identity in enumerate(tracked.particle_id)}
+        for i,identity in enumerate(result['particle_id']):
+            if not active[i]:
+                continue
+            j = by_id[int(identity)]
+            actual = np.array([getattr(tracked,'spin_'+axis)[j] for axis in 'xyz'])
+            # Global matrix multiplication and sequential Rcell*S differ in
+            # floating evaluation order. This is a diagnostic, not projection.
+            np.testing.assert_allclose(result['nominal_spin'][i],actual,
+                                       rtol=2e-15,atol=2e-15)
+        for name,value in before.items():
+            np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+        if cells==8:
+            electron = int(np.flatnonzero(result['particle_id']==23)[0])
+            # Reviewed independent dense-global-Y/physical-boundary oracle.
+            expected = np.array([[-2.2941957971529445e-11,-5.927756722063209e-10,
+                7.69149595225168e-6],[6.3206823701856e-10,-1.6775639158075138e-11,
+                -6.23330461342365e-6],[-7.691495941726083e-6,6.233304626204543e-6,
+                -3.971759538519182e-11]])
+            np.testing.assert_allclose(P[electron],expected,rtol=0.,atol=3e-16)
+        assert not element.accepted_production_return
+
+
+def test_native_cavity_global_spin_observer_interior_raw_carry(tmp_path):
+    import test_cavity_native_review as review
+    data,launch = native_p16_case(8)
+    profiles = data['profiles'][1:3].copy()
+    profiles[1,0] *= .5
+    data = dict(data,mesh=data['mesh'][1:4],profiles=profiles)
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        particle = xt.Particles(_context=context,**launch)
+        set_spin_rng(particle)
+        before = spin_rng_values(particle)
+        # Interior initial K is nonzero: select a realizable absolute Y gate
+        # explicitly. The field-free-entry default is never silently relaxed.
+        result = element.observe_schott_spin_response(particle,
+                                                      shifted_spin_tolerance=2e-13)
+        assert result['status'][0] == 1
+        audit = element.audit_first_cell(particle)
+        q,Q = audit['qin'][0].copy(),audit['effective_Q'][0]
+        observer = review.observer_element(context)
+        review.compile_spin_chart_query(context)
+        _,_,_,s,k = review.independent_profile_event(context,observer,
+            data['mesh'][0],q,Q,profiles[0,0])
+        assert np.max(np.abs(k))>1e-10
+        xi,R,Y = -s,np.eye(3),-review.cross_matrix(k)
+        previous_P = np.zeros((3,3))
+        wrong_P = None
+        for cell,(a,b) in enumerate(zip(data['mesh'][:-1],data['mesh'][1:])):
+            arguments = (q,xi,R,Y,b-a,Q,particle.anomalous_magnetic_moment[0],
+                         profiles[cell].ravel())
+            if cell:
+                _,_,_,_,new_k = review.independent_profile_event(context,
+                    observer,a,q,Q,profiles[cell,0])
+                wrong_Y = previous_P-review.cross_matrix(new_k)@R
+                wrong,code,_ = review.spin_chart_query(context,q,xi,R,wrong_Y,
+                    b-a,Q,particle.anomalous_magnetic_moment[0],profiles[cell].ravel(),
+                    shifted_tol=2e-13)
+                assert code == 1
+                wrong_P = wrong[0][36:45].reshape(3,3)
+            output,code,_ = review.spin_chart_query(context,*arguments,
+                                                    shifted_tol=2e-13)
+            assert code == 1
+            values = output[0]
+            q,xi = values[:6].copy(),values[6:12].copy()
+            R,Y = values[18:27].reshape(3,3).copy(),values[27:36].reshape(3,3).copy()
+            previous_P = values[36:45].reshape(3,3).copy()
+        np.testing.assert_allclose(result['nominal_rotation'][0],R,rtol=0.,atol=2e-15)
+        np.testing.assert_allclose(result['physical_spin_response'][0],previous_P,
+                                   rtol=2e-10,atol=2e-13)
+        assert np.max(np.abs(previous_P-wrong_P))>1e-10
+        for name,value in before.items():
+            np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+        assert not element.physical_source_qualified
+
+
+def test_native_cavity_global_spin_observer_refusal_and_zero_rho(tmp_path):
+    data,launch = native_p16_case()
+    with native_context(tmp_path) as context:
+        element = NativeCavityProbe(_context=context,**data)
+        particle = xt.Particles(_context=context,**launch)
+        set_spin_rng(particle)
+        before = spin_rng_values(particle)
+        normal = element.observe_schott_spin_response(particle)
+        assert normal['status'][0] == 1
+        failed = element.observe_schott_spin_response(particle,
+                                                     shifted_spin_tolerance=1e-300)
+        assert element.maximum_iterations == 80 and failed['status'][0] == -2
+        for name,value in failed.items():
+            if name not in ('status','particle_id','rho_unit_eV'):
+                assert np.all(np.isnan(value)),name
+        output = context.nparray_to_context_array(np.full((1,69),np.nan))
+        statuses = context.nparray_to_context_array(np.zeros(1,dtype=np.int64))
+        element.native_schott_spin_response(particle,rho_unit_eV=0.,
+            response_tolerance=2e-13,spin_tolerance=2e-13,
+            shifted_spin_tolerance=1e-20,output=output,statuses=statuses)
+        assert statuses[0] == 1
+        np.testing.assert_array_equal(output[0,45:54],
+                                       normal['physical_spin_response'][0].ravel())
+        np.testing.assert_array_equal(output[0,54:66],np.zeros(12))
+        for name,value in before.items():
+            np.testing.assert_array_equal(spin_rng_values(particle)[name],value)
+        for name,code in (('spin_y',-3),('anomalous_magnetic_moment',-4)):
+            faulty = particle.copy()
+            getattr(faulty,name)[:] = np.nan
+            original = spin_rng_values(faulty)
+            assert element.observe_schott_response(faulty)['status'][0] == 1
+            assert element.observe_schott_spin_response(faulty)['status'][0] == code
+            for field,value in original.items():
+                np.testing.assert_array_equal(spin_rng_values(faulty)[field],value)
