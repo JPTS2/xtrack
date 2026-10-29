@@ -22,7 +22,7 @@ launching subagents; wait for the user's explicit launch instruction.
   environments. Report any additional unavoidable temporary write path explicitly
   before using it; do not silently fall back to system temporary directories.
 - After bootstrap, every edit and local commit in either repository must occur
-  on `dev/implementation`. Before EACH mutation batch and EACH commit, root must
+  on `dev/cavity-models`. Before EACH mutation batch and EACH commit, root must
   check BOTH repositories with `git symbolic-ref --short HEAD` and require that
   exact branch. Stop dependent work if either differs or HEAD is detached.
 - Bootstrap verified cavity-modelling on `dev/implementation` at
@@ -53,7 +53,12 @@ session tool can replace the managed policy. Nested `sandbox-exec` failed with
 `sandbox_apply: Operation not permitted`; a no-write narrower sandbox test
 succeeded through an approved outside-sandbox invocation, which does not change
 the active session or constrain other tools. No global settings were changed.
-Do not launch the overnight run until the active session policy is narrowed and
-reverified. It must grant writes to both repositories AND their `.git/` metadata,
-with other project paths read-only. No extra temporary-directory permission has
-been shown necessary for compilation/tests during bootstrap; none were run.
+The author subsequently instructed us to keep the existing VS Code workspace
+and normal approvals, and proceed with atomic local commits in the two projects.
+Do not make another workspace/profile migration a prerequisite for the explicitly
+authorized overnight run. The two-project scope remains mandatory by instruction;
+do not claim a narrower enforced sandbox. No global settings were changed.
+Both development branches were subsequently renamed to `dev/cavity-models`.
+The author explicitly requested rebasing Xtrack onto updated origin/main;
+that one-time rebase supersedes the earlier no-rewrite rule for this operation.
+Further history rewrites still require explicit authorization.
