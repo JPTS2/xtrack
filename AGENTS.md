@@ -36,9 +36,16 @@ launching subagents; wait for the user's explicit launch instruction.
   Preserve existing work. Ordinary local commits are authorized without another
   confirmation; stage explicit whole-file paths and inspect the staged diff.
 - Root alone coordinates all Git mutations and owns each repository's index.
-  Subagents are currently prohibited. If later explicitly authorized, they must
-  not switch branches, perform Git mutations or share/manipulate the index;
-  root must give disjoint file ownership and coordinate integration.
+  Do not launch subagents during preflight. The separately authorized overnight
+  run may use at most FIVE fresh subagents TOTAL: three implementation workers
+  and two independent reviewers, in addition to root. No descendants, historical
+  agents or replacements exceeding that total. Root coordinates scientific
+  decisions, dependencies and integration; reviewers do not review their own
+  implementation. Assign disjoint files on the existing `dev/cavity-models`
+  branches; subagents must not switch branches, perform Git mutations or
+  share/manipulate the index. Follow cavity-modelling/TOWARDS-AUDIT.md for the
+  paired work packages, hourly reviews/commits, unchanged resource limits and
+  final integration hour. Preflight does not start the ten-hour execution clock.
 - Branch checks are procedural safeguards, not an enforced branch lock. No
   hook or filesystem policy here prevents another process changing HEAD between
   checks. Do not claim branch enforcement beyond the checks actually performed.
