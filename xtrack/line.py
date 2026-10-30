@@ -5044,12 +5044,66 @@ class Line:
             if parent is not None:
                 pending.append(parent)
 
-    def _check_cavity_effect(self, effect):
-        for element in self._used_cavity_owners():
-            if element._model >= 10:
-                raise NotImplementedError(
-                    f"Cavity model {element.model!r} has no applied {effect} "
-                    "transport yet")
+    def _check_cavity_effect(self, effect, radiation_model=None):
+        self._validate_cavity_first_effect(effect, radiation_model=radiation_model)
+
+    def _validate_cavity_first_effect(self, effect, radiation_model=None):
+        """Validate the restricted scalar first-effects route without mutation.
+
+        This validator never promotes/demotes a series or reads its constant
+        part as a substitute for supported spin/radiation differentiation.
+        """
+        cavities = tuple(ee for ee in self._used_cavity_owners() if ee._model >= 10)
+        if not cavities:
+            return
+        if effect == 'radiation' and radiation_model != 'mean':
+            raise NotImplementedError('Cavity first-effects transport supports mean radiation only')
+        if any(name.startswith('FREEZE_VAR_') and value for name, value in self.config.items()):
+            raise NotImplementedError('Cavity effects do not support frozen-coordinate analysis')
+        if self.config.get('XTRACK_TPSA_TRACK', False):
+            raise NotImplementedError('Cavity spin/radiation transport is scalar only, not TPSA')
+        context = self._context
+        if context is not None and not isinstance(context, xo.ContextCpu):
+            raise NotImplementedError('Cavity first-effects transport is implemented only for CPU')
+        pending = list(self.element_names)
+        visited = set()
+        while pending:
+            element = self._element_dict[pending.pop()]
+            if isinstance(element, xt.Replica):
+                element = element.resolve(self)
+            if id(element) in visited:
+                continue
+            visited.add(id(element))
+            if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0):
+                raise NotImplementedError('Cavity spin/radiation transport does not support active TPSA owners')
+            parent_name = getattr(element, 'parent_name', None)
+            if parent_name is not None:
+                parent = self._element_dict[parent_name]
+                if isinstance(parent, xt.Replica):
+                    parent = parent.resolve(self)
+                if isinstance(parent, xt.Cavity) and parent._model >= 10:
+                    raise NotImplementedError('Cavity first-effects transport is not yet supported through slices')
+                pending.append(parent_name)
+        if self._has_valid_tracker():
+            flags = self.tracker.track_flags
+            if (flags.XS_FLAG_KILL_CAVITY_KICK or flags.XS_FLAG_SR_TAPER
+                    or flags.XS_FLAG_SR_KICK_SAME_AS_FIRST):
+                raise NotImplementedError('Cavity effects do not support radiation/taper preparation analysis')
+            mean_active = effect == 'radiation' or any(ee.radiation_flag == 1 for ee in cavities)
+            if flags.XS_FLAG_BACKTRACK and mean_active:
+                raise NotImplementedError('Cavity mean radiation backtracking is not supported')
+        for element in cavities:
+            if (element._model != 10 or element._rf_profile != 0
+                    or element._magnetic_profile != 0
+                    or element.rf_field_order != 2 or element._integrator not in (0, 6)):
+                raise NotImplementedError('Cavity effects require the full phase-resolved P16 M2/Gauss map with uniform zero magnetic profile')
+            if not isinstance(element._context, xo.ContextCpu):
+                raise NotImplementedError('Cavity first-effects transport is implemented only for CPU')
+            if element.ks != 0. or np.any(np.asarray(element.knl) != 0.) or np.any(np.asarray(element.ksl) != 0.):
+                raise NotImplementedError('Cavity effects require zero solenoid and all stored multipole strengths')
+            other_flag = element.spin_tracking if effect == 'radiation' else element.radiation_flag
+            if other_flag not in (0, 1):
+                raise NotImplementedError('Cavity effects do not support the existing spin/radiation flag')
 
     @doc_group("Radiation, Spin and Intra-Beam Scattering")
     def configure_radiation(self, model=None, model_beamstrahlung=None,
@@ -5080,15 +5134,15 @@ class Line:
         if mode != 'deprecated':
             raise NameError('mode is deprecated, use model instead')
 
-        if model is not None:
-            self._check_cavity_effect('radiation')
-
-        if not self._has_valid_tracker():
-            self.build_tracker(compile=False)
-
         assert model in [None, 'mean', 'quantum', 'quantum-kick']
         assert model_beamstrahlung in [None, 'mean', 'quantum']
         assert model_bhabha in [None, 'quantum']
+
+        if model is not None:
+            self._check_cavity_effect('radiation', radiation_model=model)
+
+        if not self._has_valid_tracker():
+            self.build_tracker(compile=False)
 
         if model == 'mean':
             radiation_flag = 1
@@ -8652,10 +8706,62 @@ class LineAttr:
         else:
             out = self._cache[key].get_full_array(method_cache=self._value_cache)
 
+        if key in ('ksoll', '_k1l_no_rel', '_k1sl_no_rel'):
+            out = self._gaussian_cavity_integrals(key, out)
+
         if self._value_cache is not None:
             self._value_cache[key] = out
 
         return out
+
+    def _gaussian_cavity_integrals(self, key, values):
+        """Integrate the declared finite-parent magnetic hardware profile.
+
+        Gaussian ks is a peak strength; knl/ksl are finite-parent integrals.
+        RF voltage readback keeps its existing nominal weight allocation.
+        """
+        from math import erf, sqrt, pi
+        result = None
+        scalar = lambda value: float(getattr(value, 'const_part', value))
+        for index, name in enumerate(self.line.element_names):
+            element = self.line._element_dict[name]
+            if isinstance(element, xt.Replica):
+                element = element.resolve(self.line)
+            if isinstance(element, beam_elements.Cavity):
+                parent, weight, start = element, 1., 0.
+            else:
+                parent = getattr(element, '_parent', None)
+                if (not isinstance(parent, beam_elements.Cavity)
+                        or not getattr(element, '_inherit_strengths', False)):
+                    continue
+                if parent.magnetic_profile != 'gaussian':
+                    continue
+                if parent.length <= 0.:
+                    raise ValueError('Gaussian magnetic readback requires positive length and width')
+                weight = float(element.weight)
+                fraction = getattr(element, '_slice_offset_fraction', -1.)
+                start = (float(fraction) if fraction >= 0. else
+                         float(element.slice_offset)/parent.length)
+            if parent.magnetic_profile != 'gaussian':
+                continue
+            length, sigma = float(parent.length), scalar(parent.magnetic_profile_sigma)
+            if length <= 0. or sigma <= 0. or not np.isfinite(sigma):
+                raise ValueError('Gaussian magnetic readback requires positive length and width')
+            scale = sqrt(2.)*sigma
+            integral = lambda a, b: sqrt(pi/2.)*sigma*(erf(b/scale)-erf(a/scale))
+            full = integral(-length/2., length/2.)
+            left = length*(start-.5)
+            partial = integral(left, left+length*weight)
+            if key == 'ksoll':
+                correction = scalar(parent.ks)*(partial-length*weight)
+            else:
+                strengths = parent.knl if key == '_k1l_no_rel' else parent.ksl
+                correction = ((scalar(strengths[1]) if len(strengths)>1 else 0.)
+                              *(partial/full-weight))
+            if result is None:
+                result = values.copy()
+            result[index] += correction
+        return values if result is None else result
 
     def keys(self):
         return list(self.derived_fields.keys()) + list(self.fields)

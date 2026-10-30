@@ -113,7 +113,7 @@ for td in to_do:
                     '            START_PER_PARTICLE_BLOCK(part0, part)\n'
                     '                LocalParticle_set_state(part, -99744);\n'
                     '            END_PER_PARTICLE_BLOCK;\n'
-                    '        } else if (model>21) {\n'
+                    '        } else if (model>24) {\n'
                     '            START_PER_PARTICLE_BLOCK(part0, part)\n'
                     '                LocalParticle_set_state(part, -99730);\n'
                     '            END_PER_PARTICLE_BLOCK;\n'
@@ -402,7 +402,7 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
         marker = '        double weight = DriftSliceCavityData_get_weight(el);'
         branch = '''        const int model=DriftSliceCavityData_get__parent_model(el);
         if (model>=10) {
-            if (model<=21) {
+            if (model<=24) {
                 const double start=DriftSliceCavityData_get_slice_offset_fraction(el);
                 CavityModels_track_source_interval(
                     DriftSliceCavityData_getp__parent(el),part0,
@@ -416,7 +416,8 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
         }
 
         if (DriftSliceCavityData_get__parent_rf_profile(el)<0
-                || DriftSliceCavityData_get__parent_rf_profile(el)>1) {
+                || DriftSliceCavityData_get__parent_rf_profile(el)>1
+                || DriftSliceCavityData_get__parent_magnetic_profile(el)!=0) {
             START_PER_PARTICLE_BLOCK(part0,part)
                 LocalParticle_set_state(part,-99744);
             END_PER_PARTICLE_BLOCK;

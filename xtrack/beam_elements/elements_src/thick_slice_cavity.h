@@ -54,7 +54,8 @@ void ThickSliceCavity_track_local_particle(ThickSliceCavityData el, LocalParticl
     // Legacy voltage-only projections support their existing P16/uniform
     // reductions, but cannot silently consume a requested Gaussian source.
     if (static_field || ThickSliceCavityData_get__parent_rf_profile(el)<0
-                     || ThickSliceCavityData_get__parent_rf_profile(el)>1) {
+                     || ThickSliceCavityData_get__parent_rf_profile(el)>1
+                     || ThickSliceCavityData_get__parent_magnetic_profile(el)!=0) {
         START_PER_PARTICLE_BLOCK(part0,part)
             LocalParticle_set_state(part,-99744);
         END_PER_PARTICLE_BLOCK;

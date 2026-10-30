@@ -46,13 +46,29 @@ int64_t CavityModels_freeze_mask(const CavityModelSource *source) {
     return mask;
 }
 
+// Effects require genuinely zero static hardware, including represented
+// array entries outside the retained tracking multipole order.
+GPUFUN
+int CavityModels_effects_static_present(CavityData el) {
+    if(!xt_float_or_tpsa_is_zero(CavityData_get_ks(el)))return 1;
+    for(int64_t i=0;i<CavityData_len_knl(el);++i)
+        if(CavityData_get_knl(el,i)!=0.)return 1;
+    for(int64_t i=0;i<CavityData_len_ksl(el);++i)
+        if(CavityData_get_ksl(el,i)!=0.)return 1;
+    return 0;
+}
+
 // Physical kinetic lift follows each model's retained source projection.
 GPUFUN
 int CavityModels_potential(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
         const CavityModelSource *source,int model,xt_float_or_tpsa out[4]) {
+    int valid=CavityModel_static_validate(source);if(valid!=CAVITY_MODEL_OK)return valid;
     if(model==CAVITY_MODEL_QUADRATIC_FIRST||model==CAVITY_MODEL_QUADRATIC_SECOND)
         CavityQuadratic_potential(q,z,source,out);
-    else if(model==CAVITY_MODEL_GAUSSIAN_MAGNETIC||model==CAVITY_MODEL_PREPARED_ENVELOPE)
+    else if(model==CAVITY_MODEL_GAUSSIAN_MOVING_REFERENCE
+        ||model==CAVITY_MODEL_GAUSSIAN_DIPOLE
+        ||model==CAVITY_MODEL_GAUSSIAN_MAGNETIC||model==CAVITY_MODEL_GAUSSIAN_FRINGE
+        ||model==CAVITY_MODEL_PREPARED_ENVELOPE)
         CavityMag_potential(q,z,source,out);
     else return CavityModel_physical_potential(q,z,source,model,out);
     return CavityModel_vector_finite(out,4)?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
@@ -133,26 +149,48 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
     const int model=CavityData_get_model(el);
     const int quadratic=model==CAVITY_MODEL_QUADRATIC_FIRST
         || model==CAVITY_MODEL_QUADRATIC_SECOND;
-    const int magnetic=model==CAVITY_MODEL_GAUSSIAN_MAGNETIC;
+    const int magnetic=model==CAVITY_MODEL_GAUSSIAN_MAGNETIC
+        ||model==CAVITY_MODEL_GAUSSIAN_FRINGE;
     const int envelope=model==CAVITY_MODEL_PREPARED_ENVELOPE;
+    const int dipole=model==CAVITY_MODEL_GAUSSIAN_DIPOLE;
+    const int overlap=model==CAVITY_MODEL_GAUSSIAN_MOVING_REFERENCE;
     const int profile=CavityData_get_rf_profile(el);
+    const int magnetic_profile=CavityData_get_magnetic_profile(el);
     const int integrator=CavityData_get_integrator(el);
     const int64_t requested=CavityData_get_num_kicks(el);
+    const int radiation=CavityData_get_radiation_flag(el);
+    const int spin_tracking=CavityData_get_spin_tracking(el);
+    const int effects=radiation!=0||spin_tracking!=0;
     int controls=CAVITY_MODEL_OK;
     if (!(isfinite(length) && length>0. && isfinite(weight) && weight>0.
           && isfinite(slice_start) && slice_start>=0.
           && weight<=1. && slice_start+weight<=1.+8e-15)
         || CavityData_get_rf_field_order(el)!=2
-        || CavityData_get_radiation_flag(el)!=0
-        || CavityData_get_spin_tracking(el)!=0
+        || radiation<0||radiation>1||spin_tracking<0||spin_tracking>1
+        ||(effects&&(model!=CAVITY_MODEL_FULL||profile!=0||magnetic_profile!=0
+            ||CavityData_get__tpsa_enabled(el)!=0))
         || requested<0
-        || model<CAVITY_MODEL_FULL || model>CAVITY_MODEL_PREPARED_ENVELOPE
+        || model<CAVITY_MODEL_FULL || model>CAVITY_MODEL_GAUSSIAN_MOVING_REFERENCE
         || profile<0 || profile>2
+        || magnetic_profile<0||magnetic_profile>1
+        ||(model==CAVITY_MODEL_GAUSSIAN_FRINGE&&magnetic_profile!=1)
+        ||(magnetic_profile==1&&!(model<=CAVITY_MODEL_LONGITUDINAL
+            ||model==CAVITY_MODEL_GAUSSIAN_FRINGE))
+        ||(magnetic_profile==1&&(CavityData_get_edge_entry_active(el)
+            ||CavityData_get_edge_exit_active(el)))
         || ((model==CAVITY_MODEL_FROZEN||quadratic)&&profile!=1)
-        || ((magnetic||envelope)&&profile!=2)
+        || ((magnetic||envelope||dipole||overlap)&&profile!=2)
+        ||(overlap&&(CavityData_get_num_reference_steps(el)<=0
+            ||CavityData_get_edge_entry_active(el)||CavityData_get_edge_exit_active(el)))
         || CavityData_get_order(el)<0
         || CavityData_len_knl(el)<=CavityData_get_order(el)
         || CavityData_len_ksl(el)<=CavityData_get_order(el))
+        controls=CAVITY_MODEL_ARGUMENT;
+    // The draft effects law consumes the scalar full physical source only.
+#if defined(XTRACK_TPSA_TRACK) || (!defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)) || defined(XTRACK_MULTIPOLE_NO_SYNRAD)
+    if(effects)controls=CAVITY_MODEL_ARGUMENT;
+#endif
+    if(effects&&controls==CAVITY_MODEL_OK&&CavityModels_effects_static_present(el))
         controls=CAVITY_MODEL_ARGUMENT;
     if (model==CAVITY_MODEL_FROZEN) {
         if ((integrator!=0 && integrator!=7)
@@ -160,7 +198,7 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
             || !xt_float_or_tpsa_is_zero(CavityData_get_calibration_beta(el)-1.)
             || !CavityData_get_wave_number_from_frequency(el))
             controls=CAVITY_MODEL_ARGUMENT;
-    } else if ((quadratic||magnetic||envelope) ? (integrator!=0 && integrator!=8)
+    } else if ((quadratic||magnetic||envelope||dipole||overlap) ? (integrator!=0 && integrator!=8)
                          : (integrator!=0 && integrator!=6)) {
         controls=CAVITY_MODEL_ARGUMENT;
     }
@@ -169,6 +207,8 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
         controls=CAVITY_MODEL_ARGUMENT;
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
     const int taper_analysis=LocalParticle_check_track_flag(part0,XS_FLAG_SR_TAPER);
+    if(effects&&(taper_analysis||(radiation&&reverse)||weight!=1.||slice_start!=0.))
+        controls=CAVITY_MODEL_ARGUMENT;
     // Reference taper preparation already excludes sliced cavities. Refuse a
     // partial invocation here too, rather than resample a changed pilot delta
     // and silently give every slice a different physical hardware strength.
@@ -198,6 +238,7 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
 
     START_PER_PARTICLE_BLOCK(part0,part);
         int status=controls;
+        double effects_rho=0.,anomaly=0.,spin[3]={0.,0.,0.};
         const double mass0=LocalParticle_get_mass0(part);
         const double q0=LocalParticle_get_q0(part);
         const double kappa0=LocalParticle_get_p0c(part)/mass0;
@@ -263,6 +304,8 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
         xt_float_or_tpsa z=0., h=0.;
         if (status==CAVITY_MODEL_OK) {
             source.ks=CavityData_get_ks(el);
+            source.magnetic_profile=magnetic_profile;
+            source.magnetic_sigma=source.k*CavityData_get_magnetic_profile_sigma(el);
             if (effective_model==CAVITY_MODEL_FROZEN)
                 source.voltage_norm=voltage/mass0;
             source.magnetic_scale=static_factor*LocalParticle_get_p0c(part)/(q0*mass0);
@@ -272,6 +315,7 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
             source.knl_tpsa=CavityData_getp1_knl_tpsa(el,0);
             source.ksl_tpsa=CavityData_getp1_ksl_tpsa(el,0);
             source.reference_beta=beta0;
+            status=CavityModel_static_validate(&source);
             source.freeze_energy=LocalParticle_check_track_flag(part,XS_FLAG_KILL_CAVITY_KICK)
                 || XT_LP_IS_FROZEN(delta) || XT_LP_IS_FROZEN(pzeta);
             source.freeze_zeta=XT_LP_IS_FROZEN(zeta);
@@ -279,7 +323,27 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
             source.freeze_px=XT_LP_IS_FROZEN(px);
             source.freeze_y=XT_LP_IS_FROZEN(y);
             source.freeze_py=XT_LP_IS_FROZEN(py);
-            if (effective_model==CAVITY_MODEL_FROZEN
+            if(effects) {
+                if(CavityModels_freeze_mask(&source)||XT_LP_IS_FROZEN(s)
+                    ||XT_LP_IS_FROZEN(rpp)||XT_LP_IS_FROZEN(rvv)
+                    ||XT_LP_IS_FROZEN(ax)||XT_LP_IS_FROZEN(ay)
+                    ||XT_LP_IS_FROZEN(spin_x)||XT_LP_IS_FROZEN(spin_y)||XT_LP_IS_FROZEN(spin_z))
+                    status=CAVITY_MODEL_ARGUMENT;
+#ifndef XTRACK_TPSA_TRACK
+                if(status==CAVITY_MODEL_OK&&radiation)
+                    status=CavityModel_species_rho(source.omega,mass0*mass_ratio,
+                        q0*LocalParticle_get_charge_ratio(part),&effects_rho);
+                if(status==CAVITY_MODEL_OK&&spin_tracking) {
+                    anomaly=LocalParticle_get_anomalous_magnetic_moment(part);
+                    spin[0]=LocalParticle_get_spin_x(part);spin[1]=LocalParticle_get_spin_y(part);
+                    spin[2]=LocalParticle_get_spin_z(part);
+                    if(!isfinite(anomaly))status=CAVITY_MODEL_ARGUMENT;
+                    for(int j=0;j<3;++j)if(!isfinite(spin[j]))status=CAVITY_MODEL_NONFINITE;
+                }
+#endif
+            }
+            if ((effective_model==CAVITY_MODEL_FROZEN
+                    ||effective_model==CAVITY_MODEL_GAUSSIAN_FRINGE)
                 && (source.freeze_x || source.freeze_px
                     || source.freeze_y || source.freeze_py))
                 status=CAVITY_MODEL_ARGUMENT;
@@ -308,7 +372,9 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
             q[5]=sqrt(1.+momentum*momentum);
         }
         if (status==CAVITY_MODEL_OK && effective_model>=CAVITY_MODEL_AVERAGED_SECOND_ORDER
-            && effective_model!=CAVITY_MODEL_AVERAGED_FULL_SLOW && !effective_magnetic && CavityModels_static_present(&source))
+            && effective_model!=CAVITY_MODEL_AVERAGED_FULL_SLOW && !effective_magnetic
+            && effective_model!=CAVITY_MODEL_GAUSSIAN_DIPOLE
+            && effective_model!=CAVITY_MODEL_GAUSSIAN_MOVING_REFERENCE && CavityModels_static_present(&source))
             status=CAVITY_MODEL_ARGUMENT;
         if (status==CAVITY_MODEL_OK && effective_model>=CAVITY_MODEL_AVERAGED_SECOND_ORDER) {
             xt_float_or_tpsa initial_potential[4];
@@ -375,10 +441,37 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
         }
         if(status==CAVITY_MODEL_OK&&effective_magnetic) {
             CavityMagSource gaussian={0};
-            status=CavityMag_bind(&source,Q,parent_cells,CavityData_get_num_factor_steps(el),
-                CavityModels_freeze_mask(&source),&gaussian);
-            if(status==CAVITY_MODEL_OK)status=CavityMag_interval(q,
-                source.k*length*(left_fraction-.5),source.k*length*(right_fraction-.5),&gaussian,reverse);
+            const int fringe=effective_model==CAVITY_MODEL_GAUSSIAN_FRINGE;
+            status=CavityMag_bind_hardware(&source,Q,parent_cells,CavityData_get_num_factor_steps(el),
+                CavityModels_freeze_mask(&source),fringe,&gaussian);
+            if(status==CAVITY_MODEL_OK) {
+                if(fringe)status=CavityMag_fringe_interval(q,
+                    source.k*length*(left_fraction-.5),source.k*length*(right_fraction-.5),&gaussian,reverse);
+                else status=CavityMag_interval(q,
+                    source.k*length*(left_fraction-.5),source.k*length*(right_fraction-.5),&gaussian,reverse);
+            }
+            z=source.k*length*(end_fraction-.5);
+        }
+        if(status==CAVITY_MODEL_OK&&effective_model==CAVITY_MODEL_GAUSSIAN_MOVING_REFERENCE) {
+            CavityOverlapSource moving={0};
+            const xt_float_or_tpsa reference[4]={source.k*CavityData_get_reference_x(el),
+                source.k*CavityData_get_reference_y(el),kappa0*CavityData_get_reference_px(el),
+                kappa0*CavityData_get_reference_py(el)};
+            status=CavityOverlap_bind(&source,Q,reference,parent_cells,
+                CavityData_get_num_factor_steps(el),CavityData_get_num_reference_steps(el),
+                CavityModels_freeze_mask(&source),&moving);
+            if(status==CAVITY_MODEL_OK)status=CavityOverlap_interval(&moving,q,
+                source.k*length*(left_fraction-.5),source.k*length*(right_fraction-.5),reverse);
+            z=source.k*length*(end_fraction-.5);
+        }
+        if(status==CAVITY_MODEL_OK&&effective_model==CAVITY_MODEL_GAUSSIAN_DIPOLE) {
+            CavityDipoleSource dipole_source={0};
+            // Fixed canonical entrance programme in native mass-scaled units;
+            // never substitute the tracked lane's current px or delta.
+            status=CavityDipole_bind(&source,Q,kappa0*CavityData_get_reference_px(el),
+                parent_cells,CavityData_get_num_factor_steps(el),CavityModels_freeze_mask(&source),&dipole_source);
+            if(status==CAVITY_MODEL_OK)status=CavityDipole_interval(&dipole_source,q,
+                source.k*length*(left_fraction-.5),source.k*length*(right_fraction-.5),reverse);
             z=source.k*length*(end_fraction-.5);
         }
         if(status==CAVITY_MODEL_OK&&effective_model==CAVITY_MODEL_PREPARED_ENVELOPE) {
@@ -424,7 +517,15 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
         for (int64_t cell=0; effective_model<=CAVITY_MODEL_LONGITUDINAL
                 && status==CAVITY_MODEL_OK && cell<cells; ++cell) {
             xt_float_or_tpsa next[6];
-            status=CavityModel_gauss(q,z,h,Q,&source,effective_model,80,2e-13,next);
+#ifndef XTRACK_TPSA_TRACK
+            if(effects) {
+                double next_spin[3];
+                status=CavityModel_effects_cell(q,spin,z,h,Q,&source,anomaly,effects_rho,
+                    radiation,spin_tracking,next,next_spin);
+                if(status==CAVITY_MODEL_OK)for(int j=0;j<3;++j)spin[j]=next_spin[j];
+            } else
+#endif
+                status=CavityModel_gauss(q,z,h,Q,&source,effective_model,80,2e-13,next);
             if (status==CAVITY_MODEL_OK) {
                 for (int j=0;j<6;++j) q[j]=next[j];
                 z+=h;
@@ -460,7 +561,7 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
         xt_float_or_tpsa readback[4];
         if(status==CAVITY_MODEL_OK) {
             for(int i=0;i<4;++i)readback[i]=potential[i];
-            if(clear_face&&physical_outer) {
+            if(clear_face&&physical_outer&&source.magnetic_profile==0) {
                 CavityModelSource rf_only=source;
                 rf_only.ks=0.;rf_only.magnetic_scale=0.;rf_only.order=-1;
                 rf_only.knl=NULL;rf_only.ksl=NULL;rf_only.knl_tpsa=NULL;rf_only.ksl_tpsa=NULL;
@@ -479,6 +580,10 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
             LocalParticle_add_to_s(part,direction*length*weight);
             LocalParticle_set_ax(part,Q*readback[0]/kappa0);
             LocalParticle_set_ay(part,Q*readback[1]/kappa0);
+#ifndef XTRACK_TPSA_TRACK
+            if(spin_tracking){LocalParticle_set_spin_x(part,spin[0]);
+                LocalParticle_set_spin_y(part,spin[1]);LocalParticle_set_spin_z(part,spin[2]);}
+#endif
         } else {
             // -99741 domain, -99742 stage exhaustion, -99743 nonfinite,
             // -99744 invalid/unfinished source or numerical configuration.

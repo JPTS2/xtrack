@@ -67,31 +67,37 @@ double CavityModel_scalar_residual(xt_float_or_tpsa_arg residual,
 // actual residual without changing the solver or its stopping criterion.
 GPUFUN
 void CavityModel_debug_residual(const char *tag, int row, int stage,
-        xt_float_or_tpsa_arg residual, xt_float_or_tpsa_arg scale) {
+        xt_float_or_tpsa_arg residual, xt_float_or_tpsa_arg scale,
+        int physical_state, int primal_only) {
 #ifdef CAVITY_MODEL_DEBUG
-    double maximum=0.,magnitude=0.;
+    double maximum=0.,magnitude=0.,weighted=-1.;
     int64_t index=0;
 #ifdef XTRACK_TPSA_TRACK
     const int64_t count=mad_tpsa_len(residual.ptr(),0);
     for (int64_t i=0;i<count;++i) {
+        if(primal_only&&i!=0)continue;
         const double coefficient=fabs(mad_tpsa_geti(residual.ptr(),i));
-        if (coefficient>maximum) {
+        const double candidate_scale=fabs(mad_tpsa_geti(scale.ptr(),i));
+        const double candidate=coefficient/((physical_state&&i==0)?1.:1.+candidate_scale);
+        if (candidate>weighted) {
             maximum=coefficient;index=i;
-            magnitude=fabs(mad_tpsa_geti(scale.ptr(),i));
+            magnitude=candidate_scale;weighted=candidate;
         }
     }
 #else
     maximum=fabs(residual);magnitude=fabs(scale);
+    weighted=maximum/(physical_state?1.:1.+magnitude);
 #endif
     const double spacing=nextafter(magnitude,INFINITY)-magnitude;
     fprintf(stderr,"CAVITY_RESIDUAL %s row=%d stage=%d L1=%.17g "
         "max=%.17g coefficient=%lld primal=%.17g scale=%.17g "
-        "ULP=%.17g max_over_ULP=%.17g\n",tag,row,stage,
+        "weighted=%.17g ULP=%.17g max_over_ULP=%.17g\n",tag,row,stage,
         CavityModel_scalar_norm(residual),maximum,(long long)index,
-        xt_float_or_tpsa_const_part(residual),magnitude,spacing,
+        xt_float_or_tpsa_const_part(residual),magnitude,weighted,spacing,
         spacing>0. ? maximum/spacing : INFINITY);
 #else
     (void)tag;(void)row;(void)stage;(void)residual;(void)scale;
+    (void)physical_state;(void)primal_only;
 #endif
 }
 
@@ -110,7 +116,8 @@ void CavityModel_debug_stages(const char *tag,
     for (int i=0;i<count;++i) {
         xt_float_or_tpsa du=u[i]-h*(.25*f[i]+a01*g[i]);
         xt_float_or_tpsa dv=v[i]-h*(a10*f[i]+.25*g[i]);
-        const double nu=CavityModel_scalar_norm(du),nv=CavityModel_scalar_norm(dv);
+        const double nu=CavityModel_scalar_residual(du,value[i]+u[i],i<6);
+        const double nv=CavityModel_scalar_residual(dv,value[i]+v[i],i<6);
         if (nu>worst) {worst=nu;row=i;stage=0;}
         if (nv>worst) {worst=nv;row=i;stage=1;}
         if (i<6) {
@@ -123,15 +130,15 @@ void CavityModel_debug_stages(const char *tag,
     xt_float_or_tpsa residual=stage ? v[row]-h*(a10*f[row]+.25*g[row])
                                   : u[row]-h*(.25*f[row]+a01*g[row]);
     xt_float_or_tpsa full=value[row]+(stage ? v[row] : u[row]);
-    CavityModel_debug_residual(tag,row,stage,residual,full);
+    CavityModel_debug_residual(tag,row,stage,residual,full,row<6,0);
     row=physical_row;stage=physical_stage;
     residual=stage ? v[row]-h*(a10*f[row]+.25*g[row])
                    : u[row]-h*(.25*f[row]+a01*g[row]);
     full=value[row]+(stage ? v[row] : u[row]);
-    CavityModel_debug_residual("physical-increment-primal",row,stage,residual,full);
+    CavityModel_debug_residual("physical-increment-primal",row,stage,residual,full,1,1);
     residual=stage ? full-value[row]-h*(a10*f[row]+.25*g[row])
                    : full-value[row]-h*(.25*f[row]+a01*g[row]);
-    CavityModel_debug_residual("naive-full-stage-subtraction",row,stage,residual,full);
+    CavityModel_debug_residual("naive-full-stage-subtraction",row,stage,residual,full,1,1);
 #else
     (void)tag;(void)value;(void)u;(void)v;(void)f;(void)g;(void)h;(void)count;
 #endif

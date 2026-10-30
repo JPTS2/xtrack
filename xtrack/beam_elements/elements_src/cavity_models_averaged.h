@@ -808,6 +808,8 @@ int CavityFull_primitive_step(CavityFullPrimitive *prior,
 GPUFUN
 int CavityFull_generators(const xt_float_or_tpsa q[6],const CavityAveragedSource *source,
         xt_float_or_tpsa body[7],xt_float_or_tpsa boundary[7]) {
+    if(source->static_source&&source->static_source->magnetic_profile!=0)
+        return CAVITY_MODEL_ARGUMENT;
     if(source->characteristic_steps<=0 || source->factor_steps<=0 || source->tolerance<=0.)return CAVITY_MODEL_ARGUMENT;
     if(!xt_float_or_tpsa_is_zero(source->dc_gradient)
         &&(!xt_float_or_tpsa_is_zero(source->slow)||!xt_float_or_tpsa_is_zero(source->fast)))return CAVITY_MODEL_ARGUMENT;
@@ -866,6 +868,8 @@ int CavityFull_final_slow(const xt_float_or_tpsa *q,xt_float_or_tpsa_arg z,
 CAVITY_AVERAGED_GAUSS(CavityFull_final_slow_gauss,CavityFull_final_slow,6)
 GPUFUN
 int CavityFull_map(xt_float_or_tpsa q[6],const CavityAveragedSource *source,int reverse) {
+    if(source->static_source&&source->static_source->magnetic_profile!=0)
+        return CAVITY_MODEL_ARGUMENT;
     xt_float_or_tpsa value[6];for(int i=0;i<6;++i)value[i]=q[i];int status=CAVITY_MODEL_OK;
     const int present=CavityModel_scalar_norm(source->fast)!=0.;
     if(reverse) {
@@ -1402,7 +1406,7 @@ void CavityQuadratic_potential(const xt_float_or_tpsa q[6],
 
 // Centred Gaussian magnetic compact source and finite product.
 #include <float.h>
-enum CavityMagPhysicalModel {CAVITY_MODEL_GAUSSIAN_MAGNETIC=20};
+enum CavityMagPhysicalModel {CAVITY_MODEL_GAUSSIAN_MAGNETIC=20,CAVITY_MODEL_GAUSSIAN_FRINGE=22,CAVITY_MODEL_GAUSSIAN_DIPOLE=23,CAVITY_MODEL_GAUSSIAN_MOVING_REFERENCE=24};
 
 // Direct consumer of magnetic_compact.GaussianCenteredMagnetic: joint RF
 // order two, transverse quadratic, exact uniform solenoid/normal-quadrupole
@@ -1414,16 +1418,22 @@ enum CavityMagPhysicalModel {CAVITY_MODEL_GAUSSIAN_MAGNETIC=20};
 typedef struct {xt_float_or_tpsa re,im;} CavityMagComplex;
 typedef struct {
     xt_float_or_tpsa anchor,width,centre,nu,slow,fast,b,g,phase;
+    xt_float_or_tpsa g_skew,magnetic_width;
+    int magnetic_profile;
     int64_t source_steps,body_steps,boundary_steps,frozen_coordinates;
     double tolerance,reference_beta;
 } CavityMagSource;
 GPUFUN
 int CavityMag_validate(const CavityMagSource *source) {
-    xt_float_or_tpsa controls[9]={source->anchor,source->width,source->centre,
-        source->nu,source->slow,source->fast,source->b,source->g,source->phase};
-    if(!CavityModel_vector_finite(controls,9)||source->source_steps<=0
+    xt_float_or_tpsa controls[11]={source->anchor,source->width,source->centre,
+        source->nu,source->slow,source->fast,source->b,source->g,source->phase,
+        source->g_skew,source->magnetic_width};
+    if(!CavityModel_vector_finite(controls,11)||source->source_steps<=0
         ||xt_float_or_tpsa_const_part(source->width)<=0.
-        ||xt_float_or_tpsa_const_part(source->nu)<=0.)return CAVITY_MODEL_ARGUMENT;
+        ||xt_float_or_tpsa_const_part(source->nu)<=0.
+        ||source->magnetic_profile<0||source->magnetic_profile>1
+        ||(source->magnetic_profile==1&&xt_float_or_tpsa_const_part(source->magnetic_width)<=0.))
+        return CAVITY_MODEL_ARGUMENT;
     return CAVITY_MODEL_OK;
 }
 GPUFUN
@@ -1479,7 +1489,8 @@ double CavityMag_J_sign(int i){return i<2?1.:-1.;}
 // Divided E coefficients through four from the positive p²=(E−1)(E+1)
 // root, then the same reciprocal recurrence as inverse_momentum_coefficients.
 GPUFUN
-int CavityMag_magnet(xt_float_or_tpsa_arg energy,const CavityMagSource *source,
+int CavityMag_magnet(xt_float_or_tpsa_arg energy,xt_float_or_tpsa_arg position,
+        const CavityMagSource *source,int position_order,
         xt_float_or_tpsa K[5][4][4],xt_float_or_tpsa KE[4][4][4],
         xt_float_or_tpsa A[4][4][4],xt_float_or_tpsa clock[4]) {
     if(xt_float_or_tpsa_const_part(energy)<=1.)return CAVITY_MODEL_DOMAIN;
@@ -1490,14 +1501,31 @@ int CavityMag_magnet(xt_float_or_tpsa_arg energy,const CavityMagSource *source,
         root[n]=(square[n]-known)/(2.*root[0]);known=0.;
         for(int j=1;j<=n;++j)known+=root[j]*inv[n-j];inv[n]=-known/root[0];
     }
-    xt_float_or_tpsa shape[4][4];for(int i=0;i<4;++i)for(int j=0;j<4;++j)shape[i][j]=0.;
-    shape[0][0]=source->b*source->b/4.;shape[1][1]=shape[0][0];
-    shape[0][3]=-source->b/2.;shape[3][0]=shape[0][3];
-    shape[1][2]=source->b/2.;shape[2][1]=shape[1][2];shape[2][2]=1.;shape[3][3]=1.;
+    if(position_order<0||position_order>2)return CAVITY_MODEL_ARGUMENT;
+    xt_float_or_tpsa B[3]={source->b,0.,0.},G[3]={source->g,0.,0.},skew[3]={source->g_skew,0.,0.};
+    if(source->magnetic_profile==1) {
+        xt_float_or_tpsa w=source->magnetic_width,q=position/w;
+        xt_float_or_tpsa profile=exp(-q*q/2.);
+        B[0]*=profile;G[0]*=profile;skew[0]*=profile;
+        B[1]=-q*B[0]/w;G[1]=-q*G[0]/w;skew[1]=-q*skew[0]/w;
+        B[2]=(q*q-1.)*B[0]/(w*w);G[2]=(q*q-1.)*G[0]/(w*w);
+        skew[2]=(q*q-1.)*skew[0]/(w*w);
+    }
+    xt_float_or_tpsa square_B=B[0]*B[0];
+    if(position_order==1)square_B=2.*B[0]*B[1];
+    if(position_order==2)square_B=2.*(B[1]*B[1]+B[0]*B[2]);
+    xt_float_or_tpsa shape[4][4];
+    for(int i=0;i<4;++i)for(int j=0;j<4;++j)shape[i][j]=0.;
+    shape[0][0]=square_B/4.;shape[1][1]=shape[0][0];
+    shape[0][3]=-B[position_order]/2.;shape[3][0]=shape[0][3];
+    shape[1][2]=B[position_order]/2.;shape[2][1]=shape[1][2];
+    shape[2][2]=position_order==0?1.:0.;shape[3][3]=shape[2][2];
     for(int n=0;n<5;++n)for(int i=0;i<4;++i)for(int j=0;j<4;++j)K[n][i][j]=inv[n]*shape[i][j];
-    K[0][0][0]+=source->g;K[0][1][1]-=source->g;
+    K[0][0][0]+=G[position_order];K[0][1][1]-=G[position_order];
+    K[0][0][1]+=skew[position_order];K[0][1][0]+=skew[position_order];
     for(int n=0;n<4;++n) {
-        clock[n]=energy*inv[n];if(n)clock[n]+=inv[n-1];
+        clock[n]=0.;
+        if(position_order==0){clock[n]=energy*inv[n];if(n)clock[n]+=inv[n-1];}
         for(int i=0;i<4;++i)for(int j=0;j<4;++j) {
             KE[n][i][j]=(n+1.)*K[n+1][i][j];
             A[n][i][j]=CavityMag_J_sign(i)*K[n][CavityMag_J_index(i)][j];
@@ -1510,7 +1538,7 @@ int CavityMag_physical(xt_float_or_tpsa_arg energy,xt_float_or_tpsa_arg position
         const CavityMagSource *source,CavityMagComplex first[4][4][11],
         CavityMagComplex second[9][3][11]) {
     xt_float_or_tpsa K[5][4][4],KE[4][4][4],A[4][4][4],clock[4];
-    int status=CavityMag_magnet(energy,source,K,KE,A,clock);
+    int status=CavityMag_magnet(energy,position,source,0,K,KE,A,clock);
     if(status!=CAVITY_MODEL_OK)return status;
     xt_float_or_tpsa inv[4];for(int n=0;n<4;++n)inv[n]=K[n][2][2];
     xt_float_or_tpsa distance=(position-source->centre)/source->width;
@@ -1626,7 +1654,7 @@ int CavityMag_source_rhs(const CavityMagComplex state[286],xt_float_or_tpsa_arg 
     if(status!=CAVITY_MODEL_OK)return status;
     CavityMag_second_source(first,direct,state,second);
     xt_float_or_tpsa K[5][4][4],KE[4][4][4],A[4][4][4],clock[4];
-    status=CavityMag_magnet(energy,source,K,KE,A,clock);if(status!=CAVITY_MODEL_OK)return status;
+    status=CavityMag_magnet(energy,position,source,0,K,KE,A,clock);if(status!=CAVITY_MODEL_OK)return status;
     for(int mode=0;mode<2;++mode)CavityMag_homology(state+44*mode,&first[mode+1][0][0],3,mode?1:-1,KE,A,clock,out+44*mode);
     for(int mode=0;mode<6;++mode) {
         int index=CavityMag_second_state(mode),ell=CavityMag_second_mode(index,0)+CavityMag_second_mode(index,1);
@@ -1718,7 +1746,7 @@ int CavityMag_scalar(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg position,
         for(int mode=0;mode<9;++mode)if(CavityMag_second_mode(mode,1)==0)
             CavityMag_scalar_packet(second[mode],CavityMag_second_mode(mode,0),0,q,source,combined);
         xt_float_or_tpsa K[5][4][4],KE[4][4][4],A[4][4][4],clock[4];
-        status=CavityMag_magnet(q[5],source,K,KE,A,clock);if(status!=CAVITY_MODEL_OK)return status;
+        status=CavityMag_magnet(q[5],position,source,0,K,KE,A,clock);if(status!=CAVITY_MODEL_OK)return status;
         const int slots[4]={0,1,3,4};xt_float_or_tpsa momentum=sqrt((q[5]-1.)*(q[5]+1.));
         combined[0].re-=momentum;combined[6].re-=q[5]/momentum;
         combined[7+6*5+5].re+=1./(momentum*momentum*momentum);
@@ -1831,17 +1859,19 @@ void CavityMag_potential(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
     for(int i=0;i<4;++i){potential.a[i]=0.;for(int j=0;j<3;++j)potential.d[i][j]=0.;}
     potential.a[0]=q[0]*S[1]/2.;potential.a[1]=q[1]*S[1]/2.;
     potential.a[2]=-S[0]+(q[0]*q[0]+q[1]*q[1])*(S[0]+S[2])/4.;
-    CavityModel_add_static(q,source,&potential);for(int i=0;i<4;++i)out[i]=potential.a[i];
+    CavityModel_add_static(q,z,source,&potential);for(int i=0;i<4;++i)out[i]=potential.a[i];
 }
 GPUFUN
-int CavityMag_bind(const CavityModelSource *source,xt_float_or_tpsa_arg Q,
-        int64_t source_steps,int64_t factor_steps,int64_t frozen_coordinates,
+int CavityMag_bind_hardware(const CavityModelSource *source,xt_float_or_tpsa_arg Q,
+        int64_t source_steps,int64_t factor_steps,int64_t frozen_coordinates,int fringe,
         CavityMagSource *out) {
     if(source->rf_profile!=2||xt_float_or_tpsa_const_part(source->profile_sigma)<=0.
-        ||!xt_float_or_tpsa_is_zero(source->dc_gradient))return CAVITY_MODEL_ARGUMENT;
+        ||!xt_float_or_tpsa_is_zero(source->dc_gradient)
+        ||source->magnetic_profile!=(fringe?1:0))return CAVITY_MODEL_ARGUMENT;
+    int valid=CavityModel_static_validate(source);if(valid!=CAVITY_MODEL_OK)return valid;
     for(int64_t i=0;i<=source->order;++i)
         if((i!=1&&!xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source,i,0)))
-            ||!xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source,i,1)))return CAVITY_MODEL_ARGUMENT;
+            ||((i!=1||!fringe)&&!xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source,i,1))))return CAVITY_MODEL_ARGUMENT;
     out->anchor=-source->half_span;out->width=source->profile_sigma;out->centre=source->profile_center;
     out->nu=source->carrier;out->slow=Q*source->forward;out->fast=Q*source->backward;
     // With exactly zero RF this is only a coordinate-unit chart. The unused
@@ -1849,14 +1879,50 @@ int CavityMag_bind(const CavityModelSource *source,xt_float_or_tpsa_arg Q,
     if(xt_float_or_tpsa_is_zero(out->slow)&&xt_float_or_tpsa_is_zero(out->fast)
         &&xt_float_or_tpsa_const_part(out->nu)<=0.)out->nu=1.;
     out->b=Q*source->magnetic_scale*source->ks/source->k;out->g=0.;
-    if(source->order>=1)out->g=Q*source->magnetic_scale*CavityModel_static_coefficient(source,1,0)
-        /(source->length*source->k*source->k);
+    out->g_skew=0.;out->magnetic_profile=fringe;
+    out->magnetic_width=0.;if(fringe)out->magnetic_width=source->magnetic_sigma;
+    xt_float_or_tpsa integral=source->length;
+    if(fringe)integral=CavityModel_magnetic_integral(source);
+    const xt_float_or_tpsa factor=Q*source->magnetic_scale/(source->k*source->k*integral);
+    if(source->order>=1) {
+        out->g=factor*CavityModel_static_coefficient(source,1,0);
+        if(fringe)out->g_skew=-factor*CavityModel_static_coefficient(source,1,1);
+    }
     out->phase=source->counter_phase;out->source_steps=source_steps;
     out->body_steps=factor_steps;out->boundary_steps=factor_steps;out->frozen_coordinates=frozen_coordinates;
     out->reference_beta=source->reference_beta;out->tolerance=2e-13;
     return CavityMag_validate(out);
 }
 
+
+GPUFUN
+int CavityMag_bind(const CavityModelSource *source,xt_float_or_tpsa_arg Q,
+        int64_t source_steps,int64_t factor_steps,int64_t frozen_coordinates,CavityMagSource *out) {
+    return CavityMag_bind_hardware(source,Q,source_steps,factor_steps,frozen_coordinates,0,out);
+}
+// Exact donor <-> longitudinal gauge, linear in the independent normal/skew
+// strengths and analytic through either zero. Observation seeds are retained.
+GPUFUN
+int CavityMag_fringe_gauge(xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
+        const CavityMagSource *source,int to_longitudinal) {
+    const xt_float_or_tpsa primitive=source->magnetic_width*sqrt(PI/2.)
+        *CavityModel_erf(z/(sqrt(2.)*source->magnetic_width))/2.;
+    const double sign=to_longitudinal?-1.:1.;
+    q[3]+=sign*2.*primitive*(source->g*q[0]+source->g_skew*q[1]);
+    q[4]+=sign*2.*primitive*(source->g_skew*q[0]-source->g*q[1]);
+    return CavityModel_vector_finite(q,6)?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+}
+GPUFUN
+int CavityMag_fringe_interval(xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg a,xt_float_or_tpsa_arg b,const CavityMagSource *source,int reverse) {
+    xt_float_or_tpsa candidate[6];for(int i=0;i<6;++i)candidate[i]=q[i];
+    xt_float_or_tpsa entrance=a,exit=b;if(reverse){entrance=b;exit=a;}
+    int status=CavityMag_fringe_gauge(candidate,entrance,source,1);
+    if(status==CAVITY_MODEL_OK)status=CavityMag_interval(candidate,a,b,source,reverse);
+    if(status==CAVITY_MODEL_OK)status=CavityMag_fringe_gauge(candidate,exit,source,0);
+    if(status==CAVITY_MODEL_OK)for(int i=0;i<6;++i)q[i]=candidate[i];
+    return status;
+}
 
 // Prepared RF2/transverse2 envelope scalar tables. Fixed hardware, live amplitudes/phases.
 typedef struct {
@@ -2058,6 +2124,1089 @@ int CavityEnvelope_interval(xt_float_or_tpsa q[6],double a,double b,
         status=CavityEnvelope_prefix(candidate,reverse?a:b,source,0);
     if(status==CAVITY_MODEL_OK)for(int i=0;i<6;++i)q[i]=candidate[i];
     return status;
+}
+
+// Retained fifteen-channel RF2/P2 construction about a uniform dipole orbit.
+typedef struct {CavityMagComplex a[5];} CavityDipoleJet;
+typedef struct {
+ xt_float_or_tpsa anchor,width,nu,slow,fast,b,p0,centre,phase;
+ int64_t source_steps,body_steps,boundary_steps,frozen_coordinates;
+ double tolerance,reference_beta;
+} CavityDipoleSource;
+typedef struct {
+ xt_float_or_tpsa momentum;
+ CavityDipoleJet root,inverse,orbit,clock,K;
+} CavityDipoleReference;
+typedef struct {CavityDipoleJet a[15];} CavityDipolePacket;
+typedef struct {CavityDipolePacket a[13];int present[13];} CavityDipolePackets;
+
+GPUFUN
+int CavityDipole_validate(const CavityDipoleSource *source) {
+    const xt_float_or_tpsa controls[9]={source->anchor,source->width,source->nu,
+        source->slow,source->fast,source->b,source->p0,source->centre,source->phase};
+    if(!CavityModel_vector_finite(controls,9)
+        ||xt_float_or_tpsa_const_part(source->width)<=0.
+        ||source->source_steps<=0||source->body_steps<=0||source->boundary_steps<=0
+        ||!isfinite(source->tolerance)||source->tolerance<=0.)return CAVITY_MODEL_ARGUMENT;
+    if((source->frozen_coordinates&((int64_t)1<<2))
+        &&!(source->reference_beta>0.&&source->reference_beta<1.))return CAVITY_MODEL_ARGUMENT;
+    return CAVITY_MODEL_OK;
+}
+GPUFUN CavityDipoleJet CavityDipole_jc(xt_float_or_tpsa_arg re,xt_float_or_tpsa_arg im){
+ CavityDipoleJet out={0};out.a[0]=CavityMag_value(re,im);return out;}
+GPUFUN CavityDipoleJet CavityDipole_jr(xt_float_or_tpsa_arg value){return CavityDipole_jc(value,0.);}
+GPUFUN CavityDipoleJet CavityDipole_add(CavityDipoleJet a,CavityDipoleJet b){
+ for(int n=0;n<5;n++)a.a[n]=CavityMag_add(a.a[n],b.a[n]);return a;}
+GPUFUN CavityDipoleJet CavityDipole_scale(CavityDipoleJet a,xt_float_or_tpsa_arg b){
+ for(int n=0;n<5;n++)a.a[n]=CavityMag_scale(a.a[n],b);return a;}
+GPUFUN CavityDipoleJet CavityDipole_sub(CavityDipoleJet a,CavityDipoleJet b){
+ return CavityDipole_add(a,CavityDipole_scale(b,-1.));}
+GPUFUN CavityDipoleJet CavityDipole_mul(CavityDipoleJet a,CavityDipoleJet b){
+ CavityDipoleJet out={0};for(int n=0;n<5;n++)for(int j=0;j<=n;j++)
+ out.a[n]=CavityMag_add(out.a[n],CavityMag_mul(a.a[j],b.a[n-j]));return out;}
+GPUFUN CavityMagComplex CavityDipole_cinv(CavityMagComplex a){
+ xt_float_or_tpsa norm=a.re*a.re+a.im*a.im;
+ return CavityMag_value(a.re/norm,-a.im/norm);}
+GPUFUN CavityDipoleJet CavityDipole_inv(CavityDipoleJet a){
+ CavityDipoleJet out={0};out.a[0]=CavityDipole_cinv(a.a[0]);
+ for(int n=1;n<5;n++){
+  CavityMagComplex sum={0};for(int j=1;j<=n;j++)
+   sum=CavityMag_add(sum,CavityMag_mul(a.a[j],out.a[n-j]));
+  out.a[n]=CavityMag_scale(CavityMag_mul(sum,out.a[0]),-1.);
+ }return out;}
+GPUFUN CavityDipoleJet CavityDipole_div(CavityDipoleJet a,CavityDipoleJet b){
+ return CavityDipole_mul(a,CavityDipole_inv(b));}
+GPUFUN CavityDipoleJet CavityDipole_derivative(CavityDipoleJet a){
+ CavityDipoleJet out={0};for(int n=0;n<4;n++)out.a[n]=CavityMag_scale(a.a[n+1],n+1.);return out;}
+GPUFUN CavityDipoleJet CavityDipole_power(CavityDipoleJet a,int n){
+ CavityDipoleJet out=CavityDipole_jr(1.);for(int j=0;j<n;j++)out=CavityDipole_mul(out,a);return out;}
+GPUFUN CavityDipoleJet CavityDipole_exp(CavityDipoleJet a){
+ CavityDipoleJet out={0};xt_float_or_tpsa magnitude=exp(a.a[0].re);
+ out.a[0]=CavityMag_value(magnitude*cos(a.a[0].im),magnitude*sin(a.a[0].im));
+ for(int n=1;n<5;n++){
+  for(int j=1;j<=n;j++)out.a[n]=CavityMag_add(out.a[n],
+   CavityMag_scale(CavityMag_mul(a.a[j],out.a[n-j]),j));
+  out.a[n]=CavityMag_scale(out.a[n],1./n);
+ }return out;}
+GPUFUN int CavityDipole_sqrt(CavityDipoleJet a,CavityDipoleJet *out){
+ if(!CavityModel_scalar_finite(a.a[0].re)||xt_float_or_tpsa_const_part(a.a[0].re)<=0.
+    ||!xt_float_or_tpsa_is_zero(a.a[0].im))return CAVITY_MODEL_DOMAIN;
+ CavityDipoleJet result={0};result.a[0]=CavityMag_value(sqrt(a.a[0].re),0.);
+ CavityMagComplex denominator=CavityDipole_cinv(CavityMag_scale(result.a[0],2.));
+ for(int n=1;n<5;n++){
+  CavityMagComplex value=a.a[n];for(int j=1;j<n;j++)
+   value=CavityMag_add(value,CavityMag_scale(CavityMag_mul(result.a[j],result.a[n-j]),-1.));
+  result.a[n]=CavityMag_mul(value,denominator);
+ }*out=result;return CAVITY_MODEL_OK;}
+
+/* At zero primal bend the quotient atan(u)/u has its exact nilpotent
+ * Taylor polynomial. Its order is the ACTUAL outer TPSA order, never a
+ * guessed fixed cutoff. This retains b/E/p0 derivatives at b=0. */
+GPUFUN xt_float_or_tpsa CavityDipole_atan_ratio_zero(xt_float_or_tpsa_arg u){
+ xt_float_or_tpsa result=1.,term=1.;int order=0;
+#ifdef XTRACK_TPSA_TRACK
+ order=mad_tpsa_ord(u.ptr(),0);
+#endif
+ for(int j=1;j<=order/2;j++){term*=-u*u;result+=term/(2.*j+1.);}
+ return result;
+}
+GPUFUN int CavityDipole_reference(const CavityDipoleSource *s,
+        xt_float_or_tpsa_arg energy,xt_float_or_tpsa_arg z,CavityDipoleReference *out){
+ if(!CavityModel_scalar_finite(energy)||!CavityModel_scalar_finite(z)
+    ||xt_float_or_tpsa_const_part(energy)<=1.)return CAVITY_MODEL_DOMAIN;
+ CavityDipoleJet E=CavityDipole_jr(energy);E.a[1]=CavityMag_value(1.,0.);
+ CavityDipoleJet K=CavityDipole_sub(CavityDipole_mul(E,E),CavityDipole_jr(1.));
+ xt_float_or_tpsa d=z-s->anchor,p=s->p0-s->b*d;
+ CavityDipoleJet sa,sz;
+ int status=CavityDipole_sqrt(CavityDipole_sub(K,CavityDipole_jr(s->p0*s->p0)),&sa);
+ if(status!=CAVITY_MODEL_OK)return status;
+ status=CavityDipole_sqrt(CavityDipole_sub(K,CavityDipole_jr(p*p)),&sz);
+ if(status!=CAVITY_MODEL_OK)return status;
+ CavityDipoleJet iv=CavityDipole_inv(sz);
+ CavityDipoleJet r=CavityDipole_div(CavityDipole_jr(d*(s->p0+p)),CavityDipole_add(sa,sz));
+ CavityDipoleJet F=CavityDipole_add(CavityDipole_scale(sz,d),CavityDipole_scale(r,p));
+ CavityDipoleJet rhs=CavityDipole_scale(CavityDipole_div(CavityDipole_mul(E,F),
+        CavityDipole_mul(K,CavityDipole_mul(sz,sa))),-1.);
+ CavityDipoleJet g={0};
+ if(xt_float_or_tpsa_const_part(s->b)==0.){
+  xt_float_or_tpsa ratio=F.a[0].re/(sa.a[0].re*sz.a[0].re+s->p0*p);
+  g.a[0]=CavityMag_value(ratio*CavityDipole_atan_ratio_zero(s->b*ratio),0.);
+ }else{
+  xt_float_or_tpsa angle=atan2(s->b*F.a[0].re,sa.a[0].re*sz.a[0].re+s->p0*p);
+  g.a[0]=CavityMag_value(angle/s->b,0.);
+ }
+ for(int n=1;n<5;n++)g.a[n]=CavityMag_scale(rhs.a[n-1],1./n);
+ out->momentum=p;out->root=sz;out->inverse=iv;out->orbit=r;
+ out->clock=CavityDipole_mul(E,g);out->K=K;return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityDipole_mode_m(int index){
+ const int modes[13]={-2,-1,-1,-1,0,0,0,0,0,1,1,1,2};return modes[index];}
+GPUFUN int CavityDipole_mode_n(int index){
+ const int modes[13]={0,-1,0,1,-2,-1,0,1,2,-1,0,1,0};return modes[index];}
+GPUFUN int CavityDipole_mode(int m,int n){for(int j=0;j<13;j++)
+ if(CavityDipole_mode_m(j)==m&&CavityDipole_mode_n(j)==n)return j;return -1;}
+GPUFUN int CavityDipole_channel(int a,int b){if(a>b){int t=a;a=b;b=t;}int index=5;
+ for(int i=0;i<4;i++)for(int j=i;j<4;j++,index++)if(a==i&&b==j)return index;return -1;}
+GPUFUN int CavityDipole_J_index(int i){return i<2?i+2:i-2;}
+GPUFUN double CavityDipole_J_sign(int i){return i<2?1.:-1.;}
+GPUFUN void CavityDipole_packet_add(CavityDipolePacket *a,const CavityDipolePacket *b){
+ for(int j=0;j<15;j++)a->a[j]=CavityDipole_add(a->a[j],b->a[j]);}
+GPUFUN void CavityDipole_packet_scale(CavityDipolePacket *a,CavityDipoleJet scale){
+ for(int j=0;j<15;j++)a->a[j]=CavityDipole_mul(a->a[j],scale);}
+
+/* Local short names keep the physical formulas readable; never escape this
+ * source section. All are finite divided-E arithmetic, not code generation. */
+#define DJR CavityDipole_jr
+#define DJC CavityDipole_jc
+#define DJA CavityDipole_add
+#define DJS CavityDipole_sub
+#define DJM CavityDipole_mul
+#define DJD CavityDipole_div
+#define DJF CavityDipole_scale
+#define DJ3(a,b,c) DJM(DJM((a),(b)),(c))
+#define DJ4(a,b,c,d) DJM(DJ3((a),(b),(c)),(d))
+#define DJ5(a,b,c,d,e) DJM(DJ4((a),(b),(c),(d)),(e))
+GPUFUN int CavityDipole_physical(const CavityDipoleSource *s,
+        xt_float_or_tpsa_arg energy,xt_float_or_tpsa_arg z,
+        CavityDipolePackets *first,CavityDipolePackets *direct){
+ CavityDipoleReference data;
+ int status=CavityDipole_reference(s,energy,z,&data);if(status!=CAVITY_MODEL_OK)return status;
+ CavityDipoleJet r=data.orbit,K=data.K,iv=data.inverse;
+ CavityDipoleJet theta=CavityDipole_derivative(r),iv3=CavityDipole_power(iv,3),
+        iv5=CavityDipole_power(iv,5),iv7=CavityDipole_power(iv,7);
+ xt_float_or_tpsa p=data.momentum,distance=(z-s->centre)/s->width;
+ xt_float_or_tpsa A=exp(-distance*distance*.5),Az=-distance*A/s->width,
+        Azz=(distance*distance-1.)*A/(s->width*s->width);
+ const int first_modes[4]={2,5,7,10};CavityMagComplex qz[4];
+ for(int index=0;index<4;index++){
+  int mode=first_modes[index],m=CavityDipole_mode_m(mode),n=CavityDipole_mode_n(mode),ell=m+n;
+  xt_float_or_tpsa axial=(n-m)*s->nu,strength=n==0?s->slow:s->fast;
+  // ell*strength*exp(i*axial*z)/(2i).
+  CavityMagComplex amplitude=CavityMag_value(.5*ell*strength*sin(axial*z),-.5*ell*strength*cos(axial*z));
+  CavityMagComplex q=CavityMag_scale(amplitude,A);
+  qz[index]=CavityMag_mul(amplitude,CavityMag_value(Az,axial*A));
+  CavityMagComplex radial=CavityMag_scale(CavityMag_mul(amplitude,
+        CavityMag_value(Azz-axial*axial*A+A,2.*axial*Az)),.25);
+  CavityMagComplex u=CavityMag_scale(qz[index],.5);
+  CavityDipoleJet uj=DJC(u.re,u.im),rad=DJC(radial.re,radial.im);
+  CavityDipoleJet c=DJA(DJS(DJF(DJ3(rad,r,r),-1.),DJF(DJ3(uj,r,iv),p)),DJC(q.re,q.im));
+  CavityDipoleJet lq=DJS(DJF(DJM(rad,r),-2.),DJF(DJM(uj,iv),p));
+  CavityDipoleJet lp=DJF(DJ4(uj,r,K,iv3),-1.),t=DJM(DJC(0.,-ell),theta);
+  CavityDipolePacket packet={0};packet.a[0]=c;packet.a[1]=lq;packet.a[3]=DJA(lp,DJM(t,c));
+  packet.a[CavityDipole_channel(0,0)]=packet.a[CavityDipole_channel(1,1)]=DJF(rad,-1.);
+  packet.a[CavityDipole_channel(0,2)]=DJF(DJA(DJF(DJ3(uj,K,iv3),-1.),DJM(t,lq)),.5);
+  packet.a[CavityDipole_channel(1,3)]=DJF(DJM(uj,iv),-.5);
+  packet.a[CavityDipole_channel(2,2)]=DJA(DJF(DJ5(uj,r,K,iv5,DJR(p)),-1.5),DJA(DJM(t,lp),DJF(DJ3(t,t,c),.5)));
+  packet.a[CavityDipole_channel(3,3)]=DJF(DJ4(uj,r,iv3,DJR(p)),-.5);
+  CavityDipole_packet_scale(&packet,CavityDipole_exp(DJM(DJC(0.,ell),data.clock)));
+  first->a[mode]=packet;first->present[mode]=1;
+ }
+ CavityDipoleJet a0=DJ4(r,r,K,iv3),aq=DJF(DJ3(r,K,iv3),2.),ap=DJF(DJ5(r,r,K,iv5,DJR(p)),3.);
+ for(int left=0;left<4;left++)for(int right=0;right<4;right++){
+  int lm=first_modes[left],rm=first_modes[right];
+  int mode=CavityDipole_mode(CavityDipole_mode_m(lm)+CavityDipole_mode_m(rm),
+        CavityDipole_mode_n(lm)+CavityDipole_mode_n(rm));
+  int ell=CavityDipole_mode_m(mode)+CavityDipole_mode_n(mode);
+  CavityDipoleJet t=DJM(DJC(0.,-ell),theta);CavityDipolePacket packet={0};
+  packet.a[0]=a0;packet.a[1]=aq;packet.a[3]=DJA(ap,DJM(t,a0));
+  packet.a[CavityDipole_channel(0,0)]=DJM(K,iv3);packet.a[CavityDipole_channel(1,1)]=iv;
+  packet.a[CavityDipole_channel(0,2)]=DJF(DJA(DJF(DJ3(r,K,iv5),6.*p),DJM(t,aq)),.5);
+  packet.a[CavityDipole_channel(1,3)]=DJF(DJM(r,iv3),p);
+  packet.a[CavityDipole_channel(2,2)]=DJA(DJF(DJ5(r,r,K,DJA(K,DJR(4.*p*p)),iv7),1.5),
+        DJA(DJM(t,ap),DJF(DJ3(t,t,a0),.5)));
+  packet.a[CavityDipole_channel(3,3)]=DJF(DJ4(r,r,DJA(K,DJR(2.*p*p)),iv5),.5);
+  CavityMagComplex product=CavityMag_scale(CavityMag_mul(qz[left],qz[right]),.125);
+  CavityDipole_packet_scale(&packet,DJM(DJC(product.re,product.im),
+        CavityDipole_exp(DJM(DJC(0.,ell),data.clock))));
+  CavityDipole_packet_add(&direct->a[mode],&packet);direct->present[mode]=1;
+ }return CAVITY_MODEL_OK;
+}
+
+/* P2 after the full affine canonical bracket, including scalar/linear
+ * time-energy feedback. Off-diagonal channels store M_ij, not 2*M_ij. */
+GPUFUN CavityDipolePacket CavityDipole_bracket(const CavityDipolePacket *f,
+        const CavityDipolePacket *g,int fm,int gm){
+ CavityDipolePacket out={0};int m=CavityDipole_mode_m(fm)+CavityDipole_mode_n(fm),
+        n=CavityDipole_mode_m(gm)+CavityDipole_mode_n(gm);
+ CavityDipoleJet ce=CavityDipole_derivative(f->a[0]),de=CavityDipole_derivative(g->a[0]);
+ for(int k=0;k<4;k++)out.a[0]=DJA(out.a[0],DJF(DJM(f->a[1+k],g->a[1+CavityDipole_J_index(k)]),CavityDipole_J_sign(k)));
+ out.a[0]=DJA(out.a[0],DJM(DJC(0.,1.),DJS(DJF(DJM(ce,g->a[0]),n),DJF(DJM(f->a[0],de),m))));
+ for(int a=0;a<4;a++){
+  CavityDipoleJet linear={0};
+  for(int k=0;k<4;k++)linear=DJA(linear,DJF(DJS(
+        DJM(f->a[CavityDipole_channel(a,k)],g->a[1+CavityDipole_J_index(k)]),
+        DJM(g->a[CavityDipole_channel(a,k)],f->a[1+CavityDipole_J_index(k)])),2.*CavityDipole_J_sign(k)));
+  linear=DJA(linear,DJM(DJC(0.,1.),DJS(
+        DJF(DJA(DJM(g->a[1+a],ce),DJM(CavityDipole_derivative(f->a[1+a]),g->a[0])),n),
+        DJF(DJA(DJM(CavityDipole_derivative(g->a[1+a]),f->a[0]),DJM(f->a[1+a],de)),m))));
+  out.a[1+a]=linear;
+  for(int b=a;b<4;b++){
+   CavityDipoleJet entry={0};
+   for(int k=0;k<4;k++)entry=DJA(entry,DJF(DJS(
+        DJM(f->a[CavityDipole_channel(a,k)],g->a[CavityDipole_channel(CavityDipole_J_index(k),b)]),
+        DJM(g->a[CavityDipole_channel(a,k)],f->a[CavityDipole_channel(CavityDipole_J_index(k),b)])),2.*CavityDipole_J_sign(k)));
+   CavityDipoleJet outer=DJF(DJS(
+        DJF(DJA(DJM(CavityDipole_derivative(f->a[1+a]),g->a[1+b]),DJM(CavityDipole_derivative(f->a[1+b]),g->a[1+a])),n),
+        DJF(DJA(DJM(f->a[1+a],CavityDipole_derivative(g->a[1+b])),DJM(f->a[1+b],CavityDipole_derivative(g->a[1+a]))),m)),.5);
+   CavityDipoleJet fmatrix=f->a[CavityDipole_channel(a,b)],gmatrix=g->a[CavityDipole_channel(a,b)];
+   entry=DJA(entry,DJM(DJC(0.,1.),DJA(DJS(
+        DJF(DJA(DJM(gmatrix,ce),DJM(CavityDipole_derivative(fmatrix),g->a[0])),n),
+        DJF(DJA(DJM(CavityDipole_derivative(gmatrix),f->a[0]),DJM(fmatrix,de)),m)),outer)));
+   out.a[CavityDipole_channel(a,b)]=entry;
+  }
+ }return out;
+}
+GPUFUN void CavityDipole_second_source(const CavityDipolePackets *first,
+        const CavityDipolePackets *direct,const CavityDipolePackets *w1,
+        CavityDipolePackets *out){
+ *out=*direct;
+ for(int left=0;left<13;left++)if(w1->present[left])
+ for(int right=0;right<13;right++)if(first->present[right]){
+  int mode=CavityDipole_mode(CavityDipole_mode_m(left)+CavityDipole_mode_m(right),
+        CavityDipole_mode_n(left)+CavityDipole_mode_n(right));
+  CavityDipolePacket correction=CavityDipole_bracket(&w1->a[left],&first->a[right],left,right);
+  CavityDipole_packet_scale(&correction,DJR(CavityDipole_mode_n(right)==0?1.:.5));
+  CavityDipole_packet_add(&out->a[mode],&correction);out->present[mode]=1;
+ }
+}
+GPUFUN CavityDipolePacket CavityDipole_homological(const CavityDipolePacket *w,
+        const CavityDipolePacket *forcing,int mode,const CavityDipoleJet diagonal[4]){
+ CavityDipolePacket out={0};int ell=CavityDipole_mode_m(mode)+CavityDipole_mode_n(mode);
+ for(int a=0;a<4;a++){
+  for(int k=0;k<4;k++)if(CavityDipole_J_index(k)==a)
+   out.a[1+a]=DJS(out.a[1+a],DJF(DJM(diagonal[a],w->a[1+k]),CavityDipole_J_sign(k)));
+  for(int b=a;b<4;b++){
+   CavityDipoleJet entry={0};for(int k=0;k<4;k++){
+    if(CavityDipole_J_index(k)==a)entry=DJS(entry,DJF(DJM(diagonal[a],w->a[CavityDipole_channel(k,b)]),CavityDipole_J_sign(k)));
+    if(CavityDipole_J_index(k)==b)entry=DJS(entry,DJF(DJM(w->a[CavityDipole_channel(a,k)],diagonal[b]),CavityDipole_J_sign(k)));
+   }
+   if(a==b)entry=DJA(entry,DJ3(DJC(0.,ell*.5),w->a[0],CavityDipole_derivative(diagonal[a])));
+   out.a[CavityDipole_channel(a,b)]=entry;
+  }
+ }
+ for(int j=0;j<15;j++)out.a[j]=DJS(out.a[j],forcing->a[j]);return out;
+}
+GPUFUN CavityDipolePacket CavityDipole_read_packet(const CavityMagComplex state[390],int offset,int rank){
+ CavityDipolePacket out={0};for(int e=0;e<=rank;e++)for(int j=0;j<15;j++)out.a[j].a[e]=state[offset+15*e+j];return out;}
+GPUFUN void CavityDipole_write_packet(CavityMagComplex state[390],int offset,int rank,const CavityDipolePacket *packet){
+ for(int e=0;e<=rank;e++)for(int j=0;j<15;j++)state[offset+15*e+j]=packet->a[j].a[e];}
+GPUFUN int CavityDipole_rhs(const CavityDipoleSource *s,xt_float_or_tpsa_arg E,
+        xt_float_or_tpsa_arg z,const CavityMagComplex state[390],CavityMagComplex out[390]){
+ CavityDipolePackets first={0},direct={0},w1={0},w2={0},second={0};
+ int status=CavityDipole_physical(s,E,z,&first,&direct);if(status!=CAVITY_MODEL_OK)return status;
+ const int first_modes[2]={5,7},second_modes[6]={1,3,4,8,9,11};
+ for(int j=0;j<2;j++){w1.a[first_modes[j]]=CavityDipole_read_packet(state,j*60,3);w1.present[first_modes[j]]=1;}
+ for(int j=0;j<6;j++){w2.a[second_modes[j]]=CavityDipole_read_packet(state,120+j*45,2);w2.present[second_modes[j]]=1;}
+ CavityDipole_second_source(&first,&direct,&w1,&second);
+ CavityDipoleReference ref;status=CavityDipole_reference(s,E,z,&ref);if(status!=CAVITY_MODEL_OK)return status;
+ CavityDipoleJet diagonal[4]={0};diagonal[2]=DJM(ref.K,CavityDipole_power(ref.inverse,3));diagonal[3]=ref.inverse;
+ for(int j=0;j<2;j++){
+  CavityDipolePacket packet=CavityDipole_homological(&w1.a[first_modes[j]],&first.a[first_modes[j]],first_modes[j],diagonal);
+  CavityDipole_write_packet(out,j*60,3,&packet);
+ }
+ for(int j=0;j<6;j++){
+  CavityDipolePacket packet=CavityDipole_homological(&w2.a[second_modes[j]],&second.a[second_modes[j]],second_modes[j],diagonal);
+  CavityDipole_write_packet(out,120+j*45,2,&packet);
+ }return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityDipole_source_state(const CavityDipoleSource *s,
+        xt_float_or_tpsa_arg E,xt_float_or_tpsa_arg end,CavityMagComplex state[390]){
+ CavityDipoleReference ref;int status=CavityDipole_reference(s,E,end,&ref);if(status!=CAVITY_MODEL_OK)return status;
+ for(int j=0;j<390;j++)state[j]=CavityMag_value(0.,0.);
+ if(xt_float_or_tpsa_is_zero(s->slow)&&xt_float_or_tpsa_is_zero(s->fast))return CAVITY_MODEL_OK;
+ xt_float_or_tpsa h=(end-s->anchor)/s->source_steps;
+ for(int64_t cell=0;cell<s->source_steps;cell++){
+  xt_float_or_tpsa z=s->anchor+cell*h;CavityMagComplex k1[390],k2[390],k3[390],k4[390],trial[390];
+  status=CavityDipole_rhs(s,E,z,state,k1);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<390;j++)trial[j]=CavityMag_add(state[j],CavityMag_scale(k1[j],h*.5));
+  status=CavityDipole_rhs(s,E,z+h*.5,trial,k2);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<390;j++)trial[j]=CavityMag_add(state[j],CavityMag_scale(k2[j],h*.5));
+  status=CavityDipole_rhs(s,E,z+h*.5,trial,k3);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<390;j++)trial[j]=CavityMag_add(state[j],CavityMag_scale(k3[j],h));
+  status=CavityDipole_rhs(s,E,z+h,trial,k4);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<390;j++)state[j]=CavityMag_add(state[j],CavityMag_scale(
+        CavityMag_add(CavityMag_add(k1[j],k4[j]),CavityMag_scale(CavityMag_add(k2[j],k3[j]),2.)),h/6.));
+ }
+ return CAVITY_MODEL_OK;
+}
+
+GPUFUN int CavityDipole_coefficients(const CavityDipoleSource *s,
+        xt_float_or_tpsa_arg E,xt_float_or_tpsa_arg z,
+        CavityDipolePackets *body,CavityDipolePackets *boundary){
+ CavityMagComplex state[390];int status=CavityDipole_source_state(s,E,z,state);
+ if(status!=CAVITY_MODEL_OK)return status;
+ CavityDipolePackets first={0},direct={0},w1={0},w2={0},second={0};
+ const int first_modes[2]={5,7},second_modes[6]={1,3,4,8,9,11};
+ for(int j=0;j<2;j++){w1.a[first_modes[j]]=CavityDipole_read_packet(state,j*60,3);w1.present[first_modes[j]]=1;}
+ for(int j=0;j<6;j++){w2.a[second_modes[j]]=CavityDipole_read_packet(state,120+j*45,2);w2.present[second_modes[j]]=1;}
+ status=CavityDipole_physical(s,E,z,&first,&direct);if(status!=CAVITY_MODEL_OK)return status;
+ CavityDipole_second_source(&first,&direct,&w1,&second);
+ for(int mode=0;mode<13;mode++){
+  if(CavityDipole_mode_n(mode)==0){
+   if(first.present[mode]){CavityDipole_packet_add(&body->a[mode],&first.a[mode]);body->present[mode]=1;}
+   if(second.present[mode]){CavityDipole_packet_add(&body->a[mode],&second.a[mode]);body->present[mode]=1;}
+  }
+  if(w1.present[mode]){CavityDipole_packet_add(&boundary->a[mode],&w1.a[mode]);boundary->present[mode]=1;}
+  if(w2.present[mode]){CavityDipole_packet_add(&boundary->a[mode],&w2.a[mode]);boundary->present[mode]=1;}
+ }return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityDipole_scalar(const CavityDipoleSource *s,const xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,int boundary,xt_float_or_tpsa *value,xt_float_or_tpsa gradient[6]){
+ if(!CavityModel_vector_finite(q,6))return CAVITY_MODEL_NONFINITE;
+ CavityDipolePackets body={0},dressing={0};
+ int status=CavityDipole_coefficients(s,q[5],z,&body,&dressing);
+ if(status!=CAVITY_MODEL_OK)return status;
+ const CavityDipolePackets *packets=boundary?&dressing:&body;
+ CavityMagComplex combined[7]={0};xt_float_or_tpsa transverse[4]={q[0],q[1],q[3],q[4]};
+ const int slots[4]={0,1,3,4};
+ for(int mode=0;mode<13;mode++)if(packets->present[mode]){
+  const CavityDipolePacket *packet=&packets->a[mode];
+  int m=CavityDipole_mode_m(mode),n=CavityDipole_mode_n(mode),ell=m+n;
+  xt_float_or_tpsa phase=ell*q[2]+n*s->phase;
+  CavityMagComplex wave=CavityMag_value(cos(phase),sin(phase));
+  CavityMagComplex amplitude[2]={packet->a[0].a[0],packet->a[0].a[1]};
+  for(int e=0;e<2;e++)for(int a=0;a<4;a++){
+   amplitude[e]=CavityMag_add(amplitude[e],CavityMag_scale(packet->a[1+a].a[e],transverse[a]));
+   for(int b=0;b<4;b++)amplitude[e]=CavityMag_add(amplitude[e],
+        CavityMag_scale(packet->a[CavityDipole_channel(a,b)].a[e],transverse[a]*transverse[b]));
+  }
+  combined[0]=CavityMag_add(combined[0],CavityMag_mul(wave,amplitude[0]));
+  combined[3]=CavityMag_add(combined[3],CavityMag_mul(CavityMag_value(0.,ell),CavityMag_mul(wave,amplitude[0])));
+  combined[6]=CavityMag_add(combined[6],CavityMag_mul(wave,amplitude[1]));
+  for(int a=0;a<4;a++){
+   CavityMagComplex g=packet->a[1+a].a[0];
+   for(int b=0;b<4;b++)g=CavityMag_add(g,CavityMag_scale(
+        packet->a[CavityDipole_channel(a,b)].a[0],2.*transverse[b]));
+   combined[1+slots[a]]=CavityMag_add(combined[1+slots[a]],CavityMag_mul(wave,g));
+  }
+ }
+ if(!boundary){
+  CavityDipoleReference ref;status=CavityDipole_reference(s,q[5],z,&ref);
+  if(status!=CAVITY_MODEL_OK)return status;
+  CavityDipoleJet kx=DJM(ref.K,CavityDipole_power(ref.inverse,3)),ky=ref.inverse;
+  combined[0]=CavityMag_add(combined[0],CavityMag_value(.5*(q[3]*q[3]*kx.a[0].re+q[4]*q[4]*ky.a[0].re),0.));
+  combined[4]=CavityMag_add(combined[4],CavityMag_value(q[3]*kx.a[0].re,0.));
+  combined[5]=CavityMag_add(combined[5],CavityMag_value(q[4]*ky.a[0].re,0.));
+  combined[6]=CavityMag_add(combined[6],CavityMag_value(.5*(q[3]*q[3]*kx.a[1].re+q[4]*q[4]*ky.a[1].re),0.));
+ }
+ double scale=1.,imaginary=0.;
+ for(int j=0;j<7;j++){
+  if(!CavityModel_scalar_finite(combined[j].re)||!CavityModel_scalar_finite(combined[j].im))return CAVITY_MODEL_NONFINITE;
+  scale=fmax(scale,fmax(CavityModel_scalar_norm(combined[j].re),CavityModel_scalar_norm(combined[j].im)));
+  imaginary=fmax(imaginary,CavityModel_scalar_norm(combined[j].im));
+ }
+ if(imaginary>256.*2.22044604925031308085e-16*scale)return CAVITY_MODEL_NONFINITE;
+ *value=combined[0].re;for(int j=0;j<6;j++)gradient[j]=combined[j+1].re;
+ return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityDipole_flow(const CavityDipoleSource *s,const xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,int boundary,xt_float_or_tpsa out[6]){
+ xt_float_or_tpsa value,g[6];int status=CavityDipole_scalar(s,q,z,boundary,&value,g);
+ if(status!=CAVITY_MODEL_OK)return status;
+ out[0]=g[3];out[1]=g[4];out[2]=-g[5];out[3]=-g[0];out[4]=-g[1];out[5]=g[2];
+ if(s->frozen_coordinates){
+  /* The analysis masks live in PHYSICAL canonical coordinates. Apply
+   * D(Psi)f+Psi_Z there, then pull back with the same current-E reference.
+   * Auxiliary W flows have fixed Z and therefore no Psi_Z term. */
+  CavityDipoleReference ref;status=CavityDipole_reference(s,q[5],z,&ref);
+  if(status!=CAVITY_MODEL_OK)return status;
+  xt_float_or_tpsa rE=ref.orbit.a[1].re,rEE=2.*ref.orbit.a[2].re,tE=ref.clock.a[1].re;
+  xt_float_or_tpsa rZ=0.,rEZ=0.,tZ=0.,b=0.;
+  if(!boundary){rZ=ref.momentum*ref.inverse.a[0].re;
+   rEZ=ref.momentum*ref.inverse.a[1].re;tZ=q[5]*ref.inverse.a[0].re;b=s->b;}
+  xt_float_or_tpsa physical[6]={out[0]+rE*out[5]+rZ,out[1],
+        out[2]-rE*out[3]+(tE-q[3]*rEE)*out[5]+tZ-q[3]*rEZ,
+        out[3]-b,out[4],out[5]};
+  for(int j=0;j<6;j++)if(s->frozen_coordinates&((int64_t)1<<j))physical[j]=0.;
+  if(!boundary&&(s->frozen_coordinates&((int64_t)1<<2))){
+   if(!(s->reference_beta>0.&&s->reference_beta<1.))return CAVITY_MODEL_ARGUMENT;
+   physical[2]=1./s->reference_beta;
+  }
+  out[5]=physical[5];out[3]=physical[3]+b;out[1]=physical[1];out[4]=physical[4];
+  out[0]=physical[0]-rE*out[5]-rZ;
+  out[2]=physical[2]+rE*out[3]-(tE-q[3]*rEE)*out[5]-tZ+q[3]*rEZ;
+ }
+ return CavityModel_vector_finite(out,6)?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+}
+// Constrained analysis is integrated in PHYSICAL canonical coordinates.
+// A continuous push/mask/pull alone would not hold frozen coordinates at
+// finite midpoint stages when the moving reference is nonlinear in Z.
+GPUFUN int CavityDipole_coordinates(const CavityDipoleSource *s,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,int inverse);
+GPUFUN
+int CavityDipole_physical_flow(const CavityDipoleSource *source,
+        const xt_float_or_tpsa physical[6],xt_float_or_tpsa_arg z,int boundary,
+        xt_float_or_tpsa out[6]) {
+    CavityDipoleSource unmasked=*source;unmasked.frozen_coordinates=0;
+    xt_float_or_tpsa q[6],flow[6];for(int i=0;i<6;++i)q[i]=physical[i];
+    int status=CavityDipole_coordinates(source,q,z,0);if(status!=CAVITY_MODEL_OK)return status;
+    status=CavityDipole_flow(&unmasked,q,z,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+    CavityDipoleReference ref;status=CavityDipole_reference(source,q[5],z,&ref);
+    if(status!=CAVITY_MODEL_OK)return status;
+    xt_float_or_tpsa rE=ref.orbit.a[1].re,rEE=2.*ref.orbit.a[2].re,tE=ref.clock.a[1].re;
+    xt_float_or_tpsa rZ=0.,rEZ=0.,tZ=0.,bend=0.;
+    if(!boundary){rZ=ref.momentum*ref.inverse.a[0].re;
+        rEZ=ref.momentum*ref.inverse.a[1].re;tZ=q[5]*ref.inverse.a[0].re;bend=source->b;}
+    out[0]=flow[0]+rE*flow[5]+rZ;out[1]=flow[1];
+    out[2]=flow[2]-rE*flow[3]+(tE-q[3]*rEE)*flow[5]+tZ-q[3]*rEZ;
+    out[3]=flow[3]-bend;out[4]=flow[4];out[5]=flow[5];
+    for(int i=0;i<6;++i)if(source->frozen_coordinates&((int64_t)1<<i))out[i]=0.;
+    if(!boundary&&(source->frozen_coordinates&((int64_t)1<<2)))out[2]=1./source->reference_beta;
+    return CavityModel_vector_finite(out,6)?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+}
+GPUFUN
+int CavityDipole_integrate_physical(const CavityDipoleSource *source,
+        xt_float_or_tpsa q[6],xt_float_or_tpsa_arg a,xt_float_or_tpsa_arg b,
+        xt_float_or_tpsa_arg physical_z,int boundary,int64_t steps) {
+    if(steps<=0)return CAVITY_MODEL_ARGUMENT;
+    const xt_float_or_tpsa h=(b-a)/steps;
+    for(int64_t cell=0;cell<steps;++cell) {
+        xt_float_or_tpsa start=physical_z,middle=physical_z,end=physical_z;
+        if(!boundary){start=a+cell*h;middle=a+(cell+.5)*h;end=a+(cell+1.)*h;}
+        xt_float_or_tpsa base[6],stage[6],full[6],flow[6];
+        for(int i=0;i<6;++i)base[i]=q[i];
+        int status=CavityDipole_coordinates(source,base,start,1);if(status!=CAVITY_MODEL_OK)return status;
+        status=CavityDipole_physical_flow(source,base,middle,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+        for(int i=0;i<6;++i)stage[i]=.5*h*flow[i];
+        int converged=0;
+        for(int iteration=0;iteration<80;++iteration) {
+            for(int i=0;i<6;++i)full[i]=base[i]+stage[i];
+            status=CavityDipole_physical_flow(source,full,middle,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+            double defect=0.;for(int i=0;i<6;++i){
+                const xt_float_or_tpsa next=.5*h*flow[i];
+                defect=fmax(defect,CavityModel_scalar_residual(stage[i]-next,base[i]+next,1));stage[i]=next;}
+            if(defect<=source->tolerance){converged=1;break;}
+        }
+        if(!converged)return CAVITY_MODEL_ITERATIONS;
+        for(int i=0;i<6;++i)full[i]=base[i]+stage[i];
+        status=CavityDipole_physical_flow(source,full,middle,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+        for(int i=0;i<6;++i)if(CavityModel_scalar_residual(stage[i]-.5*h*flow[i],base[i]+stage[i],1)
+                >source->tolerance)return CAVITY_MODEL_ITERATIONS;
+        for(int i=0;i<6;++i)full[i]=base[i]+h*flow[i];
+        status=CavityDipole_coordinates(source,full,end,0);if(status!=CAVITY_MODEL_OK)return status;
+        for(int i=0;i<6;++i)q[i]=full[i];
+    }
+    return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityDipole_integrate(const CavityDipoleSource *s,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg a,xt_float_or_tpsa_arg b,xt_float_or_tpsa_arg physical_z,
+        int boundary,int64_t steps){
+ if(s->frozen_coordinates)return CavityDipole_integrate_physical(s,q,a,b,physical_z,boundary,steps);
+ if(steps<=0||!isfinite(s->tolerance)||s->tolerance<=0.)return CAVITY_MODEL_ARGUMENT;
+ xt_float_or_tpsa h=(b-a)/steps;
+ for(int64_t cell=0;cell<steps;cell++){
+  xt_float_or_tpsa z=physical_z,u[6],full[6],f[6];
+  if(!boundary)z=a+(cell+.5)*h;
+  int status=CavityDipole_flow(s,q,z,boundary,f);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<6;j++)u[j]=.5*h*f[j];int converged=0;
+  for(int iteration=0;iteration<80;iteration++){
+   for(int j=0;j<6;j++)full[j]=q[j]+u[j];
+   status=CavityDipole_flow(s,full,z,boundary,f);if(status!=CAVITY_MODEL_OK)return status;
+   double defect=0.;for(int j=0;j<6;j++){
+    xt_float_or_tpsa next=.5*h*f[j];
+    defect=fmax(defect,CavityModel_scalar_residual(u[j]-next,q[j]+next,1));u[j]=next;
+   }
+   if(defect<=s->tolerance){converged=1;break;}
+  }
+  if(!converged)return CAVITY_MODEL_ITERATIONS;
+  for(int j=0;j<6;j++)full[j]=q[j]+u[j];
+  status=CavityDipole_flow(s,full,z,boundary,f);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<6;j++)if(CavityModel_scalar_residual(u[j]-.5*h*f[j],q[j]+u[j],1)>s->tolerance)return CAVITY_MODEL_ITERATIONS;
+  for(int j=0;j<6;j++)q[j]+=h*f[j];
+ }return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityDipole_coordinates(const CavityDipoleSource *s,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,int inverse){
+ CavityDipoleReference ref;int status=CavityDipole_reference(s,q[5],z,&ref);
+ if(status!=CAVITY_MODEL_OK)return status;
+ if(inverse){q[0]+=ref.orbit.a[0].re;q[2]+=ref.clock.a[0].re-q[3]*ref.orbit.a[1].re;q[3]+=ref.momentum;}
+ else{q[0]-=ref.orbit.a[0].re;q[3]-=ref.momentum;q[2]+=-ref.clock.a[0].re+q[3]*ref.orbit.a[1].re;}
+ return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityDipole_map(const CavityDipoleSource *s,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg a,xt_float_or_tpsa_arg b){
+ int valid=CavityDipole_validate(s);if(valid!=CAVITY_MODEL_OK)return valid;
+ if(!CavityModel_vector_finite(q,6)||!CavityModel_scalar_finite(a)||!CavityModel_scalar_finite(b))
+  return CAVITY_MODEL_NONFINITE;
+ if(xt_float_or_tpsa_const_part(q[5])<=1.)return CAVITY_MODEL_DOMAIN;
+ if(xt_float_or_tpsa_is_zero(b-a))return CAVITY_MODEL_OK;
+ xt_float_or_tpsa candidate[6];for(int j=0;j<6;j++)candidate[j]=q[j];
+ int status=CavityDipole_coordinates(s,candidate,a,0);
+ if(status==CAVITY_MODEL_OK)status=CavityDipole_integrate(s,candidate,0.,1.,a,1,s->boundary_steps);
+ if(status==CAVITY_MODEL_OK)status=CavityDipole_integrate(s,candidate,a,b,0.,0,s->body_steps);
+ if(status==CAVITY_MODEL_OK)status=CavityDipole_integrate(s,candidate,0.,-1.,b,1,s->boundary_steps);
+ if(status==CAVITY_MODEL_OK)status=CavityDipole_coordinates(s,candidate,b,1);
+ if(status==CAVITY_MODEL_OK)for(int j=0;j<6;j++)q[j]=candidate[j];return status;
+}
+#undef DJ5
+#undef DJ4
+#undef DJ3
+#undef DJF
+#undef DJD
+#undef DJM
+#undef DJS
+#undef DJA
+#undef DJC
+#undef DJR
+// Fixed physical-parent prefix M[z] uses the same source/reference anchor and
+// declared meshes. Subintervals are M[b] M[a]^-1, not restarted preparations.
+GPUFUN
+int CavityDipole_interval(const CavityDipoleSource *source,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg a,xt_float_or_tpsa_arg b,int reverse) {
+    xt_float_or_tpsa candidate[6];for(int i=0;i<6;++i)candidate[i]=q[i];
+    xt_float_or_tpsa first=a,last=b;if(reverse){first=b;last=a;}
+    int status=CavityDipole_map(source,candidate,first,source->anchor);
+    if(status==CAVITY_MODEL_OK)status=CavityDipole_map(source,candidate,source->anchor,last);
+    if(status==CAVITY_MODEL_OK)for(int i=0;i<6;++i)q[i]=candidate[i];
+    return status;
+}
+GPUFUN
+int CavityDipole_bind(const CavityModelSource *physical,xt_float_or_tpsa_arg charge,
+        xt_float_or_tpsa_arg reference_px,int64_t source_steps,int64_t factor_steps,
+        int64_t frozen_coordinates,CavityDipoleSource *out) {
+    if(physical->rf_profile!=2||physical->magnetic_profile!=0
+        ||!xt_float_or_tpsa_is_zero(physical->ks)
+        ||!xt_float_or_tpsa_is_zero(physical->dc_gradient))return CAVITY_MODEL_ARGUMENT;
+    for(int64_t i=0;i<=physical->order;++i)
+        if((i!=0&&!xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(physical,i,0)))
+            ||!xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(physical,i,1)))
+            return CAVITY_MODEL_ARGUMENT;
+    out->anchor=-physical->half_span;out->width=physical->profile_sigma;
+    out->centre=physical->profile_center;out->nu=physical->carrier;
+    out->slow=charge*physical->forward;out->fast=charge*physical->backward;
+    out->phase=physical->counter_phase;out->p0=reference_px;
+    out->b=0.;
+    if(physical->order>=0)
+        out->b=charge*physical->magnetic_scale*CavityModel_static_coefficient(physical,0,0)
+            /(physical->length*physical->k);
+    out->source_steps=source_steps;out->body_steps=factor_steps;out->boundary_steps=factor_steps;
+    out->frozen_coordinates=frozen_coordinates;out->tolerance=2e-13;
+    out->reference_beta=physical->reference_beta;
+    return CavityDipole_validate(out);
+}
+
+// RF2/P2 about the same finite full-root uniform-magnetic RK4 reference.
+typedef struct {xt_float_or_tpsa a[7];} CavityOverlapR7;
+typedef struct {CavityDipoleJet a[15];} CavityOverlapRing;
+typedef struct {
+ xt_float_or_tpsa anchor,width,centre,nu,slow,fast,phase,B,GN,GS;
+ xt_float_or_tpsa initial[4];
+ int64_t reference_steps,source_steps,body_steps,boundary_steps;
+ int64_t frozen_coordinates;
+ double tolerance,reference_beta;
+} CavityOverlapSource;
+typedef struct {CavityOverlapR7 u[6],uz[6],clock,clock_z;} CavityOverlapReference;
+GPUFUN CavityOverlapR7 CavityOverlap_r7(xt_float_or_tpsa_arg value){
+ CavityOverlapR7 out={0};out.a[0]=value;return out;}
+GPUFUN CavityOverlapR7 CavityOverlap_radd(CavityOverlapR7 a,CavityOverlapR7 b){
+ for(int n=0;n<7;n++)a.a[n]+=b.a[n];return a;}
+GPUFUN CavityOverlapR7 CavityOverlap_rscale(CavityOverlapR7 a,xt_float_or_tpsa_arg b){
+ for(int n=0;n<7;n++)a.a[n]*=b;return a;}
+GPUFUN CavityOverlapR7 CavityOverlap_rsub(CavityOverlapR7 a,CavityOverlapR7 b){
+ return CavityOverlap_radd(a,CavityOverlap_rscale(b,-1.));}
+GPUFUN CavityOverlapR7 CavityOverlap_rmul(CavityOverlapR7 a,CavityOverlapR7 b){
+ CavityOverlapR7 out={0};for(int n=0;n<7;n++)for(int j=0;j<=n;j++)out.a[n]+=a.a[j]*b.a[n-j];return out;}
+GPUFUN CavityOverlapR7 CavityOverlap_rinv(CavityOverlapR7 a){
+ CavityOverlapR7 out={0};out.a[0]=1./a.a[0];for(int n=1;n<7;n++){
+  for(int j=1;j<=n;j++)out.a[n]-=a.a[j]*out.a[n-j];out.a[n]/=a.a[0];}return out;}
+GPUFUN int CavityOverlap_rsqrt(CavityOverlapR7 a,CavityOverlapR7 *out){
+ if(!CavityModel_scalar_finite(a.a[0])||xt_float_or_tpsa_const_part(a.a[0])<=0.)return CAVITY_MODEL_DOMAIN;
+ CavityOverlapR7 r={0};r.a[0]=sqrt(a.a[0]);for(int n=1;n<7;n++){
+  r.a[n]=a.a[n];for(int j=1;j<n;j++)r.a[n]-=r.a[j]*r.a[n-j];r.a[n]/=2.*r.a[0];}
+ *out=r;return CAVITY_MODEL_OK;}
+GPUFUN CavityOverlapR7 CavityOverlap_rd(CavityOverlapR7 a){
+ CavityOverlapR7 out={0};for(int n=0;n<6;n++)out.a[n]=(n+1.)*a.a[n+1];return out;}
+GPUFUN int CavityOverlap_rfinite(CavityOverlapR7 a){
+ return CavityModel_vector_finite(a.a,7);}
+GPUFUN int CavityOverlap_validate(const CavityOverlapSource *s){
+ xt_float_or_tpsa controls[14]={s->anchor,s->width,s->centre,s->nu,s->slow,s->fast,
+  s->phase,s->B,s->GN,s->GS,s->initial[0],s->initial[1],s->initial[2],s->initial[3]};
+ return CavityModel_vector_finite(controls,14)&&xt_float_or_tpsa_const_part(s->width)>0.
+  &&s->reference_steps>0&&s->source_steps>0&&s->body_steps>0&&s->boundary_steps>0
+  &&isfinite(s->tolerance)&&s->tolerance>0.
+  &&(!(s->frozen_coordinates&((int64_t)1<<2))||(isfinite(s->reference_beta)&&s->reference_beta>0.&&s->reference_beta<1.))
+  ?CAVITY_MODEL_OK:CAVITY_MODEL_ARGUMENT;}
+GPUFUN CavityDipoleJet CavityOverlap_truncate(CavityOverlapR7 a){
+ CavityDipoleJet out={0};for(int n=0;n<5;n++)out.a[n]=CavityMag_value(a.a[n],0.);return out;}
+
+/* Full static Hamiltonian reference: the same finite RK4 orbit AND action.
+ * Divided-E derivatives carry one auxiliary action order. Clock is retained
+ * only as a diagnostic; canonical phase uses S_E-r_E.p below. */
+GPUFUN int CavityOverlap_reference_rhs(const CavityOverlapSource *s,
+        xt_float_or_tpsa_arg energy,const CavityOverlapR7 u[6],CavityOverlapR7 out[6]){
+ CavityOverlapR7 E=CavityOverlap_r7(energy);E.a[1]=1.;
+ CavityOverlapR7 Ax=CavityOverlap_rscale(u[1],-s->B/2.),Ay=CavityOverlap_rscale(u[0],s->B/2.);
+ CavityOverlapR7 Az=CavityOverlap_radd(CavityOverlap_rscale(CavityOverlap_rsub(
+  CavityOverlap_rmul(u[0],u[0]),CavityOverlap_rmul(u[1],u[1])),-s->GN/2.),
+  CavityOverlap_rscale(CavityOverlap_rmul(u[0],u[1]),-s->GS));
+ CavityOverlapR7 px=CavityOverlap_rsub(u[2],Ax),py=CavityOverlap_rsub(u[3],Ay);
+ CavityOverlapR7 square=CavityOverlap_rsub(CavityOverlap_rsub(CavityOverlap_rsub(
+  CavityOverlap_rmul(E,E),CavityOverlap_r7(1.)),CavityOverlap_rmul(px,px)),CavityOverlap_rmul(py,py)),root;
+ int status=CavityOverlap_rsqrt(square,&root);if(status!=CAVITY_MODEL_OK)return status;
+ CavityOverlapR7 inv=CavityOverlap_rinv(root);
+ out[0]=CavityOverlap_rmul(px,inv);out[1]=CavityOverlap_rmul(py,inv);
+ out[2]=CavityOverlap_radd(CavityOverlap_radd(CavityOverlap_rscale(u[0],-s->GN),
+  CavityOverlap_rscale(u[1],-s->GS)),CavityOverlap_rscale(out[1],s->B/2.));
+ out[3]=CavityOverlap_radd(CavityOverlap_radd(CavityOverlap_rscale(u[1],s->GN),
+  CavityOverlap_rscale(u[0],-s->GS)),CavityOverlap_rscale(out[0],-s->B/2.));
+ out[4]=CavityOverlap_rmul(E,inv);
+ out[5]=CavityOverlap_radd(CavityOverlap_radd(CavityOverlap_rmul(u[2],out[0]),
+  CavityOverlap_rmul(u[3],out[1])),CavityOverlap_radd(Az,root));
+ for(int i=0;i<6;i++)if(!CavityOverlap_rfinite(out[i]))return CAVITY_MODEL_NONFINITE;
+ return CAVITY_MODEL_OK;
+}
+/* Exact JVP of the SAME full-static reference RHS. This differentiates the
+ * finite normalized-mesh RK4 expression with respect to its endpoint; it
+ * never substitutes continuous Hamilton equations for the finite prefix. */
+GPUFUN int CavityOverlap_reference_jvp(const CavityOverlapSource *s,
+        xt_float_or_tpsa_arg energy,const CavityOverlapR7 u[6],
+        const CavityOverlapR7 v[6],CavityOverlapR7 out[6]){
+ CavityOverlapR7 E=CavityOverlap_r7(energy);E.a[1]=1.;
+ CavityOverlapR7 px=CavityOverlap_radd(u[2],CavityOverlap_rscale(u[1],s->B/2.));
+ CavityOverlapR7 py=CavityOverlap_rsub(u[3],CavityOverlap_rscale(u[0],s->B/2.));
+ CavityOverlapR7 dpx=CavityOverlap_radd(v[2],CavityOverlap_rscale(v[1],s->B/2.));
+ CavityOverlapR7 dpy=CavityOverlap_rsub(v[3],CavityOverlap_rscale(v[0],s->B/2.));
+ CavityOverlapR7 root;int status=CavityOverlap_rsqrt(CavityOverlap_rsub(CavityOverlap_rsub(
+  CavityOverlap_rsub(CavityOverlap_rmul(E,E),CavityOverlap_r7(1.)),CavityOverlap_rmul(px,px)),CavityOverlap_rmul(py,py)),&root);
+ if(status!=CAVITY_MODEL_OK)return status;
+ CavityOverlapR7 inv=CavityOverlap_rinv(root),inv2=CavityOverlap_rmul(inv,inv);
+ CavityOverlapR7 ds=CavityOverlap_rscale(CavityOverlap_rmul(CavityOverlap_radd(
+  CavityOverlap_rmul(px,dpx),CavityOverlap_rmul(py,dpy)),inv),-1.);
+ CavityOverlapR7 fx=CavityOverlap_rmul(px,inv),fy=CavityOverlap_rmul(py,inv);
+ out[0]=CavityOverlap_rsub(CavityOverlap_rmul(dpx,inv),CavityOverlap_rmul(CavityOverlap_rmul(px,ds),inv2));
+ out[1]=CavityOverlap_rsub(CavityOverlap_rmul(dpy,inv),CavityOverlap_rmul(CavityOverlap_rmul(py,ds),inv2));
+ out[2]=CavityOverlap_radd(CavityOverlap_radd(CavityOverlap_rscale(v[0],-s->GN),CavityOverlap_rscale(v[1],-s->GS)),CavityOverlap_rscale(out[1],s->B/2.));
+ out[3]=CavityOverlap_radd(CavityOverlap_radd(CavityOverlap_rscale(v[1],s->GN),CavityOverlap_rscale(v[0],-s->GS)),CavityOverlap_rscale(out[0],-s->B/2.));
+ out[4]=CavityOverlap_rscale(CavityOverlap_rmul(CavityOverlap_rmul(E,ds),inv2),-1.);
+ CavityOverlapR7 da=CavityOverlap_radd(CavityOverlap_rscale(CavityOverlap_rsub(CavityOverlap_rmul(u[0],v[0]),CavityOverlap_rmul(u[1],v[1])),-s->GN),
+  CavityOverlap_rscale(CavityOverlap_radd(CavityOverlap_rmul(v[0],u[1]),CavityOverlap_rmul(u[0],v[1])),-s->GS));
+ out[5]=CavityOverlap_radd(CavityOverlap_radd(CavityOverlap_rmul(v[2],fx),CavityOverlap_rmul(u[2],out[0])),
+  CavityOverlap_radd(CavityOverlap_radd(CavityOverlap_rmul(v[3],fy),CavityOverlap_rmul(u[3],out[1])),CavityOverlap_radd(da,ds)));
+ for(int i=0;i<6;i++)if(!CavityOverlap_rfinite(out[i]))return CAVITY_MODEL_NONFINITE;
+ return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityOverlap_reference(const CavityOverlapSource *s,
+        xt_float_or_tpsa_arg energy,xt_float_or_tpsa_arg end,CavityOverlapReference *out){
+ int validation=CavityOverlap_validate(s);if(validation!=CAVITY_MODEL_OK)return validation;
+ if(!CavityModel_scalar_finite(energy)||!CavityModel_scalar_finite(end))return CAVITY_MODEL_NONFINITE;
+ if(xt_float_or_tpsa_const_part(energy)<=1.)return CAVITY_MODEL_DOMAIN;
+ CavityOverlapR7 u[6]={0},v[6]={0};for(int i=0;i<4;i++)u[i]=CavityOverlap_r7(s->initial[i]);
+ xt_float_or_tpsa h=(end-s->anchor)/s->reference_steps;
+ const double dh=1./s->reference_steps;
+ for(int64_t cell=0;cell<s->reference_steps;cell++){
+  CavityOverlapR7 k1[6],k2[6],k3[6],k4[6],trial[6],d1[6],d2[6],d3[6],d4[6],dv[6];
+  int status=CavityOverlap_reference_rhs(s,energy,u,k1);if(status!=CAVITY_MODEL_OK)return status;
+  status=CavityOverlap_reference_jvp(s,energy,u,v,d1);if(status!=CAVITY_MODEL_OK)return status;
+  for(int i=0;i<6;i++)trial[i]=CavityOverlap_radd(u[i],CavityOverlap_rscale(k1[i],h/2.));
+  for(int i=0;i<6;i++)dv[i]=CavityOverlap_radd(v[i],CavityOverlap_radd(CavityOverlap_rscale(k1[i],dh/2.),CavityOverlap_rscale(d1[i],h/2.)));
+  status=CavityOverlap_reference_rhs(s,energy,trial,k2);if(status!=CAVITY_MODEL_OK)return status;
+  status=CavityOverlap_reference_jvp(s,energy,trial,dv,d2);if(status!=CAVITY_MODEL_OK)return status;
+  for(int i=0;i<6;i++)trial[i]=CavityOverlap_radd(u[i],CavityOverlap_rscale(k2[i],h/2.));
+  for(int i=0;i<6;i++)dv[i]=CavityOverlap_radd(v[i],CavityOverlap_radd(CavityOverlap_rscale(k2[i],dh/2.),CavityOverlap_rscale(d2[i],h/2.)));
+  status=CavityOverlap_reference_rhs(s,energy,trial,k3);if(status!=CAVITY_MODEL_OK)return status;
+  status=CavityOverlap_reference_jvp(s,energy,trial,dv,d3);if(status!=CAVITY_MODEL_OK)return status;
+  for(int i=0;i<6;i++)trial[i]=CavityOverlap_radd(u[i],CavityOverlap_rscale(k3[i],h));
+  for(int i=0;i<6;i++)dv[i]=CavityOverlap_radd(v[i],CavityOverlap_radd(CavityOverlap_rscale(k3[i],dh),CavityOverlap_rscale(d3[i],h)));
+  status=CavityOverlap_reference_rhs(s,energy,trial,k4);if(status!=CAVITY_MODEL_OK)return status;
+  status=CavityOverlap_reference_jvp(s,energy,trial,dv,d4);if(status!=CAVITY_MODEL_OK)return status;
+  for(int i=0;i<6;i++){
+   CavityOverlapR7 sum=CavityOverlap_radd(CavityOverlap_radd(k1[i],k4[i]),CavityOverlap_rscale(CavityOverlap_radd(k2[i],k3[i]),2.));
+   CavityOverlapR7 dsum=CavityOverlap_radd(CavityOverlap_radd(d1[i],d4[i]),CavityOverlap_rscale(CavityOverlap_radd(d2[i],d3[i]),2.));
+   v[i]=CavityOverlap_radd(v[i],CavityOverlap_radd(CavityOverlap_rscale(sum,dh/6.),CavityOverlap_rscale(dsum,h/6.)));
+   u[i]=CavityOverlap_radd(u[i],CavityOverlap_rscale(sum,h/6.));
+  }
+ }
+ for(int i=0;i<6;i++){out->u[i]=u[i];out->uz[i]=v[i];}
+ out->clock=CavityOverlap_rd(u[5]);
+ for(int i=0;i<2;i++)out->clock=CavityOverlap_rsub(out->clock,CavityOverlap_rmul(CavityOverlap_rd(u[i]),u[i+2]));
+ out->clock_z=CavityOverlap_rd(v[5]);
+ for(int i=0;i<2;i++)out->clock_z=CavityOverlap_rsub(out->clock_z,CavityOverlap_radd(
+  CavityOverlap_rmul(CavityOverlap_rd(v[i]),u[i+2]),CavityOverlap_rmul(CavityOverlap_rd(u[i]),v[i+2])));
+ for(int i=0;i<6;i++)if(!CavityOverlap_rfinite(out->u[i])||!CavityOverlap_rfinite(out->uz[i]))return CAVITY_MODEL_NONFINITE;
+ if(!CavityOverlap_rfinite(out->clock)||!CavityOverlap_rfinite(out->clock_z))return CAVITY_MODEL_NONFINITE;
+ return CAVITY_MODEL_OK;
+}
+
+/* Quotient algebra in four transverse variables through degree two. Each
+ * coefficient is a complex divided physical-E jet; RF is differentiated
+ * before this P2 projection. Off-diagonal monomials are ordinary coefficients. */
+GPUFUN CavityOverlapRing CavityOverlap_const(CavityDipoleJet value){
+ CavityOverlapRing out={0};out.a[0]=value;return out;}
+GPUFUN CavityOverlapRing CavityOverlap_real(xt_float_or_tpsa_arg value){return CavityOverlap_const(CavityDipole_jr(value));}
+GPUFUN CavityOverlapRing CavityOverlap_add(CavityOverlapRing a,CavityOverlapRing b){
+ for(int j=0;j<15;j++)a.a[j]=CavityDipole_add(a.a[j],b.a[j]);return a;}
+GPUFUN CavityOverlapRing CavityOverlap_scale(CavityOverlapRing a,xt_float_or_tpsa_arg b){
+ for(int j=0;j<15;j++)a.a[j]=CavityDipole_scale(a.a[j],b);return a;}
+GPUFUN CavityOverlapRing CavityOverlap_sub(CavityOverlapRing a,CavityOverlapRing b){
+ return CavityOverlap_add(a,CavityOverlap_scale(b,-1.));}
+GPUFUN CavityOverlapRing CavityOverlap_mul(CavityOverlapRing a,CavityOverlapRing b){
+ CavityOverlapRing out={0};out.a[0]=CavityDipole_mul(a.a[0],b.a[0]);
+ for(int i=0;i<4;i++)out.a[1+i]=CavityDipole_add(CavityDipole_mul(a.a[0],b.a[1+i]),CavityDipole_mul(a.a[1+i],b.a[0]));
+ for(int i=0;i<4;i++)for(int j=i;j<4;j++){
+  int c=CavityDipole_channel(i,j);out.a[c]=CavityDipole_add(CavityDipole_mul(a.a[0],b.a[c]),CavityDipole_mul(a.a[c],b.a[0]));
+  out.a[c]=CavityDipole_add(out.a[c],CavityDipole_mul(a.a[1+i],b.a[1+j]));
+  if(i!=j)out.a[c]=CavityDipole_add(out.a[c],CavityDipole_mul(a.a[1+j],b.a[1+i]));
+ }return out;}
+GPUFUN int CavityOverlap_analytic(CavityOverlapRing a,int operation,CavityOverlapRing *out){
+ CavityDipoleJet f,fp,fpp;
+ if(operation==0){int status=CavityDipole_sqrt(a.a[0],&f);if(status!=CAVITY_MODEL_OK)return status;
+  fp=CavityDipole_scale(CavityDipole_inv(f),.5);fpp=CavityDipole_scale(CavityDipole_power(CavityDipole_inv(f),3),-.125);
+ }else if(operation==1){f=CavityDipole_inv(a.a[0]);fp=CavityDipole_scale(CavityDipole_power(f,2),-1.);fpp=CavityDipole_power(f,3);
+ }else{f=CavityDipole_exp(a.a[0]);fp=f;fpp=CavityDipole_scale(f,.5);}
+ CavityOverlapRing result={0};result.a[0]=f;
+ for(int j=1;j<15;j++)result.a[j]=CavityDipole_mul(fp,a.a[j]);
+ for(int i=0;i<4;i++)for(int j=i;j<4;j++){
+  int c=CavityDipole_channel(i,j);result.a[c]=CavityDipole_add(result.a[c],
+   CavityDipole_scale(CavityDipole_mul(fpp,CavityDipole_mul(a.a[1+i],a.a[1+j])),i==j?1.:2.));}
+ for(int j=0;j<15;j++)for(int e=0;e<5;e++)
+  if(!CavityModel_scalar_finite(result.a[j].a[e].re)||!CavityModel_scalar_finite(result.a[j].a[e].im))return CAVITY_MODEL_NONFINITE;
+ *out=result;return CAVITY_MODEL_OK;
+}
+GPUFUN CavityDipolePacket CavityOverlap_packet(CavityOverlapRing a){
+ CavityDipolePacket out;for(int j=0;j<15;j++)out.a[j]=a.a[j];
+ for(int i=0;i<4;i++)for(int j=i+1;j<4;j++){int c=CavityDipole_channel(i,j);out.a[c]=CavityDipole_scale(out.a[c],.5);}return out;}
+
+GPUFUN int CavityOverlap_physical(const CavityOverlapSource *s,
+        xt_float_or_tpsa_arg energy,xt_float_or_tpsa_arg z,CavityDipolePackets *first,
+        CavityDipolePackets *direct,CavityDipoleJet K[4][4]){
+ CavityOverlapReference reference;int status=CavityOverlap_reference(s,energy,z,&reference);if(status!=CAVITY_MODEL_OK)return status;
+ CavityOverlapRing variable[4],physical[4];
+ for(int i=0;i<4;i++){variable[i]=CavityOverlap_real(0.);variable[i].a[1+i]=CavityDipole_jr(1.);
+  physical[i]=CavityOverlap_add(variable[i],CavityOverlap_const(CavityOverlap_truncate(reference.u[i])));}
+ CavityOverlapRing E=CavityOverlap_real(energy);E.a[0].a[1]=CavityMag_value(1.,0.);
+ CavityOverlapRing Ax=CavityOverlap_scale(physical[1],-s->B/2.),Ay=CavityOverlap_scale(physical[0],s->B/2.);
+ CavityOverlapRing Az=CavityOverlap_add(CavityOverlap_scale(CavityOverlap_sub(CavityOverlap_mul(physical[0],physical[0]),
+  CavityOverlap_mul(physical[1],physical[1])),-s->GN/2.),CavityOverlap_scale(CavityOverlap_mul(physical[0],physical[1]),-s->GS));
+ CavityOverlapRing px=CavityOverlap_sub(physical[2],Ax),py=CavityOverlap_sub(physical[3],Ay),root,inverse;
+ CavityOverlapRing square=CavityOverlap_sub(CavityOverlap_sub(CavityOverlap_sub(CavityOverlap_mul(E,E),CavityOverlap_real(1.)),
+  CavityOverlap_mul(px,px)),CavityOverlap_mul(py,py));
+ status=CavityOverlap_analytic(square,0,&root);if(status!=CAVITY_MODEL_OK)return status;
+ status=CavityOverlap_analytic(root,1,&inverse);if(status!=CAVITY_MODEL_OK)return status;
+ CavityOverlapRing background=CavityOverlap_sub(CavityOverlap_scale(Az,-1.),root);
+ CavityDipolePacket background_packet=CavityOverlap_packet(background);
+ for(int i=0;i<4;i++)for(int j=0;j<4;j++)K[i][j]=CavityDipole_scale(background_packet.a[CavityDipole_channel(i,j)],2.);
+ CavityOverlapRing connection=CavityOverlap_const(CavityOverlap_truncate(reference.clock));
+ for(int i=0;i<2;i++)connection=CavityOverlap_add(connection,CavityOverlap_sub(
+  CavityOverlap_mul(variable[i],CavityOverlap_const(CavityOverlap_truncate(CavityOverlap_rd(reference.u[i+2])))),
+  CavityOverlap_mul(variable[i+2],CavityOverlap_const(CavityOverlap_truncate(CavityOverlap_rd(reference.u[i]))))));
+ xt_float_or_tpsa distance=(z-s->centre)/s->width,envelope=exp(-distance*distance/2.);
+ const int modes[4]={2,5,7,10};CavityOverlapRing a[4][3],contraction[4];
+ for(int i=0;i<4;i++){
+  int mode=modes[i],m=CavityDipole_mode_m(mode),n=CavityDipole_mode_n(mode),ell=m+n;
+  xt_float_or_tpsa axial=(n-m)*s->nu,strength=n?s->fast:s->slow;
+  CavityMagComplex amplitude=CavityMag_value(.5*ell*strength*sin(axial*z),-.5*ell*strength*cos(axial*z));
+  CavityMagComplex q=CavityMag_scale(amplitude,envelope);
+  CavityMagComplex qz=CavityMag_mul(q,CavityMag_value(-distance/s->width,axial));
+  CavityMagComplex qzz=CavityMag_mul(q,CavityMag_value(distance*distance/(s->width*s->width)-1./(s->width*s->width)-axial*axial,-2.*distance*axial/s->width));
+  CavityOverlapRing radial=CavityOverlap_const(CavityDipole_jc((qzz.re+q.re)/4.,(qzz.im+q.im)/4.));
+  CavityOverlapRing qzring=CavityOverlap_const(CavityDipole_jc(qz.re,qz.im));
+  a[i][0]=CavityOverlap_scale(CavityOverlap_mul(qzring,physical[0]),.5);
+  a[i][1]=CavityOverlap_scale(CavityOverlap_mul(qzring,physical[1]),.5);
+  a[i][2]=CavityOverlap_add(CavityOverlap_const(CavityDipole_jc(-q.re,-q.im)),CavityOverlap_mul(radial,
+   CavityOverlap_add(CavityOverlap_mul(physical[0],physical[0]),CavityOverlap_mul(physical[1],physical[1]))));
+  contraction[i]=CavityOverlap_add(CavityOverlap_mul(px,a[i][0]),CavityOverlap_mul(py,a[i][1]));
+  CavityOverlapRing phase;
+  CavityOverlapRing ip=CavityOverlap_mul(connection,CavityOverlap_const(CavityDipole_jc(0.,ell)));
+  status=CavityOverlap_analytic(ip,2,&phase);if(status!=CAVITY_MODEL_OK)return status;
+  CavityOverlapRing value=CavityOverlap_mul(CavityOverlap_sub(CavityOverlap_scale(a[i][2],-1.),CavityOverlap_mul(contraction[i],inverse)),phase);
+  first->a[mode]=CavityOverlap_packet(value);first->present[mode]=1;
+ }
+ CavityOverlapRing inv3=CavityOverlap_mul(CavityOverlap_mul(inverse,inverse),inverse);
+ for(int i=0;i<4;i++)for(int j=0;j<4;j++){
+  int mode=CavityDipole_mode(CavityDipole_mode_m(modes[i])+CavityDipole_mode_m(modes[j]),CavityDipole_mode_n(modes[i])+CavityDipole_mode_n(modes[j]));
+  int ell=CavityDipole_mode_m(mode)+CavityDipole_mode_n(mode);CavityOverlapRing phase;
+  status=CavityOverlap_analytic(CavityOverlap_mul(connection,CavityOverlap_const(CavityDipole_jc(0.,ell))),2,&phase);if(status!=CAVITY_MODEL_OK)return status;
+  CavityOverlapRing value=CavityOverlap_mul(CavityOverlap_scale(CavityOverlap_add(
+   CavityOverlap_mul(CavityOverlap_add(CavityOverlap_mul(a[i][0],a[j][0]),CavityOverlap_mul(a[i][1],a[j][1])),inverse),
+   CavityOverlap_mul(CavityOverlap_mul(contraction[i],contraction[j]),inv3)),.5),phase);
+  CavityDipolePacket packet=CavityOverlap_packet(value);CavityDipole_packet_add(&direct->a[mode],&packet);direct->present[mode]=1;
+ }for(int mode=0;mode<13;mode++)for(int j=0;j<15;j++)for(int e=0;e<5;e++)
+  if(!CavityModel_scalar_finite(first->a[mode].a[j].a[e].re)||!CavityModel_scalar_finite(first->a[mode].a[j].a[e].im)
+    ||!CavityModel_scalar_finite(direct->a[mode].a[j].a[e].re)||!CavityModel_scalar_finite(direct->a[mode].a[j].a[e].im))return CAVITY_MODEL_NONFINITE;
+ for(int i=0;i<4;i++)for(int j=0;j<4;j++)for(int e=0;e<5;e++)
+  if(!CavityModel_scalar_finite(K[i][j].a[e].re)||!CavityModel_scalar_finite(K[i][j].a[e].im))return CAVITY_MODEL_NONFINITE;
+ return CAVITY_MODEL_OK;
+}
+
+GPUFUN CavityDipolePacket CavityOverlap_homological(const CavityDipolePacket *w,
+        const CavityDipolePacket *forcing,int mode,const CavityDipoleJet K[4][4]){
+ CavityDipolePacket out={0};int ell=CavityDipole_mode_m(mode)+CavityDipole_mode_n(mode);
+ for(int i=0;i<4;i++){
+  for(int k=0;k<4;k++)out.a[1+i]=CavityDipole_sub(out.a[1+i],CavityDipole_scale(
+   CavityDipole_mul(K[CavityDipole_J_index(k)][i],w->a[1+k]),CavityDipole_J_sign(k)));
+  for(int j=i;j<4;j++){
+   int c=CavityDipole_channel(i,j);CavityDipoleJet entry={0};
+   for(int k=0;k<4;k++){
+    entry=CavityDipole_sub(entry,CavityDipole_scale(CavityDipole_mul(K[CavityDipole_J_index(k)][i],w->a[CavityDipole_channel(k,j)]),CavityDipole_J_sign(k)));
+    entry=CavityDipole_sub(entry,CavityDipole_scale(CavityDipole_mul(w->a[CavityDipole_channel(i,k)],K[CavityDipole_J_index(k)][j]),CavityDipole_J_sign(k)));
+   }
+   entry=CavityDipole_add(entry,CavityDipole_mul(CavityDipole_jc(0.,ell*.5),
+    CavityDipole_mul(w->a[0],CavityDipole_derivative(K[i][j]))));out.a[c]=entry;
+  }
+ }for(int j=0;j<15;j++)out.a[j]=CavityDipole_sub(out.a[j],forcing->a[j]);return out;
+}
+GPUFUN int CavityOverlap_rhs(const CavityOverlapSource *s,xt_float_or_tpsa_arg E,
+        xt_float_or_tpsa_arg z,const CavityMagComplex state[390],CavityMagComplex out[390]){
+ for(int j=0;j<390;j++)if(!CavityModel_scalar_finite(state[j].re)||!CavityModel_scalar_finite(state[j].im))return CAVITY_MODEL_NONFINITE;
+ CavityDipolePackets first={0},direct={0},w1={0},w2={0},second={0};CavityDipoleJet K[4][4];
+ int status=CavityOverlap_physical(s,E,z,&first,&direct,K);if(status!=CAVITY_MODEL_OK)return status;
+ const int fm[2]={5,7},sm[6]={1,3,4,8,9,11};
+ for(int j=0;j<2;j++){w1.a[fm[j]]=CavityDipole_read_packet(state,j*60,3);w1.present[fm[j]]=1;}
+ for(int j=0;j<6;j++){w2.a[sm[j]]=CavityDipole_read_packet(state,120+j*45,2);w2.present[sm[j]]=1;}
+ CavityDipole_second_source(&first,&direct,&w1,&second);
+ for(int j=0;j<2;j++){CavityDipolePacket p=CavityOverlap_homological(&w1.a[fm[j]],&first.a[fm[j]],fm[j],K);CavityDipole_write_packet(out,j*60,3,&p);}
+ for(int j=0;j<6;j++){CavityDipolePacket p=CavityOverlap_homological(&w2.a[sm[j]],&second.a[sm[j]],sm[j],K);CavityDipole_write_packet(out,120+j*45,2,&p);}
+ for(int j=0;j<390;j++)if(!CavityModel_scalar_finite(out[j].re)||!CavityModel_scalar_finite(out[j].im))return CAVITY_MODEL_NONFINITE;
+ return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityOverlap_source_state(const CavityOverlapSource *s,
+        xt_float_or_tpsa_arg E,xt_float_or_tpsa_arg end,CavityMagComplex state[390]){
+ if(s->source_steps<=0)return CAVITY_MODEL_ARGUMENT;
+ for(int j=0;j<390;j++)state[j]=CavityMag_value(0.,0.);
+ xt_float_or_tpsa h=(end-s->anchor)/s->source_steps;
+ for(int64_t cell=0;cell<s->source_steps;cell++){
+  xt_float_or_tpsa z=s->anchor+cell*h;CavityMagComplex k1[390],k2[390],k3[390],k4[390],trial[390];
+  int status=CavityOverlap_rhs(s,E,z,state,k1);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<390;j++)trial[j]=CavityMag_add(state[j],CavityMag_scale(k1[j],h/2.));
+  status=CavityOverlap_rhs(s,E,z+h/2.,trial,k2);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<390;j++)trial[j]=CavityMag_add(state[j],CavityMag_scale(k2[j],h/2.));
+  status=CavityOverlap_rhs(s,E,z+h/2.,trial,k3);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<390;j++)trial[j]=CavityMag_add(state[j],CavityMag_scale(k3[j],h));
+  status=CavityOverlap_rhs(s,E,z+h,trial,k4);if(status!=CAVITY_MODEL_OK)return status;
+  for(int j=0;j<390;j++)state[j]=CavityMag_add(state[j],CavityMag_scale(CavityMag_add(
+   CavityMag_add(k1[j],k4[j]),CavityMag_scale(CavityMag_add(k2[j],k3[j]),2.)),h/6.));
+ }for(int j=0;j<390;j++)if(!CavityModel_scalar_finite(state[j].re)||!CavityModel_scalar_finite(state[j].im))return CAVITY_MODEL_NONFINITE;
+ return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityOverlap_coefficients(const CavityOverlapSource *s,
+        xt_float_or_tpsa_arg E,xt_float_or_tpsa_arg z,CavityDipolePackets *body,
+        CavityDipolePackets *boundary,CavityDipoleJet K[4][4]){
+ CavityMagComplex state[390];int status=CavityOverlap_source_state(s,E,z,state);if(status!=CAVITY_MODEL_OK)return status;
+ CavityDipolePackets first={0},direct={0},w1={0},w2={0},second={0};
+ const int fm[2]={5,7},sm[6]={1,3,4,8,9,11};
+ for(int j=0;j<2;j++){w1.a[fm[j]]=CavityDipole_read_packet(state,j*60,3);w1.present[fm[j]]=1;}
+ for(int j=0;j<6;j++){w2.a[sm[j]]=CavityDipole_read_packet(state,120+j*45,2);w2.present[sm[j]]=1;}
+ status=CavityOverlap_physical(s,E,z,&first,&direct,K);if(status!=CAVITY_MODEL_OK)return status;
+ CavityDipole_second_source(&first,&direct,&w1,&second);
+ for(int mode=0;mode<13;mode++){
+  if(CavityDipole_mode_n(mode)==0){
+   if(first.present[mode]){CavityDipole_packet_add(&body->a[mode],&first.a[mode]);body->present[mode]=1;}
+   if(second.present[mode]){CavityDipole_packet_add(&body->a[mode],&second.a[mode]);body->present[mode]=1;}}
+  if(w1.present[mode]){CavityDipole_packet_add(&boundary->a[mode],&w1.a[mode]);boundary->present[mode]=1;}
+  if(w2.present[mode]){CavityDipole_packet_add(&boundary->a[mode],&w2.a[mode]);boundary->present[mode]=1;}
+ }return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityOverlap_scalar(const CavityOverlapSource *s,const xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,int boundary,xt_float_or_tpsa *value,xt_float_or_tpsa gradient[6]){
+ if(!CavityModel_vector_finite(q,6))return CAVITY_MODEL_NONFINITE;
+ CavityDipolePackets body={0},dressing={0};CavityDipoleJet K[4][4];
+ int status=CavityOverlap_coefficients(s,q[5],z,&body,&dressing,K);if(status!=CAVITY_MODEL_OK)return status;
+ const CavityDipolePackets *packets=boundary?&dressing:&body;
+ const int slots[4]={0,1,3,4};CavityMagComplex values[7]={0};
+ for(int mode=0;mode<13;mode++)if(packets->present[mode]){
+  const CavityDipolePacket *p=&packets->a[mode];int ell=CavityDipole_mode_m(mode)+CavityDipole_mode_n(mode);
+  xt_float_or_tpsa phase=ell*q[2]+CavityDipole_mode_n(mode)*s->phase;
+  CavityMagComplex wave=CavityMag_value(cos(phase),sin(phase)),amplitude[2]={p->a[0].a[0],p->a[0].a[1]};
+  for(int e=0;e<2;e++)for(int i=0;i<4;i++){
+   amplitude[e]=CavityMag_add(amplitude[e],CavityMag_scale(p->a[1+i].a[e],q[slots[i]]));
+   for(int j=0;j<4;j++)amplitude[e]=CavityMag_add(amplitude[e],CavityMag_scale(p->a[CavityDipole_channel(i,j)].a[e],q[slots[i]]*q[slots[j]]));
+  }
+  values[0]=CavityMag_add(values[0],CavityMag_mul(wave,amplitude[0]));
+  values[3]=CavityMag_add(values[3],CavityMag_mul(wave,CavityMag_mul(CavityMag_value(0.,ell),amplitude[0])));
+  values[6]=CavityMag_add(values[6],CavityMag_mul(wave,amplitude[1]));
+  for(int i=0;i<4;i++){
+   CavityMagComplex g=p->a[1+i].a[0];for(int j=0;j<4;j++)g=CavityMag_add(g,CavityMag_scale(p->a[CavityDipole_channel(i,j)].a[0],2.*q[slots[j]]));
+   values[1+slots[i]]=CavityMag_add(values[1+slots[i]],CavityMag_mul(wave,g));
+  }
+ }
+ if(!boundary)for(int i=0;i<4;i++)for(int j=0;j<4;j++){
+  values[0]=CavityMag_add(values[0],CavityMag_scale(K[i][j].a[0],.5*q[slots[i]]*q[slots[j]]));
+  values[6]=CavityMag_add(values[6],CavityMag_scale(K[i][j].a[1],.5*q[slots[i]]*q[slots[j]]));
+  values[1+slots[i]]=CavityMag_add(values[1+slots[i]],CavityMag_scale(K[i][j].a[0],q[slots[j]]));
+ }
+ double scale=1.;for(int i=0;i<7;i++)scale=fmax(scale,CavityModel_scalar_norm(values[i].re));
+ for(int i=0;i<7;i++)if(!CavityModel_scalar_finite(values[i].re)||!CavityModel_scalar_finite(values[i].im)
+     ||CavityModel_scalar_norm(values[i].im)>256.*2.220446049250313e-16*scale)return CAVITY_MODEL_NONFINITE;
+ *value=values[0].re;for(int i=0;i<6;i++)gradient[i]=values[i+1].re;return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityOverlap_flow(const CavityOverlapSource *s,const xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,int boundary,xt_float_or_tpsa flow[6]){
+ xt_float_or_tpsa value,g[6];int status=CavityOverlap_scalar(s,q,z,boundary,&value,g);if(status!=CAVITY_MODEL_OK)return status;
+ flow[0]=g[3];flow[1]=g[4];flow[2]=-g[5];flow[3]=-g[0];flow[4]=-g[1];flow[5]=g[2];
+ if(s->frozen_coordinates){
+  CavityOverlapReference r;status=CavityOverlap_reference(s,q[5],z,&r);if(status!=CAVITY_MODEL_OK)return status;
+  const int slots[4]={0,1,3,4};
+  xt_float_or_tpsa theta[4]={r.u[2].a[1],r.u[3].a[1],-r.u[0].a[1],-r.u[1].a[1]};
+  xt_float_or_tpsa thetaE[4]={2.*r.u[2].a[2],2.*r.u[3].a[2],-2.*r.u[0].a[2],-2.*r.u[1].a[2]};
+  xt_float_or_tpsa thetaZ[4]={r.uz[2].a[1],r.uz[3].a[1],-r.uz[0].a[1],-r.uz[1].a[1]};
+  xt_float_or_tpsa physical[6],clockE=r.clock.a[1],clockZ=0.;
+  if(!boundary)clockZ=r.clock_z.a[0];
+  for(int i=0;i<4;i++){
+   physical[slots[i]]=flow[slots[i]]+r.u[i].a[1]*flow[5];
+   if(!boundary)physical[slots[i]]+=r.uz[i].a[0];
+   clockE+=thetaE[i]*q[slots[i]];
+   if(!boundary)clockZ+=thetaZ[i]*q[slots[i]];
+  }
+  physical[2]=flow[2]+clockE*flow[5]+clockZ;physical[5]=flow[5];
+  for(int i=0;i<4;i++)physical[2]+=theta[i]*flow[slots[i]];
+  for(int i=0;i<6;i++)if(s->frozen_coordinates&((int64_t)1<<i))physical[i]=0.;
+  if(!boundary&&(s->frozen_coordinates&((int64_t)1<<2)))physical[2]=1./s->reference_beta;
+  flow[5]=physical[5];
+  for(int i=0;i<4;i++){
+   flow[slots[i]]=physical[slots[i]]-r.u[i].a[1]*flow[5];
+   if(!boundary)flow[slots[i]]-=r.uz[i].a[0];
+  }
+  flow[2]=physical[2]-clockE*flow[5]-clockZ;
+  for(int i=0;i<4;i++)flow[2]-=theta[i]*flow[slots[i]];
+ }
+ return CavityModel_vector_finite(flow,6)?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+}
+GPUFUN int CavityOverlap_coordinates(const CavityOverlapSource *s,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,int inverse);
+/* A masked call is an explicitly DIFFERENT constrained analysis word.
+ * Midpoints are represented in physical donor coordinates, so the selected
+ * coordinates are fixed at every accepted stage, not only in a pulled-back
+ * continuous vector field. The unmasked moving-coordinate word is unchanged. */
+GPUFUN int CavityOverlap_physical_flow(const CavityOverlapSource *s,
+        const xt_float_or_tpsa physical[6],xt_float_or_tpsa_arg z,int boundary,
+        xt_float_or_tpsa out[6]){
+ CavityOverlapSource plain=*s;plain.frozen_coordinates=0;
+ xt_float_or_tpsa moving[6],flow[6];for(int i=0;i<6;i++)moving[i]=physical[i];
+ int status=CavityOverlap_coordinates(&plain,moving,z,0);if(status!=CAVITY_MODEL_OK)return status;
+ status=CavityOverlap_flow(&plain,moving,z,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+ CavityOverlapReference r;status=CavityOverlap_reference(s,moving[5],z,&r);if(status!=CAVITY_MODEL_OK)return status;
+ const int slots[4]={0,1,3,4};
+ xt_float_or_tpsa theta[4]={r.u[2].a[1],r.u[3].a[1],-r.u[0].a[1],-r.u[1].a[1]};
+ xt_float_or_tpsa thetaE[4]={2.*r.u[2].a[2],2.*r.u[3].a[2],-2.*r.u[0].a[2],-2.*r.u[1].a[2]};
+ xt_float_or_tpsa thetaZ[4]={r.uz[2].a[1],r.uz[3].a[1],-r.uz[0].a[1],-r.uz[1].a[1]};
+ xt_float_or_tpsa clockE=r.clock.a[1],clockZ=0.;if(!boundary)clockZ=r.clock_z.a[0];
+ for(int i=0;i<4;i++){
+  out[slots[i]]=flow[slots[i]]+r.u[i].a[1]*flow[5];
+  if(!boundary)out[slots[i]]+=r.uz[i].a[0];
+  clockE+=thetaE[i]*moving[slots[i]];
+  if(!boundary)clockZ+=thetaZ[i]*moving[slots[i]];
+ }
+ out[2]=flow[2]+clockE*flow[5]+clockZ;out[5]=flow[5];
+ for(int i=0;i<4;i++)out[2]+=theta[i]*flow[slots[i]];
+ for(int i=0;i<6;i++)if(s->frozen_coordinates&((int64_t)1<<i))out[i]=0.;
+ if(!boundary&&(s->frozen_coordinates&((int64_t)1<<2)))out[2]=1./s->reference_beta;
+ return CavityModel_vector_finite(out,6)?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+}
+GPUFUN int CavityOverlap_integrate_physical(const CavityOverlapSource *s,
+        xt_float_or_tpsa q[6],xt_float_or_tpsa_arg a,xt_float_or_tpsa_arg b,
+        xt_float_or_tpsa_arg physical_z,int boundary,int64_t steps){
+ if(steps<=0)return CAVITY_MODEL_ARGUMENT;
+ xt_float_or_tpsa start=a,end=b;if(boundary){start=physical_z;end=physical_z;}
+ int status=CavityOverlap_coordinates(s,q,start,1);if(status!=CAVITY_MODEL_OK)return status;
+ const xt_float_or_tpsa h=(b-a)/steps;
+ for(int64_t cell=0;cell<steps;cell++){
+  xt_float_or_tpsa z=physical_z,flow[6],stage[6],full[6];if(!boundary)z=a+(cell+.5)*h;
+  status=CavityOverlap_physical_flow(s,q,z,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+  for(int i=0;i<6;i++)stage[i]=.5*h*flow[i];int converged=0;
+  for(int iteration=0;iteration<80;iteration++){
+   for(int i=0;i<6;i++)full[i]=q[i]+stage[i];
+   status=CavityOverlap_physical_flow(s,full,z,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+   double defect=0.;for(int i=0;i<6;i++){
+    xt_float_or_tpsa next=.5*h*flow[i];defect=fmax(defect,CavityModel_scalar_residual(stage[i]-next,q[i]+next,1));stage[i]=next;}
+   if(defect<=s->tolerance){converged=1;break;}
+  }
+  if(!converged)return CAVITY_MODEL_ITERATIONS;
+  for(int i=0;i<6;i++)full[i]=q[i]+stage[i];
+  status=CavityOverlap_physical_flow(s,full,z,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+  for(int i=0;i<6;i++)if(CavityModel_scalar_residual(stage[i]-.5*h*flow[i],q[i]+stage[i],1)>s->tolerance)return CAVITY_MODEL_ITERATIONS;
+  for(int i=0;i<6;i++)q[i]+=h*flow[i];
+ }
+ return CavityOverlap_coordinates(s,q,end,0);
+}
+GPUFUN int CavityOverlap_integrate(const CavityOverlapSource *s,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg a,xt_float_or_tpsa_arg b,xt_float_or_tpsa_arg physical_z,
+        int boundary,int64_t steps){
+ if(s->frozen_coordinates)return CavityOverlap_integrate_physical(s,q,a,b,physical_z,boundary,steps);
+ if(steps<=0)return CAVITY_MODEL_ARGUMENT;xt_float_or_tpsa h=(b-a)/steps;
+ for(int64_t cell=0;cell<steps;cell++){
+  xt_float_or_tpsa z=physical_z,flow[6],stage[6],full[6];
+  if(!boundary)z=a+(cell+.5)*h;
+  int status=CavityOverlap_flow(s,q,z,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+  for(int i=0;i<6;i++)stage[i]=.5*h*flow[i];int converged=0;
+  for(int iteration=0;iteration<80;iteration++){
+   for(int i=0;i<6;i++)full[i]=q[i]+stage[i];status=CavityOverlap_flow(s,full,z,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+   double defect=0.;for(int i=0;i<6;i++){
+    xt_float_or_tpsa next=.5*h*flow[i];defect=fmax(defect,CavityModel_scalar_residual(stage[i]-next,q[i]+next,1));stage[i]=next;}
+   if(defect<=s->tolerance){converged=1;break;}
+  }
+  if(!converged)return CAVITY_MODEL_ITERATIONS;
+  for(int i=0;i<6;i++)full[i]=q[i]+stage[i];status=CavityOverlap_flow(s,full,z,boundary,flow);if(status!=CAVITY_MODEL_OK)return status;
+  for(int i=0;i<6;i++)if(CavityModel_scalar_residual(stage[i]-.5*h*flow[i],q[i]+stage[i],1)>s->tolerance)return CAVITY_MODEL_ITERATIONS;
+  for(int i=0;i<6;i++)q[i]+=h*flow[i];
+ }return CAVITY_MODEL_OK;
+}
+GPUFUN int CavityOverlap_coordinates(const CavityOverlapSource *s,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,int inverse){
+ CavityOverlapReference r;int status=CavityOverlap_reference(s,q[5],z,&r);if(status!=CAVITY_MODEL_OK)return status;
+ const int slots[4]={0,1,3,4};xt_float_or_tpsa theta[4]={r.u[2].a[1],r.u[3].a[1],-r.u[0].a[1],-r.u[1].a[1]};
+ if(inverse){xt_float_or_tpsa shift=r.clock.a[0];for(int i=0;i<4;i++)shift+=theta[i]*q[slots[i]];
+  q[2]+=shift;for(int i=0;i<4;i++)q[slots[i]]+=r.u[i].a[0];
+ }else{for(int i=0;i<4;i++)q[slots[i]]-=r.u[i].a[0];
+  xt_float_or_tpsa shift=r.clock.a[0];for(int i=0;i<4;i++)shift+=theta[i]*q[slots[i]];q[2]-=shift;}
+ return CavityModel_vector_finite(q,6)?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+}
+GPUFUN int CavityOverlap_map(const CavityOverlapSource *s,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg a,xt_float_or_tpsa_arg b){
+ if(!CavityModel_vector_finite(q,6)||!CavityModel_scalar_finite(a)||!CavityModel_scalar_finite(b))return CAVITY_MODEL_NONFINITE;
+ if(xt_float_or_tpsa_is_zero(b-a)){CavityOverlapReference r;return CavityOverlap_reference(s,q[5],a,&r);}
+ xt_float_or_tpsa candidate[6];for(int i=0;i<6;i++)candidate[i]=q[i];
+ int status=CavityOverlap_coordinates(s,candidate,a,0);if(status!=CAVITY_MODEL_OK)return status;
+ status=CavityOverlap_integrate(s,candidate,0.,1.,a,1,s->boundary_steps);
+ if(status==CAVITY_MODEL_OK)status=CavityOverlap_integrate(s,candidate,a,b,0.,0,s->body_steps);
+ if(status==CAVITY_MODEL_OK)status=CavityOverlap_integrate(s,candidate,0.,-1.,b,1,s->boundary_steps);
+ if(status==CAVITY_MODEL_OK)status=CavityOverlap_coordinates(s,candidate,b,1);
+ if(status==CAVITY_MODEL_OK){
+  // Suppress only coordinate-conversion roundoff in exact frozen invariants.
+  for(int i=0;i<6;i++)if(s->frozen_coordinates&((int64_t)1<<i))candidate[i]=q[i];
+  if(s->frozen_coordinates&((int64_t)1<<2))candidate[2]=q[2]+(b-a)/s->reference_beta;
+  for(int i=0;i<6;i++)q[i]=candidate[i];
+ }return status;
+}
+// Same fixed-parent prefix family, including the independently controlled
+// RK4 background reference. A child never starts a new physical reference.
+GPUFUN
+int CavityOverlap_interval(const CavityOverlapSource *source,xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg a,xt_float_or_tpsa_arg b,int reverse) {
+    xt_float_or_tpsa candidate[6];for(int i=0;i<6;++i)candidate[i]=q[i];
+    xt_float_or_tpsa first=a,last=b;if(reverse){first=b;last=a;}
+    int status=CavityOverlap_map(source,candidate,first,source->anchor);
+    if(status==CAVITY_MODEL_OK)status=CavityOverlap_map(source,candidate,source->anchor,last);
+    if(status==CAVITY_MODEL_OK)for(int i=0;i<6;++i)q[i]=candidate[i];
+    return status;
+}
+GPUFUN
+int CavityOverlap_bind(const CavityModelSource *physical,xt_float_or_tpsa_arg charge,
+        const xt_float_or_tpsa reference[4],int64_t source_steps,int64_t factor_steps,
+        int64_t reference_steps,int64_t frozen_coordinates,CavityOverlapSource *out) {
+    if(physical->rf_profile!=2||physical->magnetic_profile!=0
+        ||!xt_float_or_tpsa_is_zero(physical->dc_gradient))return CAVITY_MODEL_ARGUMENT;
+    for(int64_t i=0;i<=physical->order;++i)
+        if(i!=1&&(!xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(physical,i,0))
+            ||!xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(physical,i,1))))
+            return CAVITY_MODEL_ARGUMENT;
+    out->anchor=-physical->half_span;out->width=physical->profile_sigma;
+    out->centre=physical->profile_center;out->nu=physical->carrier;
+    out->slow=charge*physical->forward;out->fast=charge*physical->backward;
+    out->phase=physical->counter_phase;
+    out->B=charge*physical->magnetic_scale*physical->ks/physical->k;
+    out->GN=0.;out->GS=0.;
+    if(physical->order>=1) {
+        const xt_float_or_tpsa factor=charge*physical->magnetic_scale
+            /(physical->length*physical->k*physical->k);
+        out->GN=factor*CavityModel_static_coefficient(physical,1,0);
+        out->GS=-factor*CavityModel_static_coefficient(physical,1,1);
+    }
+    for(int i=0;i<4;++i)out->initial[i]=reference[i];
+    out->reference_steps=reference_steps;out->source_steps=source_steps;
+    out->body_steps=factor_steps;out->boundary_steps=factor_steps;
+    out->frozen_coordinates=frozen_coordinates;out->reference_beta=physical->reference_beta;
+    out->tolerance=2e-13;
+    return CavityOverlap_validate(out);
 }
 
 #endif

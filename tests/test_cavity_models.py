@@ -29,9 +29,13 @@ def cavity(model='phase-resolved', **kwargs):
                     model=model, integrator='gauss2', num_kicks=16)
     if model == 'phase-resolved-frozen':
         controls.update(eta=0., integrator='geometric-kick-drift')
-    if model == 'phase-averaged-magnetic':
+    if model in ('phase-averaged-magnetic', 'phase-averaged-dipole',
+                 'phase-averaged-magnetic-fringe',
+                 'phase-averaged-moving-reference'):
         controls.update(rf_profile='gaussian', rf_profile_sigma=.02,
                         integrator='midpoint')
+    if model == 'phase-averaged-magnetic-fringe':
+        controls.update(magnetic_profile='gaussian', magnetic_profile_sigma=.015)
     controls.update(kwargs)
     return xt.Cavity(**controls)
 
@@ -437,11 +441,22 @@ def test_old_serialized_slice_distance_loads(kind):
 
 @pytest.mark.parametrize('model', ('phase-resolved-frozen',
                                   'phase-averaged-cubic',
-                                  'phase-averaged-quartic'))
+                                  'phase-averaged-quartic',
+                                  'phase-averaged-magnetic-fringe',
+                                  'phase-averaged-moving-reference'))
 @pytest.mark.parametrize('mode', ('thick', 'thin'))
 def test_finite_parent_words_survive_layout_partition(model_context, model, mode):
-    rf = cavity(model, _context=model_context, num_kicks=4,
-                num_factor_steps=1, edge_entry_active=0, edge_exit_active=1)
+    controls = dict(num_kicks=4, num_factor_steps=1,
+                    edge_entry_active=0, edge_exit_active=1)
+    if model in ('phase-averaged-magnetic-fringe',
+                 'phase-averaged-moving-reference'):
+        controls.update(edge_exit_active=0, ks=.2,
+                        knl=[0., .01], ksl=[0., .002])
+    if model == 'phase-averaged-moving-reference':
+        controls.update(reference_x=2e-4, reference_y=-1e-4,
+                        reference_px=3e-4, reference_py=-2e-4,
+                        num_reference_steps=4)
+    rf = cavity(model, _context=model_context, **controls)
     line = xt.Line(elements={'rf': rf, 'end': xt.Marker(_context=model_context)})
     line.particle_ref = particle(model_context)
     line.build_tracker(_context=model_context)
@@ -601,3 +616,86 @@ def test_taper_refuses_slice_before_inspecting_numeric_storage(model_context):
     with pytest.raises(ValueError, match='Cavity slices'):
         line.compensate_radiation_energy_loss(verbose=False)
     assert line.tracker._tracker_data_base.cache.get('attr') is None
+
+
+@pytest.mark.parametrize('mode', [None, 'thick', 'thin'])
+def test_gaussian_magnetic_integrated_strength_readback(mode):
+    from math import erf, sqrt, pi
+    rf = cavity('phase-averaged-magnetic-fringe', ks=.4,
+                knl=[0., .03], ksl=[0., -.02])
+    assert rf.edge_entry_active == rf.edge_exit_active == 0
+    data = rf.to_dict()
+    restored = xt.Cavity.from_dict(data)
+    assert restored.magnetic_profile == 'gaussian'
+    assert restored.magnetic_profile_sigma == .015
+    rf.model = 'phase-resolved-paraxial'
+    assert rf.magnetic_profile == 'gaussian'
+    rf.model = 'phase-averaged-magnetic-fringe'
+    line = xt.Line(elements={'rf': rf})
+    if mode:
+        line.slice_thick_elements([xt.Strategy(xt.Teapot(3, mode=mode))])
+    # Metadata uses ordinary MultiSetter access, without tracker compilation.
+    for width in (.015, .03):
+        rf.magnetic_profile_sigma = width
+        expected_integral = sqrt(2*pi)*width*erf(rf.length/(2*sqrt(2)*width))
+        np.testing.assert_allclose(sum(line.attr['ksoll']), rf.ks*expected_integral,
+                                   rtol=2e-15, atol=1e-17)
+        np.testing.assert_allclose(sum(line.attr['k1l']), .03, rtol=2e-15)
+        np.testing.assert_allclose(sum(line.attr['k1sl']), -.02, rtol=2e-15)
+        for index, element in enumerate(line.elements):
+            if mode and not getattr(element, '_inherit_strengths', False):
+                continue
+            weight = float(element.weight) if mode else 1.
+            start = float(element._slice_offset_fraction) if mode else 0.
+            a, b = rf.length*(start-.5), rf.length*(start+weight-.5)
+            partial = sqrt(pi/2)*width*(erf(b/(sqrt(2)*width))
+                                         -erf(a/(sqrt(2)*width)))
+            np.testing.assert_allclose(line.attr['ks'][index], rf.ks, rtol=0.)
+            np.testing.assert_allclose(line.attr['ksoll'][index], rf.ks*partial,
+                                       rtol=2e-15, atol=1e-17)
+            np.testing.assert_allclose(line.attr['k1l'][index],
+                                       .03*partial/expected_integral, rtol=2e-15)
+            np.testing.assert_allclose(line.attr['k1sl'][index],
+                                       -.02*partial/expected_integral, rtol=2e-15)
+        if mode:
+            actual = line.attr['ksoll']
+            # A nonuniform profile must not reduce to equal weight allocation.
+            assert np.ptp(actual[actual != 0.]) > 0.
+        np.testing.assert_allclose(sum(line.attr['voltage']), rf.voltage,
+                                   rtol=2e-15)
+
+
+@pytest.mark.parametrize('width', [None, 0., -.01, np.inf, np.nan])
+def test_gaussian_magnetic_width_is_explicit(width):
+    with pytest.raises(ValueError, match='width'):
+        cavity('phase-averaged-magnetic-fringe', magnetic_profile_sigma=width)
+
+
+@pytest.mark.parametrize('count', [1, 4, 8])
+def test_moving_reference_programme_metadata(count):
+    controls = dict(model='phase-averaged-moving-reference', rf_profile='gaussian',
+        rf_profile_sigma=.012, length=.05, reference_x=.0002,
+        reference_y=-.0001, reference_px=.0003, reference_py=-.0002,
+        num_reference_steps=count)
+    rf = xt.Cavity(**controls)
+    assert rf.magnetic_profile == 'uniform'
+    for copied in (rf.copy(), xt.Cavity.from_dict(rf.to_dict())):
+        for name in ('reference_x', 'reference_y', 'reference_px',
+                     'reference_py', 'num_reference_steps'):
+            assert getattr(copied, name) == controls[name]
+    rf.model = 'phase-averaged-magnetic'
+    assert rf.reference_x == controls['reference_x']
+    rf.model = 'phase-averaged-moving-reference'
+    assert rf.rf_profile == 'gaussian'
+    line = xt.Line(elements={'rf': rf})
+    line.vars['fixed_reference_x'] = .0004
+    line.element_refs['rf'].reference_x = line.vars['fixed_reference_x']
+    assert rf.reference_x == .0004
+    line.vars['fixed_reference_x'] = -.0005
+    assert rf.reference_x == -.0005
+
+
+@pytest.mark.parametrize('count', [0, -1, 1.5])
+def test_moving_reference_requires_positive_integer_steps(count):
+    with pytest.raises(ValueError, match='num_reference_steps'):
+        xt.Cavity(num_reference_steps=count)

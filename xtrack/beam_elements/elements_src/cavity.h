@@ -33,7 +33,8 @@ void Cavity_track_local_particle(CavityData el, LocalParticle* part0)
     // Legacy voltage-only projections support their existing P16/uniform
     // reductions, but cannot silently consume a requested Gaussian source.
     if (static_field || CavityData_get_rf_profile(el)<0
-                     || CavityData_get_rf_profile(el)>1) {
+                     || CavityData_get_rf_profile(el)>1
+                     || CavityData_get_magnetic_profile(el)!=0) {
         START_PER_PARTICLE_BLOCK(part0,part)
             LocalParticle_set_state(part,-99744);
         END_PER_PARTICLE_BLOCK;

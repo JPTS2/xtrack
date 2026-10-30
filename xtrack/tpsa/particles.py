@@ -133,6 +133,17 @@ class ParticlesTpsa:
         self._local_series = {
             name: desc.constant(self._ref(name)) for name in _DERIVED_COORDS
         }
+        # These are constrained energy coordinates, not independent input
+        # metadata. Seed their full dependence on delta even when tracking
+        # freezes energy and therefore suppresses the usual entry refresh.
+        # Use the same stable expression as LocalParticle_update_delta.
+        beta0 = float(self._ref('beta0'))
+        delta_beta0 = self.coords[5] * beta0
+        ptau_beta0 = (delta_beta0*delta_beta0
+                      + 2.0*delta_beta0*beta0 + 1.0).sqrt() - 1.0
+        self._local_series['pzeta'] = ptau_beta0 / (beta0*beta0)
+        self._local_series['rvv'] = (1.0 + self.coords[5]) / (1.0 + ptau_beta0)
+        self._local_series['rpp'] = 1.0 / (1.0 + self.coords[5])
         self._local_series.update({
             name: desc.constant(self._ref(name)) for name in _LOCAL_COORDS
         })

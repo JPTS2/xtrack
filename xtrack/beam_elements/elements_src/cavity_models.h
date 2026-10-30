@@ -15,6 +15,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stddef.h>
+#include "xtrack/headers/constants.h"
 #include "xtrack/beam_elements/elements_src/cavity_models_compat.h"
 
 enum CavityModelStatus {
@@ -45,6 +46,9 @@ typedef struct {
     // Built-in profile: 0 P16, 1 uniform, 2 Gaussian. Width/centre in Z=k*z.
     int rf_profile;
     xt_float_or_tpsa profile_sigma, profile_center;
+    // 0: uniform longitudinal gauge; 1: Gaussian original fringe donor.
+    int magnetic_profile;
+    xt_float_or_tpsa magnetic_sigma; // normalized k*sigma_m, centred at Z=0
     double reference_charge, reference_beta;
     int freeze_energy, freeze_zeta;
     int freeze_x, freeze_px, freeze_y, freeze_py;
@@ -174,6 +178,7 @@ int CavityModel_prepare(
     source->reference_charge=q0;
     source->reference_beta=1.;
     source->rf_profile=0;source->profile_sigma=0.;source->profile_center=0.;
+    source->magnetic_profile=0;source->magnetic_sigma=0.;
     source->freeze_energy=0; source->freeze_zeta=0;
     source->freeze_x=0; source->freeze_px=0;
     source->freeze_y=0; source->freeze_py=0;
@@ -338,18 +343,87 @@ void CavityModel_rf_potential(const xt_float_or_tpsa q[6],
                            -r2*r2*(C[0]+2.*C[2]+C[4])/64.;
 }
 
+// The finite-parent integral preserves ordinary integrated knl/ksl.
+// ks remains the signed peak solenoid coefficient. Gaussian tails and the
+// original donor's asymptotic pure gauge are never clipped at the planes.
+GPUFUN
+xt_float_or_tpsa CavityModel_erf(xt_float_or_tpsa_arg value) {
+#ifdef XTRACK_TPSA_TRACK
+    return mad::erf(value);
+#else
+    return erf(value);
+#endif
+}
+GPUFUN
+xt_float_or_tpsa CavityModel_magnetic_integral(const CavityModelSource *source) {
+    if(source->magnetic_profile==0)return source->length;
+    const xt_float_or_tpsa width=source->magnetic_sigma;
+    return width/source->k*sqrt(2.*PI)
+        *CavityModel_erf(source->half_span/(sqrt(2.)*width));
+}
+GPUFUN
+int CavityModel_static_validate(const CavityModelSource *source) {
+    if(source->magnetic_profile==0)return CAVITY_MODEL_OK;
+    if(source->magnetic_profile!=1||!CavityModel_scalar_finite(source->magnetic_sigma)
+        ||xt_float_or_tpsa_const_part(source->magnetic_sigma)<=0.)return CAVITY_MODEL_ARGUMENT;
+    for(int64_t i=0;i<=source->order;++i)
+        if(i!=1&&(!xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source,i,0))
+            ||!xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source,i,1))))
+            return CAVITY_MODEL_ARGUMENT;
+    const xt_float_or_tpsa integral=CavityModel_magnetic_integral(source);
+    return CavityModel_scalar_finite(integral)&&xt_float_or_tpsa_const_part(integral)>0.
+        ?CAVITY_MODEL_OK:CAVITY_MODEL_ARGUMENT;
+}
+
+// Actual GaussianFringeReference original potential through static radial
+// order one. The compact quadratic map omits the cubic terms; mechanical
+// readback and the FULL taper predictor keep this SAME retained donor.
+GPUFUN
+void CavityModel_add_gaussian_static(const xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,const CavityModelSource *source,CavityModelPotential *potential) {
+    const xt_float_or_tpsa width=source->magnetic_sigma,scaled=z/width;
+    const xt_float_or_tpsa profile=exp(-scaled*scaled/2.);
+    const xt_float_or_tpsa B=source->magnetic_scale*source->ks/source->k*profile;
+    const xt_float_or_tpsa Bzz=(scaled*scaled-1.)*B/(width*width);
+    const xt_float_or_tpsa factor=source->magnetic_scale/
+        (source->k*source->k*CavityModel_magnetic_integral(source));
+    xt_float_or_tpsa gn=0.,gs=0.;
+    if(source->order>=1){gn=factor*CavityModel_static_coefficient(source,1,0);
+        gs=-factor*CavityModel_static_coefficient(source,1,1);}
+    const xt_float_or_tpsa primitive=width*sqrt(PI/2.)
+        *CavityModel_erf(z/(sqrt(2.)*width))/2.;
+    const xt_float_or_tpsa sn=gn*primitive,ss=gs*primitive;
+    const xt_float_or_tpsa gnz=-scaled*gn*profile/width,gsz=-scaled*gs*profile/width;
+    const xt_float_or_tpsa x=q[0],y=q[1],r2=x*x+y*y;
+    const xt_float_or_tpsa H=2.*gnz*x*y+gsz*(y*y-x*x);
+    const xt_float_or_tpsa Hx=2.*gnz*y-2.*gsz*x,Hy=2.*gnz*x+2.*gsz*y;
+    const xt_float_or_tpsa Fx=-(Hx*r2+2.*x*H)/24.,Fy=-(Hy*r2+2.*y*H)/24.;
+    const xt_float_or_tpsa Fxx=-(-2.*gsz*r2+4.*x*Hx+2.*H)/24.;
+    const xt_float_or_tpsa Fyy=-( 2.*gsz*r2+4.*y*Hy+2.*H)/24.;
+    const xt_float_or_tpsa Fxy=-(2.*gnz*r2+2.*x*Hy+2.*y*Hx)/24.;
+    potential->a[0]+=-B*y/2.+Bzz*y*r2/16.+2.*(sn*x+ss*y)+Fy;
+    potential->a[1]+= B*x/2.-Bzz*x*r2/16.+2.*(ss*x-sn*y)-Fx;
+    potential->d[0][0]+=Bzz*x*y/8.+2.*sn+Fxy;
+    potential->d[0][1]+=-B/2.+Bzz*(x*x+3.*y*y)/16.+2.*ss+Fyy;
+    potential->d[1][0]+= B/2.-Bzz*(3.*x*x+y*y)/16.+2.*ss-Fxx;
+    potential->d[1][1]+=-Bzz*x*y/8.-2.*sn-Fxy;
+}
+
 // Straight static multipoles and uniform solenoid in the same potential.
 // knl[1]>0 gives focusing in x for the reference charge. Source coefficients
 // remain uncharged; actual signed Q enters the Hamiltonian exactly once.
 GPUFUN
 void CavityModel_add_static(const xt_float_or_tpsa q[6],
-        const CavityModelSource *source, CavityModelPotential *potential) {
+        xt_float_or_tpsa_arg z,const CavityModelSource *source, CavityModelPotential *potential) {
     // Explicit taper-compensation analysis only: A_z=-g*T gives constant
     // longitudinal voltage while retaining the same static transport.
     // Ordinary harmonic preparation initializes g=0; it never invents a DC
     // continuation of the calibrated harmonic field at nonzero V, f=0.
     potential->a[2]-=source->dc_gradient*q[2];
     potential->d[2][2]-=source->dc_gradient;
+    if(source->magnetic_profile==1) {
+        CavityModel_add_gaussian_static(q,z,source,potential);return;
+    }
     xt_float_or_tpsa x=q[0]/source->k,y=q[1]/source->k;
     xt_float_or_tpsa solenoid=source->magnetic_scale*source->ks*.5;
     potential->a[0]-=solenoid*y; potential->a[1]+=solenoid*x;
@@ -373,9 +447,11 @@ int CavityModel_potential(const xt_float_or_tpsa q[6],
         xt_float_or_tpsa_arg z, const CavityModelSource *source,
         int model, xt_float_or_tpsa output[4]) {
     if (!CavityModel_vector_finite(q,6)) return CAVITY_MODEL_NONFINITE;
+    int static_status=CavityModel_static_validate(source);
+    if(static_status!=CAVITY_MODEL_OK)return static_status;
     CavityModelPotential potential;
     CavityModel_rf_potential(q,z,source,model,&potential);
-    CavityModel_add_static(q,source,&potential);
+    CavityModel_add_static(q,z,source,&potential);
     if (!CavityModel_vector_finite(potential.a,4)) return CAVITY_MODEL_NONFINITE;
     for (int i=0;i<4;++i) output[i]=potential.a[i];
     return CAVITY_MODEL_OK;
@@ -408,9 +484,11 @@ int CavityModel_flow(const xt_float_or_tpsa q[6],
                                 && source->reference_beta<=1.))
         return CAVITY_MODEL_ARGUMENT;
     if (!CavityModel_vector_finite(q,6)) return CAVITY_MODEL_NONFINITE;
+    int static_status=CavityModel_static_validate(source);
+    if(static_status!=CAVITY_MODEL_OK)return static_status;
     CavityModelPotential potential;
     CavityModel_rf_potential(q,z,source,model,&potential);
-    CavityModel_add_static(q,source,&potential);
+    CavityModel_add_static(q,z,source,&potential);
     if (!CavityModel_vector_finite(potential.a,4)) return CAVITY_MODEL_NONFINITE;
     if (model==CAVITY_MODEL_LONGITUDINAL) {
         xt_float_or_tpsa physical[4];
@@ -471,10 +549,11 @@ int CavityModel_flow(const xt_float_or_tpsa q[6],
 // primal increment retains the same absolute tolerance; reconstructed stages
 // and the final rounded output still have their floating-point ULP floor.
 GPUFUN
-int CavityModel_gauss(const xt_float_or_tpsa q[6],
+int CavityModel_gauss_stages(const xt_float_or_tpsa q[6],
         xt_float_or_tpsa_arg z, xt_float_or_tpsa_arg h,
         xt_float_or_tpsa_arg Q, const CavityModelSource *source, int model,
-        int64_t max_iter, double tolerance, xt_float_or_tpsa output[6]) {
+        int64_t max_iter, double tolerance, xt_float_or_tpsa output[6],
+        xt_float_or_tpsa *accepted_stages) {
     if (max_iter<=0 || !isfinite(tolerance) || tolerance<=0.)
         return CAVITY_MODEL_ARGUMENT;
     const double C[2]={.21132486540518713,.7886751345948129};
@@ -514,6 +593,9 @@ int CavityModel_gauss(const xt_float_or_tpsa q[6],
         for (int j=0;j<6;++j) result[j]=q[j]+h*(values[0][j]+values[1][j])*.5;
         status=CavityModel_flow(result,z+h,Q,source,model,check);
         if (status!=CAVITY_MODEL_OK) return status;
+        if(accepted_stages)
+            for(int i=0;i<2;++i)for(int j=0;j<6;++j)
+                accepted_stages[6*i+j]=q[j]+stages[i][j];
         for (int j=0;j<6;++j) output[j]=result[j];
         return CAVITY_MODEL_OK;
     }
@@ -526,6 +608,14 @@ int CavityModel_gauss(const xt_float_or_tpsa q[6],
                              values[0],values[1],h,6);
 #endif
     return CAVITY_MODEL_ITERATIONS;
+}
+
+GPUFUN
+int CavityModel_gauss(const xt_float_or_tpsa q[6],
+        xt_float_or_tpsa_arg z,xt_float_or_tpsa_arg h,xt_float_or_tpsa_arg Q,
+        const CavityModelSource *source,int model,int64_t max_iter,double tolerance,
+        xt_float_or_tpsa output[6]) {
+    return CavityModel_gauss_stages(q,z,h,Q,source,model,max_iter,tolerance,output,NULL);
 }
 
 // Entire sinc shared by uniform calibration and frozen static factors.
@@ -634,5 +724,293 @@ int CavityModel_prepare_profile(xt_float_or_tpsa_arg frequency,
     return (CavityModel_scalar_finite(source->forward)&&CavityModel_scalar_finite(source->backward)
         &&CavityModel_scalar_finite(source->clock_origin))?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
 }
+
+
+#ifndef XTRACK_TPSA_TRACK
+// Applied-effects local laws: physical full-root model, RF-only P16/M2.
+// Fields are uncharged in source mass units. q=(X,Y,T,Px,Py,gamma).
+// Derivative rows T,X,Y,Z; rho is NOT absorbed in this law.
+typedef struct {
+    double E[3],B[3],dE[4][3],dB[4][3];
+} CavityModelEffectsField;
+GPUFUN
+void CavityModel_effects_cross(const double a[3],const double b[3],double c[3]) {
+    c[0]=a[1]*b[2]-a[2]*b[1];c[1]=a[2]*b[0]-a[0]*b[2];
+    c[2]=a[0]*b[1]-a[1]*b[0];
+}
+GPUFUN
+int CavityModel_effects_profile(double T,double z,const CavityModelSource *source,
+                               double S[6],double C[6]) {
+    const double H=xt_float_or_tpsa_const_part(source->half_span);
+    if(source->rf_profile!=0 || !(H>0.) || !isfinite(H))return CAVITY_MODEL_ARGUMENT;
+    double f[6]={0.,0.,0.,0.,0.,0.};
+    if(fabs(z)<H) {
+        const double u=z/H,a=1.-u,b=1.+u;
+        // Leibniz derivatives of (1-u)^16(1+u)^16 through true D5.
+        for(int n=0;n<=5;++n) {
+            double choose=1.,fall_left=1.;
+            for(int j=0;j<=n;++j) {
+                double fall_right=1.;for(int v=0;v<n-j;++v)fall_right*=16-v;
+                f[n]+=choose*((j%2)?-1.:1.)*fall_left*fall_right
+                    *pow(a,16-j)*pow(b,16-n+j)/pow(H,n);
+                choose*=((double)(n-j))/(j+1.);fall_left*=16-j;
+            }
+        }
+    }
+    const double nu=xt_float_or_tpsa_const_part(source->carrier);
+    const double amp[2]={xt_float_or_tpsa_const_part(source->forward),
+                         xt_float_or_tpsa_const_part(source->backward)};
+    const double cp=xt_float_or_tpsa_const_part(source->counter_phase);
+    for(int n=0;n<6;++n) {S[n]=0.;C[n]=0.;
+        for(int wave=0;wave<2;++wave) {
+            const double w=wave?nu:-nu,theta=T+w*z+(wave?cp:0.);
+            double choose=1.;
+            for(int j=0;j<=n;++j) {
+                const int degree=n-j;
+                const double factor=amp[wave]*choose*f[j]*pow(w,degree);
+                const double angle=theta+degree*(PI/2.);
+                S[n]+=factor*sin(angle);C[n]+=factor*cos(angle);
+                choose*=((double)(n-j))/(j+1.);
+            }
+        }
+        if(!isfinite(S[n])||!isfinite(C[n]))return CAVITY_MODEL_NONFINITE;
+    }
+    return CAVITY_MODEL_OK;
+}
+GPUFUN
+int CavityModel_effects_fields(const double q[6],double z,
+        const CavityModelSource *source,CavityModelEffectsField *field) {
+    double S[6],C[6];int status=CavityModel_effects_profile(q[2],z,source,S,C);
+    if(status!=CAVITY_MODEL_OK)return status;
+    const double x=q[0],y=q[1],r2=x*x+y*y,r4=r2*r2;
+    const double K=C[1]/2.-r2*(C[1]+C[3])/16.;
+    const double L=S[0]/2.-r2*(S[0]+S[2])/16.;
+    field->E[0]=-x*K;field->E[1]=-y*K;
+    field->E[2]=C[0]-r2*(C[0]+C[2])/4.
+               +r4*(C[0]+2.*C[2]+C[4])/64.
+               +xt_float_or_tpsa_const_part(source->dc_gradient);
+    field->B[0]=y*L;field->B[1]=-x*L;field->B[2]=0.;
+    for(int axis=0;axis<4;++axis) {
+        const double dx=axis==1,dy=axis==2,dr=2.*(x*dx+y*dy);
+        double ds[5]={0.},dc[5]={0.};
+        for(int j=0;j<5;++j) {
+            if(axis==0){ds[j]=C[j];dc[j]=-S[j];}
+            if(axis==3){ds[j]=S[j+1];dc[j]=C[j+1];}
+        }
+        const double dK=dc[1]/2.-(dr*(C[1]+C[3])+r2*(dc[1]+dc[3]))/16.;
+        const double dL=ds[0]/2.-(dr*(S[0]+S[2])+r2*(ds[0]+ds[2]))/16.;
+        field->dE[axis][0]=-dx*K-x*dK;field->dE[axis][1]=-dy*K-y*dK;
+        field->dE[axis][2]=dc[0]-(dr*(C[0]+C[2])+r2*(dc[0]+dc[2]))/4.
+            +(2.*r2*dr*(C[0]+2.*C[2]+C[4])+r4*(dc[0]+2.*dc[2]+dc[4]))/64.;
+        field->dB[axis][0]=dy*L+y*dL;field->dB[axis][1]=-dx*L-x*dL;
+        field->dB[axis][2]=0.;
+    }
+    for(int j=0;j<3;++j) {
+        if(!isfinite(field->E[j])||!isfinite(field->B[j]))return CAVITY_MODEL_NONFINITE;
+        for(int axis=0;axis<4;++axis)
+            if(!isfinite(field->dE[axis][j])||!isfinite(field->dB[axis][j]))
+                return CAVITY_MODEL_NONFINITE;
+    }
+    return CAVITY_MODEL_OK;
+}
+GPUFUN
+int CavityModel_effects_law(const double u[3],double Q,double anomaly,
+        const CavityModelEffectsField *field,double S1[6],
+        double omega[3],double thomas[3]) {
+    if(!isfinite(Q)||!isfinite(anomaly))return CAVITY_MODEL_ARGUMENT;
+    double u2=0.;for(int j=0;j<3;++j){if(!isfinite(u[j]))return CAVITY_MODEL_NONFINITE;u2+=u[j]*u[j];}
+    const double gamma=sqrt(1.+u2);if(!(u[2]>0.)||!isfinite(gamma))return CAVITY_MODEL_DOMAIN;
+    double beta[3],DE[3],DB[3],G[3],bxB[3],ExB[3],BxBxBeta[3],bxe[3];
+    double bE=0.,bB=0.,g2=0.;
+    for(int j=0;j<3;++j)beta[j]=u[j]/gamma;
+    CavityModel_effects_cross(beta,field->B,bxB);
+    CavityModel_effects_cross(field->E,field->B,ExB);
+    CavityModel_effects_cross(field->B,bxB,BxBxBeta);
+    // B cross (B cross beta) = -B cross (beta cross B).
+    CavityModel_effects_cross(beta,field->E,bxe);
+    for(int j=0;j<3;++j){G[j]=field->E[j]+bxB[j];g2+=G[j]*G[j];
+        bE+=beta[j]*field->E[j];bB+=beta[j]*field->B[j];
+        DE[j]=field->dE[0][j];DB[j]=field->dB[0][j];
+        for(int a=0;a<3;++a){DE[j]+=beta[a]*field->dE[a+1][j];DB[j]+=beta[a]*field->dB[a+1][j];}}
+    double bxdB[3],R[3],Rxu[3];CavityModel_effects_cross(beta,DB,bxdB);
+    const double emitted=Q*Q*gamma*gamma*(g2-bE*bE),clock=gamma/u[2];
+    double energy=0.;
+    for(int j=0;j<3;++j){
+        R[j]=Q*gamma*(DE[j]+bxdB[j])
+            +Q*Q*(ExB[j]-BxBxBeta[j]+field->E[j]*bE)-emitted*beta[j];
+        energy+=beta[j]*R[j];
+        omega[j]=-Q*((anomaly+1./gamma)*field->B[j]
+            -anomaly*gamma/(gamma+1.)*bB*beta[j]
+            -(anomaly+1./(gamma+1.))*bxe[j]);
+    }
+    CavityModel_effects_cross(R,u,Rxu);
+    for(int j=0;j<3;++j){S1[j]=0.;thomas[j]=Rxu[j]/(gamma+1.);}
+    S1[3]=clock*R[0];S1[4]=clock*R[1];S1[5]=clock*energy;
+    for(int j=0;j<6;++j)if(!isfinite(S1[j]))return CAVITY_MODEL_NONFINITE;
+    for(int j=0;j<3;++j)if(!isfinite(omega[j])||!isfinite(thomas[j]))return CAVITY_MODEL_NONFINITE;
+    return CAVITY_MODEL_OK;
+}
+GPUFUN
+int CavityModel_effects(const double q[6],double z,double Q,
+        const CavityModelSource *source,double anomaly,double S1[6],
+        double omega[3],double thomas[3]) {
+    CavityModelEffectsField field;int status=CavityModel_effects_fields(q,z,source,&field);
+    if(status!=CAVITY_MODEL_OK)return status;
+    double S[6],C[6];status=CavityModel_effects_profile(q[2],z,source,S,C);
+    if(status!=CAVITY_MODEL_OK)return status;
+    const double r2=q[0]*q[0]+q[1]*q[1],Ar=S[1]/2.-r2*(S[1]+S[3])/16.;
+    double u[3]={q[3]-Q*q[0]*Ar,q[4]-Q*q[1]*Ar,0.};
+    const double shell=q[5]*q[5]-1.-u[0]*u[0]-u[1]*u[1];
+    if(!(q[5]>1.)||!(shell>0.))return CAVITY_MODEL_DOMAIN;
+    u[2]=sqrt(shell);return CavityModel_effects_law(u,Q,anomaly,&field,S1,omega,thomas);
+}
+// Actual species, independently of the source normalization Q. These SI
+// constants match the retained private observer (e exact; CODATA2018 eps0).
+GPUFUN
+int CavityModel_species_rho(double omega,double actual_mass_eV,
+        double actual_charge_e,double *rho) {
+    if(!isfinite(omega)||omega<=0.||!isfinite(actual_mass_eV)||actual_mass_eV<=0.
+        ||!isfinite(actual_charge_e))return CAVITY_MODEL_ARGUMENT;
+    const double elementary_charge=1.602176634e-19,epsilon0=8.8541878128e-12;
+    const double result=elementary_charge*omega/(6.*PI*epsilon0*C_LIGHT)
+        *actual_charge_e*actual_charge_e/actual_mass_eV;
+    if(!isfinite(result)||result<0.)return CAVITY_MODEL_NONFINITE;
+    *rho=result;return CAVITY_MODEL_OK;
+}
+
+// First applied-effects draft: full-root RF-only P16, CPU scalar.
+// The LL law is already spatial; BMT/Thomas lab-time rates receive the
+// same-event mechanical clock exactly once here. No photon law is implied.
+GPUFUN
+int CavityModel_effects_rhs(const double q[6],double z,double Q,
+        const CavityModelSource *source,double rho,double out[6]) {
+    int status=CavityModel_flow(q,z,Q,source,CAVITY_MODEL_FULL,out);
+    if(status!=CAVITY_MODEL_OK)return status;
+    double reaction[6],omega[3],thomas[3];
+    status=CavityModel_effects(q,z,Q,source,0.,reaction,omega,thomas);
+    if(status!=CAVITY_MODEL_OK)return status;
+    for(int j=0;j<6;++j){out[j]+=rho*reaction[j];if(!isfinite(out[j]))return CAVITY_MODEL_NONFINITE;}
+    return CAVITY_MODEL_OK;
+}
+
+// Nonlinear reacted G2 stages, not a first-rho endpoint correction.
+GPUFUN
+int CavityModel_mean_gauss_stages(const double q[6],double z,double h,double Q,
+        const CavityModelSource *source,double rho,int64_t maximum,double tolerance,
+        double out[6],double accepted[12]) {
+    if(!isfinite(rho)||rho<0.||maximum<=0||!isfinite(tolerance)||tolerance<=0.)
+        return CAVITY_MODEL_ARGUMENT;
+    const double C[2]={.21132486540518713,.7886751345948129};
+    const double A[2][2]={{.25,-.038675134594812866},{.5386751345948129,.25}};
+    double initial[6],u[2][6],values[2][6],full[6];
+    int status=CavityModel_effects_rhs(q,z,Q,source,rho,initial);if(status!=CAVITY_MODEL_OK)return status;
+    for(int i=0;i<2;++i)for(int j=0;j<6;++j)u[i][j]=C[i]*h*initial[j];
+    for(int64_t iteration=0;iteration<maximum;++iteration) {
+        for(int i=0;i<2;++i){for(int j=0;j<6;++j)full[j]=q[j]+u[i][j];
+            status=CavityModel_effects_rhs(full,z+C[i]*h,Q,source,rho,values[i]);
+            if(status!=CAVITY_MODEL_OK)return status;}
+        double change=0.;
+        for(int i=0;i<2;++i)for(int j=0;j<6;++j){
+            const double next=h*(A[i][0]*values[0][j]+A[i][1]*values[1][j]);
+            change=fmax(change,fabs(next-u[i][j]));u[i][j]=next;}
+        if(change>=tolerance)continue;
+        for(int i=0;i<2;++i){for(int j=0;j<6;++j)full[j]=q[j]+u[i][j];
+            status=CavityModel_effects_rhs(full,z+C[i]*h,Q,source,rho,values[i]);
+            if(status!=CAVITY_MODEL_OK)return status;}
+        double residual=0.;
+        for(int i=0;i<2;++i)for(int j=0;j<6;++j)
+            residual=fmax(residual,fabs(u[i][j]-h*(A[i][0]*values[0][j]+A[i][1]*values[1][j])));
+        if(residual>=tolerance)continue;
+        double endpoint[6],check[6];
+        for(int j=0;j<6;++j)endpoint[j]=q[j]+h*(values[0][j]+values[1][j])*.5;
+        status=CavityModel_effects_rhs(endpoint,z+h,Q,source,rho,check);
+        if(status!=CAVITY_MODEL_OK)return status;
+        for(int i=0;i<2;++i)for(int j=0;j<6;++j)accepted[6*i+j]=q[j]+u[i][j];
+        for(int j=0;j<6;++j)out[j]=endpoint[j];
+        return CAVITY_MODEL_OK;
+    }
+    return CAVITY_MODEL_ITERATIONS;
+}
+
+GPUFUN
+int CavityModel_spin_generator(const double q[6],double z,double Q,
+        const CavityModelSource *source,double anomaly,double rho,double G[9]) {
+    double reaction[6],omega[3],thomas[3],flow[6];
+    int status=CavityModel_effects(q,z,Q,source,anomaly,reaction,omega,thomas);
+    if(status!=CAVITY_MODEL_OK)return status;
+    status=CavityModel_flow(q,z,Q,source,CAVITY_MODEL_FULL,flow);
+    if(status!=CAVITY_MODEL_OK)return status;
+    double w[3];for(int j=0;j<3;++j){w[j]=flow[2]*(omega[j]+rho*thomas[j]);
+        if(!isfinite(w[j]))return CAVITY_MODEL_NONFINITE;}
+    const double skew[9]={0.,-w[2],w[1],w[2],0.,-w[0],-w[1],w[0],0.};
+    for(int j=0;j<9;++j)G[j]=skew[j];return CAVITY_MODEL_OK;
+}
+
+// Solve the two 3-vector collocation stages for all three input columns.
+// The accepted orbit stages are supplied; no orbit or spin normalization is
+// substituted. A fresh OPERATOR residual is checked independently of LU.
+GPUFUN
+int CavityModel_spin_gauss_matrix(const double stages[12],double z,double h,double Q,
+        const CavityModelSource *source,double anomaly,double rho,double tolerance,
+        double out[9]) {
+    if(!isfinite(anomaly)||!isfinite(rho)||rho<0.||!isfinite(tolerance)||tolerance<=0.)
+        return CAVITY_MODEL_ARGUMENT;
+    const double C[2]={.21132486540518713,.7886751345948129};
+    const double A[2][2]={{.25,-.038675134594812866},{.5386751345948129,.25}};
+    double G[2][9],matrix[6][9],solution[6][3];
+    for(int i=0;i<2;++i){int status=CavityModel_spin_generator(stages+6*i,z+C[i]*h,Q,
+        source,anomaly,rho,G[i]);if(status!=CAVITY_MODEL_OK)return status;}
+    for(int i=0;i<2;++i)for(int row=0;row<3;++row){const int r=3*i+row;
+        for(int j=0;j<2;++j)for(int col=0;col<3;++col)
+            matrix[r][3*j+col]=(i==j&&row==col?1.:0.)-h*A[i][j]*G[j][3*row+col];
+        for(int col=0;col<3;++col)matrix[r][6+col]=row==col?1.:0.;}
+    for(int pivot=0;pivot<6;++pivot){
+        int best=pivot;for(int row=pivot+1;row<6;++row)
+            if(fabs(matrix[row][pivot])>fabs(matrix[best][pivot]))best=row;
+        if(!isfinite(matrix[best][pivot])||matrix[best][pivot]==0.)return CAVITY_MODEL_ITERATIONS;
+        if(best!=pivot)for(int col=pivot;col<9;++col){double saved=matrix[pivot][col];
+            matrix[pivot][col]=matrix[best][col];matrix[best][col]=saved;}
+        for(int row=pivot+1;row<6;++row){const double factor=matrix[row][pivot]/matrix[pivot][pivot];
+            for(int col=pivot+1;col<9;++col)matrix[row][col]-=factor*matrix[pivot][col];
+            matrix[row][pivot]=0.;}
+    }
+    for(int row=5;row>=0;--row)for(int col=0;col<3;++col){
+        double value=matrix[row][6+col];for(int j=row+1;j<6;++j)value-=matrix[row][j]*solution[j][col];
+        solution[row][col]=value/matrix[row][row];
+        if(!isfinite(solution[row][col]))return CAVITY_MODEL_NONFINITE;}
+    double products[2][9],residual=0.;
+    for(int i=0;i<2;++i)for(int row=0;row<3;++row)for(int col=0;col<3;++col){
+        double value=0.;for(int k=0;k<3;++k)value+=G[i][3*row+k]*solution[3*i+k][col];
+        products[i][3*row+col]=value;}
+    for(int i=0;i<2;++i)for(int row=0;row<3;++row)for(int col=0;col<3;++col){
+        const double defect=solution[3*i+row][col]-(row==col?1.:0.)
+            -h*(A[i][0]*products[0][3*row+col]+A[i][1]*products[1][3*row+col]);
+        if(!isfinite(defect))return CAVITY_MODEL_NONFINITE;
+        residual=fmax(residual,fabs(defect));}
+    if(residual>=tolerance)return CAVITY_MODEL_ITERATIONS;
+    double result[9];for(int row=0;row<3;++row)for(int col=0;col<3;++col){
+        const int j=3*row+col;result[j]=(row==col?1.:0.)+h*(products[0][j]+products[1][j])*.5;
+        if(!isfinite(result[j]))return CAVITY_MODEL_NONFINITE;}
+    for(int j=0;j<9;++j)out[j]=result[j];return CAVITY_MODEL_OK;
+}
+
+GPUFUN
+int CavityModel_effects_cell(const double q[6],const double spin[3],double z,double h,double Q,
+        const CavityModelSource *source,double anomaly,double rho,int apply_mean,int apply_spin,
+        double out[6],double spin_out[3]) {
+    double endpoint[6],stages[12];int status;
+    if(apply_mean)status=CavityModel_mean_gauss_stages(q,z,h,Q,source,rho,80,2e-13,endpoint,stages);
+    else status=CavityModel_gauss_stages(q,z,h,Q,source,CAVITY_MODEL_FULL,80,2e-13,endpoint,stages);
+    if(status!=CAVITY_MODEL_OK)return status;
+    double next[3]={spin[0],spin[1],spin[2]};
+    if(apply_spin){double rotation[9];status=CavityModel_spin_gauss_matrix(stages,z,h,Q,source,
+            anomaly,apply_mean?rho:0.,2e-13,rotation);if(status!=CAVITY_MODEL_OK)return status;
+        for(int i=0;i<3;++i){next[i]=0.;for(int j=0;j<3;++j)next[i]+=rotation[3*i+j]*spin[j];
+            if(!isfinite(next[i]))return CAVITY_MODEL_NONFINITE;}}
+    for(int j=0;j<6;++j)out[j]=endpoint[j];for(int j=0;j<3;++j)spin_out[j]=next[j];
+    return CAVITY_MODEL_OK;
+}
+
+#endif // CPU-scalar applied effects; no TPSA scalarization
 
 #endif

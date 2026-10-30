@@ -38,6 +38,9 @@ _CAVITY_MODELS.update({
     19: 'phase-averaged-uniform-quadratic',
     20: 'phase-averaged-magnetic',
     21: 'phase-averaged-envelope',
+    22: 'phase-averaged-magnetic-fringe',
+    23: 'phase-averaged-dipole',
+    24: 'phase-averaged-moving-reference',
 })
 _CAVITY_MODEL_IDS = {value: key for key, value in _CAVITY_MODELS.items()}
 _CAVITY_INTEGRATORS = dict(_INDEX_TO_INTEGRATOR)
@@ -48,6 +51,9 @@ _CAVITY_INTEGRATOR_IDS = {
     value: key for key, value in _CAVITY_INTEGRATORS.items()}
 _CAVITY_RF_PROFILES = {0: 'p16', 1: 'uniform', 2: 'gaussian'}
 _CAVITY_RF_PROFILE_IDS = {value: key for key, value in _CAVITY_RF_PROFILES.items()}
+_CAVITY_MAGNETIC_PROFILES = {0: 'uniform', 1: 'gaussian'}
+_CAVITY_MAGNETIC_PROFILE_IDS = {
+    value: key for key, value in _CAVITY_MAGNETIC_PROFILES.items()}
 
 
 def _constant_part(value):
@@ -122,7 +128,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         be supplied explicitly when choosing that profile. The stored default
         zero is unused for other profiles.
     rf_profile_center : float
-        Gaussian centre in metres relative to the parent midpoint. Default0.
+        Gaussian centre in metres relative to the parent midpoint. Default: 0.
         Width and centre remain physical lengths when RF frequency changes.
     envelope_table : EnvelopeTableData or None
         Immutable prepared scalar body/boundary data for the distinct
@@ -130,6 +136,28 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         this element's buffer. Its frequency, carrier, geometry and Gaussian
         profile are fixed; state and supported RF strength/phase controls
         remain live. A prepared table is not a source/error certificate.
+    magnetic_profile : str
+        Static magnetic envelope, "uniform" (default) or "gaussian".
+        Gaussian is the original order-one donor gauge and requires an
+        explicit positive magnetic_profile_sigma and inactive end faces.
+        It is independent of the transport model and the RF envelope.
+    magnetic_profile_sigma : float
+        Gaussian magnetic width in metres, centred at the parent midpoint.
+        No width is inferred. With this profile, ks is the peak normalized
+        solenoid field; knl/ksl remain integrals over the finite parent.
+    reference_px : float
+        Fixed parent-entrance canonical reference px for the dipole and
+        moving-reference models, in native Xtrack normalized momentum units.
+        Default: 0. This
+        prescribed programme is never retuned to the tracked particle.
+    reference_x, reference_y : float
+        Fixed moving-reference entrance coordinates in metres. Default: 0.
+    reference_py : float
+        Fixed moving-reference entrance canonical py in native Xtrack
+        normalized momentum units. Default: 0.
+    num_reference_steps : int
+        Positive RK4 count for the fixed moving-reference programme. Default: 4.
+        Independent of RF source and body/boundary numerical resolutions.
     rf_field_order : int
         Radial Maxwell-recurrence order, separate from magnetic multipole order.
         Full resolved/root sources currently support M=2. The quadratic
@@ -153,6 +181,17 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         Number of outer generating-factor steps for the corresponding averaged
         construction, separate from its characteristic resolution num_kicks.
         Default is 1.
+
+    Applied mean radiation reaction and rest-spin BMT transport currently
+    support only the CPU scalar full phase-resolved M2/P16 RF-only map, through
+    Line.configure_radiation(model="mean") and Line.configure_spin(True).
+    Mean LL is evaluated on reacted stages; it is not an emitted-energy kick.
+    Other source models, static fields, quantum radiation, TPSA effects and
+    sliced effects are not yet supported. Frozen-coordinate and taper-preparation
+    effects analysis and mean backtracking explicitly refuse.
+    The original C2/C3/C4 and connected full-slow implementations still rebuild
+    state-dependent characteristic jets inside tracking; ordinary throughput
+    is not yet suitable for routine production use.
 
     The new phase-resolved models are experimental development interfaces.
     They do not establish physical-source, numerical-error or GPU qualification.
@@ -181,17 +220,33 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         "phase-averaged-envelope" consumes a separately prepared immutable
         RF2/transverse-quadratic scalar table with its fixed hardware and
         energy/position domains. It retains live state and RF amplitudes/phases.
+        "phase-averaged-magnetic-fringe" uses explicit Gaussian RF and
+        magnetic profiles in the original static donor gauge. The solenoid
+        strength is a peak; normal/skew quadrupole strengths are finite-parent
+        integrals. Its observation planes are inside the field, without
+        separate hard-edge actions.
+        "phase-averaged-dipole" uses a uniform integrated horizontal dipole
+        and the fixed reference_px programme. "phase-averaged-moving-reference"
+        instead propagates a prescribed initial reference_x/y/px/py through
+        uniform solenoid and normal/skew quadrupole fields, with a separate
+        reference integration count. The reference is never fitted to the
+        tracked particle. This model also uses body-only observation planes.
     integrator : str
         The continuous phase-resolved models use "gauss2" (two-stage Gauss
         collocation) when "adaptive" is selected. The frozen voltage-action
         model uses "geometric-kick-drift". Legacy indices are unchanged.
-        The uniform quadratic models use "midpoint" when adaptive is chosen.
+        The uniform quadratic and Gaussian averaged models use "midpoint"
+        when adaptive is chosen.
     num_kicks : int
         Fixed parent integration resolution. For the continuous resolved
         models this is the number of Gauss cells (automatic: 64). The averaged
         models use it for their parent characteristic; num_factor_steps sets
         the separate outer-factor resolution. The frozen model uses the
         requested geometric word, with its model-specific automatic choice.
+        Gaussian magnetic/dipole/moving-reference constructions use it for
+        RF-source integration and num_factor_steps for body/boundary words.
+        The prepared-envelope model instead uses these two counts for its
+        body and boundary midpoint words respectively.
         Legacy selectors keep their existing automatic resolution rules.
     '''.strip()
 
@@ -224,6 +279,13 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         'rf_profile_sigma': FloatOrTpsa,
         'rf_profile_center': FloatOrTpsa,
         'envelope_table': xo.Ref(EnvelopeTableData),
+        'magnetic_profile': xo.Int64,
+        'magnetic_profile_sigma': FloatOrTpsa,
+        'reference_px': FloatOrTpsa,
+        'reference_x': FloatOrTpsa,
+        'reference_y': FloatOrTpsa,
+        'reference_py': FloatOrTpsa,
+        'num_reference_steps': xo.Int64,
         'rf_field_order': xo.Int64,
         'ks': FloatOrTpsa,
         'delta_taper': FloatOrTpsa,
@@ -261,6 +323,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         'nominal_energy_gain': '_nominal_energy_gain',
         'rf_profile': '_rf_profile',
         'envelope_table': '_envelope_table',
+        'magnetic_profile': '_magnetic_profile',
         'order': '_order',
         'knl': '_knl',
         'ksl': '_ksl',
@@ -273,7 +336,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     _default_frequency = 0.0
     _default_harmonic = 0.0
 
-    _noexpr_fields = _NOEXPR_FIELDS | {'rf_profile', 'envelope_table'}
+    _noexpr_fields = _NOEXPR_FIELDS | {'rf_profile', 'magnetic_profile', 'envelope_table'}
 
     def __init__(self, **kwargs):
 
@@ -310,7 +373,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         sigma = kwargs.pop('rf_profile_sigma', None)
         center = kwargs.pop('rf_profile_center', 0.)
         requested_model = _CAVITY_MODEL_IDS.get(model, 0)
-        if requested_model in (20, 21) and profile != 'gaussian':
+        if requested_model in (20, 21, 22, 23, 24) and profile != 'gaussian':
             raise ValueError(f'{model} requires an explicit '
                              "rf_profile='gaussian' and positive width")
         if requested_model == 21 and envelope_table is None:
@@ -333,6 +396,38 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         kwargs['rf_profile'] = profile_id
         kwargs['rf_profile_sigma'] = 0. if sigma is None else sigma
         kwargs['rf_profile_center'] = center
+        magnetic_profile = kwargs.pop('magnetic_profile', 'uniform')
+        try:
+            magnetic_profile_id = _CAVITY_MAGNETIC_PROFILE_IDS[magnetic_profile]
+        except KeyError:
+            raise ValueError(f'Invalid Cavity magnetic_profile: {magnetic_profile}') from None
+        magnetic_sigma = kwargs.pop('magnetic_profile_sigma', None)
+        if requested_model == 24:
+            kwargs.setdefault('edge_entry_active', 0)
+            kwargs.setdefault('edge_exit_active', 0)
+            if kwargs['edge_entry_active'] or kwargs['edge_exit_active']:
+                raise ValueError('The moving-reference model requires inactive end faces')
+        if requested_model == 22:
+            if magnetic_profile != 'gaussian':
+                raise ValueError('phase-averaged-magnetic-fringe requires an explicit '
+                                 'Gaussian magnetic profile and width')
+            kwargs.setdefault('edge_entry_active', 0)
+            kwargs.setdefault('edge_exit_active', 0)
+        if magnetic_profile == 'gaussian':
+            if requested_model not in (10, 11, 12, 22):
+                raise ValueError(f'{model} does not support a Gaussian magnetic profile')
+            try:
+                magnetic_width = float(_constant_part(magnetic_sigma))
+            except (TypeError, ValueError):
+                raise ValueError('Gaussian magnetic profile requires an explicit '
+                                 'positive finite width in metres') from None
+            if not isfinite(magnetic_width) or magnetic_width <= 0.:
+                raise ValueError('Gaussian magnetic profile requires a positive finite width')
+            if kwargs.get('edge_entry_active', 1) or kwargs.get('edge_exit_active', 1):
+                raise ValueError('Gaussian magnetic profiles require inactive entry/exit faces')
+        kwargs['magnetic_profile'] = magnetic_profile_id
+        kwargs['magnetic_profile_sigma'] = (
+            0. if magnetic_sigma is None else magnetic_sigma)
         # A Ref must belong to this element's buffer, known after allocation.
         kwargs['envelope_table'] = None
         order = kwargs.pop('order', 5)
@@ -352,6 +447,15 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         kwargs.setdefault('edge_entry_active', 1)
         kwargs.setdefault('edge_exit_active', 1)
         kwargs.setdefault('num_factor_steps', 1)
+        reference_steps = kwargs.pop('num_reference_steps', 4)
+        try:
+            valid_reference_steps = (
+                int(reference_steps) == reference_steps and reference_steps > 0)
+        except (TypeError, ValueError, OverflowError):
+            valid_reference_steps = False
+        if not valid_reference_steps:
+            raise ValueError('num_reference_steps must be a positive integer')
+        kwargs['num_reference_steps'] = int(reference_steps)
         kwargs['wave_number'] = 0. if wave_number is None else wave_number
         kwargs['wave_number_from_frequency'] = int(from_frequency)
         kwargs['nominal_energy_gain'] = (
@@ -425,6 +529,17 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     @staticmethod
     def get_available_rf_profiles():
         return list(_CAVITY_RF_PROFILE_IDS)
+
+    @property
+    def magnetic_profile(self):
+        return _CAVITY_MAGNETIC_PROFILES[self._magnetic_profile]
+
+    @magnetic_profile.setter
+    def magnetic_profile(self, value):
+        try:
+            self._magnetic_profile = _CAVITY_MAGNETIC_PROFILE_IDS[value]
+        except KeyError:
+            raise ValueError(f'Invalid Cavity magnetic_profile: {value}') from None
 
     @property
     def envelope_table(self):
@@ -578,6 +693,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         result['rf_profile'] = self.rf_profile
         result['rf_profile_sigma'] = self.rf_profile_sigma
         result['rf_profile_center'] = self.rf_profile_center
+        result['magnetic_profile'] = self.magnetic_profile
+        result['magnetic_profile_sigma'] = self.magnetic_profile_sigma
+        for name in ('reference_x', 'reference_y', 'reference_px',
+                     'reference_py', 'num_reference_steps'):
+            result[name] = getattr(self, name)
         table = self.envelope_table
         result['envelope_table'] = (None if table is None else
             table.copy(_context=xo.context_default).to_dict())

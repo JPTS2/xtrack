@@ -57,6 +57,18 @@ launching subagents; wait for the user's explicit launch instruction.
   averaged). Use sections rather than files for minor approximation-order
   subdivisions. Separate shared numerical machinery only where substantial
   reuse justifies it, preserving distinct equations and independent checks.
+- Write user-facing examples in the author's `examples/tracking_time` style:
+  clear 80-character major section banners, 40-character subsections, a visible
+  user-parameters block and readable units/reference conventions. Execute the
+  workflow at module/IPython-cell level; do not use `main()` or a
+  `__main__` entry-point wrapper. Helpers may be functions, as in tracking_time.
+  Keep verification machinery and command-line frontends out of the example flow.
+- Keep machine-specific cases and datasets out of the public example changes
+  unless the author has explicitly authorized their publication.
+- Keep the public cavity examples to a few focused, self-contained workflows.
+  Do not ship `_context` helpers, compressed numerical fixtures or one example
+  per internal model subdivision. Retain additional validation cases in ignored
+  local build space rather than expanding the public examples collection.
 - Branch checks are procedural safeguards, not an enforced branch lock. No
   hook or filesystem policy here prevents another process changing HEAD between
   checks. Do not claim branch enforcement beyond the checks actually performed.

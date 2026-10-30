@@ -101,6 +101,47 @@ def bound_table(*, vacuum=False):
         normalization_wave_number=2*np.pi*frequency/c)
 
 
+def slow_wave_physical_table():
+    """Prepare one closed M1 Gaussian RF2/P2 scalar without a data asset.
+
+    Q=A*sin(T-nu*Z), H=H0+Q-R²*(Qzz+Q)/4-RdotP*Qz/(2p)
+    +R²*Qz²/(8p). At explicit eta=0 the fast generators vanish, W=0.
+    This single-wave fixture does not replace the separately retained actual
+    two-wave preparation/boundary evidence or certify interpolation error.
+    """
+    from scipy.fft import dct
+    degree = 8
+    nodes = np.cos(np.pi*np.arange(degree+1)/degree)
+    energy = 2.4+.2*nodes[:, None]
+    position = .4*nodes[None, :]
+    width, nu = .25, 1.1
+    profile = np.exp(-position*position/(2*width*width))
+    slope = -position*profile/(width*width)
+    curvature = (position*position/width**4-1/width**2)*profile
+    momentum = np.sqrt(energy*energy-1.)
+    modes = np.array([(0, 0), (1, 0), (-1, 0), (2, 0), (-2, 0)])
+    values = np.zeros((5, len(modes), 4, degree+1, degree+1), complex)
+    values[0, 1, 0] = -.5j*profile
+    values[0, 1, 1] = nu*slope/4+1j*(curvature+(1-nu*nu)*profile)/8
+    values[0, 1, 2] = (nu*profile+1j*slope)/(4*momentum)
+    values[0, 2] = values[0, 1].conj()
+    values[2, 0, 1] = (nu*nu*profile*profile+slope*slope)/(16*momentum)
+    values[2, 3, 1] = (nu*nu*profile*profile-slope*slope
+                         +2j*nu*profile*slope)/(32*momentum)
+    values[2, 4] = values[2, 3].conj()
+    coefficients = dct(values, type=1, axis=-2)/degree
+    coefficients[..., (0, -1), :] /= 2
+    coefficients = dct(coefficients, type=1, axis=-1)/degree
+    coefficients[..., (0, -1)] /= 2
+    return EnvelopeTableData(energy_interval=(2.2, 2.6),
+        position_interval=(-.4, .4), nu=nu, anchor=-.4,
+        profile_width=width, profile_centre=0., modes=modes,
+        body_coefficients=coefficients,
+        boundary_coefficients=np.zeros_like(coefficients),
+        normalization_frequency=400e6,
+        normalization_wave_number=2*np.pi*400e6/299792458.)
+
+
 def envelope_controls():
     from scipy.constants import c
     k = 2*np.pi*400e6/c
@@ -314,13 +355,8 @@ def test_public_envelope_phase_eta_calibration_gradients(envelope_context):
 
 def test_prepared_physical_table_taper_closes_restored_map(envelope_context):
     """Known loss checks orchestration and saved hardware, not radiation law."""
-    import gzip
-    from pathlib import Path
     import xtrack as xt
-    path = (Path(__file__).resolve().parents[1]/'examples'/'cavity_models'/
-            '005_prepared_envelope.json.gz')
-    with gzip.open(path, 'rt') as stream:
-        table = EnvelopeTableData.from_dict(json.load(stream)['table'])
+    table = slow_wave_physical_table()
     k = table.normalization_wave_number
     rf = xt.Cavity(model='phase-averaged-envelope', envelope_table=table,
         frequency=table.normalization_frequency,
@@ -328,7 +364,7 @@ def test_prepared_physical_table_taper_closes_restored_map(envelope_context):
         wave_number=table.nu*k, rf_profile='gaussian',
         rf_profile_sigma=table.profile_width/k,
         rf_profile_center=table.profile_centre/k,
-        voltage=2e4, eta=.25, counter_phase=.3, calibration_beta=.9,
+        voltage=2e4, eta=0., counter_phase=0., calibration_beta=.9,
         phase=.2, num_kicks=8, num_factor_steps=2)
     line = xt.Line(elements=[
         xt.LineSegmentMap(length=1., qx=.23, qy=.31, betx=2., bety=3.,
