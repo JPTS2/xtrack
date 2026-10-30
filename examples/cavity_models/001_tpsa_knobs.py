@@ -3,7 +3,7 @@
 For example, from the Xtrack checkout::
 
     python examples/cavity_models/001_tpsa_knobs.py --model phase-resolved
-    python examples/cavity_models/001_tpsa_knobs.py --order 2 --json build/tpsa.json
+    python examples/cavity_models/001_tpsa_knobs.py --order 3 --json build/tpsa.json
 
 The positive eta base point deliberately contains both waves. Parameter
 derivatives include the fixed-beta voltage calibration and oscillator phase,

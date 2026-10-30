@@ -24,7 +24,16 @@ void Cavity_track_local_particle(CavityData el, LocalParticle* part0)
         static_field |= CavityData_get_knl(el,i)!=0.;
     for (int64_t i=0; i<CavityData_len_ksl(el); ++i)
         static_field |= CavityData_get_ksl(el,i)!=0.;
-    if (static_field) {
+    // A zero constant with a nonzero static-field TPSA jet is still an
+    // unsupported simultaneous field in the legacy RF recipes.
+    for (int64_t i=0; i<CavityData_len_knl_tpsa(el); ++i)
+        static_field |= CavityData_get_knl_tpsa(el,i)!=0;
+    for (int64_t i=0; i<CavityData_len_ksl_tpsa(el); ++i)
+        static_field |= CavityData_get_ksl_tpsa(el,i)!=0;
+    // Legacy voltage-only projections support their existing P16/uniform
+    // reductions, but cannot silently consume a requested Gaussian source.
+    if (static_field || CavityData_get_rf_profile(el)<0
+                     || CavityData_get_rf_profile(el)>1) {
         START_PER_PARTICLE_BLOCK(part0,part)
             LocalParticle_set_state(part,-99744);
         END_PER_PARTICLE_BLOCK;

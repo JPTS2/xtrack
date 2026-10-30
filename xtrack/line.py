@@ -294,6 +294,7 @@ class Line:
         self._extra_config = {}
         self._extra_config['skip_end_turn_actions'] = False
         self._extra_config['reset_s_at_end_turn'] = True
+        self._extra_config['use_time_based_zeta_update'] = False
         self._extra_config['matrix_responsiveness_tol'] = DEFAULT_MATRIX_RESPONSIVENESS_TOL
         self._extra_config['matrix_stability_tol'] = DEFAULT_MATRIX_STABILITY_TOL
         self._extra_config['dt_update_time_dependent_vars'] = 0.
@@ -5026,6 +5027,30 @@ class Line:
             integrator=integrator,
         )
 
+    def _used_cavity_owners(self):
+        """Visit physical Cavity owners used directly, by replica or slice."""
+        pending = list(self.element_names)
+        seen = set()
+        while pending:
+            element = self._element_dict[pending.pop()]
+            if isinstance(element, xt.Replica):
+                element = element.resolve(self)
+            if id(element) in seen:
+                continue
+            seen.add(id(element))
+            if isinstance(element, xt.Cavity):
+                yield element
+            parent = getattr(element, 'parent_name', None)
+            if parent is not None:
+                pending.append(parent)
+
+    def _check_cavity_effect(self, effect):
+        for element in self._used_cavity_owners():
+            if element._model >= 10:
+                raise NotImplementedError(
+                    f"Cavity model {element.model!r} has no applied {effect} "
+                    "transport yet")
+
     @doc_group("Radiation, Spin and Intra-Beam Scattering")
     def configure_radiation(self, model=None, model_beamstrahlung=None,
                             model_bhabha=None, mode='deprecated'):
@@ -5054,6 +5079,9 @@ class Line:
 
         if mode != 'deprecated':
             raise NameError('mode is deprecated, use model instead')
+
+        if model is not None:
+            self._check_cavity_effect('radiation')
 
         if not self._has_valid_tracker():
             self.build_tracker(compile=False)
@@ -5092,7 +5120,10 @@ class Line:
             bhabha_flag = 0
             self._bhabha_model = None
 
+        used_cavities = {id(ee) for ee in self._used_cavity_owners()}
         for kk, ee in self._element_dict.items():
+            if isinstance(ee, xt.Cavity) and id(ee) not in used_cavities:
+                continue
             if hasattr(ee, 'radiation_flag'):
                 ee.radiation_flag = radiation_flag
 
@@ -5142,6 +5173,11 @@ class Line:
             spin_model = 'auto'
         elif spin_model not in (None, 'auto'):
             raise ValueError("spin_model must be None, 'auto', True, or False")
+
+        if spin_model is not None:
+            self._check_cavity_effect('spin')
+        for element in self._used_cavity_owners():
+            element.spin_tracking = int(spin_model is not None)
 
         self._spin_model = spin_model
 
@@ -7174,6 +7210,24 @@ class Line:
     def reset_s_at_end_turn(self, value):
         self._extra_config['reset_s_at_end_turn'] = value
 
+    @property
+    def use_time_based_zeta_update(self):
+        """Preserve absolute arrival time during reference-momentum changes.
+
+        False retains conventional relative-delay updates. True selects the
+        existing time-based particle update, including consistent turn-origin
+        bookkeeping. This is useful for a fixed laboratory RF programme in an
+        accelerating line. EnergyProgram/SyncTime also select that rule when
+        required by their own clock contract.
+        """
+        return self._extra_config.get('use_time_based_zeta_update', False)
+
+    @use_time_based_zeta_update.setter
+    def use_time_based_zeta_update(self, value):
+        if not isinstance(value, (bool, np.bool_)):
+            raise TypeError('use_time_based_zeta_update must be boolean')
+        self._extra_config['use_time_based_zeta_update'] = bool(value)
+
     @property_with_doc_group("Tracking and Analysis")
     def matrix_responsiveness_tol(self):
         """
@@ -8536,20 +8590,57 @@ class LineAttr:
         # Build _inherit_strengths and _rot_and_shift_from_parent
         _inherit_strengths = np.zeros(len(line.element_names), dtype=np.float64)
         _rot_and_shift_from_parent = np.zeros(len(line.element_names), dtype=np.float64)
+        dynamic_inheritance = []
+        dynamic_alignment = []
         for ii, nn in enumerate(line.element_names):
             ee = line._element_dict[nn]
             if hasattr(ee, '_inherit_strengths') and ee._inherit_strengths:
                 _inherit_strengths[ii] = 1.
-            if hasattr(ee, 'rot_and_shift_from_parent') and ee.rot_and_shift_from_parent:
+            if isinstance(getattr(type(ee), '_inherit_strengths', None), property):
+                dynamic_inheritance.append((ii, ee))
+            if hasattr(ee, '_rot_and_shift_from_parent_for_metadata'):
+                _rot_and_shift_from_parent[ii] = bool(
+                    ee._rot_and_shift_from_parent_for_metadata)
+                dynamic_alignment.append((ii, ee))
+            elif hasattr(ee, 'rot_and_shift_from_parent') and ee.rot_and_shift_from_parent:
                 _rot_and_shift_from_parent[ii] = 1.
-        self._inherit_strengths = _inherit_strengths
-        self._rot_and_shift_from_parent = _rot_and_shift_from_parent
+        self._static_inherit_strengths = _inherit_strengths
+        self._dynamic_inherit_strengths = dynamic_inheritance
+        self._static_rot_and_shift_from_parent = _rot_and_shift_from_parent
+        self._dynamic_rot_and_shift_from_parent = dynamic_alignment
 
         for fn, fa in zip(field_names, field_access):
             name=fa.name
             index=fa.index
             dtype=fa.dtype
             self._cache[fn] = LineAttrItem(name=name, index=index, line=line, dtype=dtype)
+
+    @property
+    def _inherit_strengths(self):
+        """Refresh source-bearing layout roles after ordinary model changes.
+
+        Most element classes have a fixed Boolean role and retain the cached
+        array. A small number of slice classes expose an actual property:
+        continuous Cavity fields live on intervals, legacy RF kicks on nodes.
+        """
+        if not self._dynamic_inherit_strengths:
+            return self._static_inherit_strengths
+        result = self._static_inherit_strengths.copy()
+        for index, element in self._dynamic_inherit_strengths:
+            result[index] = bool(element._inherit_strengths)
+        return result
+
+    @property
+    def _rot_and_shift_from_parent(self):
+        # Metadata can inherit a manually applied frame without changing the
+        # element's automatic native transformation wrapper. Fixed roles keep
+        # their original cached array; only explicit dynamic hooks are read.
+        if not self._dynamic_rot_and_shift_from_parent:
+            return self._static_rot_and_shift_from_parent
+        result = self._static_rot_and_shift_from_parent.copy()
+        for index, element in self._dynamic_rot_and_shift_from_parent:
+            result[index] = bool(element._rot_and_shift_from_parent_for_metadata)
+        return result
 
     def __getitem__(self, key):
 

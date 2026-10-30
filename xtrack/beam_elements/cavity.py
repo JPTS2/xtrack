@@ -6,8 +6,10 @@
 from ..base_element import BeamElement, FloatOrTpsa
 from ..general import DEPRECATION_INFO_PREP_1_0
 from warnings import warn
+from math import isfinite
 import xobjects as xo
 import xtrack as xt
+from .cavity_envelope_data import EnvelopeTableData
 from ._common import (
     _HasIntegrator,
     _HasModelRF,
@@ -28,13 +30,24 @@ _CAVITY_MODELS.update({
     11: 'phase-resolved-paraxial',
     12: 'phase-resolved-longitudinal',
     13: 'phase-resolved-frozen',
+    14: 'phase-averaged-second-order',
+    15: 'phase-averaged-cubic',
+    16: 'phase-averaged-quartic',
+    17: 'phase-averaged-full-slow',
+    18: 'phase-averaged-uniform-quadratic-first-boundary',
+    19: 'phase-averaged-uniform-quadratic',
+    20: 'phase-averaged-magnetic',
+    21: 'phase-averaged-envelope',
 })
 _CAVITY_MODEL_IDS = {value: key for key, value in _CAVITY_MODELS.items()}
 _CAVITY_INTEGRATORS = dict(_INDEX_TO_INTEGRATOR)
 _CAVITY_INTEGRATORS[6] = 'gauss2'
 _CAVITY_INTEGRATORS[7] = 'geometric-kick-drift'
+_CAVITY_INTEGRATORS[8] = 'midpoint'
 _CAVITY_INTEGRATOR_IDS = {
     value: key for key, value in _CAVITY_INTEGRATORS.items()}
+_CAVITY_RF_PROFILES = {0: 'p16', 1: 'uniform', 2: 'gaussian'}
+_CAVITY_RF_PROFILE_IDS = {value: key for key, value in _CAVITY_RF_PROFILES.items()}
 
 
 def _constant_part(value):
@@ -91,13 +104,55 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         Longitudinal carrier in rad/m. None follows 2*pi*frequency/c, including
         harmonic resolution. A number is fixed; an explicit zero is distinct
         from None.
+    nominal_energy_gain : float or None
+        Frozen-model reference programme, in eV per reference particle,
+        including its absolute reference charge. None derives the nominal
+        gain from the RF settings. An explicit value, including zero, fixes
+        the programme independently of the physical RF source and clock.
+        Only "phase-resolved-frozen" consumes this setting.
+    rf_profile : str or None
+        Built-in ideal longitudinal RF envelope: "p16", "uniform" or
+        "gaussian". None selects uniform for the frozen and uniform-quadratic
+        models, and p16 otherwise. The selected profile is stored independently
+        of the transport model: changing model never changes the profile.
+        Gaussian requires an explicit positive rf_profile_sigma. Uniform and
+        Gaussian intervals can have nonzero fields at their observation planes.
+    rf_profile_sigma : float
+        Gaussian width in metres. There is no guessed Gaussian width; it must
+        be supplied explicitly when choosing that profile. The stored default
+        zero is unused for other profiles.
+    rf_profile_center : float
+        Gaussian centre in metres relative to the parent midpoint. Default0.
+        Width and centre remain physical lengths when RF frequency changes.
+    envelope_table : EnvelopeTableData or None
+        Immutable prepared scalar body/boundary data for the distinct
+        phase-averaged-envelope model. Attachment copies the payload into
+        this element's buffer. Its frequency, carrier, geometry and Gaussian
+        profile are fixed; state and supported RF strength/phase controls
+        remain live. A prepared table is not a source/error certificate.
     rf_field_order : int
         Radial Maxwell-recurrence order, separate from magnetic multipole order.
-        The current live-source implementation supports M=2.
+        Full resolved/root sources currently support M=2. The quadratic
+        constructions have the fixed RF truncation stated in their model.
     ks : float
         Uniform longitudinal magnetic field divided by signed reference
         rigidity, in inverse metres. Normal/skew integrated multipoles use
         knl/ksl, with the standard factorial and reference-rigidity conventions.
+        Legacy RF selectors refuse nonzero static strengths.
+    delta_taper : float
+        Saved relative static-strength correction for the new source-based
+        models: ks, knl and ksl are multiplied by 1+delta_taper. This physical
+        field setting remains active when radiation is disabled. The dedicated
+        taper-analysis pass instead samples its reference lane once per parent.
+    phase_taper, lag_taper : float
+        Additional phase offset, in radians/degrees respectively. In the new
+        source-based models this is a physical RF phase offset even when local
+        radiation is disabled. The legacy compile-gated semantics are retained
+        for the old RF selectors.
+    num_factor_steps : int
+        Number of outer generating-factor steps for the corresponding averaged
+        construction, separate from its characteristic resolution num_kicks.
+        Default is 1.
 
     The new phase-resolved models are experimental development interfaces.
     They do not establish physical-source, numerical-error or GPU qualification.
@@ -106,16 +161,42 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     _docstring_models = '''model : str
         Legacy RF selectors retain their existing behaviour. New physical
         selectors are "phase-resolved", "phase-resolved-paraxial",
-        "phase-resolved-longitudinal" and "phase-resolved-frozen".
+        "phase-resolved-longitudinal", "phase-resolved-frozen",
+        "phase-averaged-second-order", "phase-averaged-cubic" and
+        "phase-averaged-quartic" and "phase-averaged-full-slow". The
+        averaged selectors choose the CanonicalF4 second-counter-wave-order
+        product and its distinct scalar-gradient cubic/quartic corrections.
+        These already retain the full slow root. The separate full-slow
+        selector uses its connected global_log4 boundary/body construction.
+        "phase-averaged-uniform-quadratic-first-boundary" and
+        "phase-averaged-uniform-quadratic" instead use uniform nonzero-field
+        intervals, quadratic transport and first- or second-boundary words,
+        with live unequal-wave amplitudes and counter phase. These are
+        distinct source/transport assumptions, not the localized P16 source.
         Physical assumptions and numerical integration are separate choices.
+        "phase-averaged-magnetic" is the centred straight solenoid/normal
+        quadrupole model at joint RF order two and transverse quadratic order;
+        it requires an explicit Gaussian RF profile and width. It is distinct
+        from the full-root averaged model.
+        "phase-averaged-envelope" consumes a separately prepared immutable
+        RF2/transverse-quadratic scalar table with its fixed hardware and
+        energy/position domains. It retains live state and RF amplitudes/phases.
     integrator : str
-        The new continuous models use "gauss2" (two-stage Gauss collocation)
-        when "adaptive" is selected. Legacy integrator indices are unchanged.
+        The continuous phase-resolved models use "gauss2" (two-stage Gauss
+        collocation) when "adaptive" is selected. The frozen voltage-action
+        model uses "geometric-kick-drift". Legacy indices are unchanged.
+        The uniform quadratic models use "midpoint" when adaptive is chosen.
+    num_kicks : int
+        Fixed parent integration resolution. For the continuous resolved
+        models this is the number of Gauss cells (automatic: 64). The averaged
+        models use it for their parent characteristic; num_factor_steps sets
+        the separate outer-factor resolution. The frozen model uses the
+        requested geometric word, with its model-specific automatic choice.
+        Legacy selectors keep their existing automatic resolution rules.
     '''.strip()
 
     __doc__ = '\n    '.join([_docstring_start, _docstring_models,
-        _HasIntegrator._for_docstring.replace(
-            'num_multipole_kicks', 'num_kicks').replace('multipole kicks', 'kicks'),
+        _HasKnlKsl._for_docstring,
         _for_docstring_alignment, '\n',
         _docstring_general_notes, '\n\n'])
 
@@ -137,14 +218,25 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         'calibration_beta': FloatOrTpsa,
         'wave_number': FloatOrTpsa,
         'wave_number_from_frequency': xo.Int64,
+        'nominal_energy_gain': FloatOrTpsa,
+        'nominal_energy_gain_from_rf': xo.Int64,
+        'rf_profile': xo.Int64,
+        'rf_profile_sigma': FloatOrTpsa,
+        'rf_profile_center': FloatOrTpsa,
+        'envelope_table': xo.Ref(EnvelopeTableData),
         'rf_field_order': xo.Int64,
         'ks': FloatOrTpsa,
+        'delta_taper': FloatOrTpsa,
+        'radiation_flag': xo.Int64,
+        'spin_tracking': xo.Int64,
         'edge_entry_active': xo.Int64,
         'edge_exit_active': xo.Int64,
         'order': xo.Int64,
         'inv_factorial_order': xo.Float64,
         'knl': xo.Float64[:],
         'ksl': xo.Float64[:],
+        'knl_tpsa': xo.UInt64[:],
+        'ksl_tpsa': xo.UInt64[:],
         'absolute_time': xo.Int64,
         'num_kicks': xo.Int64,
         'num_factor_steps': xo.Int64,
@@ -156,7 +248,8 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         '#include "xtrack/beam_elements/elements_src/cavity.h"',
     ]
 
-    _skip_in_to_dict = ['_order', 'inv_factorial_order']  # defined by knl, etc.
+    _skip_in_to_dict = ['_order', 'inv_factorial_order',
+                       'knl_tpsa', 'ksl_tpsa', '_knl_tpsa', '_ksl_tpsa']
 
     _rename = {
         'model': '_model',
@@ -165,13 +258,22 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         'harmonic': '_harmonic',
         'lag': '_lag',
         'wave_number': '_wave_number',
+        'nominal_energy_gain': '_nominal_energy_gain',
+        'rf_profile': '_rf_profile',
+        'envelope_table': '_envelope_table',
         'order': '_order',
+        'knl': '_knl',
+        'ksl': '_ksl',
+        'knl_tpsa': '_knl_tpsa',
+        'ksl_tpsa': '_ksl_tpsa',
     }
+
+    _float_or_tpsa_array_fields = ('knl', 'ksl')
 
     _default_frequency = 0.0
     _default_harmonic = 0.0
 
-    _noexpr_fields = _NOEXPR_FIELDS
+    _noexpr_fields = _NOEXPR_FIELDS | {'rf_profile', 'envelope_table'}
 
     def __init__(self, **kwargs):
 
@@ -180,6 +282,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
             return
 
         model = kwargs.pop('model', None)
+        envelope_table = kwargs.pop('envelope_table', None)
+        if isinstance(envelope_table, dict):
+            envelope_table = EnvelopeTableData.from_dict(envelope_table)
+        if envelope_table is not None and not isinstance(envelope_table, EnvelopeTableData):
+            raise TypeError('envelope_table must be EnvelopeTableData or None')
         integrator = kwargs.pop('integrator', None)
         frequency = kwargs.pop('frequency', None)
         harmonic = kwargs.pop('harmonic', None)
@@ -187,10 +294,57 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         wave_number = kwargs.pop('wave_number', None)
         from_frequency = kwargs.pop('wave_number_from_frequency',
                                     wave_number is None)
+        nominal_energy_gain = kwargs.pop('nominal_energy_gain', None)
+        nominal_from_rf = kwargs.pop('nominal_energy_gain_from_rf',
+                                    nominal_energy_gain is None)
+        profile = kwargs.pop('rf_profile', None)
+        if profile is None:
+            profile = ('uniform' if model in (
+                'phase-resolved-frozen',
+                'phase-averaged-uniform-quadratic-first-boundary',
+                'phase-averaged-uniform-quadratic') else 'p16')
+        try:
+            profile_id = _CAVITY_RF_PROFILE_IDS[profile]
+        except KeyError:
+            raise ValueError(f'Invalid Cavity rf_profile: {profile}') from None
+        sigma = kwargs.pop('rf_profile_sigma', None)
+        center = kwargs.pop('rf_profile_center', 0.)
+        requested_model = _CAVITY_MODEL_IDS.get(model, 0)
+        if requested_model in (20, 21) and profile != 'gaussian':
+            raise ValueError(f'{model} requires an explicit '
+                             "rf_profile='gaussian' and positive width")
+        if requested_model == 21 and envelope_table is None:
+            raise ValueError('phase-averaged-envelope requires envelope_table')
+        if requested_model in (13, 18, 19) and profile != 'uniform':
+            raise ValueError(f'{model} requires rf_profile="uniform"')
+        if requested_model < 10 and profile == 'gaussian':
+            raise ValueError('Legacy Cavity projections do not support a '
+                             'Gaussian RF profile')
+        if profile == 'gaussian':
+            try:
+                width = float(_constant_part(sigma))
+                midpoint = float(_constant_part(center))
+            except (TypeError, ValueError):
+                raise ValueError('Gaussian RF profile requires an explicit '
+                                 'positive finite width in metres') from None
+            if not isfinite(width) or width <= 0. or not isfinite(midpoint):
+                raise ValueError('Gaussian RF profile requires a positive '
+                                 'finite width and finite centre in metres')
+        kwargs['rf_profile'] = profile_id
+        kwargs['rf_profile_sigma'] = 0. if sigma is None else sigma
+        kwargs['rf_profile_center'] = center
+        # A Ref must belong to this element's buffer, known after allocation.
+        kwargs['envelope_table'] = None
         order = kwargs.pop('order', 5)
         multipoles = self._prepare_multipolar_params(
             order, knl=kwargs.pop('knl', None), ksl=kwargs.pop('ksl', None))
         kwargs.update(multipoles)
+        for name in ('knl', 'ksl'):
+            # Handles are process-local owned storage, never serialized knobs.
+            handles = kwargs.pop(name+'_tpsa', None)
+            if handles is not None and any(handles):
+                raise ValueError('Cavity TPSA array handles cannot be imported')
+            kwargs[name+'_tpsa'] = [0]*len(kwargs[name])
         kwargs.setdefault('eta', 1.)
         kwargs.setdefault('counter_phase', 0.)
         kwargs.setdefault('calibration_beta', 1.)
@@ -200,8 +354,12 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         kwargs.setdefault('num_factor_steps', 1)
         kwargs['wave_number'] = 0. if wave_number is None else wave_number
         kwargs['wave_number_from_frequency'] = int(from_frequency)
+        kwargs['nominal_energy_gain'] = (
+            0. if nominal_energy_gain is None else nominal_energy_gain)
+        kwargs['nominal_energy_gain_from_rf'] = int(nominal_from_rf)
 
         self.xoinitialize(**kwargs)
+        self.envelope_table = envelope_table
 
         # Trigger properties
         if model is not None:
@@ -254,6 +412,113 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         return list(_CAVITY_INTEGRATOR_IDS)
 
     @property
+    def rf_profile(self):
+        return _CAVITY_RF_PROFILES[self._rf_profile]
+
+    @rf_profile.setter
+    def rf_profile(self, value):
+        try:
+            self._rf_profile = _CAVITY_RF_PROFILE_IDS[value]
+        except KeyError:
+            raise ValueError(f'Invalid Cavity rf_profile: {value}') from None
+
+    @staticmethod
+    def get_available_rf_profiles():
+        return list(_CAVITY_RF_PROFILE_IDS)
+
+    @property
+    def envelope_table(self):
+        # Ref dressing caches are not relocated by HybridClass.copy. Dress
+        # the actual owned reference, rather than returning a cached wrapper
+        # which can still point into the original element's buffer.
+        raw = self._xobject.envelope_table
+        if raw is None:
+            return None
+        table = EnvelopeTableData(_xobject=raw)
+        table._movable = False
+        return table
+
+    @envelope_table.setter
+    def envelope_table(self, value):
+        if value is None:
+            self._xobject.envelope_table = None
+            self.__dict__.pop('_dressed_envelope_table', None)
+            return
+        if isinstance(value, dict):
+            value = EnvelopeTableData.from_dict(value, _buffer=self._buffer)
+        if not isinstance(value, EnvelopeTableData):
+            raise TypeError('envelope_table must be EnvelopeTableData or None')
+        if value._buffer is not self._buffer:
+            value = value.copy(_buffer=self._buffer)
+        self._xobject.envelope_table = value._xobject
+        value._movable = False
+        self.__dict__.pop('_dressed_envelope_table', None)
+
+    def _copy_owned_xobject(self, _context=None, _buffer=None, _offset=None):
+        """Relocate numeric storage plus the owned immutable table graph.
+
+        A generic Ref-bearing Struct copy reads RawUnions as values. For
+        active TPSA fields that would decode handles without their owner.
+        Allocate zero union slots, then copy their eight raw bytes exactly;
+        the owning Cavity retains its Python scalar/array handle lifetimes.
+        """
+        source = self._xobject
+        values = {}
+        union_names = []
+        for field in self._XoStruct._fields:
+            if getattr(field.ftype, '_is_float_or_tpsa', False):
+                values[field.name] = 0.
+                union_names.append(field.name)
+            elif field.name == 'envelope_table':
+                values[field.name] = None
+            else:
+                values[field.name] = getattr(source, field.name)
+        target = self._XoStruct(_context=_context, _buffer=_buffer,
+                                _offset=_offset, **values)
+        for name in union_names:
+            target._buffer.update_from_xbuffer(target._get_offset(name),
+                source._buffer, source._get_offset(name), FloatOrTpsa._size)
+        table = self.envelope_table
+        if table is not None:
+            # A new element owns an independent payload. Copying into the
+            # selected buffer also fixes every relative reference offset.
+            table = table.copy(_buffer=target._buffer)
+            target.envelope_table = table._xobject
+        return target
+
+    def move(self, _context=None, _buffer=None, _offset=None):
+        # Respect ordinary Env/parent ownership; only the owned payload Ref
+        # is made relocatable, not arbitrary externally referenced objects.
+        if not self._movable and not self._force_moveable:
+            raise MemoryError('This Cavity lives within another object; make a copy.')
+        target_context = _buffer.context if _buffer is not None else _context
+        if (getattr(self._xobject, '_tpsa_enabled', 0)
+                and target_context is not None
+                and not isinstance(target_context, xo.ContextCpu)):
+            raise NotImplementedError('TPSA-enabled Cavity storage requires a CPU context')
+        self._xobject = self._copy_owned_xobject(
+            _context=_context, _buffer=_buffer, _offset=_offset)
+        self.__dict__.pop('_dressed_envelope_table', None)
+
+    def copy(self, _context=None, _buffer=None, _offset=None):
+        if getattr(self._xobject, '_tpsa_enabled', 0):
+            raise NotImplementedError('Copying TPSA-enabled beam elements is not supported')
+        if _context is None and _buffer is None:
+            _context = self._context
+        target = self._copy_owned_xobject(
+            _context=_context, _buffer=_buffer, _offset=_offset)
+        result = self.__class__.__new__(self.__class__)
+        for name, value in self.__dict__.items():
+            if name in ('_xobject', '_dressed_envelope_table'):
+                continue
+            result.__dict__[name] = value.copy() if hasattr(value, 'copy') else value
+        result._xobject = target
+        result._movable = True
+        if hasattr(self, 'prototype'):
+            result.prototype = self.prototype
+        return result
+
+    @property
     def wave_number(self):
         return None if self.wave_number_from_frequency else self._wave_number
 
@@ -262,12 +527,85 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         self.wave_number_from_frequency = int(value is None)
         self._wave_number = 0. if value is None else value
 
+    @property
+    def nominal_energy_gain(self):
+        return (None if self.nominal_energy_gain_from_rf
+                else self._nominal_energy_gain)
+
+    @nominal_energy_gain.setter
+    def nominal_energy_gain(self, value):
+        self.nominal_energy_gain_from_rf = int(value is None)
+        self._nominal_energy_gain = 0. if value is None else value
+
+    @property
+    def knl(self):
+        from ..tpsa._cavity_array import CavityArrayView
+        return CavityArrayView(self, '_knl', '_knl_tpsa')
+
+    @knl.setter
+    def knl(self, value):
+        self.knl[:] = value
+
+    @property
+    def ksl(self):
+        from ..tpsa._cavity_array import CavityArrayView
+        return CavityArrayView(self, '_ksl', '_ksl_tpsa')
+
+    @ksl.setter
+    def ksl(self, value):
+        self.ksl[:] = value
+
+    # HybridClass inspection uses raw field names even when Python storage
+    # descriptors are renamed. These are internal handles, not saved settings.
+    @property
+    def knl_tpsa(self):
+        return self._knl_tpsa
+
+    @property
+    def ksl_tpsa(self):
+        return self._ksl_tpsa
+
     def to_dict(self, **kwargs):
         result = super().to_dict(**kwargs)
         # Zero-valued fields are normally omitted. Here an explicit zero
         # carrier differs physically from the constructor default None.
         result['wave_number'] = self.wave_number
         result['wave_number_from_frequency'] = int(self.wave_number_from_frequency)
+        result['nominal_energy_gain'] = self.nominal_energy_gain
+        result['nominal_energy_gain_from_rf'] = int(self.nominal_energy_gain_from_rf)
+        # Preserve the explicit source even when p16 has raw enum value zero.
+        # Inference is a constructor convenience, never a serialization rule.
+        result['rf_profile'] = self.rf_profile
+        result['rf_profile_sigma'] = self.rf_profile_sigma
+        result['rf_profile_center'] = self.rf_profile_center
+        table = self.envelope_table
+        result['envelope_table'] = (None if table is None else
+            table.copy(_context=xo.context_default).to_dict())
+        # The xobject zero-elision rule must not replace explicit zeros by
+        # nonzero Python constructor defaults on reload. This includes disabled
+        # physical faces and eta=0 (a one-wave source), not just invalid inputs.
+        for name in ('eta', 'calibration_beta', 'rf_field_order',
+                     'edge_entry_active', 'edge_exit_active',
+                     'num_factor_steps', 'order'):
+            result[name] = getattr(self, name)
+        for name in ('knl_tpsa', 'ksl_tpsa', '_knl_tpsa', '_ksl_tpsa'):
+            result.pop(name, None)
+        # Do not inherit the standard multipole mixin's approximate-zero
+        # elision for these simultaneous fields. Preserve every represented
+        # coefficient, and the actual allocation used by indexed controls.
+        result['knl'] = self._context.nparray_from_context_array(self._knl).tolist()
+        result['ksl'] = self._context.nparray_from_context_array(self._ksl).tolist()
+        return result
+
+    @classmethod
+    def from_dict(cls, dct, **kwargs):
+        # A later order change can deliberately leave a larger allocated
+        # array. Constructor padding infers its maximum order from length;
+        # restore the saved active order after allocating that same storage.
+        order = dct.get('order')
+        result = super().from_dict(dct, **kwargs)
+        if order is not None:
+            result.order = order
         return result
 
     def track(self, particles, *args, **kwargs):

@@ -42,6 +42,7 @@ _TPSA_NUM_FIELDS = COORDS + _DERIVED_COORDS + _LOCAL_COORDS + _SPIN_COORDS
 
 
 class TpsaParticleData(xo.Struct):
+
     x = xo.UInt64
     px = xo.UInt64
     y = xo.UInt64
@@ -133,7 +134,7 @@ class ParticlesTpsa:
             name: desc.constant(self._ref(name)) for name in _DERIVED_COORDS
         }
         self._local_series.update({
-            name: madng_tpsa.Tpsa(desc) for name in _LOCAL_COORDS
+            name: desc.constant(self._ref(name)) for name in _LOCAL_COORDS
         })
         self._local_series.update({
             name: desc.constant(self._ref(name)) for name in _SPIN_COORDS
@@ -145,8 +146,9 @@ class ParticlesTpsa:
 
         Coordinate ``tpsa_t*`` addresses are stable for the life of the ``Tpsa`` objects
         and the shared object writes the map in place through them, so they are set once here.
-        The reference (double) variables never change during tracking. The kernel copies
-        this data into an unrolled ``LocalParticle`` and synchronizes tracking state back.
+        Reference scalar slots can change through reference-energy and clock
+        elements. The kernel copies them into an unrolled ``LocalParticle`` and
+        synchronizes their current values and tracking state back.
         """
         ffi = madng_tpsa.ffi
         bp = TpsaParticleData()
@@ -189,11 +191,33 @@ class ParticlesTpsa:
     def to_particles(self) -> xt.Particles:
         """A fresh single ``xt.Particles`` at the current const part (validation use)."""
         p = self._ref_particle.copy()
-        p.time_s = self.time_s
-        p.t_sim = self.t_sim
-        p.reference_turns = self.reference_turns
+
+        def store(name, value):
+            # Snapshot current metadata without applying another physical
+            # reference transformation to coordinates already transformed by
+            # the tracked element. Native backing arrays bypass derived setters.
+            storage_name = p._rename.get(name, name)
+            target = getattr(p, storage_name)
+            if hasattr(target, '__setitem__'):
+                target[...] = value
+            else:
+                setattr(p, storage_name, value)
+
+        if self._xobject is not None:
+            for name in _REF_VARS:
+                store(name, float(getattr(self._xobject, name)))
+        else:
+            p.time_s = self.time_s
+            p.t_sim = self.t_sim
+            p.reference_turns = self.reference_turns
         for c, v in zip(COORDS, self.const_part):
             setattr(p, c, [v])
+        if self._xobject is not None:
+            for name in ('s',) + _LOCAL_COORDS + _SPIN_COORDS:
+                store(name, float(self._local_series[name].const_part))
+            for name in _INT_FIELDS + _RNG_FIELDS:
+                store(name, int(getattr(self._xobject, name)))
+            p.reorganize()
         return p
 
     def __getattr__(self, name: str) -> madng_tpsa.Tpsa | float:

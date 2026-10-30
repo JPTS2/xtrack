@@ -97,16 +97,23 @@ for td in to_do:
                     'CavityModels_track_local_particle('
                     + generated_data_class + '_getp__parent(el), part0, '
                     + generated_data_class + '_get_weight(el), '
-                    + generated_data_class + '_get_slice_offset(el) / '
-                    + generated_data_class + '_get__parent_length(el));')
+                    + generated_data_class + '_get_slice_offset_fraction(el));')
             else:
                 # In a thin *layout*, continuous models are transported on
                 # the intervening source-bearing DriftSlice intervals.
                 # These nodes are identity partition markers, not RF kicks.
                 # Other finite words need their own exact decomposition.
                 replacement = (
-                    'if (' + generated_data_class
-                    + '_get__parent_model(el) > 12) {\n'
+                    'const int model=' + generated_data_class
+                    + '_get__parent_model(el);\n'
+                    '        if (' + generated_data_class
+                    + '_get__parent_radiation_flag(el) || '
+                    + generated_data_class
+                    + '_get__parent_spin_tracking(el)) {\n'
+                    '            START_PER_PARTICLE_BLOCK(part0, part)\n'
+                    '                LocalParticle_set_state(part, -99744);\n'
+                    '            END_PER_PARTICLE_BLOCK;\n'
+                    '        } else if (model>21) {\n'
                     '            START_PER_PARTICLE_BLOCK(part0, part)\n'
                     '                LocalParticle_set_state(part, -99730);\n'
                     '            END_PER_PARTICLE_BLOCK;\n'
@@ -308,6 +315,14 @@ double ThickSliceCavityData_get_slice_offset(ThickSliceCavityData el) {
         * ThickSliceCavityData_get__parent_length(el);
 }
 
+GPUFUN
+double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
+    const double fraction=ThickSliceCavityData_get__slice_offset_fraction(el);
+    return fraction>=0. ? fraction
+        : ThickSliceCavityData_get__legacy_slice_offset(el)
+          /ThickSliceCavityData_get__parent_length(el);
+}
+
 '''
             if marker not in out_content:
                 raise ValueError('Thick Cavity slice function template changed')
@@ -372,6 +387,14 @@ double ThickSliceCavityData_get_slice_offset(ThickSliceCavityData el) {
         return fraction*DriftSliceCavityData_get__parent_length(el);
     }
 
+    GPUFUN
+    double DriftSliceCavityData_get_slice_offset_fraction(DriftSliceCavityData el) {
+        const double fraction=DriftSliceCavityData_get__slice_offset_fraction(el);
+        return fraction>=0. ? fraction
+            : DriftSliceCavityData_get__legacy_slice_offset(el)
+              /DriftSliceCavityData_get__parent_length(el);
+    }
+
     '''
         if marker not in out_drift_slice:
             raise ValueError('Drift Cavity slice template changed')
@@ -379,9 +402,8 @@ double ThickSliceCavityData_get_slice_offset(ThickSliceCavityData el) {
         marker = '        double weight = DriftSliceCavityData_get_weight(el);'
         branch = '''        const int model=DriftSliceCavityData_get__parent_model(el);
         if (model>=10) {
-            if (model<=12) {
-                const double length=DriftSliceCavityData_get__parent_length(el);
-                const double start=DriftSliceCavityData_get_slice_offset(el)/length;
+            if (model<=21) {
+                const double start=DriftSliceCavityData_get_slice_offset_fraction(el);
                 CavityModels_track_source_interval(
                     DriftSliceCavityData_getp__parent(el),part0,
                     DriftSliceCavityData_get_weight(el),start);
@@ -390,6 +412,14 @@ double ThickSliceCavityData_get_slice_offset(ThickSliceCavityData el) {
                     LocalParticle_set_state(part,-99730);
                 END_PER_PARTICLE_BLOCK;
             }
+            return;
+        }
+
+        if (DriftSliceCavityData_get__parent_rf_profile(el)<0
+                || DriftSliceCavityData_get__parent_rf_profile(el)>1) {
+            START_PER_PARTICLE_BLOCK(part0,part)
+                LocalParticle_set_state(part,-99744);
+            END_PER_PARTICLE_BLOCK;
             return;
         }
 

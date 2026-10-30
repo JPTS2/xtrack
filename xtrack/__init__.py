@@ -12,6 +12,7 @@ from .tpsa import ParticlesTpsa
 
 from .base_element import BeamElement, Replica, FloatOrTpsa
 from .beam_elements import *
+from .beam_elements.cavity_envelope_data import EnvelopeTableData
 from .random import *
 from .tracker_data import TrackerData
 from .line import Line, Node, freeze_longitudinal, _temp_knobs, EnergyProgram

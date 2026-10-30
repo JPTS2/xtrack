@@ -5,6 +5,7 @@
 #ifndef XTRACK_CAVITY_MODELS_H
 #define XTRACK_CAVITY_MODELS_H
 
+// Full, paraxial and longitudinal phase-resolved source/maps.
 // Conservative source-based RF maps. Coordinates are (X,Y,T,Px,Py,E),
 // scaled by (1/k,1/k,1/(kc),mc,mc,mc^2); the T--E block has negative sign.
 // k is the coordinate scale omega/c, independent of the physical carrier.
@@ -13,6 +14,7 @@
 // This header supplies numerical maps, not physical/numerical admission.
 #include <math.h>
 #include <stdint.h>
+#include <stddef.h>
 #include "xtrack/beam_elements/elements_src/cavity_models_compat.h"
 
 enum CavityModelStatus {
@@ -27,7 +29,11 @@ enum CavityPhysicalModel {
     CAVITY_MODEL_FULL = 10,
     CAVITY_MODEL_PARAXIAL = 11,
     CAVITY_MODEL_LONGITUDINAL = 12,
-    CAVITY_MODEL_FROZEN = 13
+    CAVITY_MODEL_FROZEN = 13,
+    CAVITY_MODEL_AVERAGED_SECOND_ORDER = 14,
+    CAVITY_MODEL_AVERAGED_CUBIC = 15,
+    CAVITY_MODEL_AVERAGED_QUARTIC = 16,
+    CAVITY_MODEL_AVERAGED_FULL_SLOW = 17
 };
 
 typedef struct {
@@ -36,14 +42,37 @@ typedef struct {
     xt_float_or_tpsa k, omega, half_span, length;
     xt_float_or_tpsa forward, backward, carrier, counter_phase, clock_origin;
     xt_float_or_tpsa voltage_norm, phase, dc_gradient;
+    // Built-in profile: 0 P16, 1 uniform, 2 Gaussian. Width/centre in Z=k*z.
+    int rf_profile;
+    xt_float_or_tpsa profile_sigma, profile_center;
     double reference_charge, reference_beta;
     int freeze_energy, freeze_zeta;
+    int freeze_x, freeze_px, freeze_y, freeze_py;
     // q_ref A/(p_ref) conventions: magnetic_scale=p_ref/(q_ref*m_source*c).
     // knl/ksl are the ordinary integrated normal/skew magnetic strengths.
     xt_float_or_tpsa magnetic_scale, ks;
     int64_t order;
     GPUGLMEM const double *knl, *ksl;
+    // Optional process-local handles. The ordinary Float64 arrays retain
+    // scalar mirrors; CPU TPSA reads the live indexed series when present.
+    GPUGLMEM const uint64_t *knl_tpsa, *ksl_tpsa;
 } CavityModelSource;
+
+GPUFUN
+xt_float_or_tpsa CavityModel_static_coefficient(const CavityModelSource *source,
+                                               int64_t index,int skew) {
+    GPUGLMEM const double *values=skew ? source->ksl : source->knl;
+    GPUGLMEM const uint64_t *handles=skew ? source->ksl_tpsa : source->knl_tpsa;
+    if (handles && handles[index]) {
+#ifdef XTRACK_TPSA_TRACK
+        uint64_t handle=handles[index];
+        return xt_float_or_tpsa_get(&handle,1);
+#elif defined(XTRACK_TPSA_COMPAT_H)
+        return xt_float_or_tpsa_get_double(handles[index],1);
+#endif
+    }
+    return values ? values[index] : 0.;
+}
 
 typedef struct {
     xt_float_or_tpsa a[4];
@@ -125,6 +154,11 @@ int CavityModel_prepare(
         || !isfinite(beta) || beta<=0. || beta>1.
         || isnan(mixture) || mixture<0.)
         return CAVITY_MODEL_ARGUMENT;
+    // The eta endpoints are distinct charts. Even at zero RF voltage a
+    // seeded endpoint would have nonanalytic mixed voltage/eta derivatives.
+    if ((mixture==0. && !xt_float_or_tpsa_is_zero(eta))
+        || (isinf(mixture) && !CavityModel_scalar_constant(eta)))
+        return CAVITY_MODEL_ARGUMENT;
     const double c=299792458.;
     const double pi=3.141592653589793238462643383279502884;
     source->k=1.;
@@ -139,17 +173,17 @@ int CavityModel_prepare(
     source->phase=phase;
     source->reference_charge=q0;
     source->reference_beta=1.;
+    source->rf_profile=0;source->profile_sigma=0.;source->profile_center=0.;
     source->freeze_energy=0; source->freeze_zeta=0;
+    source->freeze_x=0; source->freeze_px=0;
+    source->freeze_y=0; source->freeze_py=0;
     source->dc_gradient=0.;
+    source->knl_tpsa=NULL;source->ksl_tpsa=NULL;
     if (xt_float_or_tpsa_is_zero(voltage)) {
         source->forward=0.; source->backward=0.;
         return CAVITY_MODEL_OK;
     }
     if (f<=0.) return CAVITY_MODEL_ARGUMENT;
-    // sqrt(eta) is nonanalytic at eta=0. A constant zero endpoint is valid;
-    // an eta Taylor series based there must use a different explicit chart.
-    if (mixture==0. && !xt_float_or_tpsa_is_zero(eta))
-        return CAVITY_MODEL_ARGUMENT;
     xt_float_or_tpsa forward_weight=0., backward_weight=1.;
     if (isfinite(mixture)) {
         xt_float_or_tpsa ratio=0.;
@@ -206,12 +240,34 @@ void CavityModel_envelope(xt_float_or_tpsa_arg z,
                     *inverse*inverse*inverse*inverse;
 }
 
+// Built-in source profiles. Gaussian tails are NOT clipped at observation
+// boundaries; uniform/Gaussian endpoints generally have nonzero potentials.
+GPUFUN
+void CavityModel_source_envelope(xt_float_or_tpsa_arg z,
+        const CavityModelSource *source,xt_float_or_tpsa p[5]) {
+    if (source->rf_profile==0) {
+        CavityModel_envelope(z,source->half_span,p);
+    } else if (source->rf_profile==1) {
+        p[0]=1.;for(int i=1;i<5;++i)p[i]=0.;
+    } else if (source->rf_profile==2
+            && xt_float_or_tpsa_const_part(source->profile_sigma)>0.) {
+        const xt_float_or_tpsa inv=1./source->profile_sigma;
+        const xt_float_or_tpsa u=(z-source->profile_center)*inv,u2=u*u;
+        const xt_float_or_tpsa g=exp(-.5*u2),i2=inv*inv;
+        p[0]=g;p[1]=-u*g*inv;p[2]=(u2-1.)*g*i2;
+        p[3]=u*(3.-u2)*g*i2*inv;
+        p[4]=(u2*u2-6.*u2+3.)*g*i2*i2;
+    } else {
+        for(int i=0;i<5;++i)p[i]=NAN;
+    }
+}
+
 GPUFUN
 void CavityModel_profile(xt_float_or_tpsa_arg z,
         const CavityModelSource *source, xt_float_or_tpsa real[5],
         xt_float_or_tpsa imag[5]) {
     xt_float_or_tpsa envelope[5];
-    CavityModel_envelope(z,source->half_span,envelope);
+    CavityModel_source_envelope(z,source,envelope);
     const int binomial[5][5]={{1,0,0,0,0},{1,1,0,0,0},{1,2,1,0,0},
                               {1,3,3,1,0},{1,4,6,4,1}};
     xt_float_or_tpsa phases[2]={source->carrier*z,
@@ -302,8 +358,8 @@ void CavityModel_add_static(const xt_float_or_tpsa q[6],
     xt_float_or_tpsa real=1.,imag=0.;
     xt_float_or_tpsa factor=source->magnetic_scale/source->length;
     for (int64_t n=0;n<=source->order;++n) {
-        const double normal=source->knl ? source->knl[n] : 0.;
-        const double skew=source->ksl ? source->ksl[n] : 0.;
+        const xt_float_or_tpsa normal=CavityModel_static_coefficient(source,n,0);
+        const xt_float_or_tpsa skew=CavityModel_static_coefficient(source,n,1);
         potential->d[2][0]-=factor*(normal*real-skew*imag)/source->k;
         potential->d[2][1]+=factor*(normal*imag+skew*real)/source->k;
         xt_float_or_tpsa next_real=(real*x-imag*y)/(n+1.);
@@ -355,6 +411,7 @@ int CavityModel_flow(const xt_float_or_tpsa q[6],
     CavityModelPotential potential;
     CavityModel_rf_potential(q,z,source,model,&potential);
     CavityModel_add_static(q,source,&potential);
+    if (!CavityModel_vector_finite(potential.a,4)) return CAVITY_MODEL_NONFINITE;
     if (model==CAVITY_MODEL_LONGITUDINAL) {
         xt_float_or_tpsa physical[4];
         int status=CavityModel_physical_potential(q,z,source,model,physical);
@@ -398,6 +455,10 @@ int CavityModel_flow(const xt_float_or_tpsa q[6],
     // The constraints apply inside every implicit stage, not just setters.
     if (source->freeze_energy) flow[5]=0.;
     if (source->freeze_zeta) flow[2]=1./source->reference_beta;
+    if (source->freeze_x) flow[0]=0.;
+    if (source->freeze_px) flow[3]=0.;
+    if (source->freeze_y) flow[1]=0.;
+    if (source->freeze_py) flow[4]=0.;
     return CavityModel_vector_finite(flow,6) ? CAVITY_MODEL_OK : CAVITY_MODEL_NONFINITE;
 }
 
@@ -405,6 +466,10 @@ int CavityModel_flow(const xt_float_or_tpsa q[6],
 // Python owner. Signed h reverses the deterministic word. All outputs are
 // transactional. The defining residual is checked after reassignment, and
 // TPSA convergence includes its represented coefficients, not only the orbit.
+// Stage unknowns are increments about q: this exact translation avoids
+// subtracting a large base energy/clock in the defining residual. The physical
+// primal increment retains the same absolute tolerance; reconstructed stages
+// and the final rounded output still have their floating-point ULP floor.
 GPUFUN
 int CavityModel_gauss(const xt_float_or_tpsa q[6],
         xt_float_or_tpsa_arg z, xt_float_or_tpsa_arg h,
@@ -418,29 +483,32 @@ int CavityModel_gauss(const xt_float_or_tpsa q[6],
     int status=CavityModel_flow(q,z,Q,source,model,initial);
     if (status!=CAVITY_MODEL_OK) return status;
     for (int i=0;i<2;++i)
-        for (int j=0;j<6;++j) stages[i][j]=q[j]+C[i]*h*initial[j];
+        for (int j=0;j<6;++j) stages[i][j]=C[i]*h*initial[j];
     for (int64_t iteration=0;iteration<max_iter;++iteration) {
         for (int i=0;i<2;++i) {
-            status=CavityModel_flow(stages[i],z+C[i]*h,Q,source,model,values[i]);
+            for (int j=0;j<6;++j) initial[j]=q[j]+stages[i][j];
+            status=CavityModel_flow(initial,z+C[i]*h,Q,source,model,values[i]);
             if (status!=CAVITY_MODEL_OK) return status;
         }
         double change=0.;
         for (int i=0;i<2;++i)
             for (int j=0;j<6;++j) {
-                proposed[i][j]=q[j]+h*(A[i][0]*values[0][j]+A[i][1]*values[1][j]);
-                change=fmax(change,CavityModel_scalar_norm(proposed[i][j]-stages[i][j]));
+                proposed[i][j]=h*(A[i][0]*values[0][j]+A[i][1]*values[1][j]);
+                change=fmax(change,CavityModel_scalar_residual(
+                    proposed[i][j]-stages[i][j],q[j]+proposed[i][j],1));
                 stages[i][j]=proposed[i][j];
             }
         if (change>=tolerance) continue;
         for (int i=0;i<2;++i) {
-            status=CavityModel_flow(stages[i],z+C[i]*h,Q,source,model,values[i]);
+            for (int j=0;j<6;++j) initial[j]=q[j]+stages[i][j];
+            status=CavityModel_flow(initial,z+C[i]*h,Q,source,model,values[i]);
             if (status!=CAVITY_MODEL_OK) return status;
         }
         double residual=0.;
         for (int i=0;i<2;++i)
             for (int j=0;j<6;++j)
-                residual=fmax(residual,CavityModel_scalar_norm(stages[i][j]-q[j]
-                    -h*(A[i][0]*values[0][j]+A[i][1]*values[1][j])));
+                residual=fmax(residual,CavityModel_scalar_residual(stages[i][j]
+                    -h*(A[i][0]*values[0][j]+A[i][1]*values[1][j]),q[j]+stages[i][j],1));
         if (residual>=tolerance) continue;
         xt_float_or_tpsa result[6],check[6];
         for (int j=0;j<6;++j) result[j]=q[j]+h*(values[0][j]+values[1][j])*.5;
@@ -449,7 +517,122 @@ int CavityModel_gauss(const xt_float_or_tpsa q[6],
         for (int j=0;j<6;++j) output[j]=result[j];
         return CAVITY_MODEL_OK;
     }
+#ifdef CAVITY_MODEL_DEBUG
+    for (int i=0;i<2;++i) {
+        for (int j=0;j<6;++j) initial[j]=q[j]+stages[i][j];
+        CavityModel_flow(initial,z+C[i]*h,Q,source,model,values[i]);
+    }
+    CavityModel_debug_stages("physical-gauss",q,stages[0],stages[1],
+                             values[0],values[1],h,6);
+#endif
     return CAVITY_MODEL_ITERATIONS;
+}
+
+// Entire sinc shared by uniform calibration and frozen static factors.
+GPUFUN
+xt_float_or_tpsa CavityModel_static_sinc(xt_float_or_tpsa_arg angle) {
+#ifdef XTRACK_TPSA_TRACK
+    return mad::sinc(angle);
+#else
+    if (angle==0.) return 1.;
+    return sin(angle)/angle;
+#endif
+}
+
+
+// Explicit built-in RF profiles and their finite-parent crest calibration.
+GPUFUN
+void CavityModel_profile_integral(xt_float_or_tpsa_arg H,
+        xt_float_or_tpsa_arg detuning,const CavityModelSource *source,
+        xt_float_or_tpsa out[2]) {
+    out[0]=0.;out[1]=0.;
+    if(source->rf_profile==1) {
+        out[0]=2.*H*CavityModel_static_sinc(detuning*H);return;
+    }
+    const double nodes[32] = {
+        .024350292663424436,.072993121787799042,.12146281929612056,
+        .1696444204239928,.21742364374000708,.26468716220876742,
+        .31132287199021097,.35722015833766813,.40227015796399157,
+        .44636601725346409,.48940314570705296,.53127946401989457,
+        .571895646202634,.61115535517239328,.64896547125465731,
+        .68523631305423327,.71988185017161077,.75281990726053194,
+        .78397235894334139,.81326531512279754,.84062929625258032,
+        .86599939815409277,.88931544599511414,.91052213707850282,
+        .92956917213193957,.94641137485840277,.96100879965205366,
+        .97332682778991098,.98333625388462598,.99101337147674429,
+        .99634011677195522,.99930504173577217};
+    const double weights[32] = {
+        .048690957009139689,.048575467441503428,.048344762234802933,
+        .047999388596458303,.047540165714830343,.046968182816210007,
+        .046284796581314375,.0454916279274181,.044590558163756601,
+        .043583724529323471,.042473515123653542,.041262563242623486,
+        .039953741132720454,.038550153178615605,.037055128540240019,
+        .035472213256882226,.033805161837141877,.032057928354851412,
+        .030234657072402488,.028339672614259424,.026377469715054894,
+        .024352702568711086,.022270173808382945,.020134823153530039,
+        .017951715775697288,.01572603047602511,.01346304789671912,
+        .011168139460131008,.0088467598263633606,.0065044579689784374,
+        .0041470332605646485,.0017832807216942642};
+    for(int j=0;j<32;++j) {
+        for(int sign=-1;sign<=1;sign+=2) {
+            const xt_float_or_tpsa z=sign*H*nodes[j];
+            xt_float_or_tpsa p[5];CavityModel_source_envelope(z,source,p);
+            out[0]+=H*weights[j]*p[0]*cos(detuning*z);
+            out[1]+=H*weights[j]*p[0]*sin(detuning*z);
+        }
+    }
+}
+
+// Same fixed-beta integrated electric-crest convention as the built-in P16.
+// The Gaussian complex integral uses this declared 64-node Gauss rule over
+// the SAME finite parent interval. It is not a universal calibration bound.
+GPUFUN
+int CavityModel_prepare_profile(xt_float_or_tpsa_arg frequency,
+        xt_float_or_tpsa_arg voltage,xt_float_or_tpsa_arg length,
+        xt_float_or_tpsa_arg phase,xt_float_or_tpsa_arg eta,
+        xt_float_or_tpsa_arg counter_phase,xt_float_or_tpsa_arg calibration_beta,
+        xt_float_or_tpsa_arg wave_number,double mass0,double q0,int profile,
+        xt_float_or_tpsa_arg sigma_m,xt_float_or_tpsa_arg center_m,
+        CavityModelSource *source) {
+    if(profile==0) return CavityModel_prepare(frequency,voltage,length,phase,
+        eta,counter_phase,calibration_beta,wave_number,mass0,q0,source);
+    if(profile<0||profile>2||!CavityModel_scalar_finite(sigma_m)
+        ||!CavityModel_scalar_finite(center_m)
+        ||(profile==2&&xt_float_or_tpsa_const_part(sigma_m)<=0.))
+        return CAVITY_MODEL_ARGUMENT;
+    int status=CavityModel_prepare(frequency,0.,length,phase,eta,counter_phase,
+        calibration_beta,wave_number,mass0,q0,source);
+    if(status!=CAVITY_MODEL_OK)return status;
+    source->rf_profile=profile;
+    source->profile_sigma=source->k*sigma_m;
+    source->profile_center=source->k*center_m;
+    source->voltage_norm=voltage/mass0;
+    if(xt_float_or_tpsa_is_zero(voltage))return CAVITY_MODEL_OK;
+    if(xt_float_or_tpsa_const_part(frequency)<=0.)return CAVITY_MODEL_ARGUMENT;
+    xt_float_or_tpsa forward=0.,backward=1.;
+    if(isfinite(xt_float_or_tpsa_const_part(eta))) {
+        xt_float_or_tpsa ratio=0.;if(!xt_float_or_tpsa_is_zero(eta))ratio=sqrt(eta);
+        forward=1./(1.+ratio);backward=ratio/(1.+ratio);
+    }
+    xt_float_or_tpsa slow[2],fast[2];
+    CavityModel_profile_integral(source->half_span,1./calibration_beta-source->carrier,source,slow);
+    CavityModel_profile_integral(source->half_span,1./calibration_beta+source->carrier,source,fast);
+    const xt_float_or_tpsa real=forward*slow[0]+backward*(fast[0]*cos(counter_phase)-fast[1]*sin(counter_phase));
+    const xt_float_or_tpsa imag=forward*slow[1]+backward*(fast[1]*cos(counter_phase)+fast[0]*sin(counter_phase));
+    const xt_float_or_tpsa square=real*real+imag*imag;
+    const double scale=fabs(xt_float_or_tpsa_const_part(forward))*hypot(xt_float_or_tpsa_const_part(slow[0]),xt_float_or_tpsa_const_part(slow[1]))
+        +fabs(xt_float_or_tpsa_const_part(backward))*hypot(xt_float_or_tpsa_const_part(fast[0]),xt_float_or_tpsa_const_part(fast[1]));
+    const double floor=64.*2.2204460492503131e-16*scale;
+    if(!CavityModel_scalar_finite(square)||xt_float_or_tpsa_const_part(square)<=floor*floor)
+        return CAVITY_MODEL_ARGUMENT;
+    const xt_float_or_tpsa amplitude=voltage/(mass0*sqrt(square));
+    source->forward=amplitude*forward;source->backward=amplitude*backward;
+    const xt_float_or_tpsa angle=source->half_span/calibration_beta;
+    const xt_float_or_tpsa rotated_re=real*cos(angle)-imag*sin(angle);
+    const xt_float_or_tpsa rotated_im=real*sin(angle)+imag*cos(angle);
+    source->clock_origin-=atan2(rotated_im,rotated_re);
+    return (CavityModel_scalar_finite(source->forward)&&CavityModel_scalar_finite(source->backward)
+        &&CavityModel_scalar_finite(source->clock_origin))?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
 }
 
 #endif

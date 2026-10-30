@@ -103,6 +103,7 @@ class DriftSliceOctupole(_DriftSliceElementBase, BeamElement):
 
 class DriftSliceCavity(_DriftSliceElementBase, BeamElement):
 
+
     _xofields = {'_parent': xo.Ref(Cavity), **COMMON_SLICE_XO_FIELDS,
                  '_slice_offset_fraction': xo.Float64,
                  '_legacy_slice_offset': xo.Float64}
@@ -143,6 +144,18 @@ class DriftSliceCavity(_DriftSliceElementBase, BeamElement):
     def behaves_like_drift(self):
         parent = self._parent
         return parent is not None and parent._model < 10
+
+    @property
+    def _inherit_strengths(self):
+        parent = self._parent
+        return parent is not None and parent._model >= 10
+
+    @property
+    def _rot_and_shift_from_parent_for_metadata(self):
+        # New source intervals apply the parent frame manually in their
+        # native helper. Do not enable the automatic legacy drift wrapper.
+        parent = self._parent
+        return parent is not None and parent._model >= 10
 
     def get_equivalent_element(self):
         if self._parent._model >= 10:

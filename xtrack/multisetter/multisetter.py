@@ -117,20 +117,13 @@ class MultiSetter(xo.HybridClass):
 
         self._empty = False
 
-        # Get dtype from first element
-        el = line[elements[0]]
-        if isinstance(field, (list, tuple)):
-            inner_obj = el
-            inner_name = field[-1]
-            for ff in field[:-1]:
-                inner_obj = getattr(inner_obj, ff)
-        else:
-            inner_obj = el
-            inner_name = field
-        dd = getattr(inner_obj.copy(_context=xo.context_default)._xobject, inner_name)
-        if index is not None:
-            dd = dd[index]
-        self.dtype = type(dd) if dtype is None else dtype
+        # Resolve canonical owners before inspecting a RawUnion or a slice
+        # parent. Temporary dressing wrappers do not own TPSA handle lifetimes.
+        owners = [_canonical_element(line, name) for name in elements]
+        self._targets = [_resolve_target(owner, field, line) for owner in owners]
+        inner_obj, inner_name = self._targets[0]
+        inferred = _field_dtype(inner_obj, inner_name, index)
+        self.dtype = inferred if dtype is None else dtype
         self.xodtype = {
             np.float64: xo.Float64,
             np.int64: xo.Int64,
@@ -141,11 +134,12 @@ class MultiSetter(xo.HybridClass):
         assert self.dtype in [np.float64, np.int64, np.int32, np.int8], (
             'Only float64, int64, int32, and int8 are supported for now')
 
-        assert np.all([line.get(nn)._buffer is tracker_buffer for nn in elements])
-        offsets = [_extract_offset(line.get(nn), field, index, self.dtype, self.xodtype,
-                                   skip_inconsistent_type_check=skip_inconsistent_type_check)
-                   for nn in elements]
-
+        assert np.all([owner._buffer is tracker_buffer for owner in owners])
+        offsets = [_extract_offset(owner, name, index, self.dtype, self.xodtype,
+                    skip_inconsistent_type_check=skip_inconsistent_type_check)
+                   for owner, name in self._targets]
+        self._target_index = index
+        self._valid_targets = [offset >= 0 for offset in offsets]
         self.xoinitialize(_context=context, offsets=offsets)
         self.compile_kernels(only_if_needed=True)
 
@@ -171,6 +165,17 @@ class MultiSetter(xo.HybridClass):
         if self._empty:
             return self._context.zeros(0, dtype=np.float64)
 
+        if self._needs_tpsa_access():
+            values = np.zeros(len(self._targets), dtype=self.dtype)
+            for index, ((owner, name), valid) in enumerate(
+                    zip(self._targets, self._valid_targets)):
+                if valid:
+                    value = _read_target(owner, name)
+                    if self._target_index is not None:
+                        value = value[self._target_index]
+                    values[index] = getattr(value, 'const_part', value)
+            return self._context.nparray_to_context_array(values)
+
         out = self._context.zeros(len(self.offsets), dtype=self.dtype)
         self._get_kernel.set_n_threads(len(self.offsets))
         self._get_kernel(data=self, buffer=self._tracker_buffer.buffer, out=out)
@@ -189,36 +194,85 @@ class MultiSetter(xo.HybridClass):
         if self.dtype is np.int8:
             raise NotImplementedError("MultiSetter does not support setting int8 fields")
 
+        if self._needs_tpsa_access():
+            values = self._context.nparray_from_context_array(
+                xt.BeamElement._arr2ctx(self, values))
+            if len(values) != len(self._targets):
+                raise ValueError('one value is required per MultiSetter target')
+            for value, (owner, name), valid in zip(
+                    values, self._targets, self._valid_targets):
+                if valid:
+                    backing_name = (name if name in getattr(
+                        owner, '_float_or_tpsa_array_fields', ())
+                        else getattr(owner, '_rename', {}).get(name, name))
+                    if self._target_index is None:
+                        setattr(owner, backing_name, value)
+                    else:
+                        getattr(owner, backing_name)[self._target_index] = value
+            return
+
         self._set_kernel.set_n_threads(len(self.offsets))
         self._set_kernel(data=self, buffer=self._tracker_buffer.buffer,
                input=xt.BeamElement._arr2ctx(self, values))
 
 
+    def _needs_tpsa_access(self):
+        # Recheck on every call: an attr cache may predate parameter promotion.
+        return any(getattr(owner._xobject, '_tpsa_enabled', 0)
+                   and (name in getattr(owner, '_float_or_tpsa_fields', ())
+                        or (self._target_index is not None and name in getattr(
+                            owner, '_float_or_tpsa_array_fields', ())))
+                   for owner, name in self._targets)
+
+
+def _read_target(owner, name):
+    if name in getattr(owner, '_float_or_tpsa_array_fields', ()):
+        return getattr(owner, name)
+    return getattr(owner, getattr(owner, '_rename', {}).get(name, name))
+
+
+def _canonical_element(line, name):
+    if isinstance(name, (int, np.integer)):
+        name = line.element_names[name]
+    owner = line._element_dict[name]
+    if isinstance(owner, xt.Replica):
+        owner = owner.resolve(line)
+    return owner
+
+
+def _resolve_target(owner, field_name, line=None):
+    path = list(field_name) if isinstance(field_name, (list, tuple)) else [field_name]
+    for name in path[:-1]:
+        if name == '_parent' and line is not None and hasattr(owner, 'parent_name'):
+            owner = _canonical_element(line, owner.parent_name)
+        else:
+            owner = getattr(owner, name)
+    name = path[-1]
+    # Offset access uses xofield names; descriptor access uses renamed backing
+    # names. Accept either spelling, without invoking a derived public getter.
+    inverse = {value: key for key, value in getattr(owner, '_rename', {}).items()}
+    return owner, inverse.get(name, name)
+
+
+def _field_dtype(owner, name, index):
+    if name in getattr(owner, '_float_or_tpsa_fields', ()):
+        return np.float64 if index is None else None
+    ftype = owner._xofields.get(name)
+    # Metaclass-added alignment/control entries may already be Field objects.
+    ftype = getattr(ftype, 'ftype', ftype)
+    if index is not None:
+        ftype = getattr(ftype, '_itemtype', None)
+    return {xo.Float64: np.float64, xo.Int64: np.int64,
+            xo.Int32: np.int32, xo.Int8: np.int8}.get(ftype)
+
+
 def _extract_offset(obj, field_name, index, dtype, xodtype, skip_inconsistent_type_check=False):
-
-    if isinstance(field_name, (list, tuple)):
-        inner_obj = obj
-        inner_name = field_name[-1]
-        for ff in field_name[:-1]:
-            inner_obj = getattr(inner_obj, ff)
-    else:
-        inner_obj = obj
-        inner_name = field_name
-
+    owner, name = _resolve_target(obj, field_name)
+    inconsistent = _field_dtype(owner, name, index) is not dtype
+    if inconsistent:
+        if skip_inconsistent_type_check:
+            return -1
+        raise AssertionError('Inconsistent types')
     if index is None:
-        inconsistent_type = not isinstance(getattr(inner_obj._xobject, inner_name), dtype)
-        if inconsistent_type:
-            if skip_inconsistent_type_check:
-                return -1
-            else:
-                assert not inconsistent_type, "Inconsistent types"
-        return inner_obj._xobject._get_offset(inner_name)
-    else:
-        obj = getattr(inner_obj._xobject, inner_name)
-        inconsistent_type = not hasattr(obj, "_itemtype") or obj._itemtype is not xodtype
-        if inconsistent_type:
-            if skip_inconsistent_type_check:
-                return -1
-            else:
-                assert not inconsistent_type, "Inconsistent types"
-        return obj._get_offset(index)
+        return owner._xobject._get_offset(name)
+    return getattr(owner._xobject, name)._get_offset(index)

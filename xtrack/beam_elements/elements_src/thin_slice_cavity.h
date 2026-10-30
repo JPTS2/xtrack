@@ -16,7 +16,12 @@ GPUFUN
 void ThinSliceCavity_track_local_particle(ThinSliceCavityData el, LocalParticle* part0)
 {
     if (ThinSliceCavityData_get__parent_model(el) >= 10) {
-        if (ThinSliceCavityData_get__parent_model(el) > 12) {
+        const int model=ThinSliceCavityData_get__parent_model(el);
+        if (ThinSliceCavityData_get__parent_radiation_flag(el) || ThinSliceCavityData_get__parent_spin_tracking(el)) {
+            START_PER_PARTICLE_BLOCK(part0, part)
+                LocalParticle_set_state(part, -99744);
+            END_PER_PARTICLE_BLOCK;
+        } else if (model>21) {
             START_PER_PARTICLE_BLOCK(part0, part)
                 LocalParticle_set_state(part, -99730);
             END_PER_PARTICLE_BLOCK;
@@ -31,7 +36,16 @@ void ThinSliceCavity_track_local_particle(ThinSliceCavityData el, LocalParticle*
         static_field |= ThinSliceCavityData_get__parent_knl(el,i)!=0.;
     for (int64_t i=0; i<ThinSliceCavityData_len__parent_ksl(el); ++i)
         static_field |= ThinSliceCavityData_get__parent_ksl(el,i)!=0.;
-    if (static_field) {
+    // A zero constant with a nonzero static-field TPSA jet is still an
+    // unsupported simultaneous field in the legacy RF recipes.
+    for (int64_t i=0; i<ThinSliceCavityData_len__parent_knl_tpsa(el); ++i)
+        static_field |= ThinSliceCavityData_get__parent_knl_tpsa(el,i)!=0;
+    for (int64_t i=0; i<ThinSliceCavityData_len__parent_ksl_tpsa(el); ++i)
+        static_field |= ThinSliceCavityData_get__parent_ksl_tpsa(el,i)!=0;
+    // Legacy voltage-only projections support their existing P16/uniform
+    // reductions, but cannot silently consume a requested Gaussian source.
+    if (static_field || ThinSliceCavityData_get__parent_rf_profile(el)<0
+                     || ThinSliceCavityData_get__parent_rf_profile(el)>1) {
         START_PER_PARTICLE_BLOCK(part0,part)
             LocalParticle_set_state(part,-99744);
         END_PER_PARTICLE_BLOCK;

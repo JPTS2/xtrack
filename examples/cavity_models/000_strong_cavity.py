@@ -78,6 +78,7 @@ def run_case(model, species, steps, eta=0., context=None):
     })
     line.particle_ref = reference
     line.reset_s_at_end_turn = False
+    line.use_time_based_zeta_update = True
     line.build_tracker(_context=context)
     twiss = line.twiss(method='6d', start=xt.START, end=xt.END,
                        **ENTRANCE_TWISS)
@@ -145,7 +146,12 @@ def main(argv=None):
     models = (list(xt.Cavity.get_available_models()) if options.models == ['all']
               else options.models)
     if options.models == ['all']:
-        models = [name for name in models if name.startswith('phase-')]
+        models = [name for name in models if name.startswith('phase-')
+                  and not name.startswith('phase-averaged-uniform-')
+                  and name!='phase-averaged-magnetic']
+        print('Uniform and Gaussian magnetic models use separate source cohorts: '
+              'run 002_averaged.py --cohort uniform, or --cohort gaussian-magnetic '
+              '--sigma WIDTH_IN_METRES.',flush=True)
     species = list(species_data()) if options.species == ['all'] else options.species
     results, failures = [], []
     for name in species:

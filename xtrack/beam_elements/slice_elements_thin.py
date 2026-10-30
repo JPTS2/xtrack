@@ -130,21 +130,24 @@ class ThinSliceOctupole(_ThinSliceElementBase, BeamElement):
 
 class ThinSliceCavity(_ThinSliceElementBase, BeamElement):
 
+
     _xofields = {'_parent': xo.Ref(Cavity), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [
         _pkg_root.joinpath('beam_elements/elements_src/thin_slice_cavity.h'),
     ]
 
+    @property
+    def _inherit_strengths(self):
+        parent = self._parent
+        return parent is not None and parent._model < 10
+
     def get_equivalent_element(self):
 
-        if self._parent._model in (10, 11, 12):
-            # Continuous fields are transported by the source-bearing layout
-            # intervals. This zero-length node has no additional RF action.
-            from .marker import Marker
-            return Marker(_buffer=self._buffer)
         if self._parent._model >= 10:
-            # A distinct finite word cannot be replaced by a legacy kick.
+            # Retain connected identity partition nodes. Replacing these by
+            # disposable Markers would erase the RF kicks if the live parent
+            # later changes back to a legacy selector.
             return self
 
         out = Cavity(length=0,

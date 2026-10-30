@@ -23,10 +23,18 @@ double ThickSliceCavityData_get_slice_offset(ThickSliceCavityData el) {
 }
 
 GPUFUN
+double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
+    const double fraction=ThickSliceCavityData_get__slice_offset_fraction(el);
+    return fraction>=0. ? fraction
+        : ThickSliceCavityData_get__legacy_slice_offset(el)
+          /ThickSliceCavityData_get__parent_length(el);
+}
+
+GPUFUN
 void ThickSliceCavity_track_local_particle(ThickSliceCavityData el, LocalParticle* part0)
 {
     if (ThickSliceCavityData_get__parent_model(el) >= 10) {
-        CavityModels_track_local_particle(ThickSliceCavityData_getp__parent(el), part0, ThickSliceCavityData_get_weight(el), ThickSliceCavityData_get_slice_offset(el) / ThickSliceCavityData_get__parent_length(el));
+        CavityModels_track_local_particle(ThickSliceCavityData_getp__parent(el), part0, ThickSliceCavityData_get_weight(el), ThickSliceCavityData_get_slice_offset_fraction(el));
         return;
     }
     // Legacy RF recipes have no simultaneous static-field Hamiltonian.
@@ -37,7 +45,16 @@ void ThickSliceCavity_track_local_particle(ThickSliceCavityData el, LocalParticl
         static_field |= ThickSliceCavityData_get__parent_knl(el,i)!=0.;
     for (int64_t i=0; i<ThickSliceCavityData_len__parent_ksl(el); ++i)
         static_field |= ThickSliceCavityData_get__parent_ksl(el,i)!=0.;
-    if (static_field) {
+    // A zero constant with a nonzero static-field TPSA jet is still an
+    // unsupported simultaneous field in the legacy RF recipes.
+    for (int64_t i=0; i<ThickSliceCavityData_len__parent_knl_tpsa(el); ++i)
+        static_field |= ThickSliceCavityData_get__parent_knl_tpsa(el,i)!=0;
+    for (int64_t i=0; i<ThickSliceCavityData_len__parent_ksl_tpsa(el); ++i)
+        static_field |= ThickSliceCavityData_get__parent_ksl_tpsa(el,i)!=0;
+    // Legacy voltage-only projections support their existing P16/uniform
+    // reductions, but cannot silently consume a requested Gaussian source.
+    if (static_field || ThickSliceCavityData_get__parent_rf_profile(el)<0
+                     || ThickSliceCavityData_get__parent_rf_profile(el)>1) {
         START_PER_PARTICLE_BLOCK(part0,part)
             LocalParticle_set_state(part,-99744);
         END_PER_PARTICLE_BLOCK;

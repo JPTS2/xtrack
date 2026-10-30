@@ -11,15 +11,15 @@ class ReferenceEnergyIncrease(BeamElement):
     '''Beam element modeling a change of reference energy (acceleration,
     deceleration).
 
-    This element-driven ramp retains conventional longitudinal updates;
-    the particle clock is approximate and can depend on tracking-call
-    boundaries. Use the line's EnergyProgram for a coordinated clock
-    and reference-energy ramp.
+    Conventional relative-delay updates are retained by default. Set
+    ``line.use_time_based_zeta_update = True`` to preserve absolute arrival
+    time during an explicit reference-momentum programme. EnergyProgram and
+    SyncTime select that convention automatically when needed.
 
     Parameters
     ----------
     Delta_p0c : float
-        Change in reference energy in eV. Default is ``0``.
+        Change in reference momentum p0c, in eV. Default is ``0``.
 
     '''
 

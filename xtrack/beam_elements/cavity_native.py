@@ -88,6 +88,16 @@ def prepare_p16_native_data(cavity, particle_ref, *, eta,
     it does not reinterpret any existing model/integrator selector. Existing
     Cavity tracking remains unchanged. Later changes require a fresh call.
     """
+    if getattr(cavity._xobject, '_tpsa_enabled', 0):
+        raise ValueError('private native diagnostic requires scalar controls')
+    if (cavity.ks != 0. or np.any(np.asarray(cavity.knl) != 0.)
+            or np.any(np.asarray(cavity.ksl) != 0.)):
+        raise ValueError('private native diagnostic does not implement static fields')
+    if (cavity.wave_number is not None or cavity.rf_field_order != 2
+            or cavity.rf_profile != 'p16'):
+        raise ValueError('private native diagnostic requires its fixed M2/nu1 source')
+    if cavity.radiation_flag or cavity.spin_tracking:
+        raise ValueError('private native diagnostic does not consume Cavity effect flags')
     if cavity.harmonic!=0:
         raise ValueError('private native diagnostic requires explicit frequency')
     if not cavity.absolute_time:

@@ -14,6 +14,7 @@ from madng_tpsa import Tpsa, ffi
 from xobjects.context import Source
 from xobjects.general import Print
 from xobjects.hybrid_class import _build_xofields_dict
+from ._local_kernel import prebuilt_compatible, local_kernel_compilation
 from .general import _pkg_root
 from .internal_record import RecordIdentifier, RecordIndex, generate_get_record
 from .particles import Particles
@@ -159,6 +160,8 @@ class _FieldOfBeamElement:
                     "TPSA-enabled beam elements are only supported on CPU contexts")
             if not getattr(element._xobject, "_tpsa_enabled", 0):
                 element.enable_tpsa(value.descriptor)
+            else:
+                _check_active_tpsa_descriptor(element, value.descriptor)
             _set_tpsa_handle(element, self.name, value)
             self._write(element, value)
             element._xobject._tpsa_enabled = 1
@@ -183,6 +186,14 @@ class _FieldOfBeamElement:
         ftype, offset = self.xo_field.get_offset(element._xobject)
         ftype._to_buffer(
             element._xobject._buffer, offset, value, container=element)
+
+
+def _check_active_tpsa_descriptor(element, descriptor):
+    if not getattr(element._xobject, '_tpsa_enabled', 0):
+        return
+    current = element.__dict__.get('_tpsa_descriptor')
+    if current is None or current.ptr != descriptor.ptr:
+        raise ValueError('disable TPSA before changing an active element descriptor')
 
 
 def _get_tpsa_handles(element):
@@ -601,6 +612,7 @@ class BeamElement(xo.HybridClass, metaclass=MetaBeamElement):
             descriptor = descriptor_or_proto.descriptor
         else:
             descriptor = descriptor_or_proto
+        _check_active_tpsa_descriptor(self, descriptor)
         self.__dict__["_tpsa_descriptor"] = descriptor
         handles = {}
         for name in self._float_or_tpsa_fields:
@@ -622,6 +634,9 @@ class BeamElement(xo.HybridClass, metaclass=MetaBeamElement):
         for name in self._float_or_tpsa_fields:
             value = getattr(self, self._rename.get(name, name))
             setattr(self._xobject, name, float(value.const_part))
+        if getattr(self, '_float_or_tpsa_array_fields', ()):
+            from .tpsa._cavity_array import clear_cavity_arrays
+            clear_cavity_arrays(self)
         self._xobject._tpsa_enabled = 0
         self.__dict__["_tpsa_handles"] = {}
         self.__dict__["_tpsa_descriptor"] = None
@@ -648,14 +663,15 @@ class BeamElement(xo.HybridClass, metaclass=MetaBeamElement):
 
         only_if_needed = kwargs.pop('only_if_needed', True)
 
-        xo.HybridClass.compile_kernels(
-            self,
-            extra_classes=[Particles._XoStruct],
-            extra_compile_args=(),
-            only_if_needed=only_if_needed,
-            *args,
-            **kwargs,
-        )
+        with local_kernel_compilation([type(self)], self._buffer.context):
+            xo.HybridClass.compile_kernels(
+                self,
+                extra_classes=[Particles._XoStruct],
+                extra_compile_args=(),
+                only_if_needed=only_if_needed,
+                *args,
+                **kwargs,
+            )
 
     def compile_tpsa_kernels(self, only_if_needed=True):
         from madng_tpsa.paths import core_library
@@ -667,45 +683,24 @@ class BeamElement(xo.HybridClass, metaclass=MetaBeamElement):
             return
 
         kernel = type(self)._tpsa_track_kernel_description()
-        if context.allow_prebuilt_kernels and not xo.settings.force_kernel_compilation:
-            try:
-                from xsuite import PREBUILT_KERNELS_LOCATION, get_suitable_kernel
-                from xsuite.kernel_definitions import BASE_CONFIG
-            except ImportError:
-                kernel_info = None
-            else:
-                kernel_info = get_suitable_kernel(
-                    config={**BASE_CONFIG, "XTRACK_TPSA_TRACK": True},
-                    tracker_element_classes=[self._XoStruct],
-                    classes=(),
-                    context=context,
-                )
-            if kernel_info:
-                kernels = context.kernels_from_file(
-                    module_name=kernel_info["module_name"],
-                    containing_dir=PREBUILT_KERNELS_LOCATION,
-                    kernel_descriptions={kernel_name: kernel},
-                    preload_libraries=(core_library(),),
-                )
-                context.kernels.update(kernels)
-
-        if only_if_needed and kernel_name in context.kernels:
-            return
-
-        kernels = context.build_kernels(
-            sources=[],
-            kernel_descriptions={kernel_name: kernel},
-            extra_classes=[self.__class__._XoStruct, TpsaParticleData],
-            extra_headers=[
-                "#define XTRACK_TPSA_TRACK",
-                "#define XTRACK_MULTIPOLE_NO_SYNRAD",
-                "#define restrict __restrict",
-            ],
-            apply_to_source=[_handle_per_particle_blocks],
-            extra_compile_args=("-include", "complex"),
-            preload_libraries=(core_library(),),
-            compiler_language="c++",
-        )
+        # Installed TPSA wrappers reset the physical input s at entry. This
+        # checkout preserves it, so version-only prebuilt matching is unsafe.
+        # Scalar prebuilt selection remains available for compatible classes.
+        with local_kernel_compilation([type(self), TpsaParticleData], context):
+            kernels = context.build_kernels(
+                sources=[],
+                kernel_descriptions={kernel_name: kernel},
+                extra_classes=[self.__class__._XoStruct, TpsaParticleData],
+                extra_headers=[
+                    "#define XTRACK_TPSA_TRACK",
+                    "#define XTRACK_MULTIPOLE_NO_SYNRAD",
+                    "#define restrict __restrict",
+                ],
+                apply_to_source=[_handle_per_particle_blocks],
+                extra_compile_args=("-include", "complex"),
+                preload_libraries=(core_library(),),
+                compiler_language="c++",
+            )
         context.kernels.update(kernels)
 
     @classmethod
