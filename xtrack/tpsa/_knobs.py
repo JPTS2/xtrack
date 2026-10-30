@@ -55,12 +55,21 @@ class KnobParameters:
         """Assign parameter ``k+1`` to knob ``k``, seeded at its current value."""
         if values is None:
             values = [_scalar_value(self.line[name]) for name in self.names]
+        values = [_scalar_value(value) for value in values]
+        if len(values) != len(self.names):
+            raise ValueError("one value is required for each knob")
         for index, (name, value) in enumerate(zip(self.names, values), start=1):
             self.line.vars[name] = self.descriptor.param(index, _scalar_value(value))
         self._applied = True
         if self._reached is None:
             # The expression topology is fixed, so the reached elements are too.
             self._reached = sorted({name for name, _ in self.driven_elements()})
+
+    def refresh(self, values: list[float]) -> None:
+        """Move active parameters to new base points, preserving their seeds."""
+        if not self._applied:
+            raise RuntimeError("apply the knob parameters before refreshing them")
+        self.apply(values)
 
     def teardown(self) -> None:
         """Plain doubles back in the variables and in every element they reached."""
@@ -70,6 +79,9 @@ class KnobParameters:
 
     def apply_doubles(self, values: list[float]) -> None:
         """Set the knobs to floats and drop TPSA storage from the elements they drive."""
+        values = [_scalar_value(value) for value in values]
+        if len(values) != len(self.names):
+            raise ValueError("one value is required for each knob")
         for name, value in zip(self.names, values):
             self.line.vars[name] = _scalar_value(value)
         # xdeps re-propagates the new floats, but an enabled element stores them as

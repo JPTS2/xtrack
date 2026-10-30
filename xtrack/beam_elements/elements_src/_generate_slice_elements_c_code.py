@@ -1,5 +1,6 @@
 
 import os
+import argparse
 
 current_directory = os.path.dirname(__file__)
 
@@ -25,6 +26,15 @@ to_do = [
 ]
 
 no_edge_for = ["Cavity", "CrabCavity", "Multipole"]
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Generate element slice headers.')
+    parser.add_argument('--parent', action='append',
+                        choices=[name for name, _ in to_do],
+                        help='Regenerate only this parent (repeatable).')
+    options = parser.parse_args()
+    if options.parent:
+        to_do = [entry for entry in to_do if entry[0] in options.parent]
 
 for td in to_do:
 
@@ -78,6 +88,32 @@ for td in to_do:
         out_content = out_content.replace(generated_data_class + '_get_', generated_data_class + '_get__parent_')
         out_content = out_content.replace(generated_data_class + '_getp_', generated_data_class + '_getp__parent_')
         out_content = out_content.replace(generated_data_class + '_len_', generated_data_class + '_len__parent_')
+
+        if parent_class == 'Cavity':
+            old_call = (generated_class
+                        + 'Models_track_local_particle(el, part0, 1., 0.);')
+            if generating == 'thick_slice':
+                replacement = (
+                    'CavityModels_track_local_particle('
+                    + generated_data_class + '_getp__parent(el), part0, '
+                    + generated_data_class + '_get_weight(el), '
+                    + generated_data_class + '_get_slice_offset(el) / '
+                    + generated_data_class + '_get__parent_length(el));')
+            else:
+                # In a thin *layout*, continuous models are transported on
+                # the intervening source-bearing DriftSlice intervals.
+                # These nodes are identity partition markers, not RF kicks.
+                # Other finite words need their own exact decomposition.
+                replacement = (
+                    'if (' + generated_data_class
+                    + '_get__parent_model(el) > 12) {\n'
+                    '            START_PER_PARTICLE_BLOCK(part0, part)\n'
+                    '                LocalParticle_set_state(part, -99730);\n'
+                    '            END_PER_PARTICLE_BLOCK;\n'
+                    '        }')
+            if old_call not in out_content:
+                raise ValueError('Cavity model dispatch template changed')
+            out_content = out_content.replace(old_call, replacement)
 
 
 
@@ -140,7 +176,7 @@ for td in to_do:
         # pass weight
         done_weight = False
         for i, line in enumerate(out_lines):
-            if "weight" in line:
+            if "/*weight*/" in line:
                 assert '1' in line, "Expected '1' in weight line"
                 ll = line
                 ll = ll.split('1')[0]
@@ -258,6 +294,25 @@ for td in to_do:
 
         out_content = "\n".join(out_lines)
 
+        if parent_class == 'Cavity' and generating == 'thick_slice':
+            # The usual alignment wrapper consumes a distance. Store the
+            # fraction so changing parent.length preserves the source anchor.
+            marker = 'GPUFUN\nvoid ThickSliceCavity_track_local_particle'
+            accessor = '''GPUFUN
+double ThickSliceCavityData_get_slice_offset(ThickSliceCavityData el) {
+    const double fraction = ThickSliceCavityData_get__slice_offset_fraction(el);
+    if (fraction < 0.) {
+        return ThickSliceCavityData_get__legacy_slice_offset(el);
+    }
+    return fraction
+        * ThickSliceCavityData_get__parent_length(el);
+}
+
+'''
+            if marker not in out_content:
+                raise ValueError('Thick Cavity slice function template changed')
+            out_content = out_content.replace(marker, accessor + marker)
+
         # Save
         out_file = os.path.join(current_directory, f"{generated_class_snake}.h")
         with open(out_file, 'w') as f:
@@ -303,6 +358,45 @@ for td in to_do:
     '''
     out_drift_slice = drift_slice_template.replace("Octupole", parent_class)
     out_drift_slice = out_drift_slice.replace("Octupole".upper(), parent_class.upper())
+
+    if parent_class == 'Cavity':
+        out_drift_slice = out_drift_slice.replace(
+            '#include "xtrack/beam_elements/elements_src/track_drift.h"',
+            '#include "xtrack/beam_elements/elements_src/track_drift.h"\n'
+            '    #include "xtrack/beam_elements/elements_src/cavity_models_slice.h"')
+        marker = 'GPUFUN\n    void DriftSliceCavity_track_local_particle('
+        accessor = '''GPUFUN
+    double DriftSliceCavityData_get_slice_offset(DriftSliceCavityData el) {
+        const double fraction=DriftSliceCavityData_get__slice_offset_fraction(el);
+        if (fraction<0.) return DriftSliceCavityData_get__legacy_slice_offset(el);
+        return fraction*DriftSliceCavityData_get__parent_length(el);
+    }
+
+    '''
+        if marker not in out_drift_slice:
+            raise ValueError('Drift Cavity slice template changed')
+        out_drift_slice = out_drift_slice.replace(marker,accessor+marker)
+        marker = '        double weight = DriftSliceCavityData_get_weight(el);'
+        branch = '''        const int model=DriftSliceCavityData_get__parent_model(el);
+        if (model>=10) {
+            if (model<=12) {
+                const double length=DriftSliceCavityData_get__parent_length(el);
+                const double start=DriftSliceCavityData_get_slice_offset(el)/length;
+                CavityModels_track_source_interval(
+                    DriftSliceCavityData_getp__parent(el),part0,
+                    DriftSliceCavityData_get_weight(el),start);
+            } else {
+                START_PER_PARTICLE_BLOCK(part0,part)
+                    LocalParticle_set_state(part,-99730);
+                END_PER_PARTICLE_BLOCK;
+            }
+            return;
+        }
+
+'''
+        if marker not in out_drift_slice:
+            raise ValueError('Drift Cavity weight template changed')
+        out_drift_slice = out_drift_slice.replace(marker,branch+marker)
 
     if parent_class == "RBend":
 

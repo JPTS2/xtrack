@@ -10,10 +10,39 @@
 #define XTRACK_THICK_SLICE_CAVITY_H
 
 #include "xtrack/beam_elements/elements_src/track_rf.h"
+#include "xtrack/beam_elements/elements_src/cavity_models_adapter.h"
+
+GPUFUN
+double ThickSliceCavityData_get_slice_offset(ThickSliceCavityData el) {
+    const double fraction = ThickSliceCavityData_get__slice_offset_fraction(el);
+    if (fraction < 0.) {
+        return ThickSliceCavityData_get__legacy_slice_offset(el);
+    }
+    return fraction
+        * ThickSliceCavityData_get__parent_length(el);
+}
 
 GPUFUN
 void ThickSliceCavity_track_local_particle(ThickSliceCavityData el, LocalParticle* part0)
 {
+    if (ThickSliceCavityData_get__parent_model(el) >= 10) {
+        CavityModels_track_local_particle(ThickSliceCavityData_getp__parent(el), part0, ThickSliceCavityData_get_weight(el), ThickSliceCavityData_get_slice_offset(el) / ThickSliceCavityData_get__parent_length(el));
+        return;
+    }
+    // Legacy RF recipes have no simultaneous static-field Hamiltonian.
+    // Do not silently ignore newly exposed magnetic strengths after Line.set
+    // or an indexed expression update. Zero fields leave the legacy path exact.
+    int static_field=!xt_float_or_tpsa_is_zero(ThickSliceCavityData_get__parent_ks(el));
+    for (int64_t i=0; i<ThickSliceCavityData_len__parent_knl(el); ++i)
+        static_field |= ThickSliceCavityData_get__parent_knl(el,i)!=0.;
+    for (int64_t i=0; i<ThickSliceCavityData_len__parent_ksl(el); ++i)
+        static_field |= ThickSliceCavityData_get__parent_ksl(el,i)!=0.;
+    if (static_field) {
+        START_PER_PARTICLE_BLOCK(part0,part)
+            LocalParticle_set_state(part,-99744);
+        END_PER_PARTICLE_BLOCK;
+        return;
+    }
     track_rf_particles(
         /*weight*/                ThickSliceCavityData_get_weight(el),
         /*part0*/                 part0,

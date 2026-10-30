@@ -138,6 +138,15 @@ class ThinSliceCavity(_ThinSliceElementBase, BeamElement):
 
     def get_equivalent_element(self):
 
+        if self._parent._model in (10, 11, 12):
+            # Continuous fields are transported by the source-bearing layout
+            # intervals. This zero-length node has no additional RF action.
+            from .marker import Marker
+            return Marker(_buffer=self._buffer)
+        if self._parent._model >= 10:
+            # A distinct finite word cannot be replaced by a legacy kick.
+            return self
+
         out = Cavity(length=0,
                      voltage=self._parent.voltage * self.weight,
                      frequency=self._parent.frequency,

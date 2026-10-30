@@ -10,10 +10,33 @@
 #define XTRACK_THIN_SLICE_CAVITY_H
 
 #include "xtrack/beam_elements/elements_src/track_rf.h"
+#include "xtrack/beam_elements/elements_src/cavity_models_adapter.h"
 
 GPUFUN
 void ThinSliceCavity_track_local_particle(ThinSliceCavityData el, LocalParticle* part0)
 {
+    if (ThinSliceCavityData_get__parent_model(el) >= 10) {
+        if (ThinSliceCavityData_get__parent_model(el) > 12) {
+            START_PER_PARTICLE_BLOCK(part0, part)
+                LocalParticle_set_state(part, -99730);
+            END_PER_PARTICLE_BLOCK;
+        }
+        return;
+    }
+    // Legacy RF recipes have no simultaneous static-field Hamiltonian.
+    // Do not silently ignore newly exposed magnetic strengths after Line.set
+    // or an indexed expression update. Zero fields leave the legacy path exact.
+    int static_field=!xt_float_or_tpsa_is_zero(ThinSliceCavityData_get__parent_ks(el));
+    for (int64_t i=0; i<ThinSliceCavityData_len__parent_knl(el); ++i)
+        static_field |= ThinSliceCavityData_get__parent_knl(el,i)!=0.;
+    for (int64_t i=0; i<ThinSliceCavityData_len__parent_ksl(el); ++i)
+        static_field |= ThinSliceCavityData_get__parent_ksl(el,i)!=0.;
+    if (static_field) {
+        START_PER_PARTICLE_BLOCK(part0,part)
+            LocalParticle_set_state(part,-99744);
+        END_PER_PARTICLE_BLOCK;
+        return;
+    }
     track_rf_particles(
         /*weight*/                ThinSliceCavityData_get_weight(el),
         /*part0*/                 part0,

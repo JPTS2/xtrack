@@ -50,7 +50,13 @@ namespace xt_tpsa {
     struct tpsa : public mad::tpsa {
         inline static thread_local tpsa_t* default_proto = nullptr;
 
-        // Promote scalar constants using the active descriptor at first order only.
+        // Generic tracking arrays/aggregate members use the same active
+        // descriptor as explicitly constructed scalar constants. Start at zero
+        // rather than allocating an uninitialized series.
+        tpsa()
+            : tpsa(0.0) {}
+
+        // Promote scalar constants using the active descriptor and its orders.
         tpsa(double value)
             : mad::tpsa(mad::tpsa_ref(default_proto)) {
             mad::tpsa::operator=(value);

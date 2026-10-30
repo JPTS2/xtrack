@@ -12,13 +12,37 @@
 
     #include "xtrack/headers/track.h"
     #include "xtrack/beam_elements/elements_src/track_drift.h"
+    #include "xtrack/beam_elements/elements_src/cavity_models_slice.h"
 
+
+    GPUFUN
+    double DriftSliceCavityData_get_slice_offset(DriftSliceCavityData el) {
+        const double fraction=DriftSliceCavityData_get__slice_offset_fraction(el);
+        if (fraction<0.) return DriftSliceCavityData_get__legacy_slice_offset(el);
+        return fraction*DriftSliceCavityData_get__parent_length(el);
+    }
 
     GPUFUN
     void DriftSliceCavity_track_local_particle(
             DriftSliceCavityData el,
             LocalParticle* part0
     ) {
+
+        const int model=DriftSliceCavityData_get__parent_model(el);
+        if (model>=10) {
+            if (model<=12) {
+                const double length=DriftSliceCavityData_get__parent_length(el);
+                const double start=DriftSliceCavityData_get_slice_offset(el)/length;
+                CavityModels_track_source_interval(
+                    DriftSliceCavityData_getp__parent(el),part0,
+                    DriftSliceCavityData_get_weight(el),start);
+            } else {
+                START_PER_PARTICLE_BLOCK(part0,part)
+                    LocalParticle_set_state(part,-99730);
+                END_PER_PARTICLE_BLOCK;
+            }
+            return;
+        }
 
         double weight = DriftSliceCavityData_get_weight(el);
         double length;

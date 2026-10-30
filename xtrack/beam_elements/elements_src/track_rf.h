@@ -18,11 +18,11 @@
 GPUFUN
 void track_rf_kick_single_particle(
     LocalParticle* part,
-    double voltage,
-    double frequency,
-    double harmonic,
-    double lag,
-    double phase,
+    xt_float_or_tpsa voltage,
+    xt_float_or_tpsa frequency,
+    xt_float_or_tpsa harmonic,
+    xt_float_or_tpsa lag,
+    xt_float_or_tpsa phase,
     double transverse_voltage,
     double transverse_lag,
     double transverse_phase,
@@ -38,24 +38,23 @@ void track_rf_kick_single_particle(
     const uint8_t kill_energy_kick
 ){
 
-    double phase0 = 0;
+    xt_float_or_tpsa phase0 = 0.;
 
     double const beta0 = LocalParticle_get_beta0(part);
 
-    if (harmonic != 0) {
+    if (!xt_float_or_tpsa_is_zero(harmonic)) {
         double const line_length = part->line_length;
         double const t_rev0 = line_length / (beta0 * C_LIGHT);
         frequency += (harmonic / t_rev0);
     }
 
-#ifndef XTRACK_TPSA_TRACK
-    // Absolute-time cavities are native-only.
+    // The shared laboratory clock is scalar metadata; s and the RF controls
+    // may carry a TPSA dependence. Use the same phase in both tracking modes.
     if (absolute_time == 1) {
         double const time_s = LocalParticle_get_time_s(part);
-        double const s = LocalParticle_get_s(part);
+        xt_float_or_tpsa const s = LocalParticle_get_s(part);
         phase0 += 2 * PI * frequency * (time_s + s / (beta0 * C_LIGHT));
     }
-#endif
 
     xt_float_or_tpsa const zeta  = LocalParticle_get_zeta(part);
     double const q = fabs(LocalParticle_get_q0(part)) * LocalParticle_get_charge_ratio(part);
@@ -184,11 +183,11 @@ GPUFUN
 void track_rf_body_single_particle(
     LocalParticle* part,
     double length,
-    double voltage,
-    double frequency,
-    double harmonic,
-    double lag,
-    double phase,
+    xt_float_or_tpsa voltage,
+    xt_float_or_tpsa frequency,
+    xt_float_or_tpsa harmonic,
+    xt_float_or_tpsa lag,
+    xt_float_or_tpsa phase,
     double transverse_voltage,
     double transverse_lag,
     double transverse_phase,
@@ -244,11 +243,11 @@ void track_rf_particles(
     double const weight,
     LocalParticle* part0,
     double length,
-    double voltage,
-    double frequency,
-    double harmonic,
-    double lag,
-    double phase,
+    xt_float_or_tpsa voltage,
+    xt_float_or_tpsa frequency,
+    xt_float_or_tpsa harmonic,
+    xt_float_or_tpsa lag,
+    xt_float_or_tpsa phase,
     double transverse_voltage,
     double transverse_lag,
     double transverse_phase,
@@ -267,8 +266,8 @@ void track_rf_particles(
     int8_t default_integrator,
     int64_t radiation_flag,
     int64_t radiation_flag_parent,
-    double lag_taper,
-    double phase_taper,
+    xt_float_or_tpsa lag_taper,
+    xt_float_or_tpsa phase_taper,
     int64_t body_active,
     int64_t edge_entry_active,
     int64_t edge_exit_active

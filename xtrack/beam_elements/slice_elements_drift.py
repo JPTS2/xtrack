@@ -20,6 +20,9 @@ class _DriftSliceElementBase(_SliceBase):
     allow_loss_refinement = True
     isthick = True
     _inherit_strengths = False
+    # Match the historical Line cleanup classification. Specific intervals
+    # carrying an active source override this property below.
+    behaves_like_drift = True
 
 class DriftSliceBend(_DriftSliceElementBase, BeamElement):
 
@@ -100,13 +103,52 @@ class DriftSliceOctupole(_DriftSliceElementBase, BeamElement):
 
 class DriftSliceCavity(_DriftSliceElementBase, BeamElement):
 
-    _xofields = {'_parent': xo.Ref(Cavity), **COMMON_SLICE_XO_FIELDS}
+    _xofields = {'_parent': xo.Ref(Cavity), **COMMON_SLICE_XO_FIELDS,
+                 '_slice_offset_fraction': xo.Float64,
+                 '_legacy_slice_offset': xo.Float64}
+    del _xofields['slice_offset']
 
     _extra_c_sources = [
         '#include "xtrack/beam_elements/elements_src/drift_slice_cavity.h"'
     ]
 
+    def __init__(self, slice_offset=None, **kwargs):
+        if slice_offset is not None:
+            parent = kwargs.get('_parent')
+            if parent is None:
+                kwargs['_legacy_slice_offset'] = slice_offset
+                kwargs['_slice_offset_fraction'] = -1.
+            else:
+                kwargs['_slice_offset_fraction'] = (
+                    slice_offset / parent.length if parent.length else 0.)
+        super().__init__(**kwargs)
+
+    @property
+    def slice_offset(self):
+        if self._slice_offset_fraction < 0:
+            return self._legacy_slice_offset
+        return self._slice_offset_fraction * self._parent.length
+
+    @slice_offset.setter
+    def slice_offset(self, value):
+        parent = self._parent
+        if parent is None:
+            self._legacy_slice_offset = value
+            self._slice_offset_fraction = -1.
+        else:
+            self._slice_offset_fraction = (
+                value / parent.length if parent.length else 0.)
+
+    @property
+    def behaves_like_drift(self):
+        parent = self._parent
+        return parent is not None and parent._model < 10
+
     def get_equivalent_element(self):
+        if self._parent._model >= 10:
+            # Retain this connected physical interval. An ordinary Drift
+            # would erase the parent RF/static source during optimization.
+            return self
         out = Drift(length=self._parent.length * self.weight,
                      _buffer=self._buffer)
         return out

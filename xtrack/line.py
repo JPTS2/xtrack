@@ -1860,10 +1860,24 @@ class Line:
     @doc_group("Cleanup and Simplification")
     def disable_tpsa_elements(self):
         """Convert all TPSA-enabled elements in the line back to scalar storage."""
-        tpsa_enabled = self.attr['_tpsa_enabled']
-        for element_name, enabled in zip(self.element_names, tpsa_enabled):
-            if enabled:
-                self[element_name].disable_tpsa()
+        # Attribute-cache construction probes dtypes by copying an element;
+        # active TPSA elements intentionally cannot be copied. Visit the actual
+        # owners instead, including parents used only through their slices.
+        # The environment may contain unrelated lines: do not disable those.
+        pending = list(self.element_names)
+        visited = set()
+        while pending:
+            name = pending.pop()
+            element = self._element_dict[name]
+            identity = id(element)
+            if identity in visited:
+                continue
+            visited.add(identity)
+            if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0):
+                element.disable_tpsa()
+            parent_name = getattr(element, 'parent_name', None)
+            if parent_name is not None:
+                pending.append(parent_name)
 
     @doc_group("Reference Particle and Particle Generation")
     def set_particle_ref(self, *args, **kwargs):
@@ -8070,7 +8084,9 @@ def _is_drift(element, line):
     if isinstance(element, beam_elements.Drift):
         return True
     if element.__class__.__name__.startswith('Drift'):
-        return True
+        # A layout drift slice can carry a distributed source. Its owner
+        # declares whether replacing/merging it as a free drift is valid.
+        return bool(getattr(element, 'behaves_like_drift', True))
     return False
 
 def _behaves_like_drift(element, line):

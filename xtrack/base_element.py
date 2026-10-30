@@ -604,10 +604,13 @@ class BeamElement(xo.HybridClass, metaclass=MetaBeamElement):
         self.__dict__["_tpsa_descriptor"] = descriptor
         handles = {}
         for name in self._float_or_tpsa_fields:
+            # Read the storage descriptor, not a public projection such as
+            # Cavity.wave_number=None for a frequency-derived carrier.
+            storage_name = self._rename.get(name, name)
             if self._xobject._tpsa_enabled:
-                value = getattr(self, name)
+                value = getattr(self, storage_name)
             else:
-                value = descriptor.constant(getattr(self, name))
+                value = descriptor.constant(getattr(self, storage_name))
             handles[name] = value
             setattr(self._xobject, name, value)
         self.__dict__["_tpsa_handles"] = handles
@@ -617,7 +620,7 @@ class BeamElement(xo.HybridClass, metaclass=MetaBeamElement):
         if not getattr(self._xobject, "_tpsa_enabled", 0):
             return
         for name in self._float_or_tpsa_fields:
-            value = getattr(self, name)
+            value = getattr(self, self._rename.get(name, name))
             setattr(self._xobject, name, float(value.const_part))
         self._xobject._tpsa_enabled = 0
         self.__dict__["_tpsa_handles"] = {}

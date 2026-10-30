@@ -921,7 +921,8 @@ class Tracker:
             LocalParticle_set_state(&lpart, 1);
             LocalParticle_set_at_element(&lpart, ele_start);
             LocalParticle_update_delta(&lpart, LocalParticle_get_delta(&lpart));
-            LocalParticle_set_s(&lpart, 0.0);
+            // Input s is part of the physical clock for absolute RF. Turn
+            // bookkeeping below, rather than entry, owns any requested reset.
             LocalParticle_set_ax(&lpart, 0.0);
             LocalParticle_set_ay(&lpart, 0.0);
 
