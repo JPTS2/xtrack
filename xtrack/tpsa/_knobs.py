@@ -22,10 +22,14 @@ class KnobParameters:
     """Line variables ``names`` held as parameters ``1..len(names)`` of ``descriptor``.
 
     ``apply()`` puts the parameters in, ``refresh(values)`` moves them to new knob
-    values, ``teardown()`` puts plain doubles back everywhere.
+    values, ``teardown()`` restores the knob values to plain doubles and disables
+    only element owners promoted by this parameter context. Owners that were
+    already in TPSA mode remain enabled, preserving unrelated parameter series.
 
     While the parameters are in, the knobs must be moved with ``refresh``: assigning a
     float to ``line.vars`` re-propagates constants and drops the knob dependence.
+    Keep the dependency topology fixed until teardown; refresh changes only the
+    knob base points and does not acquire newly added expression owners.
     """
 
     def __init__(self, line: Any, names: list[str], descriptor: Descriptor) -> None:
@@ -42,6 +46,7 @@ class KnobParameters:
             )
         self._applied = False
         self._reached = None      # element names the knob expressions reach
+        self._initially_enabled = None
 
     def __len__(self) -> int:
         return len(self.names)
@@ -58,12 +63,25 @@ class KnobParameters:
         values = [_scalar_value(value) for value in values]
         if len(values) != len(self.names):
             raise ValueError("one value is required for each knob")
+        if not self._applied:
+            # A shared environment may already contain another active map.
+            # Own only promotions caused by this parameter context; a shared
+            # variable may legitimately reach an owner outside this line.
+            self._initially_enabled = {
+                id(element) for element in self.line._element_dict.values()
+                if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0)
+            }
+            self._reached = None
         for index, (name, value) in enumerate(zip(self.names, values), start=1):
             self.line.vars[name] = self.descriptor.param(index, _scalar_value(value))
         self._applied = True
         if self._reached is None:
             # The expression topology is fixed, so the reached elements are too.
-            self._reached = sorted({name for name, _ in self.driven_elements()})
+            self._reached = sorted({
+                name for name, element in self.line._element_dict.items()
+                if id(element) not in self._initially_enabled
+                and getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0)
+            })
 
     def refresh(self, values: list[float]) -> None:
         """Move active parameters to new base points, preserving their seeds."""
@@ -72,13 +90,13 @@ class KnobParameters:
         self.apply(values)
 
     def teardown(self) -> None:
-        """Plain doubles back in the variables and in every element they reached."""
+        """Restore doubles and release only this context's new TPSA owners."""
         if not self._applied:
             return
         self.apply_doubles([_scalar_value(self.line[name]) for name in self.names])
 
     def apply_doubles(self, values: list[float]) -> None:
-        """Set the knobs to floats and drop TPSA storage from the elements they drive."""
+        """Set knobs to floats and release this context's newly promoted owners."""
         values = [_scalar_value(value) for value in values]
         if len(values) != len(self.names):
             raise ValueError("one value is required for each knob")
@@ -88,16 +106,33 @@ class KnobParameters:
         # constant series, so the switch back to doubles is explicit by disabling tpsa
         # for the reached elements.
         elements = self.line.element_dict
-        for name in (self._reached if self._reached is not None else elements):
+        for name in (self._reached or ()):
             element = elements[name]
             if getattr(getattr(element, "_xobject", None), "_tpsa_enabled", 0):
                 element.disable_tpsa()
         self._applied = False
+        self._reached = None
+        self._initially_enabled = None
+
+    def _used_owners(self):
+        """Canonical used elements and their slice/replica parent closure."""
+        pending = list(self.line.element_names)
+        seen = set()
+        while pending:
+            name = pending.pop()
+            element = self.line._element_dict[name]
+            if id(element) in seen:
+                continue
+            seen.add(id(element))
+            yield name, element
+            parent = getattr(element, 'parent_name', None)
+            if parent is not None:
+                pending.append(parent)
 
     def driven_elements(self) -> list[tuple[str, str]]:
         """``(element, attribute)`` of every field currently holding a series."""
         driven = []
-        for name, element in self.line.element_dict.items():
+        for name, element in self._used_owners():
             if not getattr(getattr(element, "_xobject", None), "_tpsa_enabled", 0):
                 continue
             for attr in getattr(element, "_float_or_tpsa_fields", ()):
@@ -112,7 +147,8 @@ class KnobParameters:
         """
         jacobian = {}
         for element_name, attr in self.driven_elements():
-            value = getattr(self.line.element_dict[element_name], attr)
+            element = self.line._element_dict[element_name]
+            value = getattr(element, element._rename.get(attr, attr))
             if isinstance(value, Tpsa):
                 jacobian[(element_name, attr)] = value.param_grad()
         return jacobian
