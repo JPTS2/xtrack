@@ -37,17 +37,26 @@ launching subagents; wait for the user's explicit launch instruction.
   confirmation; stage explicit whole-file paths and inspect the staged diff.
 - Root alone coordinates all Git mutations and owns each repository's index.
   Do not launch subagents during preflight. The separately authorized overnight
-  run uses at most FIVE fresh subagents TOTAL: three implementation workers (native maps, Line integration, TPSA),
-  plus independent physics and software/numerics reviewers, in addition to root.
+  run now permits at most FIVE concurrent subagents, in addition to root,
+  with dynamic development/review assignments. The author's latest 30 October
+  instruction supersedes the earlier lifetime total and fixed role split.
+  Reviewers must remain independent of the implementation they review.
   The six-hour launch on 30 October supersedes previous role allocations.
-  No descendants, historical
-  agents or replacements exceeding that total. Root coordinates scientific
+  No descendants or historical agents. Root coordinates scientific
   decisions, dependencies and integration; reviewers do not review their own
   implementation. Assign disjoint files on the existing `dev/cavity-models`
   branches; subagents must not switch branches, perform Git mutations or
   share/manipulate the index. Follow cavity-modelling/TOWARDS-AUDIT.md for the
-  active ownership allocation, hourly reviews/commits, unchanged resource limits and
+  active ownership allocation, hourly reviews/commits, current resource limits and
   final integration hour. Preflight does not start the ten-hour execution clock.
+- Compute may use up to EIGHT CPU cores total, including nested build/library
+  threads across root and all subagents. This replaces the earlier two-job
+  ceiling; bounded execution, memory/responsiveness checks and the final
+  integration hour remain required.
+- Group native cavity headers by physical family (phase-resolved, frozen,
+  averaged). Use sections rather than files for minor approximation-order
+  subdivisions. Separate shared numerical machinery only where substantial
+  reuse justifies it, preserving distinct equations and independent checks.
 - Branch checks are procedural safeguards, not an enforced branch lock. No
   hook or filesystem policy here prevents another process changing HEAD between
   checks. Do not claim branch enforcement beyond the checks actually performed.
