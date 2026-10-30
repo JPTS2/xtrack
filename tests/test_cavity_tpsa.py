@@ -1060,7 +1060,10 @@ def test_compact_averaged_public_tpsa(cavity_magnetic_context):
                                    rtol=3e-5,atol=3e-8,err_msg=model)
 
 
-def test_full_slow_and_uniform_public_tpsa(cavity_magnetic_context):
+@pytest.mark.parametrize('model',[
+    'phase-averaged-uniform-quadratic-first-boundary',
+    'phase-averaged-uniform-quadratic','phase-averaged-full-slow'])
+def test_full_slow_and_uniform_public_tpsa(cavity_magnetic_context,model):
     """Executed 17/18/19 maps retain state and calibrated hardware derivatives."""
     context=cavity_magnetic_context
     mass=xt.ELECTRON_MASS_EV
@@ -1073,62 +1076,60 @@ def test_full_slow_and_uniform_public_tpsa(cavity_magnetic_context):
     line.reset_s_at_end_turn=False
     _build_shared_cavity_tracker(line,context)
     weights={-2:1.,-1:-8.,1:8.,2:-1.}
-    for model in ('phase-averaged-uniform-quadratic-first-boundary',
-        'phase-averaged-uniform-quadratic','phase-averaged-full-slow'):
-        line['c'].model=model
-        # The profile is a stored physical input, not retargeted implicitly
-        # when selecting another model on the same parent element.
-        line['c'].rf_profile='p16' if model=='phase-averaged-full-slow' else 'uniform'
-        line['c'].num_kicks=2 if model=='phase-averaged-full-slow' else 8
-        scalar=xt.Particles(_context=context,**launch)
-        line.track(scalar)
-        assert scalar.state[0]==1,model
-        desc=madng_tpsa.Descriptor(6,2,num_params=len(values),param_order=1)
-        for index,(name,value) in enumerate(values.items(),start=1):
-            setattr(line['c'],name,desc.param(index,value))
-        series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
-        line.track(series)
-        np.testing.assert_allclose(series.const_part,_values(scalar),
-                                   rtol=0.,atol=3e-12,err_msg=model)
-        jacobian=series.jacobian().copy()
-        gradients=series.param_jacobian().copy()
-        mixed=series.coefficient('x',(0,1,0,0,0,0,0,1,0,0,0,0))
-        line.disable_tpsa_elements()
-        finite_jacobian=np.zeros((6,6))
-        for column,name in enumerate(COORDS):
-            for offset,weight in weights.items():
-                particle=xt.Particles(_context=context,**dict(
-                    launch,**{name:launch[name]+offset*1e-4}))
-                line.track(particle)
-                assert particle.state[0]==1,model
-                finite_jacobian[:,column]+=weight*_values(particle)/(12e-4)
-        np.testing.assert_allclose(jacobian,finite_jacobian,
-                                   rtol=3e-6,atol=3e-9,err_msg=model)
-        for column,(name,value) in enumerate(values.items()):
-            scale=max(1.,abs(value));step=scale*1e-4
-            derivative=np.zeros(6)
-            for offset,weight in weights.items():
-                setattr(line['c'],name,value+offset*step)
-                particle=xt.Particles(_context=context,**launch)
-                line.track(particle)
-                assert particle.state[0]==1,model
-                derivative+=weight*_values(particle)/(12*step)
-            setattr(line['c'],name,value)
-            np.testing.assert_allclose(gradients[:,column]*scale,derivative*scale,
-                                       rtol=3e-6,atol=3e-8,err_msg=model+name)
-        finite_mixed=0.
-        for ip,wp in weights.items():
-            for ie,we in weights.items():
-                line['c'].eta=.25+ie*.01
-                particle=xt.Particles(_context=context,**dict(
-                    launch,px=launch['px']+ip*1e-3))
-                line.track(particle)
-                assert particle.state[0]==1,model
-                finite_mixed+=wp*we*float(particle.x[0])/(144*1e-3*.01)
-        line['c'].eta=.25
-        np.testing.assert_allclose(mixed,finite_mixed,
-                                   rtol=3e-5,atol=3e-8,err_msg=model)
-        print(model,'mixed dR12/deta',mixed,'FD',finite_mixed)
+    line['c'].model=model
+    # The profile is a stored physical input, not retargeted implicitly
+    # when selecting another model on the same parent element.
+    line['c'].rf_profile='p16' if model=='phase-averaged-full-slow' else 'uniform'
+    line['c'].num_kicks=2 if model=='phase-averaged-full-slow' else 8
+    scalar=xt.Particles(_context=context,**launch)
+    line.track(scalar)
+    assert scalar.state[0]==1,model
+    desc=madng_tpsa.Descriptor(6,2,num_params=len(values),param_order=1)
+    for index,(name,value) in enumerate(values.items(),start=1):
+        setattr(line['c'],name,desc.param(index,value))
+    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
+    line.track(series)
+    np.testing.assert_allclose(series.const_part,_values(scalar),
+                               rtol=0.,atol=3e-12,err_msg=model)
+    jacobian=series.jacobian().copy()
+    gradients=series.param_jacobian().copy()
+    mixed=series.coefficient('x',(0,1,0,0,0,0,0,1,0,0,0,0))
+    line.disable_tpsa_elements()
+    finite_jacobian=np.zeros((6,6))
+    for column,name in enumerate(COORDS):
+        for offset,weight in weights.items():
+            particle=xt.Particles(_context=context,**dict(
+                launch,**{name:launch[name]+offset*1e-4}))
+            line.track(particle)
+            assert particle.state[0]==1,model
+            finite_jacobian[:,column]+=weight*_values(particle)/(12e-4)
+    np.testing.assert_allclose(jacobian,finite_jacobian,
+                               rtol=3e-6,atol=3e-9,err_msg=model)
+    for column,(name,value) in enumerate(values.items()):
+        scale=max(1.,abs(value));step=scale*1e-4
+        derivative=np.zeros(6)
+        for offset,weight in weights.items():
+            setattr(line['c'],name,value+offset*step)
+            particle=xt.Particles(_context=context,**launch)
+            line.track(particle)
+            assert particle.state[0]==1,model
+            derivative+=weight*_values(particle)/(12*step)
+        setattr(line['c'],name,value)
+        np.testing.assert_allclose(gradients[:,column]*scale,derivative*scale,
+                                   rtol=3e-6,atol=3e-8,err_msg=model+name)
+    finite_mixed=0.
+    for ip,wp in weights.items():
+        for ie,we in weights.items():
+            line['c'].eta=.25+ie*.01
+            particle=xt.Particles(_context=context,**dict(
+                launch,px=launch['px']+ip*1e-3))
+            line.track(particle)
+            assert particle.state[0]==1,model
+            finite_mixed+=wp*we*float(particle.x[0])/(144*1e-3*.01)
+    line['c'].eta=.25
+    np.testing.assert_allclose(mixed,finite_mixed,
+                               rtol=3e-5,atol=3e-8,err_msg=model)
+    print(model,'mixed dR12/deta',mixed,'FD',finite_mixed)
 
 
 def test_full_slow_zero_fast_and_zero_voltage_series(cavity_magnetic_context):

@@ -1055,72 +1055,102 @@ int CavityProduct_interval(xt_float_or_tpsa q[6],const CavityAveragedSource *par
 // Uniform quadratic body and first/second-order boundary scalars.
 #include "xtrack/beam_elements/elements_src/cavity_models_compat.h"
 
-GPUFUN
-xt_float_or_tpsa CavityQuadratic_power(xt_float_or_tpsa_arg value,int degree) {
-    xt_float_or_tpsa result=1.;
-    for (int i=0;i<degree;++i) result*=value;
-    return result;
-}
-
-// Compact rational coefficient and its exact E derivative. P,Q are small
-// polynomials in p=sqrt(E^2-1); their coefficients may depend on live nu.
-// Return [P(p)+E*Q(p)]/(scale*p^pp*nu^nn*E^ee*(E+nu*p)^dd).
-GPUFUN
-void CavityQuadratic_ratio(xt_float_or_tpsa_arg E,xt_float_or_tpsa_arg p,
-        xt_float_or_tpsa_arg nu,const xt_float_or_tpsa P[7],
-        const xt_float_or_tpsa Q[7],int scale,int pp,int nn,int ee,int dd,
-        xt_float_or_tpsa out[2]) {
-    xt_float_or_tpsa pv=0.,pd=0.,qv=0.,qd=0.;
-    for (int j=6;j>=0;--j) {
-        pd=pd*p+pv;pv=pv*p+P[j];
-        qd=qd*p+qv;qv=qv*p+Q[j];
-    }
-    const xt_float_or_tpsa rate=E/p,D=E+nu*p;
-    const xt_float_or_tpsa value=pv+E*qv;
-    const xt_float_or_tpsa derivative=rate*pd+qv+E*rate*qd;
-    const xt_float_or_tpsa factor=1./(scale*CavityQuadratic_power(p,pp)
-        *CavityQuadratic_power(nu,nn)*CavityQuadratic_power(E,ee)
-        *CavityQuadratic_power(D,dd));
-    const xt_float_or_tpsa logarithm=-pp*E/(p*p)-ee/E-dd*(1.+nu*rate)/D;
-    out[0]=factor*value;
-    out[1]=factor*(derivative+logarithm*value);
-}
-
-// Three real second-order boundary harmonics: psi-chi, 2psi, psi+chi.
-// Each row has reference/radial/shear/drift coefficients multiplying
-// sin(angle)*(1,R^2,P^2) and cos(angle)*(X*Px+Y*Py).
+// Three exact second-order boundary harmonics. Each row is the same
+// rational P(p)+E*Q(p), with total d/dE at fixed carrier. Shared reciprocal
+// powers replace repeated seven-coefficient polynomial table evaluation.
 GPUFUN
 void CavityQuadratic_boundary_coefficients(xt_float_or_tpsa_arg E,
-        xt_float_or_tpsa_arg p,xt_float_or_tpsa_arg nu,
-        xt_float_or_tpsa packets[3][4][2]) {
+        xt_float_or_tpsa_arg p,xt_float_or_tpsa_arg nu,xt_float_or_tpsa packets[3][4][2]) {
     const xt_float_or_tpsa n2=nu*nu,n3=n2*nu,n4=n2*n2;
-    const xt_float_or_tpsa numerator[12][7]={
-        {-1.}, {-n2+2.,0.,3.*n2-1.},
-        {0.,-7.*n3+6.*nu,0.,-n3-3.*nu},
-        {-3.*n2-2.,0.,3.*n4-18.*n2-1.,0.,n4+6.*n2+1.},
-        {-1.}, {-3.*n2+2.,0.,-3.*n2+1.},
-        {0.,n2+2.,0.,-n2-1.}, {0.,3.*n2-14.,0.,n2+1.},
-        {-1.}, {-n2+2.,0.,n2+1.},
-        {-4.*nu,0.,-3.*n3-6.*nu,0.,-n3-3.*nu},
-        {0.,13.*n2-14.,0.,3.*n4+18.*n2-13.,0.,n4+6.*n2+1.}
-    };
-    const xt_float_or_tpsa companion[12][7]={
-        {0.}, {0.,2.*n3}, {-n2+2.,0.,-3.*n2-1.},
-        {0.,-12.*n3-8.*nu,0.,4.*n3+4.*nu},
-        {0.}, {0.,-2.*n3}, {4.*nu,0.,-2.*nu}, {-12.*nu,0.,2.*nu},
-        {0.}, {0.,2.*nu}, {0.,-9.*n2+2.,0.,-3.*n2-1.},
-        {-8.*nu,0.,12.*n3-8.*nu,0.,4.*n3+4.*nu}
-    };
-    // scale, p-power, nu-power, E-power, (E+nu*p)-power.
-    const int denominator[12][5]={
-        {16,1,1,0,2},{64,1,1,0,2},{64,2,2,0,3},{128,3,3,0,4},
-        {32,0,0,0,3},{128,0,0,0,3},{128,1,0,0,4},{256,1,0,0,5},
-        {16,0,0,1,2},{64,0,0,1,2},{64,1,0,2,3},{128,1,0,3,4}
-    };
-    for (int row=0;row<12;++row)
-        CavityQuadratic_ratio(E,p,nu,numerator[row],companion[row],
-            denominator[row][0],denominator[row][1],denominator[row][2],
-            denominator[row][3],denominator[row][4],packets[row/4][row%4]);
+    const xt_float_or_tpsa p2=p*p,p3=p2*p,p4=p2*p2,p5=p4*p;
+    const xt_float_or_tpsa D=E+nu*p,rate=E/p,DE=1.+nu*rate;
+    const xt_float_or_tpsa ip=1./p,in=1./nu,ie=1./E,id=1./D;
+    const xt_float_or_tpsa ip2=ip*ip,ip3=ip2*ip,in2=in*in,in3=in2*in;
+    const xt_float_or_tpsa ie2=ie*ie,ie3=ie2*ie,id2=id*id,id3=id2*id,id4=id2*id2,id5=id4*id;
+    {
+        const xt_float_or_tpsa value=-1;
+        const xt_float_or_tpsa derivative=0.;
+        const xt_float_or_tpsa factor=1./16.*ip*in*id2;
+        packets[0][0][0]=factor*value;
+        packets[0][0][1]=factor*(derivative+(-1.*E*ip2-2.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=2*E*n3*p + 3*n2*p2 - n2 - p2 + 2;
+        const xt_float_or_tpsa derivative=rate*(2*E*n3 + 6*n2*p - 2*p)+(2*n3*p);
+        const xt_float_or_tpsa factor=1./64.*ip*in*id2;
+        packets[0][1][0]=factor*value;
+        packets[0][1][1]=factor*(derivative+(-1.*E*ip2-2.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=-3*E*n2*p2 - E*n2 - E*p2 + 2*E - 7*n3*p - n3*p3 + 6*nu*p - 3*nu*p3;
+        const xt_float_or_tpsa derivative=rate*(-6*E*n2*p - 2*E*p - 3*n3*p2 - 7*n3 - 9*nu*p2 + 6*nu)+(-3*n2*p2 - n2 - p2 + 2);
+        const xt_float_or_tpsa factor=1./64.*ip2*in2*id3;
+        packets[0][2][0]=factor*value;
+        packets[0][2][1]=factor*(derivative+(-2.*E*ip2-3.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=-12*E*n3*p + 4*E*n3*p3 - 8*E*nu*p + 4*E*nu*p3 - 18*n2*p2 + 6*n2*p4 - 3*n2 + 3*n4*p2 + n4*p4 - p2 + p4 - 2;
+        const xt_float_or_tpsa derivative=rate*(12*E*n3*p2 - 12*E*n3 + 12*E*nu*p2 - 8*E*nu - 36*n2*p + 24*n2*p3 + 6*n4*p + 4*n4*p3 - 2*p + 4*p3)+(-12*n3*p + 4*n3*p3 - 8*nu*p + 4*nu*p3);
+        const xt_float_or_tpsa factor=1./128.*ip3*in3*id4;
+        packets[0][3][0]=factor*value;
+        packets[0][3][1]=factor*(derivative+(-3.*E*ip2-4.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=-1;
+        const xt_float_or_tpsa derivative=0.;
+        const xt_float_or_tpsa factor=1./32.*id3;
+        packets[1][0][0]=factor*value;
+        packets[1][0][1]=factor*(derivative+(-3.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=-2*E*n3*p - 3*n2*p2 - 3*n2 + p2 + 2;
+        const xt_float_or_tpsa derivative=rate*(-2*E*n3 - 6*n2*p + 2*p)+(-2*n3*p);
+        const xt_float_or_tpsa factor=1./128.*id3;
+        packets[1][1][0]=factor*value;
+        packets[1][1][1]=factor*(derivative+(-3.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=-2*E*nu*p2 + 4*E*nu + n2*p - n2*p3 + 2*p - p3;
+        const xt_float_or_tpsa derivative=rate*(-4*E*nu*p - 3*n2*p2 + n2 - 3*p2 + 2)+(-2*nu*p2 + 4*nu);
+        const xt_float_or_tpsa factor=1./128.*ip*id4;
+        packets[1][2][0]=factor*value;
+        packets[1][2][1]=factor*(derivative+(-1.*E*ip2-4.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=2*E*nu*p2 - 12*E*nu + 3*n2*p + n2*p3 - 14*p + p3;
+        const xt_float_or_tpsa derivative=rate*(4*E*nu*p + 3*n2*p2 + 3*n2 + 3*p2 - 14)+(2*nu*p2 - 12*nu);
+        const xt_float_or_tpsa factor=1./256.*ip*id5;
+        packets[1][3][0]=factor*value;
+        packets[1][3][1]=factor*(derivative+(-1.*E*ip2-5.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=-1;
+        const xt_float_or_tpsa derivative=0.;
+        const xt_float_or_tpsa factor=1./16.*ie*id2;
+        packets[2][0][0]=factor*value;
+        packets[2][0][1]=factor*(derivative+(-1.*ie-2.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=2*E*nu*p + n2*p2 - n2 + p2 + 2;
+        const xt_float_or_tpsa derivative=rate*(2*E*nu + 2*n2*p + 2*p)+(2*nu*p);
+        const xt_float_or_tpsa factor=1./64.*ie*id2;
+        packets[2][1][0]=factor*value;
+        packets[2][1][1]=factor*(derivative+(-1.*ie-2.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=-9*E*n2*p - 3*E*n2*p3 + 2*E*p - E*p3 - 3*n3*p2 - n3*p4 - 6*nu*p2 - 3*nu*p4 - 4*nu;
+        const xt_float_or_tpsa derivative=rate*(-9*E*n2*p2 - 9*E*n2 - 3*E*p2 + 2*E - 6*n3*p - 4*n3*p3 - 12*nu*p - 12*nu*p3)+(-9*n2*p - 3*n2*p3 + 2*p - p3);
+        const xt_float_or_tpsa factor=1./64.*ip*ie2*id3;
+        packets[2][2][0]=factor*value;
+        packets[2][2][1]=factor*(derivative+(-1.*E*ip2-2.*ie-3.*DE*id)*value);
+    }
+    {
+        const xt_float_or_tpsa value=12*E*n3*p2 + 4*E*n3*p4 - 8*E*nu*p2 + 4*E*nu*p4 - 8*E*nu + 13*n2*p + 18*n2*p3 + 6*n2*p5 + 3*n4*p3 + n4*p5 - 14*p - 13*p3 + p5;
+        const xt_float_or_tpsa derivative=rate*(24*E*n3*p + 16*E*n3*p3 - 16*E*nu*p + 16*E*nu*p3 + 54*n2*p2 + 30*n2*p4 + 13*n2 + 9*n4*p2 + 5*n4*p4 - 39*p2 + 5*p4 - 14)+(12*n3*p2 + 4*n3*p4 - 8*nu*p2 + 4*nu*p4 - 8*nu);
+        const xt_float_or_tpsa factor=1./128.*ip*ie3*id4;
+        packets[2][3][0]=factor*value;
+        packets[2][3][1]=factor*(derivative+(-1.*E*ip2-3.*ie-4.*DE*id)*value);
+    }
 }
 
 // Averaged body: free paraxial transport + slow first-order RF + separate
@@ -1323,7 +1353,16 @@ int CavityQuadratic_integrate(xt_float_or_tpsa q[6],
         xt_float_or_tpsa z=physical_z;
         if (!boundary) z=a+(cell+.5)*h;
         xt_float_or_tpsa stage[6],flow[6],full[6];
-        int status=CavityQuadratic_flow(q,z,source,boundary,flow);
+        if(!CavityModel_vector_finite(q,6)||xt_float_or_tpsa_const_part(q[5])<=1.)return CAVITY_MODEL_DOMAIN;
+        for(int i=0;i<6;++i)full[i]=q[i];
+        if(!boundary) {
+            const xt_float_or_tpsa E=q[5],p=sqrt((E-1.)*(E+1.)),P2=q[3]*q[3]+q[4]*q[4];
+            if(!(source->frozen_coordinates&1))full[0]+=.5*h*q[3]/p;
+            if(!(source->frozen_coordinates&2))full[1]+=.5*h*q[4]/p;
+            if(source->frozen_coordinates&4)full[2]+=.5*h/source->reference_beta;
+            else full[2]+=.5*h*(E/p+E*P2/(2.*p*p*p));
+        }
+        int status=CavityQuadratic_flow(full,z,source,boundary,flow);
         if (status!=CAVITY_MODEL_OK) return status;
         for (int i=0;i<6;++i) stage[i]=.5*h*flow[i];
         int converged=0;
@@ -1334,22 +1373,20 @@ int CavityQuadratic_integrate(xt_float_or_tpsa q[6],
             double defect=0.;
             for (int i=0;i<6;++i) {
                 const xt_float_or_tpsa next=.5*h*flow[i];
-                defect=fmax(defect,CavityModel_scalar_residual(stage[i]-next,q[i]+next,1));
-                stage[i]=next;
+                defect=fmax(defect,CavityModel_scalar_residual(stage[i]-next,full[i],1));
+
             }
             if (defect<=source->tolerance) {converged=1;break;}
+            for(int i=0;i<6;++i)stage[i]=.5*h*flow[i];
         }
         if (!converged) return CAVITY_MODEL_ITERATIONS;
-        for (int i=0;i<6;++i) full[i]=q[i]+stage[i];
-        status=CavityQuadratic_flow(full,z,source,boundary,flow);
-        if (status!=CAVITY_MODEL_OK) return status;
-        for (int i=0;i<6;++i)
-            if (CavityModel_scalar_residual(stage[i]-.5*h*flow[i],q[i]+stage[i],1)
-                    >source->tolerance) return CAVITY_MODEL_ITERATIONS;
+        // flow was freshly evaluated at the ACCEPTED unchanged stage;
+        // the loop just checked its complete original defining residual.
         for (int i=0;i<6;++i) q[i]+=h*flow[i];
     }
     return CAVITY_MODEL_OK;
 }
+
 
 GPUFUN
 int CavityQuadratic_prefix(xt_float_or_tpsa q[6],
