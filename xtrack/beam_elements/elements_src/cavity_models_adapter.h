@@ -61,6 +61,12 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
               && beta0>0. && beta0<1. && isfinite(Q)
               && isfinite(mass_ratio) && mass_ratio>0.))
             status=CAVITY_MODEL_ARGUMENT;
+        const xt_float_or_tpsa sigma=1.+LocalParticle_get_delta(part);
+        if (status==CAVITY_MODEL_OK && !CavityModel_scalar_finite(sigma))
+            status=CAVITY_MODEL_NONFINITE;
+        if (status==CAVITY_MODEL_OK
+            && xt_float_or_tpsa_const_part(sigma)<=0.)
+            status=CAVITY_MODEL_DOMAIN;
         xt_float_or_tpsa frequency=CavityData_get_frequency(el);
         const xt_float_or_tpsa harmonic=CavityData_get_harmonic(el);
         if (!xt_float_or_tpsa_is_zero(harmonic)) {
@@ -118,7 +124,7 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
                 -source.k*LocalParticle_get_zeta(part)/beta0;
             q[3]=kappa0*LocalParticle_get_px(part);
             q[4]=kappa0*LocalParticle_get_py(part);
-            const xt_float_or_tpsa momentum=kappa0*(1.+LocalParticle_get_delta(part));
+            const xt_float_or_tpsa momentum=kappa0*sigma;
             q[5]=sqrt(1.+momentum*momentum);
         }
         for (int64_t cell=0; status==CAVITY_MODEL_OK && cell<cells; ++cell) {
@@ -154,6 +160,9 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
                     +(source.k*length*(end_fraction-.5)+source.half_span)/beta0-q[2]);
                 result[5]=sqrt(total2)/kappa0-1.;
                 if (!CavityModel_vector_finite(result,6)) status=CAVITY_MODEL_NONFINITE;
+                if (status==CAVITY_MODEL_OK
+                    && xt_float_or_tpsa_const_part(1.+result[5])<=0.)
+                    status=CAVITY_MODEL_DOMAIN;
             }
         }
         // Commit once: an invalid source/root must not partly update a lane.

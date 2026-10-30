@@ -136,6 +136,36 @@ def test_public_cavity_physical_clock_frame_invariance(tmp_path):
                 rtol=0., atol=2e-12, err_msg=model+' physical RF clock')
 
 
+def test_public_cavity_rejects_nonpositive_native_momentum(tmp_path):
+    """Squaring p cannot turn a backward native ray into a forward one."""
+    checked=0
+    names=(*COORDINATES,'ptau','pzeta','rpp','rvv','s','ax','ay')
+    with native_context(tmp_path) as context:
+        for model in MODELS:
+            element=xt.Cavity(_context=context,length=.05,voltage=0.,
+                frequency=0.,eta=.3,model=model,integrator='gauss2',
+                num_kicks=4)
+            for delta in (-1.1,-1.):
+                try:
+                    incoming=particle(context,2.4,px=0.,py=0.,delta=delta)
+                except ValueError:
+                    # Some particle constructors may already reject this
+                    # direction; do not corrupt raw buffers to bypass them.
+                    continue
+                before={name:np.asarray(getattr(incoming,name)).copy()
+                        for name in names}
+                time_before=float(incoming.time_s)
+                element.track(incoming)
+                assert incoming.state[0]<0,(model,delta)
+                for name,expected in before.items():
+                    np.testing.assert_array_equal(getattr(incoming,name),
+                        expected,err_msg=repr((model,delta,name)))
+                assert float(incoming.time_s)==time_before
+                checked+=1
+    if not checked:
+        pytest.skip('Particles constructor already rejects both directions')
+
+
 @pytest.fixture(scope='module')
 def scalar_source_library(tmp_path_factory):
     """Compile the shipped scalar source without its Python exporter.
