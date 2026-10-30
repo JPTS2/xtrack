@@ -164,6 +164,61 @@ def _compensate_radiation_energy_loss(line, delta0='zero_mean', rtol_eneloss=1e-
     # closes; otherwise solve the actual restored tracking map.
     _refine_tracked_cavity_phases(line, particle_on_co, delta_start,
                                   v_synchronous, rtol_eneloss, max_iter)
+    _refresh_tracked_taper_profile(line, particle_on_co, delta_start,
+                                  v_synchronous, rtol_eneloss, max_iter,
+                                  zero_mean=(delta0 == 'zero_mean'))
+
+
+def _refresh_tracked_taper_profile(line, particle_on_co, delta_start,
+                                  synchronous_voltages, rtol, max_iter,
+                                  zero_mean=False):
+    """Prepare fixed hardware strengths from the restored actual trajectory.
+
+    Preserve the standard endpoint-mean delta convention. This is a saved
+    constant per parent, rather than a field following the particle inside
+    an integration stage. The DC pilot is only the first estimate. Convergence
+    here checks preparation consistency and RF work, not radiative accuracy.
+    """
+    initial = particle_on_co.copy()
+    initial.delta = delta_start
+    # Geometric endpoints avoid turn-end resetting of the monitor's s chart.
+    # Use the same endpoint-mean quadrature convention as the saved hardware.
+    positions = np.r_[line._get_s_elements(), line.get_length()]
+    if zero_mean and positions[-1] <= 0.:
+        raise ValueError('A zero-mean taper requires positive line length')
+    item = line.attr._cache['delta_taper']
+    for _ in range(max_iter):
+        energy0 = float(initial.energy[0])
+        energy_tolerance = max(rtol*energy0, 32*np.finfo(float).eps*energy0)
+        # dE/d(delta)=p0c*beta for the current entrance state. This translates
+        # the requested energy tolerance to its relative-momentum chart.
+        delta_tolerance = energy_tolerance/float(
+            initial.beta0[0]*initial.rvv[0]*initial.p0c[0])
+        probe = initial.copy()
+        line.track(probe, turn_by_turn_monitor='ONE_TURN_EBE')
+        if probe.state[0] <= 0:
+            raise RuntimeError('Restored taper map lost the reference particle')
+        monitor = line.record_last_track
+        means = .5*(monitor.delta[0, :-1]+monitor.delta[0, 1:])
+        target = means[item.mask]
+        current = item.multisetter.get_values()
+        error = float(probe.energy[0])-energy0
+        mean_delta = (xt.twiss.trapz(monitor.delta[0], positions)/positions[-1]
+                      if zero_mean else 0.)
+        if (np.all(np.abs(target-current) <= delta_tolerance)
+                and abs(error) <= energy_tolerance
+                and abs(mean_delta) <= delta_tolerance):
+            return
+        item.multisetter.set_values(target)
+        if zero_mean:
+            delta_start -= mean_delta
+            initial.delta = delta_start
+        # If changing the prescribed hardware alters RF work, solve the
+        # restored maps again. Failure remains transactional in the wrapper.
+        _refine_tracked_cavity_phases(line, particle_on_co, delta_start,
+                                      synchronous_voltages, rtol, max_iter)
+    raise RuntimeError('Restored taper endpoint-mean/zero-mean preparation did not '
+                       'converge within max_iter')
 
 
 def _refine_tracked_cavity_phases(line, particle_on_co, delta_start,
@@ -280,8 +335,29 @@ def compensate_radiation_energy_loss(line, delta0='zero_mean', rtol_eneloss=1e-1
         # Preserve the existing precondition/error before constructing caches.
         return _compensate_radiation_energy_loss(line, delta0, rtol_eneloss,
             max_iter, verbose, co_search_at, **kwargs)
+    # Numeric caches probe parent storage as well as the used slice objects.
+    # Visit all physical owners, including magnets; a TPSA-enabled quadrupole
+    # parent is just as unsafe for a numeric multisetter as a Cavity parent.
+    pending = list(line.element_names)
+    used = []
+    seen = set()
+    while pending:
+        element = line._element_dict[pending.pop()]
+        if isinstance(element, xt.Replica):
+            element = element.resolve(line)
+        if id(element) in seen:
+            continue
+        seen.add(id(element))
+        used.append(element)
+        parent_name = getattr(element, 'parent_name', None)
+        if parent_name is not None:
+            pending.append(parent_name)
+    if any(isinstance(element, (xt.ThinSliceCavity, xt.ThickSliceCavity,
+                                 xt.DriftSliceCavity)) for element in used):
+        raise ValueError('Cavity slices are not supported for radiation energy '
+                         'loss compensation.')
     if any(getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0)
-           for element in line._elements):
+           for element in used):
         raise NotImplementedError(
             'Taper preparation requires scalar element storage. Restore TPSA '
             'knobs to doubles before tapering; then apply them again for tracking.')

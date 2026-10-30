@@ -37,9 +37,9 @@ launching subagents; wait for the user's explicit launch instruction.
   confirmation; stage explicit whole-file paths and inspect the staged diff.
 - Root alone coordinates all Git mutations and owns each repository's index.
   Do not launch subagents during preflight. The separately authorized overnight
-  run uses at most FIVE fresh subagents TOTAL: two native implementation agents,
-  two physics agents and one independent adversarial reviewer, in addition to root.
-  This launch allocation supersedes the preflight three-worker/two-reviewer split.
+  run uses at most FIVE fresh subagents TOTAL: three implementation workers (native maps, Line integration, TPSA),
+  plus independent physics and software/numerics reviewers, in addition to root.
+  The six-hour launch on 30 October supersedes previous role allocations.
   No descendants, historical
   agents or replacements exceeding that total. Root coordinates scientific
   decisions, dependencies and integration; reviewers do not review their own

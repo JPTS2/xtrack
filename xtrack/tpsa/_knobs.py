@@ -63,17 +63,46 @@ class KnobParameters:
         values = [_scalar_value(value) for value in values]
         if len(values) != len(self.names):
             raise ValueError("one value is required for each knob")
+        # Preserve the original objects, not merely their constant parts:
+        # an already-active variable may carry another parameter seed.
+        previous_values = [self.line[name] for name in self.names]
+        previous_state = (self._applied, self._initially_enabled, self._reached)
+        active_before = {
+            id(element) for element in self.line._element_dict.values()
+            if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0)
+        }
         if not self._applied:
-            # A shared environment may already contain another active map.
-            # Own only promotions caused by this parameter context; a shared
-            # variable may legitimately reach an owner outside this line.
-            self._initially_enabled = {
-                id(element) for element in self.line._element_dict.values()
-                if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0)
-            }
+            # Own only promotions caused by this context; a shared variable
+            # may legitimately reach an owner outside this line.
+            self._initially_enabled = active_before
             self._reached = None
-        for index, (name, value) in enumerate(zip(self.names, values), start=1):
-            self.line.vars[name] = self.descriptor.param(index, _scalar_value(value))
+        try:
+            for index, (name, value) in enumerate(zip(self.names, values), start=1):
+                self.line.vars[name] = self.descriptor.param(index, value)
+        except Exception:
+            restore_error = None
+            for name, value in zip(self.names, previous_values):
+                try:
+                    self.line.vars[name] = value
+                except Exception as error:
+                    restore_error = restore_error or error
+            # Snapshot each call, including refresh: owners already promoted
+            # by a successful earlier apply remain owned and enabled.
+            seen = set()
+            for element in self.line._element_dict.values():
+                identity = id(element)
+                if identity in active_before or identity in seen:
+                    continue
+                seen.add(identity)
+                if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0):
+                    try:
+                        element.disable_tpsa()
+                    except Exception as error:
+                        restore_error = restore_error or error
+            self._applied, self._initially_enabled, self._reached = previous_state
+            if restore_error is not None:
+                raise RuntimeError('failed knob assignment could not fully restore its inputs') from restore_error
+            raise
         self._applied = True
         if self._reached is None:
             # The expression topology is fixed, so the reached elements are too.
@@ -129,7 +158,7 @@ class KnobParameters:
             if parent is not None:
                 pending.append(parent)
 
-    def driven_elements(self) -> list[tuple[str, str]]:
+    def driven_elements(self) -> list[tuple[str, str | tuple[str, int]]]:
         """``(element, attribute)`` of every field currently holding a series."""
         driven = []
         for name, element in self._used_owners():
@@ -137,9 +166,14 @@ class KnobParameters:
                 continue
             for attr in getattr(element, "_float_or_tpsa_fields", ()):
                 driven.append((name, attr))
-        return sorted(driven)
+            arrays = element.__dict__.get('_tpsa_array_handles', {})
+            for attr in getattr(element, '_float_or_tpsa_array_fields', ()):
+                backing_name = element._rename.get(attr, attr)
+                for index in arrays.get(backing_name, {}):
+                    driven.append((name, (attr, index)))
+        return sorted(driven, key=lambda item: (item[0], str(item[1])))
 
-    def strength_jacobian(self) -> dict[tuple[str, str], list[float]]:
+    def strength_jacobian(self) -> dict[tuple[str, str | tuple[str, int]], list[float]]:
         """``d strength / d knob`` per driven field.
 
         Distinct from ``ParticlesTpsa.param_jacobian`` (``d coord / d knob``): this is the
@@ -148,7 +182,11 @@ class KnobParameters:
         jacobian = {}
         for element_name, attr in self.driven_elements():
             element = self.line._element_dict[element_name]
-            value = getattr(element, element._rename.get(attr, attr))
+            if isinstance(attr, tuple):
+                name, index = attr
+                value = getattr(element, name)[index]
+            else:
+                value = getattr(element, element._rename.get(attr, attr))
             if isinstance(value, Tpsa):
                 jacobian[(element_name, attr)] = value.param_grad()
         return jacobian
