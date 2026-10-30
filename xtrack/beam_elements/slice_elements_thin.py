@@ -130,6 +130,8 @@ class ThinSliceOctupole(_ThinSliceElementBase, BeamElement):
 
 class ThinSliceCavity(_ThinSliceElementBase, BeamElement):
 
+    _track_local_particle_preflight = 'ThinSliceCavity_preflight'
+
 
     _xofields = {'_parent': xo.Ref(Cavity), **COMMON_SLICE_XO_FIELDS}
 

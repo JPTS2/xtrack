@@ -328,6 +328,19 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
                 raise ValueError('Thick Cavity slice function template changed')
             out_content = out_content.replace(marker, accessor + marker)
 
+        if parent_class == 'Cavity':
+            # All source-effect slices are unsupported. Refuse before the
+            # generated outer wrapper changes a particle's reference frame.
+            marker = 'GPUFUN\nvoid ' + generated_class + '_track_local_particle'
+            preflight = (
+                'GPUFUN\nint ' + generated_class + '_preflight('
+                + generated_data_class + ' el, LocalParticle* part0) {\n'
+                '    return CavityModels_slice_preflight('
+                + generated_data_class + '_getp__parent(el), part0);\n}\n\n')
+            if marker not in out_content:
+                raise ValueError('Cavity slice preflight template changed')
+            out_content = out_content.replace(marker, preflight + marker)
+
         # Save
         out_file = os.path.join(current_directory, f"{generated_class_snake}.h")
         with open(out_file, 'w') as f:
@@ -398,7 +411,13 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
     '''
         if marker not in out_drift_slice:
             raise ValueError('Drift Cavity slice template changed')
-        out_drift_slice = out_drift_slice.replace(marker,accessor+marker)
+        preflight = '''GPUFUN
+    int DriftSliceCavity_preflight(DriftSliceCavityData el, LocalParticle* part0) {
+        return CavityModels_slice_preflight(DriftSliceCavityData_getp__parent(el),part0);
+    }
+
+    '''
+        out_drift_slice = out_drift_slice.replace(marker,accessor+preflight+marker)
         marker = '        double weight = DriftSliceCavityData_get_weight(el);'
         branch = '''        const int model=DriftSliceCavityData_get__parent_model(el);
         if (model>=10) {

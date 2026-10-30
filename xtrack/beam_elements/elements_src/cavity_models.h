@@ -727,7 +727,9 @@ int CavityModel_prepare_profile(xt_float_or_tpsa_arg frequency,
 
 
 #ifndef XTRACK_TPSA_TRACK
-// Applied-effects local laws: physical full-root model, RF-only P16/M2.
+// Applied-effects local laws: full-root P16/M2 plus uniform SOL/QUAD overlap.
+// Static overlap is a body law between in-field observation planes. It does
+// not supply hard-edge spin rotations or radiation through field jumps.
 // Fields are uncharged in source mass units. q=(X,Y,T,Px,Py,gamma).
 // Derivative rows T,X,Y,Z; rho is NOT absorbed in this law.
 typedef struct {
@@ -777,6 +779,35 @@ int CavityModel_effects_profile(double T,double z,const CavityModelSource *sourc
     }
     return CAVITY_MODEL_OK;
 }
+// Uniform longitudinal-gauge static overlap only. Fields remain uncharged;
+// actual signed Q is applied by the Lorentz/LL/BMT laws, never here.
+GPUFUN
+int CavityModel_effects_static_components(const CavityModelSource *source,
+                                         double *b,double *gn,double *gs) {
+    if(source->magnetic_profile!=0)return CAVITY_MODEL_ARGUMENT;
+    const double ks=source->ks;
+    if(!isfinite(ks))return CAVITY_MODEL_NONFINITE;
+    double normal=0.,skew=0.;int present=ks!=0.;
+    for(int64_t n=0;n<=source->order;++n) {
+        // Applied effects have no TPSA execution/derivative interpretation.
+        if((source->knl_tpsa&&source->knl_tpsa[n])
+            ||(source->ksl_tpsa&&source->ksl_tpsa[n]))return CAVITY_MODEL_ARGUMENT;
+        const double kn=CavityModel_static_coefficient(source,n,0);
+        const double sn=CavityModel_static_coefficient(source,n,1);
+        if(!isfinite(kn)||!isfinite(sn))return CAVITY_MODEL_NONFINITE;
+        if(n!=1&&(kn!=0.||sn!=0.))return CAVITY_MODEL_ARGUMENT;
+        if(n==1){normal=kn;skew=sn;present|=kn!=0.||sn!=0.;}
+    }
+    *b=0.;*gn=0.;*gs=0.;
+    // Raw RF-only point queries historically need no magnetic geometry.
+    if(!present)return CAVITY_MODEL_OK;
+    const double k=source->k,length=source->length,scale=source->magnetic_scale;
+    if(!isfinite(k)||k<=0.||!isfinite(length)||length<=0.||!isfinite(scale))
+        return CAVITY_MODEL_ARGUMENT;
+    *b=scale*ks/k;*gn=scale*normal/(length*k*k);*gs=scale*skew/(length*k*k);
+    return isfinite(*b)&&isfinite(*gn)&&isfinite(*gs)
+        ?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+}
 GPUFUN
 int CavityModel_effects_fields(const double q[6],double z,
         const CavityModelSource *source,CavityModelEffectsField *field) {
@@ -805,6 +836,13 @@ int CavityModel_effects_fields(const double q[6],double z,
         field->dB[axis][0]=dy*L+y*dL;field->dB[axis][1]=-dx*L-x*dL;
         field->dB[axis][2]=0.;
     }
+    // Curl of the SAME uniform static potential used by full orbit tracking:
+    // A=(-bY/2,bX/2,-gn(X^2-Y^2)/2+gsXY). Static E vanishes.
+    double b,gn,gs;status=CavityModel_effects_static_components(source,&b,&gn,&gs);
+    if(status!=CAVITY_MODEL_OK)return status;
+    field->B[0]+=gs*x+gn*y;field->B[1]+=gn*x-gs*y;field->B[2]+=b;
+    field->dB[1][0]+=gs;field->dB[1][1]+=gn;
+    field->dB[2][0]+=gn;field->dB[2][1]-=gs;
     for(int j=0;j<3;++j) {
         if(!isfinite(field->E[j])||!isfinite(field->B[j]))return CAVITY_MODEL_NONFINITE;
         for(int axis=0;axis<4;++axis)
@@ -856,12 +894,18 @@ int CavityModel_effects(const double q[6],double z,double Q,
         double omega[3],double thomas[3]) {
     CavityModelEffectsField field;int status=CavityModel_effects_fields(q,z,source,&field);
     if(status!=CAVITY_MODEL_OK)return status;
-    double S[6],C[6];status=CavityModel_effects_profile(q[2],z,source,S,C);
+    double b,gn,gs;status=CavityModel_effects_static_components(source,&b,&gn,&gs);
     if(status!=CAVITY_MODEL_OK)return status;
-    const double r2=q[0]*q[0]+q[1]*q[1],Ar=S[1]/2.-r2*(S[1]+S[3])/16.;
-    double u[3]={q[3]-Q*q[0]*Ar,q[4]-Q*q[1]*Ar,0.};
-    const double shell=q[5]*q[5]-1.-u[0]*u[0]-u[1]*u[1];
-    if(!(q[5]>1.)||!(shell>0.))return CAVITY_MODEL_DOMAIN;
+    CavityModelPotential potential;
+    CavityModel_rf_potential(q,z,source,CAVITY_MODEL_FULL,&potential);
+    if(b!=0.||gn!=0.||gs!=0.)CavityModel_add_static(q,z,source,&potential);
+    else potential.a[2]-=source->dc_gradient*q[2];
+    // Kinetic momentum comes from TOTAL A, including the solenoid's Ax/Ay.
+    // Az affects the conservative generator; it is not a transverse kick.
+    const double gamma=q[5]-Q*potential.a[3];
+    double u[3]={q[3]-Q*potential.a[0],q[4]-Q*potential.a[1],0.};
+    const double shell=gamma*gamma-1.-u[0]*u[0]-u[1]*u[1];
+    if(!(gamma>1.)||!(shell>0.))return CAVITY_MODEL_DOMAIN;
     u[2]=sqrt(shell);return CavityModel_effects_law(u,Q,anomaly,&field,S1,omega,thomas);
 }
 // Actual species, independently of the source normalization Q. These SI
@@ -878,7 +922,7 @@ int CavityModel_species_rho(double omega,double actual_mass_eV,
     *rho=result;return CAVITY_MODEL_OK;
 }
 
-// First applied-effects draft: full-root RF-only P16, CPU scalar.
+// Applied-effects draft: full-root P16 plus uniform SOL/QUAD, CPU scalar.
 // The LL law is already spatial; BMT/Thomas lab-time rates receive the
 // same-event mechanical clock exactly once here. No photon law is implied.
 GPUFUN

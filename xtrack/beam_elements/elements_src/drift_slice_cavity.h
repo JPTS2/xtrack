@@ -31,6 +31,11 @@
     }
 
     GPUFUN
+    int DriftSliceCavity_preflight(DriftSliceCavityData el, LocalParticle* part0) {
+        return CavityModels_slice_preflight(DriftSliceCavityData_getp__parent(el),part0);
+    }
+
+    GPUFUN
     void DriftSliceCavity_track_local_particle(
             DriftSliceCavityData el,
             LocalParticle* part0

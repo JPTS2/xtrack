@@ -5096,11 +5096,20 @@ class Line:
             if (element._model != 10 or element._rf_profile != 0
                     or element._magnetic_profile != 0
                     or element.rf_field_order != 2 or element._integrator not in (0, 6)):
-                raise NotImplementedError('Cavity effects require the full phase-resolved P16 M2/Gauss map with uniform zero magnetic profile')
+                raise NotImplementedError('Cavity effects require the full phase-resolved P16 M2/Gauss map with uniform magnetic profile')
             if not isinstance(element._context, xo.ContextCpu):
                 raise NotImplementedError('Cavity first-effects transport is implemented only for CPU')
-            if element.ks != 0. or np.any(np.asarray(element.knl) != 0.) or np.any(np.asarray(element.ksl) != 0.):
-                raise NotImplementedError('Cavity effects require zero solenoid and all stored multipole strengths')
+            normal = np.asarray(element.knl)
+            skew = np.asarray(element.ksl)
+            if (np.any(normal[np.arange(len(normal)) != 1] != 0.)
+                    or np.any(skew[np.arange(len(skew)) != 1] != 0.)
+                    or (element.order < 1 and (np.any(normal != 0.) or np.any(skew != 0.)))):
+                raise NotImplementedError('Cavity effects support only solenoid and normal/skew quadrupole static strengths')
+            static = element.ks != 0. or np.any(normal != 0.) or np.any(skew != 0.)
+            if static and (element.edge_entry_active or element.edge_exit_active):
+                raise NotImplementedError('Cavity static effects require both faces disabled: body observation planes inside the field')
+            if static and element.transformations_active:
+                raise NotImplementedError('Cavity static effects do not support generic alignment transformations')
             other_flag = element.spin_tracking if effect == 'radiation' else element.radiation_flag
             if other_flag not in (0, 1):
                 raise NotImplementedError('Cavity effects do not support the existing spin/radiation flag')

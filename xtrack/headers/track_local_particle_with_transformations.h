@@ -3,6 +3,8 @@
    to be defined (as appropriate) before inclusion:
 
    - ELEMENT_NAME: Name of the beam element class
+   - TRACK_LOCAL_PARTICLE_PREFLIGHT: Optional class callback; returns false
+     after rejecting an unsupported invocation before any frame changes.
    - ALLOW_ROT_AND_SHIFT: Whether to include transformations handling
    - CURVED: Whether the element has the `angle` and `h` parameters
    - IS_SLICE: Whether to get parameters from the parent element (if slice)
@@ -168,6 +170,9 @@ void CONCAT(ELEMENT_NAME, _track_local_particle_with_transformations)(
     ELEMENT_DATA el,
     LocalParticle* part0
 ) {
+    #ifdef TRACK_LOCAL_PARTICLE_PREFLIGHT
+        if (!TRACK_LOCAL_PARTICLE_PREFLIGHT(el, part0)) return;
+    #endif
     #ifndef ALLOW_ROT_AND_SHIFT
         CONCAT(ELEMENT_NAME, _track_local_particle)(el, part0);
     #else

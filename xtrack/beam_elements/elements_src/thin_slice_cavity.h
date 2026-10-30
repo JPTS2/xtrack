@@ -13,6 +13,11 @@
 #include "xtrack/beam_elements/elements_src/cavity_models_adapter.h"
 
 GPUFUN
+int ThinSliceCavity_preflight(ThinSliceCavityData el, LocalParticle* part0) {
+    return CavityModels_slice_preflight(ThinSliceCavityData_getp__parent(el), part0);
+}
+
+GPUFUN
 void ThinSliceCavity_track_local_particle(ThinSliceCavityData el, LocalParticle* part0)
 {
     if (ThinSliceCavityData_get__parent_model(el) >= 10) {

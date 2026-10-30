@@ -46,8 +46,8 @@ int64_t CavityModels_freeze_mask(const CavityModelSource *source) {
     return mask;
 }
 
-// Effects require genuinely zero static hardware, including represented
-// array entries outside the retained tracking multipole order.
+// Inspect every represented hardware entry, including entries above order.
+// First effects admit a uniform solenoid and normal/skew quadrupole only.
 GPUFUN
 int CavityModels_effects_static_present(CavityData el) {
     if(!xt_float_or_tpsa_is_zero(CavityData_get_ks(el)))return 1;
@@ -55,6 +55,77 @@ int CavityModels_effects_static_present(CavityData el) {
         if(CavityData_get_knl(el,i)!=0.)return 1;
     for(int64_t i=0;i<CavityData_len_ksl(el);++i)
         if(CavityData_get_ksl(el,i)!=0.)return 1;
+    return 0;
+}
+
+GPUFUN
+int CavityModels_effects_static_unsupported(CavityData el) {
+    for(int64_t i=0;i<CavityData_len_knl(el);++i)
+        if((i!=1||CavityData_get_order(el)<1)&&CavityData_get_knl(el,i)!=0.)return 1;
+    for(int64_t i=0;i<CavityData_len_ksl(el);++i)
+        if((i!=1||CavityData_get_order(el)<1)&&CavityData_get_ksl(el,i)!=0.)return 1;
+    return 0;
+}
+
+GPUFUN
+int CavityModels_transformations_active(CavityData el) {
+    return CavityData_get_shift_x(el)!=0.||CavityData_get_shift_y(el)!=0.
+        ||CavityData_get_shift_s(el)!=0.||CavityData_get_rot_x_rad(el)!=0.
+        ||CavityData_get_rot_y_rad(el)!=0.||CavityData_get_rot_s_rad(el)!=0.
+        ||CavityData_get_rot_s_rad_no_frame(el)!=0.;
+}
+
+// Reject this unsupported chart before the generic wrapper changes any lane.
+// Canonical P and source A are authoritative; ax/ay are derived readback caches.
+GPUFUN
+int CavityModels_preflight(CavityData el, LocalParticle* part0) {
+    const int radiation=CavityData_get_radiation_flag(el);
+    const int spin=CavityData_get_spin_tracking(el);
+    if(CavityData_get_model(el)<CAVITY_MODEL_FULL||(!radiation&&!spin))return 1;
+    int reject=CavityData_get__tpsa_enabled(el)!=0
+        ||radiation<0||radiation>1||spin<0||spin>1
+        ||CavityData_get_model(el)!=CAVITY_MODEL_FULL
+        ||CavityData_get_rf_profile(el)!=0||CavityData_get_magnetic_profile(el)!=0
+        ||CavityData_get_rf_field_order(el)!=2
+        ||(CavityData_get_integrator(el)!=0&&CavityData_get_integrator(el)!=6);
+#if defined(XTRACK_TPSA_TRACK) || (!defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)) || defined(XTRACK_MULTIPOLE_NO_SYNRAD)
+    reject=1;
+#endif
+    if(!reject) {
+        reject=CavityModels_effects_static_unsupported(el);
+        if(CavityModels_effects_static_present(el)
+            &&(CavityModels_transformations_active(el)
+                ||CavityData_get_edge_entry_active(el)||CavityData_get_edge_exit_active(el)))
+            reject=1;
+    }
+    reject|=XT_LP_IS_FROZEN(x)||XT_LP_IS_FROZEN(px)
+        ||XT_LP_IS_FROZEN(y)||XT_LP_IS_FROZEN(py)||XT_LP_IS_FROZEN(zeta)
+        ||XT_LP_IS_FROZEN(delta)||XT_LP_IS_FROZEN(pzeta)||XT_LP_IS_FROZEN(s)
+        ||XT_LP_IS_FROZEN(rpp)||XT_LP_IS_FROZEN(rvv)
+        ||XT_LP_IS_FROZEN(ax)||XT_LP_IS_FROZEN(ay)
+        ||XT_LP_IS_FROZEN(spin_x)||XT_LP_IS_FROZEN(spin_y)||XT_LP_IS_FROZEN(spin_z)
+        ||LocalParticle_check_track_flag(part0,XS_FLAG_KILL_CAVITY_KICK)
+        ||LocalParticle_check_track_flag(part0,XS_FLAG_SR_TAPER)
+        ||LocalParticle_check_track_flag(part0,XS_FLAG_SR_KICK_SAME_AS_FIRST)
+        ||(radiation&&LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK));
+    if(reject) {
+        START_PER_PARTICLE_BLOCK(part0,part)
+            LocalParticle_set_state(part,-99740+CAVITY_MODEL_ARGUMENT);
+        END_PER_PARTICLE_BLOCK;
+        return 0;
+    }
+    return 1;
+}
+
+// All source-based effects slices remain unsupported. Reject before either
+// the generic slice wrapper or its manual parent-frame entry can move a lane.
+GPUFUN
+int CavityModels_slice_preflight(CavityData el, LocalParticle* part0) {
+    if(CavityData_get_model(el)<CAVITY_MODEL_FULL
+        ||(!CavityData_get_radiation_flag(el)&&!CavityData_get_spin_tracking(el)))return 1;
+    START_PER_PARTICLE_BLOCK(part0,part)
+        LocalParticle_set_state(part,-99740+CAVITY_MODEL_ARGUMENT);
+    END_PER_PARTICLE_BLOCK;
     return 0;
 }
 
@@ -190,8 +261,12 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
 #if defined(XTRACK_TPSA_TRACK) || (!defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)) || defined(XTRACK_MULTIPOLE_NO_SYNRAD)
     if(effects)controls=CAVITY_MODEL_ARGUMENT;
 #endif
-    if(effects&&controls==CAVITY_MODEL_OK&&CavityModels_effects_static_present(el))
-        controls=CAVITY_MODEL_ARGUMENT;
+    if(effects&&controls==CAVITY_MODEL_OK) {
+        if(CavityModels_effects_static_unsupported(el))controls=CAVITY_MODEL_ARGUMENT;
+        else if(CavityModels_effects_static_present(el)
+            &&(CavityData_get_edge_entry_active(el)||CavityData_get_edge_exit_active(el)
+               ||CavityModels_transformations_active(el)))controls=CAVITY_MODEL_ARGUMENT;
+    }
     if (model==CAVITY_MODEL_FROZEN) {
         if ((integrator!=0 && integrator!=7)
             || !xt_float_or_tpsa_is_zero(CavityData_get_eta(el))
@@ -207,7 +282,9 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
         controls=CAVITY_MODEL_ARGUMENT;
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
     const int taper_analysis=LocalParticle_check_track_flag(part0,XS_FLAG_SR_TAPER);
-    if(effects&&(taper_analysis||(radiation&&reverse)||weight!=1.||slice_start!=0.))
+    if(effects&&(taper_analysis
+        ||LocalParticle_check_track_flag(part0,XS_FLAG_SR_KICK_SAME_AS_FIRST)
+        ||(radiation&&reverse)||weight!=1.||slice_start!=0.))
         controls=CAVITY_MODEL_ARGUMENT;
     // Reference taper preparation already excludes sliced cavities. Refuse a
     // partial invocation here too, rather than resample a changed pilot delta

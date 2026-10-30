@@ -76,7 +76,7 @@ def test_zero_strength_gaussian_magnetic_profile_refuses_atomically(effect):
 
 @pytest.mark.parametrize('field',['ks','normal','skew','stored_above_order'])
 @pytest.mark.parametrize('effect',['mean','spin'])
-def test_all_stored_static_strengths_refuse_atomically(field,effect):
+def test_static_active_faces_or_unsupported_order_refuse_atomically(field,effect):
     line=eligible_line()
     if field=='ks':line['rf'].ks=.1
     elif field=='normal':line['rf'].knl[1]=.001
@@ -86,6 +86,38 @@ def test_all_stored_static_strengths_refuse_atomically(field,effect):
         line['rf'].knl[5]=.001
     before=snapshot(line)
     with pytest.raises(NotImplementedError,match='[Cc]avity'):
+        request(line,effect)
+    assert snapshot(line)==before
+
+
+@pytest.mark.parametrize('effect',['mean','spin'])
+@pytest.mark.parametrize('strength',[dict(ks=.1),dict(knl=[0.,.001]),dict(ksl=[0.,.001])])
+def test_uniform_static_body_effects_configuration(effect,strength):
+    line=eligible_line(edge_entry_active=False,edge_exit_active=False,**strength)
+    request(line,effect)
+    assert line['rf'].radiation_flag==int(effect=='mean')
+    assert line['rf'].spin_tracking==int(effect=='spin')
+
+
+@pytest.mark.parametrize('effect',['mean','spin'])
+@pytest.mark.parametrize('alignment',['shift_x','shift_y','shift_s','rot_x_rad','rot_y_rad','rot_s_rad','rot_s_rad_no_frame'])
+def test_static_alignment_configuration_refuses_atomically(effect,alignment):
+    line=eligible_line(ks=.1,edge_entry_active=False,edge_exit_active=False)
+    setattr(line['rf'],alignment,.001)
+    before=snapshot(line)
+    with pytest.raises(NotImplementedError,match='alignment'):
+        request(line,effect)
+    assert snapshot(line)==before
+
+
+@pytest.mark.parametrize('effect',['mean','spin'])
+@pytest.mark.parametrize('index',[0,1,2,5])
+def test_static_body_unsupported_stored_order_refuses_atomically(effect,index):
+    line=eligible_line(edge_entry_active=False,edge_exit_active=False)
+    line['rf'].order=0
+    line['rf'].knl[index]=.001
+    before=snapshot(line)
+    with pytest.raises(NotImplementedError,match='quadrupole'):
         request(line,effect)
     assert snapshot(line)==before
 
@@ -228,12 +260,14 @@ def scalar_launch(context):
 
 def physical_state(particle):
     return [float(getattr(particle,name)[0]) for name in
-            ('x','px','y','py','zeta','delta','spin_x','spin_y','spin_z')]
+            ('x','px','y','py','zeta','delta','spin_x','spin_y','spin_z','ax','ay')]
 
 
 @pytest.mark.parametrize('change',['profile','static','stored_above_order','quantum','active_series'])
-def test_later_unsupported_mutation_refuses_native_transport(runtime_context,change):
+@pytest.mark.parametrize('aligned',[False,True])
+def test_later_unsupported_mutation_refuses_native_transport(runtime_context,change,aligned):
     line=runtime_line(runtime_context)
+    if aligned:line['rf'].rot_y_rad=.01
     if change=='profile':line['rf'].rf_profile='uniform'
     elif change=='static':line['rf'].ks=.1
     elif change=='stored_above_order':
@@ -261,12 +295,91 @@ def test_later_analysis_flags_refuse_native_transport(runtime_context,flag):
 def test_state_tpsa_cannot_bypass_runtime_effect_guard(runtime_context):
     import xtrack.tpsa as xtpsa
     line=runtime_line(runtime_context)
+    line['rf'].rot_y_rad=.01
     # Even bypassing the normal Line NO_SYNRAD precheck cannot silently turn
     # a requested mean map into conservative/Taylor or constant-part transport.
     line.config.XTRACK_MULTIPOLE_NO_SYNRAD=True
     particle=xtpsa.ParticlesTpsa(order=1,p0c=14e6,mass0=xt.ELECTRON_MASS_EV,
         x=2e-4,px=3e-4,y=-1e-4,py=-2e-4,zeta=4e-4,delta=.002)
     before=particle.const_part.copy()
+    metadata=tuple(particle._local_series[name].const_part for name in ('ax','ay'))
     with pytest.raises((RuntimeError,NotImplementedError)):
         line.track(particle)
     assert (particle.const_part==before).all()
+    assert tuple(particle._local_series[name].const_part for name in ('ax','ay'))==metadata
+
+
+@pytest.mark.parametrize('route',['line','direct'])
+def test_later_static_alignment_refusal_preserves_physical_state(runtime_context,route):
+    line=eligible_line(ks=.1,edge_entry_active=False,edge_exit_active=False)
+    line.build_tracker(_context=runtime_context,compile=False,
+        track_kernel=getattr(runtime_context,'_cavity_effect_guard_kernels',None))
+    runtime_context._cavity_effect_guard_kernels=line.tracker.track_kernel
+    line.configure_radiation(model='mean')
+    line['rf'].rot_y_rad=.01
+    particle=scalar_launch(runtime_context)
+    particle.ax=.003;particle.ay=-.004
+    before=physical_state(particle)
+    if route=='line':line.track(particle)
+    else:line['rf'].track(particle)
+    assert particle.state[0]<0
+    assert physical_state(particle)==before
+
+
+@pytest.mark.parametrize('model',['drift-kick-drift-expanded','phase-resolved'])
+def test_preflight_preserves_conservative_alignment_maps(runtime_context,model):
+    shift=.001
+    shifted=eligible_line(model=model,shift_x=shift)
+    plain=eligible_line(model=model)
+    for line in (shifted,plain):
+        line.reset_s_at_end_turn=False
+        line.build_tracker(_context=runtime_context,compile=False,
+            track_kernel=getattr(runtime_context,'_cavity_effect_guard_kernels',None))
+        runtime_context._cavity_effect_guard_kernels=line.tracker.track_kernel
+    first=scalar_launch(runtime_context);second=scalar_launch(runtime_context)
+    second.x-=shift
+    shifted.track(first);plain.track(second)
+    second.x+=shift
+    assert first.state[0]==second.state[0]==1
+    import numpy as np
+    np.testing.assert_allclose(physical_state(first),physical_state(second),rtol=0.,atol=2e-15)
+
+
+def test_later_same_as_first_analysis_refuses_before_alignment(runtime_context):
+    line=runtime_line(runtime_context)
+    line['rf'].rot_y_rad=.01
+    line.tracker.track_flags.XS_FLAG_SR_KICK_SAME_AS_FIRST=True
+    particle=scalar_launch(runtime_context);before=physical_state(particle)
+    line.track(particle)
+    assert particle.state[0]<0
+    assert physical_state(particle)==before
+
+
+def test_later_parent_effects_reject_all_source_slices_before_frames(runtime_context):
+    parent=xt.Cavity(_context=runtime_context,model='phase-resolved',length=.05,frequency=400e6,
+        voltage=2e4,phase=.4,eta=.25,num_kicks=8)
+    elements={'parent':parent}
+    for name,cls in (('thick',xt.ThickSliceCavity),('thin',xt.ThinSliceCavity),
+                     ('drift',xt.DriftSliceCavity)):
+        element=cls(_buffer=parent._buffer,_parent=parent,weight=.5,slice_offset=0.)
+        element.parent_name='parent';elements[name]=element
+    line=xt.Line(elements=elements,element_names=['thick','thin','drift'])
+    line.particle_ref=xt.Particles(p0c=14e6,mass0=xt.ELECTRON_MASS_EV)
+    line.reset_s_at_end_turn=False
+    line.build_tracker(_context=runtime_context,compile=False)
+    # A source with effects disabled still passes every opt-in slice preflight.
+    for name in ('thick','thin','drift'):
+        particle=scalar_launch(runtime_context)
+        line.track(particle,ele_start=name,num_elements=1)
+        assert particle.state[0]==1,name
+    # Later parent flags must fail before automatic and manual parent frames.
+    line['parent'].radiation_flag=1
+    line['parent'].shift_x=.003
+    line['parent'].rot_y_rad=.01
+    for name in ('thick','thin','drift'):
+        particle=scalar_launch(runtime_context)
+        particle.ax=.003;particle.ay=-.004
+        before=physical_state(particle)
+        line.track(particle,ele_start=name,num_elements=1)
+        assert particle.state[0]<0,name
+        assert physical_state(particle)==before,name

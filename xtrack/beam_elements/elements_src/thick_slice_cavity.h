@@ -31,6 +31,11 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
 }
 
 GPUFUN
+int ThickSliceCavity_preflight(ThickSliceCavityData el, LocalParticle* part0) {
+    return CavityModels_slice_preflight(ThickSliceCavityData_getp__parent(el), part0);
+}
+
+GPUFUN
 void ThickSliceCavity_track_local_particle(ThickSliceCavityData el, LocalParticle* part0)
 {
     if (ThickSliceCavityData_get__parent_model(el) >= 10) {

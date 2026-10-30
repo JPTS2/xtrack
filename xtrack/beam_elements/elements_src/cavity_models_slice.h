@@ -12,6 +12,8 @@
 GPUFUN
 void CavityModels_track_source_interval(CavityData parent,
         LocalParticle* part0, double weight, double start_fraction) {
+    // Protect callers of this interval helper too, before its manual frame.
+    if(!CavityModels_slice_preflight(parent,part0))return;
     const double length=CavityData_get_length(parent)*weight;
     const double anchor=CavityData_get_rot_shift_anchor(parent)
         -CavityData_get_length(parent)*start_fraction;

@@ -183,10 +183,15 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         Default is 1.
 
     Applied mean radiation reaction and rest-spin BMT transport currently
-    support only the CPU scalar full phase-resolved M2/P16 RF-only map, through
+    support the CPU scalar full phase-resolved M2/P16 map, through
     Line.configure_radiation(model="mean") and Line.configure_spin(True).
     Mean LL is evaluated on reacted stages; it is not an emitted-energy kick.
-    Other source models, static fields, quantum radiation, TPSA effects and
+    Uniform solenoid and normal/skew quadrupole overlap is supported only with
+    both faces disabled and no generic alignment transformations: the two
+    observation planes are inside the static field. Canonical momenta and the
+    source potential define the mechanical state; ax/ay are refreshed readback
+    caches. No hardedge spin or radiation fringe map is implied.
+    Other source models/static multipoles, quantum radiation, TPSA effects and
     sliced effects are not yet supported. Frozen-coordinate and taper-preparation
     effects analysis and mean backtracking explicitly refuse.
     The original C2/C3/C4 and connected full-slow implementations still rebuild
@@ -305,6 +310,8 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         'model': xo.Int64,
         'integrator': xo.Int64,
     }
+
+    _track_local_particle_preflight = 'CavityModels_preflight'
 
     _extra_c_sources = [
         '#include "xtrack/beam_elements/elements_src/cavity.h"',

@@ -164,6 +164,7 @@ class ThickSliceOctupole(_ThickSliceElementBase, BeamElement):
 
 class ThickSliceCavity(_ThickSliceElementBase, BeamElement):
 
+    _track_local_particle_preflight = 'ThickSliceCavity_preflight'
 
     _xofields = {'_parent': xo.Ref(Cavity), **COMMON_SLICE_XO_FIELDS,
                  '_slice_offset_fraction': xo.Float64,
