@@ -9,6 +9,7 @@ and compare the consumed state jet, without using the native contraction.
 """
 import numpy as np
 from numpy.polynomial import Polynomial
+from itertools import combinations_with_replacement
 import pytest
 import xobjects as xo
 import xtrack as xt
@@ -55,14 +56,18 @@ def packet_context(tmp_path_factory):
         context.add_kernels(sources=[r'''
         #include "xobjects/headers/common.h"
         #include "xtrack/beam_elements/elements_src/cavity_models_averaged.h"
+        GPUKERN void review_divided_jet_product(double *a,double *b,
+                int64_t rank,double *out){
+            CavityFull_product(a,b,(int)rank,out);
+        }
         GPUKERN void review_quadratic_packets(double energy,double nu,double *out){
             double packet[3][4][2],p=sqrt((energy-1.)*(energy+1.));
             CavityQuadratic_boundary_coefficients(energy,p,nu,packet);
             for(int i=0;i<3;++i)for(int j=0;j<4;++j)for(int k=0;k<2;++k)
                 out[8*i+2*j+k]=packet[i][j][k];
         }
-        GPUKERN void review_averaged_slow(double *q,double *settings,double *out,
-                int64_t *status){
+        GPUKERN void review_averaged_slow(double *q,double *settings,
+                int64_t with_static,double *out,int64_t *status){
             CavityAveragedSource source={0};source.half_span=settings[0];
             source.slow=settings[1];source.carrier=settings[2];
             source.dc_gradient=settings[7];
@@ -71,6 +76,13 @@ def packet_context(tmp_path_factory):
             physical.rf_profile=(int)settings[6];physical.profile_sigma=settings[4];
             physical.profile_center=settings[5];physical.order=-1;
             source.profile_source=&physical;
+            const double normal[3]={.003,.01,-.004};
+            const double skew[3]={.002,-.005,.006};
+            if(with_static){
+                physical.ks=settings[8];physical.magnetic_scale=settings[9];
+                physical.order=2;physical.knl=normal;physical.ksl=skew;
+                source.static_source=&physical;source.static_charge=settings[10];
+            }
             CavityFullJet state[6],flow[6];
             for(int axis=0;axis<6;++axis){state[axis]=CavityFull_constant(q[axis],1);
                 state[axis].c[CavityFull_unit(axis)]=1.;}
@@ -80,12 +92,18 @@ def packet_context(tmp_path_factory):
                 for(int column=0;column<6;++column)
                     out[7*axis+1+column]=flow[axis].c[CavityFull_unit(column)];}
         }
-        '''],kernels={'review_quadratic_packets':xo.Kernel(args=[
+        '''],kernels={'review_divided_jet_product':xo.Kernel(args=[
+            xo.Arg(xo.Float64,pointer=True,name='a'),
+            xo.Arg(xo.Float64,pointer=True,name='b'),
+            xo.Arg(xo.Int64,name='rank'),
+            xo.Arg(xo.Float64,pointer=True,name='out')],n_threads=1),
+          'review_quadratic_packets':xo.Kernel(args=[
             xo.Arg(xo.Float64,name='energy'),xo.Arg(xo.Float64,name='nu'),
             xo.Arg(xo.Float64,pointer=True,name='out')],n_threads=1),
           'review_averaged_slow':xo.Kernel(args=[
             xo.Arg(xo.Float64,pointer=True,name='q'),
             xo.Arg(xo.Float64,pointer=True,name='settings'),
+            xo.Arg(xo.Int64,name='with_static'),
             xo.Arg(xo.Float64,pointer=True,name='out'),
             xo.Arg(xo.Int64,pointer=True,name='status')],n_threads=1)},
             extra_classes=[xt.Particles._XoStruct],extra_headers=[c_header_flag_mapping])
@@ -97,6 +115,49 @@ def native_packets(context,energy,nu):
     context.kernels.review_quadratic_packets(energy=energy,nu=nu,out=out)
     assert np.all(np.isfinite(out))
     return out.reshape(3,4,2)
+
+
+def six_axis_monomials(rank):
+    """Combinatorial monomials, independent of the native convolution plan."""
+    keys=[]
+    for degree in range(rank+1):
+        block=[]
+        for axes in combinations_with_replacement(range(6),degree):
+            block.append(tuple(axes.count(axis) for axis in range(6)))
+        keys.extend(sorted(block))
+    return keys
+
+
+@pytest.mark.parametrize('rank',range(5))
+def test_divided_jet_product_against_polynomial_multiplication(packet_context,rank):
+    """Multiply polynomials by exponent addition, including discarded ranks.
+
+    The oracle neither imports the native index tables nor copies its sum
+    order. Higher input coefficients must not enter the retained quotient.
+    """
+    keys=six_axis_monomials(rank)
+    lookup={key:index for index,key in enumerate(keys)}
+    generator=np.random.default_rng(314159+rank)
+    for sample in range(3):
+        # Fill all slots, so a low-rank consumer cannot accidentally read
+        # coefficients above its requested total degree.
+        a=generator.uniform(-1.,1.,210)
+        b=generator.uniform(-1.,1.,210)
+        if sample==1:
+            a[:len(keys)]=np.ldexp(np.rint(8*a[:len(keys)]),-3)
+            b[:len(keys)]=np.ldexp(np.rint(8*b[:len(keys)]),-3)
+        elif sample==2:
+            b[:len(keys)]=-a[:len(keys)]
+        expected=np.zeros(len(keys),dtype=np.longdouble)
+        for left,alpha in enumerate(keys):
+            for right,beta in enumerate(keys):
+                exponent=tuple(x+y for x,y in zip(alpha,beta))
+                if sum(exponent)<=rank:
+                    expected[lookup[exponent]]+=(np.longdouble(a[left])
+                                                *np.longdouble(b[right]))
+        actual=np.full(len(keys),np.nan)
+        packet_context.kernels.review_divided_jet_product(a=a,b=b,rank=rank,out=actual)
+        np.testing.assert_allclose(actual,expected,atol=3e-14,rtol=3e-14)
 
 
 def test_shared_powers_against_original_rational_rows(packet_context):
@@ -131,7 +192,7 @@ def slow_hamiltonian(q,settings):
     No production flow or potential-gradient implementation is imported.
     """
     from math import comb
-    half,amplitude,nu,z,sigma,centre,profile,dc=settings
+    half,amplitude,nu,z,sigma,centre,profile,dc=settings[:8]
     if profile==0:
         envelope=Polynomial([1.,0.,-1/half**2])**16
         jets=[envelope.deriv(order)(z) for order in range(5)]
@@ -150,6 +211,20 @@ def slow_hamiltonian(q,settings):
     radial=s[1]/2-radius2*(s[1]+s[3])/16
     ax=x*radial;ay=y*radial
     az=-s[0]+radius2*(s[0]+s[2])/4-radius2**2*(s[0]+2*s[2]+s[4])/64-dc*t
+    if len(settings)>8:
+        # Independent straight static potentials at coordinate k=1/m.
+        # RF amplitude and dc already contain signed Q; only static hardware
+        # receives Q here. ks is 1/m, normal/skew entries are integrated
+        # strengths of orders0,1,2; physical length is 2*half.
+        ks,magnetic_scale,charge=settings[8:11]
+        scale=magnetic_scale*charge
+        ax-=scale*ks*y/2
+        ay+=scale*ks*x/2
+        normal_potential=(.003*x+.01*(x*x-y*y)/2
+                          -.004*(x**3-3*x*y*y)/6)
+        skew_potential=(.002*y-.005*x*y
+                        +.006*(3*x*x*y-y**3)/6)
+        az-=scale*(normal_potential-skew_potential)/(2*half)
     return -az-np.sqrt(energy**2-1-(px-ax)**2-(py-ay)**2)
 
 
@@ -168,7 +243,36 @@ def test_averaged_slow_flow_and_jet_from_total_hamiltonian(packet_context,profil
     settings=np.array([.7,.035,1.3,.11,.23,.04,float(profile),.001])
     q=np.array([.008,-.006,.7,.012,-.009,1.4])
     out=np.full(42,np.nan);status=np.zeros(1,dtype=np.int64)
-    packet_context.kernels.review_averaged_slow(q=q,settings=settings,out=out,status=status)
+    packet_context.kernels.review_averaged_slow(q=q,settings=settings,
+        with_static=0,out=out,status=status)
+    assert status[0]==1
+    actual=out.reshape(6,7)
+    expected=slow_flow_from_hamiltonian(q,settings)
+    np.testing.assert_allclose(actual[:,0],expected,atol=3e-13,rtol=3e-12)
+    finite=np.zeros((6,6));step=2e-5
+    for column in range(6):
+        for offset,weight in ((-2,1.),(-1,-8.),(1,8.),(2,-1.)):
+            shifted=q.copy();shifted[column]+=offset*step
+            finite[:,column]+=weight*slow_flow_from_hamiltonian(shifted,settings)/(12*step)
+    np.testing.assert_allclose(actual[:,1:],finite,atol=5e-9,rtol=2e-7)
+
+
+@pytest.mark.parametrize('profile',[0,1,2])
+@pytest.mark.parametrize('charge',[-.7,.7])
+def test_averaged_summed_static_flow_and_jet_from_total_hamiltonian(
+        packet_context,profile,charge):
+    """Keep RF/static coupling inside the unexpanded positive mass shell.
+
+    The six state derivatives use normalized (X,Y,T,Px,Py,E), including the
+    negative T--E block. This point-source test does not admit every listed
+    source combination as a public whole-map configuration.
+    """
+    settings=np.array([.7,.035*charge,1.3,.11,.23,.04,float(profile),
+                       .001*charge,.2,1.3,charge])
+    q=np.array([.008,-.006,.7,.012,-.009,1.4])
+    out=np.full(42,np.nan);status=np.zeros(1,dtype=np.int64)
+    packet_context.kernels.review_averaged_slow(q=q,settings=settings,
+        with_static=1,out=out,status=status)
     assert status[0]==1
     actual=out.reshape(6,7)
     expected=slow_flow_from_hamiltonian(q,settings)

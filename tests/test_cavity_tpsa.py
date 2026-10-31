@@ -149,20 +149,27 @@ def test_field_getter_preserves_orders_and_rejects_incompatible_handles(tmp_path
         assert particles._xobject.state == -50
 
 
-@pytest.mark.parametrize('order,model', [(2,'phase-averaged-full-slow'),
-                                      (3,'phase-averaged-full-slow'),
-                                      (3,'phase-resolved')])
-def test_calibration_order_one_handle_on_higher_order_map(cavity_magnetic_context, order, model):
+@pytest.mark.parametrize('order,model,static_fields', [
+    (2,'phase-averaged-full-slow',False),
+    (3,'phase-averaged-full-slow',False),
+    (3,'phase-averaged-full-slow',True),
+    (3,'phase-resolved',False)])
+def test_calibration_order_one_handle_on_higher_order_map(
+        cavity_magnetic_context, order, model, static_fields):
     """Descriptor.param's direct order-one handle must not alter source constants."""
     # The RF-only full-slow word also checks its former N2/order-three
-    # all-coefficient stage refusal. Static-field order-three convergence and
-    # other controls/meshes are not established by this selected RF case.
+    # all-coefficient stage refusal. A weak straight-static case also checks
+    # the retained generic static RHS; arbitrary controls/meshes remain open.
     context = cavity_magnetic_context
     launch = dict(LAUNCH, p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1))
-    line = xt.Line(elements={'c':xt.Cavity(length=.167, voltage=2e4,
+    fields = dict(ks=.2, knl=[0.,.01], ksl=[0.,0.,.005]) if static_fields else {}
+    line = xt.Line(elements={'c':xt.Cavity(
+        length=.05 if static_fields else .167,
+        voltage=2e3 if static_fields else 2e4,
         frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
         calibration_beta=.9, model=model,
-        num_kicks=2 if model=='phase-averaged-full-slow' else 8)})
+        num_kicks=(4 if static_fields else 2)
+            if model=='phase-averaged-full-slow' else 8, **fields)})
     line.particle_ref = xt.Particles(p0c=launch['p0c'], mass0=launch['mass0'], q0=1.)
     line.reset_s_at_end_turn = False
     _build_shared_cavity_tracker(line, context)

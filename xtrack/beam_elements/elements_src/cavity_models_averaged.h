@@ -786,6 +786,12 @@ int CavityFull_slow_stage_rank(xt_float_or_tpsa value[1260],xt_float_or_tpsa_arg
     // Solve for stage INCREMENTS. A large reference gamma must not enter
     // the physical residual through subtraction of two rounded energies.
     for(int i=0;i<count;++i){u[i]=c0*h*f[i];v[i]=c1*h*f[i];}
+#ifdef XTRACK_TPSA_TRACK
+    // High TPSA coefficients can enter a rounded Picard two-cycle. Dampen
+    // only a non-improving proposal; acceptance still uses the fresh,
+    // undamped defining residual and the same 80-iteration cap.
+    double previous_defect=INFINITY;
+#endif
     int converged=0;
     for(int iteration=0;iteration<80;++iteration) {
         for(int i=0;i<count;++i){f[i]=value[i]+u[i];g[i]=value[i]+v[i];}
@@ -804,8 +810,20 @@ int CavityFull_slow_stage_rank(xt_float_or_tpsa value[1260],xt_float_or_tpsa_arg
             if(du>defect)defect=du;if(dv>defect)defect=dv;
         }
         if(defect<=source->tolerance){converged=1;break;}
+#ifdef XTRACK_TPSA_TRACK
+        const int relaxed=defect>=previous_defect;
+        previous_defect=defect;
+#endif
         for(int i=0;i<count;++i) {
-            u[i]=h*(.25*f[i]+a01*g[i]);v[i]=h*(a10*f[i]+.25*g[i]);
+#ifdef XTRACK_TPSA_TRACK
+            if(relaxed) {
+                u[i]=.5*u[i]+.5*(h*(.25*f[i]+a01*g[i]));
+                v[i]=.5*v[i]+.5*(h*(a10*f[i]+.25*g[i]));
+            } else
+#endif
+            {
+                u[i]=h*(.25*f[i]+a01*g[i]);v[i]=h*(a10*f[i]+.25*g[i]);
+            }
         }
     }
     if(!converged) {
