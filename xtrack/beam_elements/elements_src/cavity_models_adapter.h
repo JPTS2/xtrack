@@ -610,6 +610,13 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
         }
         xt_float_or_tpsa result[6], potential[4];
         if (status==CAVITY_MODEL_OK) {
+            // Observation planes are fixed by the parent interval, as in s
+            // and the zeta conversion below. Repeated z+=h can finish a few
+            // ulps inside a compact P16 face and manufacture a tiny cached
+            // RF potential. Keep the accepted stages/orbit unchanged, but
+            // evaluate the physical readback at the declared endpoint.
+            if (effective_model<=CAVITY_MODEL_LONGITUDINAL)
+                z=source.k*length*(end_fraction-.5);
             // The longitudinal-projected generator still samples its full
             // retained physical field for mechanical readback. Its auxiliary
             // geometric slope is a separate approximation, not kin_px/p_s.

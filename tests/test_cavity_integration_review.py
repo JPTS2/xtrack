@@ -1033,3 +1033,81 @@ def test_transformed_tpsa_failure_restores_all_coefficients(cpu_context, failure
     for name, values in coefficients().items():
         np.testing.assert_array_equal(values.view(np.uint64), before[name].view(np.uint64))
     assert {name: getattr(series, name) for name in references} == references
+
+
+@pytest.mark.parametrize('model', ('phase-resolved', 'phase-resolved-paraxial'))
+@pytest.mark.parametrize('cells', (3, 64))
+def test_compact_p16_face_has_exactly_zero_potential_readback(cpu_context, model, cells):
+    """Observe the declared support face, independently of accumulated z+=h.
+
+    The synthetic 64-cell mesh previously finished a few ulps inside support,
+    manufacturing tiny nonzero caches at an exactly field-free plane.
+    """
+    line = xt.Line(elements=[xt.Cavity(_context=cpu_context, model=model,
+        rf_profile='p16', length=.56, frequency=712e6, voltage=2000.,
+        phase=.4, eta=.25, counter_phase=.3, calibration_beta=.9,
+        num_kicks=cells, absolute_time=True), xt.Marker(_context=cpu_context)],
+        element_names=['rf', 'end'])
+    line.particle_ref = xt.Particles(_context=cpu_context, mass0=MASS_EV,
+                                    p0c=P0C_EV, q0=1.)
+    line.reset_s_at_end_turn = False
+    line.build_tracker(_context=cpu_context)
+    rays = particle(cpu_context, x=[.0004, -.0003], y=[-.0003, .0002],
+        px=[.002, -.001], py=[-.001, .0005], s=.17, time_s=1.9e-9)
+    for reverse in (False, True):
+        line.track(rays, ele_start=0, ele_stop=1, backtrack=reverse)
+        assert np.all(rays.state == 1)
+        np.testing.assert_array_equal(rays.ax, np.zeros(2))
+        np.testing.assert_array_equal(rays.ay, np.zeros(2))
+
+
+@pytest.mark.parametrize('profile', ('uniform', 'gaussian'))
+def test_finite_rf_face_keeps_nonzero_potential_readback(cpu_context, profile):
+    """Finite-profile observation planes must not acquire a false zero gauge."""
+    line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
+        model='phase-resolved', rf_profile=profile, rf_profile_sigma=.12,
+        rf_profile_center=.02, length=.56, frequency=712e6, voltage=2000.,
+        phase=.4, eta=.25, counter_phase=.3, calibration_beta=.9,
+        num_kicks=64, absolute_time=True), xt.Marker(_context=cpu_context)],
+        element_names=['rf', 'end'])
+    line.particle_ref = xt.Particles(_context=cpu_context, mass0=MASS_EV,
+                                    p0c=P0C_EV, q0=1.)
+    line.reset_s_at_end_turn = False
+    line.build_tracker(_context=cpu_context)
+    ray = particle(cpu_context, x=.0004, y=-.0003, px=.002, py=-.001,
+                   s=.17, time_s=1.9e-9)
+    for reverse in (False, True):
+        line.track(ray, ele_start=0, ele_stop=1, backtrack=reverse)
+        assert ray.state[0] == 1
+        caches = np.array([ray.ax[0], ray.ay[0]])
+        assert np.all(np.isfinite(caches))
+        assert np.all(caches != 0.)
+
+
+def test_p16_face_frequency_tpsa_has_zero_cache_coefficients(cpu_context):
+    """The support face moves with k; retain that same boundary in TPSA."""
+    import madng_tpsa
+    import xtrack.tpsa as xtpsa
+
+    frequency = 712e6
+    line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
+        model='phase-resolved', rf_profile='p16', length=.56,
+        frequency=frequency, voltage=2000., phase=.4, eta=.25,
+        counter_phase=.3, calibration_beta=.9, num_kicks=3,
+        absolute_time=True), xt.Marker(_context=cpu_context)],
+        element_names=['rf', 'end'])
+    line.particle_ref = xt.Particles(_context=cpu_context, mass0=MASS_EV,
+                                    p0c=P0C_EV, q0=1.)
+    line.reset_s_at_end_turn = False
+    line.build_tracker(_context=cpu_context)
+    descriptor = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=2)
+    line['rf'].frequency = frequency*(1.+descriptor.param(1, 0.))
+    series = xtpsa.ParticlesTpsa(order=2, descriptor=descriptor,
+        mass0=MASS_EV, p0c=P0C_EV, q0=1., x=.0004, y=-.0003,
+        px=.002, py=-.001, zeta=.0002, delta=.001, s=.17, time_s=1.9e-9)
+    # High-level TPSA backtracking is independently unsupported by Tracker;
+    # the scalar cases above check both directions of the cavity word.
+    line.track(series, ele_start=0, ele_stop=1)
+    assert series._xobject.state == 1
+    assert series._local_series['ax'].is_zero()
+    assert series._local_series['ay'].is_zero()
