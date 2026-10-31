@@ -17,6 +17,65 @@ uint64_t LocalParticle_check_track_flag(LocalParticle* part, uint8_t index) {
     return (part->track_flags >> index) & 1;
 }
 
+// Numeric rollback for explicitly transactional element/frame operations.
+// Keep the represented auxiliary slots, rather than reconstructing them from
+// delta: reconstruction can change their rounding or TPSA coefficients.
+typedef struct {
+    #define SNAPSHOT_NUM_FIELD(NAME) xt_float_or_tpsa NAME;
+        XT_LP_TPSA_NUM_FIELDS(SNAPSHOT_NUM_FIELD)
+    #undef SNAPSHOT_NUM_FIELD
+    #define SNAPSHOT_REF_FIELD(TYPE, NAME) TYPE NAME;
+        XT_LP_REF_MUTABLE_FIELDS(SNAPSHOT_REF_FIELD)
+    #undef SNAPSHOT_REF_FIELD
+} LocalParticleNumericSnapshot;
+
+GPUFUN
+LocalParticleNumericSnapshot LocalParticle_save_numeric(LocalParticle* part) {
+    LocalParticleNumericSnapshot saved;
+    #define SAVE_NUM_FIELD(NAME) saved.NAME = LocalParticle_get_ ## NAME(part);
+        XT_LP_TPSA_NUM_FIELDS(SAVE_NUM_FIELD)
+    #undef SAVE_NUM_FIELD
+    #define SAVE_REF_FIELD(TYPE, NAME) saved.NAME = LocalParticle_get_ ## NAME(part);
+        XT_LP_REF_MUTABLE_FIELDS(SAVE_REF_FIELD)
+    #undef SAVE_REF_FIELD
+    return saved;
+}
+
+GPUFUN
+void LocalParticle_restore_numeric(LocalParticle* part,
+        const LocalParticleNumericSnapshot* saved) {
+    #define RESTORE_NUM_FIELD(NAME) LocalParticle_set_ ## NAME(part, saved->NAME);
+        XT_LP_TPSA_NUM_FIELDS(RESTORE_NUM_FIELD)
+    #undef RESTORE_NUM_FIELD
+    #define RESTORE_REF_FIELD(TYPE, NAME) LocalParticle_set_ ## NAME(part, saved->NAME);
+        XT_LP_REF_MUTABLE_FIELDS(RESTORE_REF_FIELD)
+    #undef RESTORE_REF_FIELD
+}
+
+// A view, not a value copy. CPU serial helpers iterate from zero, so every
+// per-particle array must be rebased before nesting a one-lane operation.
+// TPSA fields address one series directly and must never be pointer-shifted.
+GPUFUN
+LocalParticle LocalParticle_single_particle_view(LocalParticle* part) {
+    LocalParticle one = *part;
+#ifndef XTRACK_TPSA_TRACK
+    const int64_t index = part->ipart;
+    #define REBASE_NUM_FIELD(NAME) one.NAME += index;
+        XT_LP_SCALAR_NUM_FIELDS(REBASE_NUM_FIELD)
+    #undef REBASE_NUM_FIELD
+    #define REBASE_TYPED_FIELD(TYPE, NAME) one.NAME += index;
+        XT_LP_INT_FIELDS(REBASE_TYPED_FIELD)
+        XT_LP_UINT32_FIELDS(REBASE_TYPED_FIELD)
+    #undef REBASE_TYPED_FIELD
+#endif
+    one.ipart = 0;
+    one.endpart = 1;
+    one._capacity = 1;
+    one._num_active_particles = 1;
+    one._num_lost_particles = 0;
+    return one;
+}
+
 // Swap all per-particle scalar arrays when reorganizing native particles. A TPSA map
 // represents one particle and therefore has nothing to exchange.
 GPUFUN

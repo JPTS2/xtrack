@@ -8655,8 +8655,17 @@ class LineAttr:
         _rot_and_shift_from_parent = np.zeros(len(line.element_names), dtype=np.float64)
         dynamic_inheritance = []
         dynamic_alignment = []
+        cavity_integral_candidates = []
         for ii, nn in enumerate(line.element_names):
             ee = line._element_dict[nn]
+            resolved = ee.resolve(line) if isinstance(ee, xt.Replica) else ee
+            if (isinstance(resolved, beam_elements.Cavity)
+                    or isinstance(getattr(resolved, '_parent', None),
+                                  beam_elements.Cavity)):
+                # Cache structural membership, not the current profile or
+                # strengths. Ordinary live model/profile changes must remain
+                # visible without scanning every other element on each read.
+                cavity_integral_candidates.append((ii, resolved))
             if hasattr(ee, '_inherit_strengths') and ee._inherit_strengths:
                 _inherit_strengths[ii] = 1.
             if isinstance(getattr(type(ee), '_inherit_strengths', None), property):
@@ -8671,6 +8680,7 @@ class LineAttr:
         self._dynamic_inherit_strengths = dynamic_inheritance
         self._static_rot_and_shift_from_parent = _rot_and_shift_from_parent
         self._dynamic_rot_and_shift_from_parent = dynamic_alignment
+        self._cavity_integral_candidates = cavity_integral_candidates
 
         for fn, fa in zip(field_names, field_access):
             name=fa.name
@@ -8732,10 +8742,7 @@ class LineAttr:
         from math import erf, sqrt, pi
         result = None
         scalar = lambda value: float(getattr(value, 'const_part', value))
-        for index, name in enumerate(self.line.element_names):
-            element = self.line._element_dict[name]
-            if isinstance(element, xt.Replica):
-                element = element.resolve(self.line)
+        for index, element in self._cavity_integral_candidates:
             if isinstance(element, beam_elements.Cavity):
                 parent, weight, start = element, 1., 0.
             else:
@@ -8754,7 +8761,8 @@ class LineAttr:
             if parent.magnetic_profile != 'gaussian':
                 continue
             length, sigma = float(parent.length), scalar(parent.magnetic_profile_sigma)
-            if length <= 0. or sigma <= 0. or not np.isfinite(sigma):
+            if (not np.isfinite(length) or length <= 0.
+                    or sigma <= 0. or not np.isfinite(sigma)):
                 raise ValueError('Gaussian magnetic readback requires positive length and width')
             scale = sqrt(2.)*sigma
             integral = lambda a, b: sqrt(pi/2.)*sigma*(erf(b/scale)-erf(a/scale))

@@ -10,7 +10,7 @@
 // instead integrate the physical parent source on this interval. Mirror the
 // standard straight-element wrapper only for that branch.
 GPUFUN
-void CavityModels_track_source_interval(CavityData parent,
+void CavityModels_track_source_interval_impl(CavityData parent,
         LocalParticle* part0, double weight, double start_fraction) {
     // Protect callers of this interval helper too, before its manual frame.
     if(!CavityModels_slice_preflight(parent,part0))return;
@@ -44,6 +44,36 @@ void CavityModels_track_source_interval(CavityData parent,
             track_misalignment_entry_straight(part0,dx,dy,ds,ry,rx,rz0,
                                               anchor,length,rz,reverse);
     }
+}
+
+// Source-bearing layout drifts apply their parent frame manually. Give that
+// path the same numeric rollback as the opt-in generic Cavity wrapper.
+GPUFUN
+void CavityModels_track_source_interval(CavityData parent,
+        LocalParticle* part0, double weight, double start_fraction) {
+    if (!CavityModels_transformations_active(parent)
+            || LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER)) {
+        CavityModels_track_source_interval_impl(parent, part0, weight, start_fraction);
+        return;
+    }
+    START_PER_PARTICLE_BLOCK(part0, part)
+        if (LocalParticle_get_state(part) > 0) {
+            const LocalParticleNumericSnapshot saved = LocalParticle_save_numeric(part);
+            LocalParticle one = LocalParticle_single_particle_view(part);
+            #ifdef XTRACK_TPSA_TRACK
+            try {
+            #endif
+                CavityModels_track_source_interval_impl(parent, &one, weight, start_fraction);
+            #ifdef XTRACK_TPSA_TRACK
+            } catch (const xt_tpsa::tracking_error&) {
+                LocalParticle_restore_numeric(part, &saved);
+                throw;
+            }
+            #endif
+            if (LocalParticle_get_state(part) <= 0)
+                LocalParticle_restore_numeric(part, &saved);
+        }
+    END_PER_PARTICLE_BLOCK;
 }
 
 #endif

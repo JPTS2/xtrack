@@ -5,6 +5,8 @@
    - ELEMENT_NAME: Name of the beam element class
    - TRACK_LOCAL_PARTICLE_PREFLIGHT: Optional class callback; returns false
      after rejecting an unsupported invocation before any frame changes.
+   - TRACK_TRANSFORMATIONS_TRANSACTION: Optional C expression selecting numeric
+     rollback when a transformed element loses a lane or raises a TPSA error.
    - ALLOW_ROT_AND_SHIFT: Whether to include transformations handling
    - CURVED: Whether the element has the `angle` and `h` parameters
    - IS_SLICE: Whether to get parameters from the parent element (if slice)
@@ -87,11 +89,17 @@
 */
 #ifdef ALLOW_ROT_AND_SHIFT
 
+#ifdef TRACK_TRANSFORMATIONS_TRANSACTION
+    #define NONZERO_TRANSFORM_FUNCTION CONCAT(ELEMENT_NAME, _track_local_particle_nonzero_transform_impl)
+#else
+    #define NONZERO_TRANSFORM_FUNCTION CONCAT(ELEMENT_NAME, _track_local_particle_with_nonzero_transformations)
+#endif
+
 GPUFUN
 #ifdef XO_CONTEXT_CL
     __attribute__((noinline))
 #endif
-void CONCAT(ELEMENT_NAME, _track_local_particle_with_nonzero_transformations)(
+void NONZERO_TRANSFORM_FUNCTION(
     ELEMENT_DATA el,
     LocalParticle* part0
 ) {
@@ -155,6 +163,36 @@ void CONCAT(ELEMENT_NAME, _track_local_particle_with_nonzero_transformations)(
         TRACK_MISALIGN_ENTRY;
     }
 }
+
+#ifdef TRACK_TRANSFORMATIONS_TRANSACTION
+GPUFUN
+void CONCAT(ELEMENT_NAME, _track_local_particle_with_nonzero_transformations)(
+        ELEMENT_DATA el, LocalParticle* part0) {
+    if (!(TRACK_TRANSFORMATIONS_TRANSACTION)) {
+        NONZERO_TRANSFORM_FUNCTION(el, part0);
+        return;
+    }
+    START_PER_PARTICLE_BLOCK(part0, part)
+        if (LocalParticle_get_state(part) > 0) {
+            const LocalParticleNumericSnapshot saved = LocalParticle_save_numeric(part);
+            LocalParticle one = LocalParticle_single_particle_view(part);
+            #ifdef XTRACK_TPSA_TRACK
+            try {
+            #endif
+                NONZERO_TRANSFORM_FUNCTION(el, &one);
+            #ifdef XTRACK_TPSA_TRACK
+            } catch (const xt_tpsa::tracking_error&) {
+                LocalParticle_restore_numeric(part, &saved);
+                throw;
+            }
+            #endif
+            if (LocalParticle_get_state(part) <= 0)
+                LocalParticle_restore_numeric(part, &saved);
+        }
+    END_PER_PARTICLE_BLOCK;
+}
+#endif
+#undef NONZERO_TRANSFORM_FUNCTION
 
 #endif /* ALLOW_ROT_AND_SHIFT */
 

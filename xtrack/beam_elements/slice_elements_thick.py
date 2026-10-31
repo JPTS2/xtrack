@@ -165,6 +165,9 @@ class ThickSliceOctupole(_ThickSliceElementBase, BeamElement):
 class ThickSliceCavity(_ThickSliceElementBase, BeamElement):
 
     _track_local_particle_preflight = 'ThickSliceCavity_preflight'
+    _track_transformations_transaction = (
+        'GET_PARAM(el, model) >= 10 && '
+        '!LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER)')
 
     _xofields = {'_parent': xo.Ref(Cavity), **COMMON_SLICE_XO_FIELDS,
                  '_slice_offset_fraction': xo.Float64,
