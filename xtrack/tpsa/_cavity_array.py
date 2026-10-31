@@ -124,14 +124,56 @@ class CavityArrayView(np.lib.mixins.NDArrayOperatorsMixin):
             if owner is not None:
                 owner[:] = inputs[0]
             return None
-        outputs = kwargs.pop('out', None)
+        outputs = kwargs.get('out', None)
+        if outputs is not None:
+            # NumPy must see initialized outputs: where=False preserves the
+            # target, and dtype/casting checks belong to the ufunc itself.
+            # Stage cavity storage until NumPy succeeds, preserving repeated
+            # output aliases as one array rather than independent copies.
+            staged = {}
+            arrays = []
+            object_result = (kwargs.get('dtype') is not None
+                             and np.dtype(kwargs['dtype']) == np.dtype(object)) or any(
+                isinstance(item, Tpsa) or np.asarray(item).dtype == np.dtype(object)
+                for item in inputs)
+            for target in outputs:
+                if isinstance(target, CavityArrayView):
+                    key = (id(target.owner), target.backing_name)
+                    if key not in staged:
+                        staged[key] = target._array(
+                            dtype=object if object_result else None).copy()
+                    arrays.append(staged[key])
+                else:
+                    arrays.append(target)
+            kwargs['out'] = tuple(arrays)
         result = getattr(ufunc, method)(*inputs, **kwargs)
         if outputs is None:
             return result
         results = result if isinstance(result, tuple) else (result,)
+        # Validate every cavity result before changing any native slot or
+        # enabling a descriptor. Normal/skew arrays share their owner's chart.
+        descriptors = {}
         for target, value in zip(outputs, results):
-            target[...] = value
-        return outputs[0] if len(outputs) == 1 else outputs
+            if not isinstance(target, CavityArrayView):
+                continue
+            key = id(target.owner)
+            if key not in descriptors:
+                descriptors[key] = (target.owner.__dict__.get('_tpsa_descriptor')
+                    if getattr(target.owner._xobject, '_tpsa_enabled', 0) else None)
+            for item in np.asarray(value, dtype=object).flat:
+                if isinstance(item, Tpsa):
+                    descriptor = descriptors[key]
+                    if descriptor is not None and descriptor.ptr != item.descriptor.ptr:
+                        raise ValueError('cavity strengths require one TPSA descriptor')
+                    descriptors[key] = item.descriptor
+                else:
+                    float(item)
+        for target, value in zip(outputs, results):
+            if isinstance(target, CavityArrayView):
+                target[...] = value
+        returned = tuple(value if target is None else target
+                         for target, value in zip(outputs, results))
+        return returned[0] if len(returned) == 1 else returned
 
     def fill(self, value):
         self[:] = value

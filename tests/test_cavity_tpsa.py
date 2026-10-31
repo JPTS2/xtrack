@@ -6,6 +6,7 @@ descriptor lifecycle needed by cavity source/stage aggregate storage.
 """
 import numpy as np
 import pytest
+import xobjects as xo
 
 import madng_tpsa
 import xtrack as xt
@@ -977,6 +978,150 @@ def test_indexed_cavity_knob_lifecycle(tmp_path):
         np.testing.assert_array_equal(restored._element_dict['c'].ksl,owner.ksl)
         assert not np.any(restored._element_dict['c']._knl_tpsa)
         assert not np.any(restored._element_dict['c']._ksl_tpsa)
+
+
+@pytest.mark.parametrize('active', [False, True])
+def test_cavity_array_masked_ufunc_preserves_untouched_storage(active):
+    """Masked outputs preserve scalar mirrors and the actual owned series."""
+    context = xo.ContextCpu(omp_num_threads=0)
+    owner = xt.Cavity(_context=context, order=2,
+                     knl=[1.,2.,3.], ksl=[91.,82.,73.])
+    mask = np.array([True,False,True])
+    if active:
+        descriptor = madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
+        owner.knl[:] = [descriptor.param(1,value) for value in (1.,2.,3.)]
+        owner.ksl[:] = [descriptor.param(1,value) for value in (91.,82.,73.)]
+    normal, skew = owner.knl, owner.ksl
+    untouched = (normal[1], skew[1])
+    handles = (int(owner._knl_tpsa[1]), int(owner._ksl_tpsa[1]))
+    mirrors = (np.asarray(owner._knl).copy(), np.asarray(owner._ksl).copy())
+    try:
+        assert np.add(normal,1.,out=skew,where=mask) is skew
+        np.testing.assert_array_equal(
+            [getattr(value,'const_part',value) for value in skew], [2.,82.,4.])
+        assert np.multiply(normal,2.,out=normal,where=mask) is normal
+        np.testing.assert_array_equal(
+            [getattr(value,'const_part',value) for value in normal], [2.,2.,6.])
+        for actual, before in zip((owner._knl, owner._ksl), mirrors):
+            np.testing.assert_array_equal(np.asarray(actual)[~mask].view(np.uint64),
+                                          before[~mask].view(np.uint64))
+        assert (int(owner._knl_tpsa[1]), int(owner._ksl_tpsa[1])) == handles
+        if active:
+            assert normal[1] is untouched[0] and skew[1] is untouched[1]
+            np.testing.assert_array_equal([value.param_grad()[0] for value in normal],
+                                          [2.,1.,2.])
+            np.testing.assert_array_equal([value.param_grad()[0] for value in skew],
+                                          [1.,1.,1.])
+    finally:
+        owner.disable_tpsa()
+
+
+def test_cavity_array_ufunc_allocated_and_aliased_multiple_outputs():
+    context = xo.ContextCpu(omp_num_threads=0)
+    owner = xt.Cavity(_context=context, order=2,
+                     knl=[1.25,2.5,3.75], ksl=[91.,82.,73.])
+    allocated = np.add(owner.knl,1.,out=(None,))
+    assert isinstance(allocated,np.ndarray)
+    np.testing.assert_array_equal(allocated,[2.25,3.5,4.75])
+    mask = np.array([True,False,True])
+    fraction, integer = owner.ksl, owner.knl
+    result = np.modf(owner.knl,out=(fraction,integer),where=mask)
+    assert result[0] is fraction and result[1] is integer
+    np.testing.assert_array_equal(np.asarray(fraction),[.25,82.,.75])
+    np.testing.assert_array_equal(np.asarray(integer),[1.,2.5,3.])
+    owner.knl[:] = [1.25,2.5,3.75]
+    result = np.modf(owner.knl,out=(None,fraction),where=mask)
+    assert result[1] is fraction
+    np.testing.assert_array_equal(result[0][mask],[.25,.75])
+    np.testing.assert_array_equal(np.asarray(fraction),[1.,82.,3.])
+    # Different view objects can still identify the same physical output.
+    first, second = owner.ksl, owner.ksl
+    reference = np.asarray(first).copy()
+    np.modf(np.asarray(owner.knl),out=(reference,reference),where=mask)
+    result = np.modf(owner.knl,out=(first,second),where=mask)
+    assert result[0] is first and result[1] is second
+    np.testing.assert_array_equal(np.asarray(first),reference)
+
+
+def test_cavity_array_ufunc_numpy_outputs_keep_casting_and_mask_rules():
+    context = xo.ContextCpu(omp_num_threads=0)
+    owner = xt.Cavity(_context=context, order=2,knl=[1.25,2.5,3.75])
+    integer_target = np.array([91,82,73],dtype=np.int64)
+    with pytest.raises(TypeError,match='cast'):
+        np.add(owner.knl,.5,out=integer_target)
+    np.testing.assert_array_equal(integer_target,[91,82,73])
+    np.testing.assert_array_equal(np.asarray(owner.knl),[1.25,2.5,3.75])
+    descriptor = madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
+    owner.knl[:] = [descriptor.param(1,value) for value in (1.,2.,3.)]
+    target = np.array([descriptor.param(1,value) for value in (91.,82.,73.)],
+                      dtype=object)
+    untouched = target[1]
+    try:
+        assert np.add(owner.knl,1.,out=target,where=[True,False,True]) is target
+        assert target[1] is untouched
+        np.testing.assert_array_equal([value.const_part for value in target],
+                                      [2.,82.,4.])
+        np.testing.assert_array_equal([value.param_grad()[0] for value in target],
+                                      [1.,1.,1.])
+    finally:
+        owner.disable_tpsa()
+
+
+@pytest.mark.parametrize('same_owner', [False, True])
+def test_cavity_array_ufunc_promotes_scalar_output_without_losing_mask(same_owner):
+    context = xo.ContextCpu(omp_num_threads=0)
+    source = xt.Cavity(_context=context, order=2,ksl=[91.,82.,73.])
+    target = source if same_owner else xt.Cavity(
+        _context=context, order=2,ksl=[91.,82.,73.])
+    descriptor = madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
+    source.knl[:] = [descriptor.param(1,value) for value in (1.,2.,3.)]
+    output = target.ksl
+    try:
+        assert np.add(source.knl,1.,out=output,where=[True,False,True]) is output
+        assert target._tpsa_enabled
+        np.testing.assert_array_equal(
+            [getattr(value,'const_part',value) for value in output], [2.,82.,4.])
+        np.testing.assert_array_equal([
+            value.param_grad()[0] if isinstance(value,madng_tpsa.Tpsa) else 0.
+            for value in output], [1.,0.,1.])
+        assert target._ksl_tpsa[1] == 0 and target._ksl[1] == 82.
+    finally:
+        source.disable_tpsa()
+        if target is not source:
+            target.disable_tpsa()
+
+
+@pytest.mark.parametrize('active', [False, True])
+def test_cavity_array_ufunc_rejects_invalid_results_before_target_mutation(active):
+    """A late invalid result must not alter earlier coefficients or activation."""
+    context = xo.ContextCpu(omp_num_threads=0)
+    owner = xt.Cavity(_context=context, order=2,
+                     knl=[1.,2.,3.], ksl=[91.,82.,73.])
+    descriptor = madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
+    foreign = madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
+    if active:
+        owner.ksl[:] = [descriptor.param(1,value) for value in (91.,82.,73.)]
+        foreign_rhs = np.array([1.,foreign.param(1,10.),1.],dtype=object)
+    else:
+        foreign_rhs = np.array([descriptor.param(1,10.),
+                                foreign.param(1,20.),1.],dtype=object)
+    fields = ('_knl','_ksl','_knl_tpsa','_ksl_tpsa')
+    before = {name:np.asarray(getattr(owner,name)).copy() for name in fields}
+    untouched = list(owner.ksl)
+    try:
+        for rhs,error in ((foreign_rhs,ValueError),
+                (np.array([1.,1j,1.],dtype=object),TypeError)):
+            with pytest.raises(error):
+                np.add(owner.knl,rhs,out=owner.ksl)
+            assert bool(owner._tpsa_enabled) is active
+            for name in fields:
+                np.testing.assert_array_equal(
+                    np.asarray(getattr(owner,name)).view(np.uint64),
+                    before[name].view(np.uint64))
+            if active:
+                assert all(value is saved for value,saved in zip(owner.ksl,untouched))
+    finally:
+        owner.disable_tpsa()
 
 
 def _build_shared_cavity_tracker(line, context):
