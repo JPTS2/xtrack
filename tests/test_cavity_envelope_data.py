@@ -245,6 +245,64 @@ def test_public_envelope_zero_rf_is_h2_vacuum(envelope_context):
                                atol=3e-13, rtol=0.)
 
 
+@pytest.mark.parametrize('species,reference_scale', [
+    ('positron', 1.), ('electron', 1.), ('proton', 1.), ('positron', 1.17),
+])
+def test_public_envelope_actual_species_reference_invariance(
+        envelope_context, species, reference_scale):
+    """The fixed scalar table describes actual gamma and the same SI fields.
+
+    Reference charge reversal needs phase-pi to preserve the physical RF
+    clock. Reference momentum rebasing changes native momenta and zeta,
+    while the actual particle and fixed calibration_beta remain unchanged.
+    """
+    import xtrack as xt
+    table = slow_wave_physical_table()
+    k = table.normalization_wave_number
+    controls = dict(envelope_controls(),
+        frequency=table.normalization_frequency,
+        length=(table.position_max-table.position_min)/k,
+        wave_number=table.nu*k, rf_profile_sigma=table.profile_width/k,
+        rf_profile_center=table.profile_centre/k, eta=0., counter_phase=0.)
+    mass = xt.PROTON_MASS_EV if species == 'proton' else xt.ELECTRON_MASS_EV
+    charge = -1. if species == 'electron' else 1.
+    kappa0 = np.sqrt(2.4**2-1.)
+    mixed = launch(envelope_context, q0=1., s=0.,
+        mass_ratio=mass/xt.ELECTRON_MASS_EV, charge_ratio=charge)
+    actual = launch(envelope_context, mass0=mass, q0=charge, s=0.,
+        p0c=reference_scale*mass*kappa0)
+    actual.px[:] = mixed.px/reference_scale
+    actual.py[:] = mixed.py/reference_scale
+    actual.update_delta((1.+mixed.delta)/reference_scale-1.)
+    # At identical time_s and s=0, T is fixed by zeta/beta0.
+    actual.zeta[:] = mixed.zeta*actual.beta0/mixed.beta0
+    if reference_scale != 1.:
+        assert actual.gamma0[0] > table.energy_max
+        gamma = np.sqrt(1.+(actual.p0c[0]/mass*(1.+actual.delta[0]))**2)
+        assert table.energy_min < gamma < table.energy_max
+    fixed = xt.Cavity(_context=envelope_context, envelope_table=table, **controls)
+    rebuilt = xt.Cavity(_context=envelope_context, envelope_table=table,
+        **dict(controls, phase=controls['phase']-(np.pi if charge < 0. else 0.)))
+    fixed.track(mixed)
+    rebuilt.track(actual)
+
+    def physical_chart(particle):
+        assert particle.state[0] == 1
+        kappa = particle.p0c[0]/particle.mass0
+        # Native px uses mass_ratio*p0c: these are actual P/(m_actual*c).
+        # c*t has metre units, so a reference-clock error is not hidden by
+        # an absolute tolerance expressed in seconds.
+        return np.array([particle.x[0], particle.y[0],
+            kappa*particle.px[0], kappa*particle.py[0],
+            np.sqrt(1.+(kappa*(1.+particle.delta[0]))**2),
+            299792458.*float(particle.time_s)
+                +(particle.s[0]-particle.zeta[0])/particle.beta0[0],
+            kappa*particle.ax[0], kappa*particle.ay[0]])
+
+    np.testing.assert_allclose(physical_chart(actual), physical_chart(mixed),
+                               rtol=8e-13, atol=3e-13)
+
+
 @pytest.mark.parametrize('field,factor', [
     ('frequency', 1.01), ('length', 1.01), ('wave_number', 1.01),
     ('rf_profile_sigma', 1.01), ('rf_profile_center', 1.01),
