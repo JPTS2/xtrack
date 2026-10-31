@@ -59,9 +59,33 @@ def packet_context(tmp_path_factory):
             for(int i=0;i<3;++i)for(int j=0;j<4;++j)for(int k=0;k<2;++k)
                 out[8*i+2*j+k]=packet[i][j][k];
         }
+        GPUKERN void review_averaged_slow(double *q,double *settings,double *out,
+                int64_t *status){
+            CavityAveragedSource source={0};source.half_span=settings[0];
+            source.slow=settings[1];source.carrier=settings[2];
+            source.dc_gradient=settings[7];
+            CavityModelSource physical={0};physical.k=1.;
+            physical.length=2*source.half_span;physical.half_span=source.half_span;
+            physical.rf_profile=(int)settings[6];physical.profile_sigma=settings[4];
+            physical.profile_center=settings[5];physical.order=-1;
+            source.profile_source=&physical;
+            CavityFullJet state[6],flow[6];
+            for(int axis=0;axis<6;++axis){state[axis]=CavityFull_constant(q[axis],1);
+                state[axis].c[CavityFull_unit(axis)]=1.;}
+            status[0]=CavityFull_slow_flow(state,settings[3],&source,flow,1);
+            if(status[0]==CAVITY_MODEL_OK)for(int axis=0;axis<6;++axis){
+                out[7*axis]=flow[axis].c[0];
+                for(int column=0;column<6;++column)
+                    out[7*axis+1+column]=flow[axis].c[CavityFull_unit(column)];}
+        }
         '''],kernels={'review_quadratic_packets':xo.Kernel(args=[
             xo.Arg(xo.Float64,name='energy'),xo.Arg(xo.Float64,name='nu'),
-            xo.Arg(xo.Float64,pointer=True,name='out')],n_threads=1)},
+            xo.Arg(xo.Float64,pointer=True,name='out')],n_threads=1),
+          'review_averaged_slow':xo.Kernel(args=[
+            xo.Arg(xo.Float64,pointer=True,name='q'),
+            xo.Arg(xo.Float64,pointer=True,name='settings'),
+            xo.Arg(xo.Float64,pointer=True,name='out'),
+            xo.Arg(xo.Int64,pointer=True,name='status')],n_threads=1)},
             extra_classes=[xt.Particles._XoStruct],extra_headers=[c_header_flag_mapping])
         yield context
 
@@ -96,3 +120,60 @@ def test_fixed_hardware_energy_derivative_from_scalar_packet(packet_context):
         maximum=max(maximum,float(np.max(abs(actual-derivative))))
         np.testing.assert_allclose(actual,derivative,atol=2e-8,rtol=3e-7)
     print('independent fixed-hardware five-point dE maximum',maximum)
+
+
+def slow_hamiltonian(q,settings):
+    """Independent M2 potential, then the unexpanded longitudinal mass shell.
+
+    All quantities use (X,Y,T,Px,Py,E), with the negative T--E block.
+    No production flow or potential-gradient implementation is imported.
+    """
+    from math import comb
+    half,amplitude,nu,z,sigma,centre,profile,dc=settings
+    if profile==0:
+        envelope=Polynomial([1.,0.,-1/half**2])**16
+        jets=[envelope.deriv(order)(z) for order in range(5)]
+    elif profile==1:
+        jets=[1.,0.,0.,0.,0.]
+    else:
+        u=(z-centre)/sigma;g=np.exp(-u*u/2)
+        jets=[g,-u*g/sigma,(u*u-1)*g/sigma**2,
+              u*(3-u*u)*g/sigma**3,(u**4-6*u*u+3)*g/sigma**4]
+    field=[amplitude*np.exp(1j*nu*z)*sum(comb(order,k)*jets[k]
+           *(1j*nu)**(order-k) for k in range(order+1)) for order in range(5)]
+    x,y,t,px,py,energy=q
+    sine=np.sin(t);cosine=np.cos(t)
+    s=[value.real*sine-value.imag*cosine for value in field]
+    radius2=x*x+y*y
+    radial=s[1]/2-radius2*(s[1]+s[3])/16
+    ax=x*radial;ay=y*radial
+    az=-s[0]+radius2*(s[0]+s[2])/4-radius2**2*(s[0]+2*s[2]+s[4])/64-dc*t
+    return -az-np.sqrt(energy**2-1-(px-ax)**2-(py-ay)**2)
+
+
+def slow_flow_from_hamiltonian(q,settings):
+    gradient=np.empty(6)
+    for axis in range(6):
+        shifted=np.asarray(q,dtype=complex)
+        shifted[axis]+=1e-24j
+        gradient[axis]=slow_hamiltonian(shifted,settings).imag/1e-24
+    return gradient[[3,4,5,0,1,2]]*np.array([1.,1.,-1.,-1.,-1.,1.])
+
+
+@pytest.mark.parametrize('profile',[0,1,2])
+def test_averaged_slow_flow_and_jet_from_total_hamiltonian(packet_context,profile):
+    """Check the RF derivative contraction and its actual first state jet."""
+    settings=np.array([.7,.035,1.3,.11,.23,.04,float(profile),.001])
+    q=np.array([.008,-.006,.7,.012,-.009,1.4])
+    out=np.full(42,np.nan);status=np.zeros(1,dtype=np.int64)
+    packet_context.kernels.review_averaged_slow(q=q,settings=settings,out=out,status=status)
+    assert status[0]==1
+    actual=out.reshape(6,7)
+    expected=slow_flow_from_hamiltonian(q,settings)
+    np.testing.assert_allclose(actual[:,0],expected,atol=3e-13,rtol=3e-12)
+    finite=np.zeros((6,6));step=2e-5
+    for column in range(6):
+        for offset,weight in ((-2,1.),(-1,-8.),(1,8.),(2,-1.)):
+            shifted=q.copy();shifted[column]+=offset*step
+            finite[:,column]+=weight*slow_flow_from_hamiltonian(shifted,settings)/(12*step)
+    np.testing.assert_allclose(actual[:,1:],finite,atol=5e-9,rtol=2e-7)

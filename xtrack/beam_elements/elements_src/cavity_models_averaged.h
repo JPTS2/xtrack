@@ -91,7 +91,9 @@ int CavityAveraged_data(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
 }
 
 // Shared fixed-size Gauss integration.
-// Fixed-size G2 routines share one bounded defining-equation recipe.
+// Accept the current stage after checking its actual defining residual, then
+// reuse the RHS evaluated at that same stage. This changes the stopped-root
+// arithmetic recipe, not the G2 equations or all-coefficient tolerance.
 // Separate call graphs avoid recursion and avoid 358-series scratch
 // in the six-state slow/body/boundary factors. Unknowns u,v are stage
 // increments about the cell base; residuals never subtract a large base
@@ -127,23 +129,26 @@ int NAME(xt_float_or_tpsa *value, \
             for (int i=0;i<COUNT;++i) { \
                 xt_float_or_tpsa next_u=h*(.25*f[i]+a01*g[i]); \
                 xt_float_or_tpsa next_v=h*(a10*f[i]+.25*g[i]); \
-                double du=CavityModel_scalar_residual(u[i]-next_u,value[i]+next_u,i<6); \
-                double dv=CavityModel_scalar_residual(v[i]-next_v,value[i]+next_v,i<6); \
+                double du=CavityModel_scalar_residual(u[i]-next_u,value[i]+u[i],i<6); \
+                double dv=CavityModel_scalar_residual(v[i]-next_v,value[i]+v[i],i<6); \
                 if (du>defect) defect=du; \
                 if (dv>defect) defect=dv; \
-                u[i]=next_u; v[i]=next_v; \
             } \
             if (defect<=source->tolerance) { converged=1; break; } \
+            for (int i=0;i<COUNT;++i) { \
+                u[i]=h*(.25*f[i]+a01*g[i]); \
+                v[i]=h*(a10*f[i]+.25*g[i]); \
+            } \
         } \
-    /* Re-evaluate the fresh increment defining equations, not a stale */ \
-    /* update metric. Every coefficient enters the weighted infinity norm. */ \
-        for (int i=0;i<COUNT;++i) initial[i]=value[i]+u[i]; \
-        status=RHS(initial,z+c0*h,source,f); \
-        if (status!=CAVITY_MODEL_OK) return status; \
-        for (int i=0;i<COUNT;++i) initial[i]=value[i]+v[i]; \
-        status=RHS(initial,z+c1*h,source,g); \
-        if (status!=CAVITY_MODEL_OK) return status; \
+        /* Accepted u/v are the stages whose RHS f/g was just evaluated. */ \
+        /* Reconstruct only on exhaustion, so debug reports a fresh residual. */ \
         if (!converged) { \
+            for (int i=0;i<COUNT;++i) initial[i]=value[i]+u[i]; \
+            status=RHS(initial,z+c0*h,source,f); \
+            if (status!=CAVITY_MODEL_OK) return status; \
+            for (int i=0;i<COUNT;++i) initial[i]=value[i]+v[i]; \
+            status=RHS(initial,z+c1*h,source,g); \
+            if (status!=CAVITY_MODEL_OK) return status; \
             CavityModel_debug_stages(#NAME,value,u,v,f,g,h,COUNT); \
             return CAVITY_MODEL_ITERATIONS; \
         } \
@@ -438,26 +443,19 @@ GPUFUN
 CavityFullJet CavityFull_mul(CavityFullJet_arg a,CavityFullJet_arg b,int rank) {
     CavityFullJet out;CavityFull_product(a.c,b.c,rank,out.c);return out;
 }
+// Positive-branch a^(-1/2), evaluated directly in the finite total-degree
+// ring. This replaces two composed series, not the retained mass shell.
+// Each coefficient remains generic for the independent outer TPSA algebra.
 GPUFUN
-CavityFullJet CavityFull_reciprocal(CavityFullJet_arg a,int rank) {
-    CavityFullJet delta=CavityFull_scale(a,-1./a.c[0],rank);delta.c[0]=0.;
-    CavityFullJet power=CavityFull_constant(1.,rank),out=power;
-    for(int n=1;n<=rank;++n) {
-        power=CavityFull_mul(power,delta,rank);
-        out=CavityFull_linear(out,power,1.,1.,rank);
-    }
-    return CavityFull_scale(out,1./a.c[0],rank);
-}
-GPUFUN
-CavityFullJet CavityFull_sqrt(CavityFullJet_arg a,int rank) {
+CavityFullJet CavityFull_inverse_sqrt(CavityFullJet_arg a,int rank) {
     CavityFullJet delta=CavityFull_scale(a,1./a.c[0],rank);delta.c[0]=0.;
     CavityFullJet power=CavityFull_constant(1.,rank),out=power;
     double binomial=1.;
     for(int n=1;n<=rank;++n) {
-        power=CavityFull_mul(power,delta,rank);binomial*=((.5-(n-1))/n);
+        power=CavityFull_mul(power,delta,rank);binomial*=((-.5-(n-1))/n);
         out=CavityFull_linear(out,power,1.,binomial,rank);
     }
-    return CavityFull_scale(out,sqrt(a.c[0]),rank);
+    return CavityFull_scale(out,1./sqrt(a.c[0]),rank);
 }
 GPUFUN
 void CavityFull_sincos(CavityFullJet a,int rank,CavityFullJet *sine,CavityFullJet *cosine) {
@@ -489,81 +487,143 @@ CavityFullJet CavityFull_pb(CavityFullJet_arg a,CavityFullJet_arg b,int rank) {
 // already contain the same signed species charge. No magnetic expansion.
 GPUFUN
 void CavityFull_add_static(const CavityFullJet q[6],
-        const CavityAveragedSource *source,int rank,CavityFullPotential *out) {
+        const CavityAveragedSource *source,int rank,
+        CavityFullJet a[3],CavityFullJet d[3][3]) {
+    const int derivatives=d!=NULL;
     const CavityModelSource *physical=source->static_source;
     if(!physical)return;
     CavityFullJet x=CavityFull_scale(q[0],1./physical->k,rank);
     CavityFullJet y=CavityFull_scale(q[1],1./physical->k,rank);
     xt_float_or_tpsa solenoid=source->static_charge*physical->magnetic_scale*physical->ks*.5;
-    out->a[0]=CavityFull_linear(out->a[0],y,1.,-solenoid,rank);
-    out->a[1]=CavityFull_linear(out->a[1],x,1.,solenoid,rank);
-    out->d[0][1].c[0]-=solenoid/physical->k;
-    out->d[1][0].c[0]+=solenoid/physical->k;
+    a[0]=CavityFull_linear(a[0],y,1.,-solenoid,rank);
+    a[1]=CavityFull_linear(a[1],x,1.,solenoid,rank);
+    if(derivatives) {
+        d[0][1].c[0]-=solenoid/physical->k;
+        d[1][0].c[0]+=solenoid/physical->k;
+    }
     CavityFullJet real=CavityFull_constant(1.,rank),imag=CavityFull_constant(0.,rank);
     xt_float_or_tpsa factor=source->static_charge*physical->magnetic_scale/physical->length;
     for(int64_t n=0;n<=physical->order;++n) {
         xt_float_or_tpsa normal=CavityModel_static_coefficient(physical,n,0);
         xt_float_or_tpsa skew=CavityModel_static_coefficient(physical,n,1);
-        out->d[2][0]=CavityFull_linear(out->d[2][0],
-            CavityFull_linear(real,imag,normal,-skew,rank),1.,-factor/physical->k,rank);
-        out->d[2][1]=CavityFull_linear(out->d[2][1],
-            CavityFull_linear(imag,real,normal,skew,rank),1.,factor/physical->k,rank);
+        if(derivatives) {
+            d[2][0]=CavityFull_linear(d[2][0],
+                CavityFull_linear(real,imag,normal,-skew,rank),1.,-factor/physical->k,rank);
+            d[2][1]=CavityFull_linear(d[2][1],
+                CavityFull_linear(imag,real,normal,skew,rank),1.,factor/physical->k,rank);
+        }
         CavityFullJet next_real=CavityFull_scale(CavityFull_linear(
             CavityFull_mul(real,x,rank),CavityFull_mul(imag,y,rank),1.,-1.,rank),1./(n+1.),rank);
         imag=CavityFull_scale(CavityFull_linear(CavityFull_mul(real,y,rank),
             CavityFull_mul(imag,x,rank),1.,1.,rank),1./(n+1.),rank);
         real=next_real;
-        out->a[2]=CavityFull_linear(out->a[2],
+        a[2]=CavityFull_linear(a[2],
             CavityFull_linear(real,imag,normal,-skew,rank),1.,-factor,rank);
     }
 }
 
 // This is the same compact Maxwell M2 potential/first derivative formula as
 // CavityModel_rf_potential, evaluated in the finite divided-coefficient ring.
+// Source generators consume A only; the slow flow also needs its explicit
+// derivatives. A NULL derivative output also avoids constructing unused
+// TPSA series. Both consumers use the same retained potential expression.
 GPUFUN
-void CavityFull_potential(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
+void CavityFull_potential_select(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
         const CavityAveragedSource *source,xt_float_or_tpsa_arg phase,
-        int fast,int rank,CavityFullPotential *out) {
+        int fast,int rank,CavityFullJet a[3],CavityFullJet d[3][3]) {
+    const int derivatives=d!=NULL;
     CavityModelSource physical;CavityAveraged_physical_source(source,&physical);
     physical.half_span=source->half_span;physical.carrier=source->carrier;
     physical.counter_phase=phase;physical.forward=fast?0.:source->slow;
     physical.backward=fast?1.:0.;
     xt_float_or_tpsa real[5],imag[5];CavityModel_profile(z,&physical,real,imag);
-    CavityFullJet sine,cosine,S[5],C[5];CavityFull_sincos(q[2],rank,&sine,&cosine);
+    CavityFullJet sine,cosine,S[5];CavityFull_sincos(q[2],rank,&sine,&cosine);
     for(int i=0;i<5;++i) {
         S[i]=CavityFull_linear(sine,cosine,real[i],-imag[i],rank);
-        C[i]=CavityFull_linear(cosine,sine,real[i],imag[i],rank);
     }
     CavityFullJet xx=CavityFull_mul(q[0],q[0],rank),yy=CavityFull_mul(q[1],q[1],rank);
     CavityFullJet r2=CavityFull_linear(xx,yy,1.,1.,rank);
     CavityFullJet radial_r2=CavityFull_linear(S[1],S[3],-1./16.,-1./16.,rank);
     CavityFullJet radial=CavityFull_linear(S[1],CavityFull_mul(r2,radial_r2,rank),.5,1.,rank);
-    CavityFullJet radial_t=CavityFull_linear(C[1],CavityFull_mul(r2,CavityFull_linear(C[1],C[3],1.,1.,rank),rank),.5,-1./16.,rank);
     CavityFullJet az2=CavityFull_linear(S[0],S[2],.25,.25,rank);
     CavityFullJet az4=CavityFull_linear(CavityFull_linear(S[0],S[2],1.,2.,rank),S[4],-1./64.,-1./64.,rank);
-    out->a[0]=CavityFull_mul(q[0],radial,rank);out->a[1]=CavityFull_mul(q[1],radial,rank);
-    out->a[2]=CavityFull_linear(CavityFull_linear(S[0],CavityFull_mul(r2,az2,rank),-1.,1.,rank),CavityFull_mul(CavityFull_mul(r2,r2,rank),az4,rank),1.,1.,rank);
-    out->d[0][0]=CavityFull_linear(radial,CavityFull_mul(xx,radial_r2,rank),1.,2.,rank);
-    out->d[0][1]=CavityFull_scale(CavityFull_mul(CavityFull_mul(q[0],q[1],rank),radial_r2,rank),2.,rank);
-    out->d[0][2]=CavityFull_mul(q[0],radial_t,rank);
-    out->d[1][0]=out->d[0][1];
-    out->d[1][1]=CavityFull_linear(radial,CavityFull_mul(yy,radial_r2,rank),1.,2.,rank);
-    out->d[1][2]=CavityFull_mul(q[1],radial_t,rank);
-    CavityFullJet transverse=CavityFull_linear(az2,CavityFull_mul(r2,az4,rank),1.,2.,rank);
-    out->d[2][0]=CavityFull_scale(CavityFull_mul(q[0],transverse,rank),2.,rank);
-    out->d[2][1]=CavityFull_scale(CavityFull_mul(q[1],transverse,rank),2.,rank);
+    a[0]=CavityFull_mul(q[0],radial,rank);a[1]=CavityFull_mul(q[1],radial,rank);
+    a[2]=CavityFull_linear(CavityFull_linear(S[0],CavityFull_mul(r2,az2,rank),-1.,1.,rank),CavityFull_mul(CavityFull_mul(r2,r2,rank),az4,rank),1.,1.,rank);
+    if(derivatives) {
+        CavityFullJet C[5];
+        for(int i=0;i<5;++i)
+            C[i]=CavityFull_linear(cosine,sine,real[i],imag[i],rank);
+        CavityFullJet radial_t=CavityFull_linear(C[1],CavityFull_mul(r2,CavityFull_linear(C[1],C[3],1.,1.,rank),rank),.5,-1./16.,rank);
+        d[0][0]=CavityFull_linear(radial,CavityFull_mul(xx,radial_r2,rank),1.,2.,rank);
+        d[0][1]=CavityFull_scale(CavityFull_mul(CavityFull_mul(q[0],q[1],rank),radial_r2,rank),2.,rank);
+        d[0][2]=CavityFull_mul(q[0],radial_t,rank);
+        d[1][0]=d[0][1];
+        d[1][1]=CavityFull_linear(radial,CavityFull_mul(yy,radial_r2,rank),1.,2.,rank);
+        d[1][2]=CavityFull_mul(q[1],radial_t,rank);
+        CavityFullJet transverse=CavityFull_linear(az2,CavityFull_mul(r2,az4,rank),1.,2.,rank);
+        d[2][0]=CavityFull_scale(CavityFull_mul(q[0],transverse,rank),2.,rank);
+        d[2][1]=CavityFull_scale(CavityFull_mul(q[1],transverse,rank),2.,rank);
+        CavityFullJet ct2=CavityFull_linear(C[0],C[2],.25,.25,rank);
+        CavityFullJet ct4=CavityFull_linear(CavityFull_linear(C[0],C[2],1.,2.,rank),C[4],-1./64.,-1./64.,rank);
+        d[2][2]=CavityFull_linear(CavityFull_linear(C[0],CavityFull_mul(r2,ct2,rank),-1.,1.,rank),CavityFull_mul(CavityFull_mul(r2,r2,rank),ct4,rank),1.,1.,rank);
+    }
+    if(!fast) {
+        a[2]=CavityFull_linear(a[2],q[2],1.,-source->dc_gradient,rank);
+        if(derivatives)d[2][2].c[0]-=source->dc_gradient;
+        CavityFull_add_static(q,source,rank,a,d);
+    }
+}
+GPUFUN
+void CavityFull_potential(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
+        const CavityAveragedSource *source,xt_float_or_tpsa_arg phase,
+        int fast,int rank,CavityFullPotential *out) {
+    CavityFull_potential_select(q,z,source,phase,fast,rank,out->a,out->d);
+}
+
+// RF-only factorization of the same potential derivative contraction.
+// D=X*vx+Y*vy shares the radial terms; no transverse/energy truncation.
+GPUFUN
+int CavityFull_rf_slow_flow(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
+        const CavityAveragedSource *source,CavityFullJet out[6],int rank) {
+    CavityModelSource physical;CavityAveraged_physical_source(source,&physical);
+    physical.half_span=source->half_span;physical.carrier=source->carrier;
+    physical.forward=source->slow;physical.backward=0.;
+    xt_float_or_tpsa real[5],imag[5];CavityModel_profile(z,&physical,real,imag);
+    CavityFullJet sine,cosine,S[5],C[5];CavityFull_sincos(q[2],rank,&sine,&cosine);
+    for(int j=0;j<5;++j) {
+        S[j]=CavityFull_linear(sine,cosine,real[j],-imag[j],rank);
+        C[j]=CavityFull_linear(cosine,sine,real[j],imag[j],rank);
+    }
+    CavityFullJet r2=CavityFull_linear(CavityFull_mul(q[0],q[0],rank),CavityFull_mul(q[1],q[1],rank),1.,1.,rank);
+    CavityFullJet radial_r2=CavityFull_linear(S[1],S[3],-1./16.,-1./16.,rank);
+    CavityFullJet radial=CavityFull_linear(S[1],CavityFull_mul(r2,radial_r2,rank),.5,1.,rank);
+    CavityFullJet px=CavityFull_linear(q[3],CavityFull_mul(q[0],radial,rank),1.,-1.,rank);
+    CavityFullJet py=CavityFull_linear(q[4],CavityFull_mul(q[1],radial,rank),1.,-1.,rank);
+    CavityFullJet square=CavityFull_linear(CavityFull_mul(q[5],q[5],rank),
+        CavityFull_linear(CavityFull_mul(px,px,rank),CavityFull_mul(py,py,rank),1.,1.,rank),1.,-1.,rank);
+    square.c[0]-=1.;
+    if(xt_float_or_tpsa_const_part(q[5].c[0])<=1. || xt_float_or_tpsa_const_part(square.c[0])<=0.)return CAVITY_MODEL_DOMAIN;
+    CavityFullJet inverse=CavityFull_inverse_sqrt(square,rank);
+    out[0]=CavityFull_mul(px,inverse,rank);out[1]=CavityFull_mul(py,inverse,rank);
+    out[2]=CavityFull_mul(q[5],inverse,rank);
+    CavityFullJet dot=CavityFull_linear(CavityFull_mul(q[0],out[0],rank),CavityFull_mul(q[1],out[1],rank),1.,1.,rank);
+    CavityFullJet az2=CavityFull_linear(S[0],S[2],.25,.25,rank);
+    CavityFullJet az4=CavityFull_linear(CavityFull_linear(S[0],S[2],1.,2.,rank),S[4],-1./64.,-1./64.,rank);
+    CavityFullJet transverse=CavityFull_linear(CavityFull_linear(az2,CavityFull_mul(r2,az4,rank),1.,2.,rank),CavityFull_mul(radial_r2,dot,rank),1.,1.,rank);
+    out[3]=CavityFull_linear(CavityFull_scale(CavityFull_mul(q[0],transverse,rank),2.,rank),CavityFull_mul(out[0],radial,rank),1.,1.,rank);
+    out[4]=CavityFull_linear(CavityFull_scale(CavityFull_mul(q[1],transverse,rank),2.,rank),CavityFull_mul(out[1],radial,rank),1.,1.,rank);
     CavityFullJet ct2=CavityFull_linear(C[0],C[2],.25,.25,rank);
     CavityFullJet ct4=CavityFull_linear(CavityFull_linear(C[0],C[2],1.,2.,rank),C[4],-1./64.,-1./64.,rank);
-    out->d[2][2]=CavityFull_linear(CavityFull_linear(C[0],CavityFull_mul(r2,ct2,rank),-1.,1.,rank),CavityFull_mul(CavityFull_mul(r2,r2,rank),ct4,rank),1.,1.,rank);
-    if(!fast) {
-        out->a[2]=CavityFull_linear(out->a[2],q[2],1.,-source->dc_gradient,rank);
-        out->d[2][2].c[0]-=source->dc_gradient;
-        CavityFull_add_static(q,source,rank,out);
-    }
+    CavityFullJet radial_t=CavityFull_linear(C[1],CavityFull_mul(r2,CavityFull_linear(C[1],C[3],1.,1.,rank),rank),.5,-1./16.,rank);
+    out[5]=CavityFull_linear(CavityFull_linear(C[0],CavityFull_mul(r2,ct2,rank),1.,-1.,rank),CavityFull_mul(CavityFull_mul(r2,r2,rank),ct4,rank),1.,-1.,rank);
+    out[5]=CavityFull_linear(out[5],CavityFull_mul(radial_t,dot,rank),1.,-1.,rank);
+    out[5].c[0]+=source->dc_gradient;
+    return CAVITY_MODEL_OK;
 }
 GPUFUN
 int CavityFull_slow_flow(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
         const CavityAveragedSource *source,CavityFullJet out[6],int rank) {
+    if(!source->static_source)return CavityFull_rf_slow_flow(q,z,source,out,rank);
     CavityFullPotential potential;CavityFull_potential(q,z,source,source->counter_phase,0,rank,&potential);
     CavityFullJet px=CavityFull_linear(q[3],potential.a[0],1.,-1.,rank);
     CavityFullJet py=CavityFull_linear(q[4],potential.a[1],1.,-1.,rank);
@@ -571,7 +631,7 @@ int CavityFull_slow_flow(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
         CavityFull_linear(CavityFull_mul(px,px,rank),CavityFull_mul(py,py,rank),1.,1.,rank),1.,-1.,rank);
     square.c[0]-=1.;
     if(xt_float_or_tpsa_const_part(q[5].c[0])<=1. || xt_float_or_tpsa_const_part(square.c[0])<=0.)return CAVITY_MODEL_DOMAIN;
-    CavityFullJet inverse=CavityFull_reciprocal(CavityFull_sqrt(square,rank),rank);
+    CavityFullJet inverse=CavityFull_inverse_sqrt(square,rank);
     out[0]=CavityFull_mul(px,inverse,rank);out[1]=CavityFull_mul(py,inverse,rank);
     out[2]=CavityFull_mul(q[5],inverse,rank);
     for(int i=0;i<3;++i) {
@@ -586,33 +646,80 @@ int CavityFull_slow_flow(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
 // Source amplitude recurrence R(lambda)^2=S(lambda), on the positive slow
 // root. This is the full mass shell before truncating counter-wave amplitude.
 GPUFUN
-int CavityFull_local_sources_rank(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
-        const CavityAveragedSource *source,xt_float_or_tpsa_arg phase,
-        int rank,CavityFullJet out[4]) {
-    CavityFullPotential slow,fast;
-    CavityFull_potential(q,z,source,phase,0,rank,&slow);
-    CavityFull_potential(q,z,source,phase,1,rank,&fast);
-    CavityFullJet px=CavityFull_linear(q[3],slow.a[0],1.,-1.,rank);
-    CavityFullJet py=CavityFull_linear(q[4],slow.a[1],1.,-1.,rank);
+int CavityFull_local_slow_root(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
+        const CavityAveragedSource *source,int rank,CavityFullJet *px,
+        CavityFullJet *py,CavityFullJet *inverse) {
+    // The slow shell consumes only A_perp. Az (including DC/normal/skew
+    // fields) still enters the complete transported slow history above.
+    CavityModelSource physical;CavityAveraged_physical_source(source,&physical);
+    physical.half_span=source->half_span;physical.carrier=source->carrier;
+    physical.forward=source->slow;physical.backward=0.;
+    xt_float_or_tpsa real[5],imag[5];CavityModel_profile(z,&physical,real,imag);
+    CavityFullJet sine,cosine;CavityFull_sincos(q[2],rank,&sine,&cosine);
+    CavityFullJet s1=CavityFull_linear(sine,cosine,real[1],-imag[1],rank);
+    CavityFullJet s3=CavityFull_linear(sine,cosine,real[3],-imag[3],rank);
+    CavityFullJet r2=CavityFull_linear(CavityFull_mul(q[0],q[0],rank),CavityFull_mul(q[1],q[1],rank),1.,1.,rank);
+    CavityFullJet radial=CavityFull_linear(s1,CavityFull_mul(r2,CavityFull_linear(s1,s3,-1./16.,-1./16.,rank),rank),.5,1.,rank);
+    CavityFullJet ax=CavityFull_mul(q[0],radial,rank),ay=CavityFull_mul(q[1],radial,rank);
+    if(source->static_source) {
+        const CavityModelSource *magnet=source->static_source;
+        xt_float_or_tpsa half_b=source->static_charge*magnet->magnetic_scale*magnet->ks*.5/magnet->k;
+        ax=CavityFull_linear(ax,q[1],1.,-half_b,rank);
+        ay=CavityFull_linear(ay,q[0],1.,half_b,rank);
+    }
+    *px=CavityFull_linear(q[3],ax,1.,-1.,rank);
+    *py=CavityFull_linear(q[4],ay,1.,-1.,rank);
     CavityFullJet square=CavityFull_linear(CavityFull_mul(q[5],q[5],rank),
-        CavityFull_linear(CavityFull_mul(px,px,rank),CavityFull_mul(py,py,rank),1.,1.,rank),1.,-1.,rank);
+        CavityFull_linear(CavityFull_mul(*px,*px,rank),CavityFull_mul(*py,*py,rank),1.,1.,rank),1.,-1.,rank);
     square.c[0]-=1.;
     if(xt_float_or_tpsa_const_part(q[5].c[0])<=1. || xt_float_or_tpsa_const_part(square.c[0])<=0.)return CAVITY_MODEL_DOMAIN;
-    CavityFullJet root=CavityFull_sqrt(square,rank),inverse=CavityFull_scale(CavityFull_reciprocal(root,rank),.5,rank);
-    CavityFullJet s1=CavityFull_scale(CavityFull_linear(CavityFull_mul(px,fast.a[0],rank),CavityFull_mul(py,fast.a[1],rank),1.,1.,rank),2.,rank);
-    CavityFullJet s2=CavityFull_scale(CavityFull_linear(CavityFull_mul(fast.a[0],fast.a[0],rank),CavityFull_mul(fast.a[1],fast.a[1],rank),1.,1.,rank),-1.,rank);
+    *inverse=CavityFull_scale(CavityFull_inverse_sqrt(square,rank),.5,rank);
+    return CAVITY_MODEL_OK;
+}
+// Amplitude recurrence coefficients need decreasing inner jet ranks. In a
+// total-degree ring, discarded higher coefficients cannot feed retained ones.
+GPUFUN
+void CavityFull_local_fast_sources(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
+        const CavityAveragedSource *source,xt_float_or_tpsa_arg phase,int rank,
+        CavityFullJet_arg px,CavityFullJet_arg py,CavityFullJet_arg inverse,
+        CavityFullJet out[4]) {
+    CavityFullJet fast[3];
+    CavityFull_potential_select(q,z,source,phase,1,rank,fast,NULL);
+    CavityFullJet s1=CavityFull_scale(CavityFull_linear(CavityFull_mul(px,fast[0],rank),CavityFull_mul(py,fast[1],rank),1.,1.,rank),2.,rank);
     CavityFullJet r1=CavityFull_mul(s1,inverse,rank);
-    CavityFullJet r2=CavityFull_mul(CavityFull_linear(s2,CavityFull_mul(r1,r1,rank),1.,-1.,rank),inverse,rank);
-    out[0]=CavityFull_linear(fast.a[2],r1,-1.,-1.,rank);
+    CavityFullJet s2=CavityFull_scale(CavityFull_linear(CavityFull_mul(fast[0],fast[0],rank-1),CavityFull_mul(fast[1],fast[1],rank-1),1.,1.,rank-1),-1.,rank-1);
+    CavityFullJet r2=CavityFull_mul(CavityFull_linear(s2,CavityFull_mul(r1,r1,rank-1),1.,-1.,rank-1),inverse,rank-1);
+    out[0]=CavityFull_linear(fast[2],r1,-1.,-1.,rank);
     out[1]=CavityFull_scale(r2,-1.,rank-1);
     if(rank>=3) {
-        CavityFullJet r3=CavityFull_scale(CavityFull_mul(CavityFull_mul(r1,r2,rank),inverse,rank),-2.,rank);
+        CavityFullJet r3=CavityFull_scale(CavityFull_mul(CavityFull_mul(r1,r2,rank-2),inverse,rank-2),-2.,rank-2);
         out[2]=CavityFull_scale(r3,-1.,rank-2);
         if(rank>=4) {
-            CavityFullJet r4=CavityFull_scale(CavityFull_mul(CavityFull_linear(CavityFull_mul(r1,r3,rank),CavityFull_mul(r2,r2,rank),2.,1.,rank),inverse,rank),-1.,rank);
+            CavityFullJet r4=CavityFull_scale(CavityFull_mul(CavityFull_linear(CavityFull_mul(r1,r3,rank-3),CavityFull_mul(r2,r2,rank-3),2.,1.,rank-3),inverse,rank-3),-1.,rank-3);
             out[3]=CavityFull_scale(r4,-1.,rank-3);
         }
     }
+}
+GPUFUN
+int CavityFull_local_sources_rank(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
+        const CavityAveragedSource *source,xt_float_or_tpsa_arg phase,
+        int rank,CavityFullJet out[4]) {
+    CavityFullJet px,py,inverse;
+    int status=CavityFull_local_slow_root(q,z,source,rank,&px,&py,&inverse);
+    if(status!=CAVITY_MODEL_OK)return status;
+    CavityFull_local_fast_sources(q,z,source,phase,rank,px,py,inverse,out);
+    return CAVITY_MODEL_OK;
+}
+// At one characteristic stage the forward-only slow field/root is the
+// same for both fast-phase quadratures, including every outer TPSA seed.
+GPUFUN
+int CavityProduct_local_pair(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
+        const CavityAveragedSource *source,int rank,CavityFullJet out[2][4]) {
+    CavityFullJet px,py,inverse;
+    int status=CavityFull_local_slow_root(q,z,source,rank,&px,&py,&inverse);
+    if(status!=CAVITY_MODEL_OK)return status;
+    for(int quadrature=0;quadrature<2;++quadrature)
+        CavityFull_local_fast_sources(q,z,source,source->counter_phase+quadrature*(PI/2.),rank,px,py,inverse,out[quadrature]);
     return CAVITY_MODEL_OK;
 }
 GPUFUN
@@ -662,12 +769,14 @@ int CavityFull_slow_stage_rank(xt_float_or_tpsa value[1260],xt_float_or_tpsa_arg
         for(int i=0;i<count;++i) {
             xt_float_or_tpsa next_u=h*(.25*f[i]+a01*g[i]);
             xt_float_or_tpsa next_v=h*(a10*f[i]+.25*g[i]);
-            double du=CavityModel_scalar_residual(u[i]-next_u,value[i]+next_u,i<6);
-            double dv=CavityModel_scalar_residual(v[i]-next_v,value[i]+next_v,i<6);
+            double du=CavityModel_scalar_residual(u[i]-next_u,value[i]+u[i],i<6);
+            double dv=CavityModel_scalar_residual(v[i]-next_v,value[i]+v[i],i<6);
             if(du>defect)defect=du;if(dv>defect)defect=dv;
-            u[i]=next_u;v[i]=next_v;
         }
         if(defect<=source->tolerance){converged=1;break;}
+        for(int i=0;i<count;++i) {
+            u[i]=h*(.25*f[i]+a01*g[i]);v[i]=h*(a10*f[i]+.25*g[i]);
+        }
     }
     if(!converged) {
 #ifdef CAVITY_MODEL_DEBUG
@@ -682,11 +791,7 @@ int CavityFull_slow_stage_rank(xt_float_or_tpsa value[1260],xt_float_or_tpsa_arg
         CavityModel_debug_stages("full-slow-inner-gauss",value,u,v,f,g,h,count);
         return CAVITY_MODEL_ITERATIONS;
     }
-    for(int i=0;i<count;++i){f[i]=value[i]+u[i];g[i]=value[i]+v[i];}
-    status=CavityFull_slow_coefficients_rank(f,z+c0*h,source,f,rank);
-    if(status!=CAVITY_MODEL_OK)return status;
-    status=CavityFull_slow_coefficients_rank(g,z+c1*h,source,g,rank);
-    if(status!=CAVITY_MODEL_OK)return status;
+    // Current u/v and their freshly evaluated f/g satisfy the defining equations.
     for(int i=0;i<count;++i) {
         xt_float_or_tpsa du=u[i]-h*(.25*f[i]+a01*g[i]);
         xt_float_or_tpsa dv=v[i]-h*(a10*f[i]+.25*g[i]);
@@ -944,9 +1049,8 @@ int CavityProduct_generators(const xt_float_or_tpsa q[6],const CavityAveragedSou
         int status=CavityFull_slow_stage_rank(value,z,h,source,stages,degree);
         if(status!=CAVITY_MODEL_OK)return status;
         CavityFullJet local[2][2][4],a1[2][2],r2[2][2],a2[2][2],m[2],mp[2],r3[2][2],r4[2];
-        for(int stage=0;stage<2;++stage)for(int quadrature=0;quadrature<2;++quadrature) {
-            status=CavityFull_local_sources_rank(stages[stage],z+nodes[stage]*h,source,
-                source->counter_phase+quadrature*(PI/2.),degree,local[stage][quadrature]);
+        for(int stage=0;stage<2;++stage) {
+            status=CavityProduct_local_pair(stages[stage],z+nodes[stage]*h,source,degree,local[stage]);
             if(status!=CAVITY_MODEL_OK)return status;
         }
         // Both source stages must exist before constructing their coupled

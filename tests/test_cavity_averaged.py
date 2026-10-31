@@ -107,3 +107,49 @@ def test_second_order_canonical_live_variables(tmp_path):
         assert before.state[0]==after.state[0]==fresh.state[0]==1
         assert np.max(np.abs(values(after)-values(before)))>1e-7
         np.testing.assert_allclose(values(after),values(fresh),rtol=0.,atol=2e-12)
+
+
+def test_second_order_source_mesh_refinement_and_signed_inverse(tmp_path):
+    """Own-map numerical refinement, expressed in dimensionless source units.
+
+    This is a selected convergence case, not an RF-truncation error bound.
+    Source and generating-factor meshes refine together; no resolved-model
+    or frozen-model endpoint is substituted for the canonical C2 product.
+    """
+    with native_context(tmp_path) as context:
+        controls=dict(length=.16,frequency=400e6,voltage=2e3,phase=.4,
+            eta=.25,counter_phase=.3,calibration_beta=.9,
+            model='phase-averaged-second-order',integrator='gauss2')
+        element=xt.Cavity(_context=context,**controls)
+        line=xt.Line(elements=[element,xt.Marker(_context=context)],
+            element_names=['cavity','end'])
+        line.particle_ref=reference_particle(context)
+        line.build_tracker(_context=context)
+        scale=2*np.pi*controls['frequency']/299792458.
+        kappa=float(line.particle_ref.p0c[0]/line.particle_ref.mass0)
+        beta=float(line.particle_ref.beta0[0])
+
+        def normalized(p):
+            momentum=kappa*(1.+p.delta[0])
+            # The omitted common clock/plane offset cancels at each shared
+            # observation plane; momentum and energy are in actual mc units.
+            return np.array([scale*p.x[0],scale*p.y[0],
+                -scale*p.zeta[0]/beta,kappa*p.px[0],kappa*p.py[0],
+                np.sqrt(1.+momentum*momentum)])
+
+        initial=launch(context)
+        before=normalized(initial)
+        endpoints=[]
+        for cells in (8,16,32,64):
+            element.num_kicks=cells
+            element.num_factor_steps=cells//4
+            p=initial.copy()
+            line.track(p,ele_start=0,ele_stop=1)
+            assert p.state[0]==1,cells
+            endpoints.append(normalized(p))
+            line.track(p,ele_start=0,ele_stop=1,backtrack=True)
+            assert p.state[0]==1,cells
+            np.testing.assert_allclose(normalized(p),before,atol=3e-12,rtol=0.,
+                err_msg='C2 same-word signed inverse at '+str(cells)+' cells')
+        errors=[np.max(abs(endpoint-endpoints[-1])) for endpoint in endpoints[:-1]]
+        assert all(after<before/8 for before,after in zip(errors,errors[1:])),errors
