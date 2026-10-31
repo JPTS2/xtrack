@@ -1,9 +1,11 @@
-"""Independent original rational packets for uniform quadratic RF2 tracking.
+"""Independent scalar and derivative checks for native averaged consumers.
 
 The production optimization shares powers in the same twelve coefficient
 rows. The original P(p)+E Q(p) representation below is evaluated with NumPy
 polynomials, independently of the expanded production expressions. These
 checks neither qualify general C2/C4 nor establish a performance target.
+The slow-flow checks independently differentiate its total RF Hamiltonian
+and compare the consumed state jet, without using the native contraction.
 """
 import numpy as np
 from numpy.polynomial import Polynomial
