@@ -91,45 +91,49 @@ int CavityModel_vector_finite(const xt_float_or_tpsa *value, int count) {
     return 1;
 }
 
-// The same fixed 64-point Gauss rule as the private preparation factory.
-// Evenness leaves 32 positive nodes. These are quadrature constants, not a
-// frequency/profile fit. Their derivatives remain in the scalar algebra.
+// Exact Fourier integral of the P16 envelope. For x=H*detuning,
+// I/H=B(1/2,17)*0F1(;35/2;-x*x/4)=2^17*16!*j_16(x)/x^16.
+// The regular series avoids a removable singularity at zero. Forward
+// spherical-Bessel recurrence is used only in its oscillatory regime x>=16.
+// All source-control arithmetic, including the zero-base-point terms, remains
+// in the scalar algebra. This is not the former fixed-node quadrature.
 GPUFUN
 xt_float_or_tpsa CavityModel_p16_integral(xt_float_or_tpsa_arg H,
-                                         xt_float_or_tpsa_arg frequency) {
-    const double nodes[32] = {
-        .024350292663424436,.072993121787799042,.12146281929612056,
-        .1696444204239928,.21742364374000708,.26468716220876742,
-        .31132287199021097,.35722015833766813,.40227015796399157,
-        .44636601725346409,.48940314570705296,.53127946401989457,
-        .571895646202634,.61115535517239328,.64896547125465731,
-        .68523631305423327,.71988185017161077,.75281990726053194,
-        .78397235894334139,.81326531512279754,.84062929625258032,
-        .86599939815409277,.88931544599511414,.91052213707850282,
-        .92956917213193957,.94641137485840277,.96100879965205366,
-        .97332682778991098,.98333625388462598,.99101337147674429,
-        .99634011677195522,.99930504173577217};
-    const double weights[32] = {
-        .048690957009139689,.048575467441503428,.048344762234802933,
-        .047999388596458303,.047540165714830343,.046968182816210007,
-        .046284796581314375,.0454916279274181,.044590558163756601,
-        .043583724529323471,.042473515123653542,.041262563242623486,
-        .039953741132720454,.038550153178615605,.037055128540240019,
-        .035472213256882226,.033805161837141877,.032057928354851412,
-        .030234657072402488,.028339672614259424,.026377469715054894,
-        .024352702568711086,.022270173808382945,.020134823153530039,
-        .017951715775697288,.01572603047602511,.01346304789671912,
-        .011168139460131008,.0088467598263633606,.0065044579689784374,
-        .0041470332605646485,.0017832807216942642};
-    xt_float_or_tpsa result = 0.;
-    for (int i=0; i<32; ++i) {
-        const double u=nodes[i];
-        double envelope=1.-u*u;
-        envelope*=envelope; envelope*=envelope;
-        envelope*=envelope; envelope*=envelope;
-        result += weights[i]*envelope*cos(frequency*H*u);
+                                         xt_float_or_tpsa_arg detuning) {
+    xt_float_or_tpsa x=H*detuning;
+    if(fabs(xt_float_or_tpsa_const_part(x))<=16.) {
+        const xt_float_or_tpsa square=-x*x*.25;
+        xt_float_or_tpsa term=1.,sum=1.,correction=0.;
+        // TPSA retains the full series length: a zero primal term can still
+        // carry higher coefficients. Scalar arithmetic may stop on the
+        // alternating-series next-term bound once its terms decrease.
+        for(int n=1;n<=96;++n) {
+            term*=square/(n*(16.5+n));
+            const xt_float_or_tpsa adjusted=term-correction;
+            const xt_float_or_tpsa next=sum+adjusted;
+            correction=(next-sum)-adjusted;sum=next;
+#ifndef XTRACK_TPSA_TRACK
+            const double ratio=fabs(square)/((n+1.)*(n+17.5));
+            if(ratio<1.&&fabs(term)*ratio<=2.2204460492503131e-16*fabs(sum)) {
+                term=0.;break;
+            }
+#endif
+        }
+        if(!CavityModel_scalar_finite(sum)
+            ||CavityModel_scalar_norm(term)>8.*2.2204460492503131e-16
+                *CavityModel_scalar_norm(sum))return NAN;
+        return H*.433055299379213223749060294983877685*sum;
     }
-    return 2.*H*result;
+    if(xt_float_or_tpsa_const_part(x)<0.)x=-x;
+    xt_float_or_tpsa previous=sin(x)/x;
+    xt_float_or_tpsa current=(previous-cos(x))/x;
+    for(int n=1;n<16;++n) {
+        const xt_float_or_tpsa next=(2.*n+1.)/x*current-previous;
+        previous=current;current=next;
+    }
+    xt_float_or_tpsa factor=2.;
+    for(int n=1;n<=16;++n)factor*=2.*n/x;
+    return H*factor*current;
 }
 
 // Live fixed-beta electric-crest calibration. No evolving particle beta
@@ -196,10 +200,13 @@ int CavityModel_prepare(
         forward_weight=1./(1.+ratio);
         backward_weight=ratio/(1.+ratio);
     }
-    xt_float_or_tpsa slow=forward_weight*CavityModel_p16_integral(
-        source->half_span,1./calibration_beta-source->carrier);
-    xt_float_or_tpsa fast=backward_weight*CavityModel_p16_integral(
-        source->half_span,1./calibration_beta+source->carrier);
+    xt_float_or_tpsa slow=0.,fast=0.;
+    if(!xt_float_or_tpsa_is_zero(forward_weight))
+        slow=forward_weight*CavityModel_p16_integral(
+            source->half_span,1./calibration_beta-source->carrier);
+    if(!xt_float_or_tpsa_is_zero(backward_weight))
+        fast=backward_weight*CavityModel_p16_integral(
+            source->half_span,1./calibration_beta+source->carrier);
     xt_float_or_tpsa real=slow+fast*cos(counter_phase);
     xt_float_or_tpsa imag=fast*sin(counter_phase);
     xt_float_or_tpsa magnitude_square=real*real+imag*imag;
@@ -632,50 +639,134 @@ xt_float_or_tpsa CavityModel_static_sinc(xt_float_or_tpsa_arg angle) {
 
 // Explicit built-in RF profiles and their finite-parent crest calibration.
 GPUFUN
-void CavityModel_profile_integral(xt_float_or_tpsa_arg H,
+xt_float_or_tpsa CavityModel_erfc(xt_float_or_tpsa_arg value) {
+#ifdef XTRACK_TPSA_TRACK
+    return mad::erfc(value);
+#else
+    return erfc(value);
+#endif
+}
+
+// Finite-parent Gaussian Fourier integral. Identically zero detuning has
+// its exact erf/erfc formula. A zero primal with a seeded detuning must still
+// take the general rule, preserving phase/carrier/calibration derivatives.
+// Otherwise a depth-first composite 16-point Gauss rule uses a Cauchy
+// truncation bound on each complete panel. l below is FULL panel length:
+// E <= l*(l/R)^32/[33*binom(32,16)^2]
+//      *exp(-D^2/(2*sigma^2)+R^2/(2*sigma^2)+abs(detuning)*R),
+// D=max(0,distance(panel,centre)-R). The Gaussian and phase are entire;
+// Cauchy's derivative bound and the Gauss remainder give this expression.
+// Bounds below are evaluated in double, not outward interval arithmetic:
+// they control quadrature truncation, not binary/TPSA derivative admission.
+GPUFUN
+int CavityModel_profile_integral(xt_float_or_tpsa_arg H,
         xt_float_or_tpsa_arg detuning,const CavityModelSource *source,
-        xt_float_or_tpsa out[2]) {
-    out[0]=0.;out[1]=0.;
+        double absolute_tolerance,xt_float_or_tpsa out[2],double *error) {
+    out[0]=0.;out[1]=0.;*error=0.;
     if(source->rf_profile==1) {
-        out[0]=2.*H*CavityModel_static_sinc(detuning*H);return;
+        out[0]=2.*H*CavityModel_static_sinc(detuning*H);
+        return CAVITY_MODEL_OK;
     }
-    const double nodes[32] = {
-        .024350292663424436,.072993121787799042,.12146281929612056,
-        .1696444204239928,.21742364374000708,.26468716220876742,
-        .31132287199021097,.35722015833766813,.40227015796399157,
-        .44636601725346409,.48940314570705296,.53127946401989457,
-        .571895646202634,.61115535517239328,.64896547125465731,
-        .68523631305423327,.71988185017161077,.75281990726053194,
-        .78397235894334139,.81326531512279754,.84062929625258032,
-        .86599939815409277,.88931544599511414,.91052213707850282,
-        .92956917213193957,.94641137485840277,.96100879965205366,
-        .97332682778991098,.98333625388462598,.99101337147674429,
-        .99634011677195522,.99930504173577217};
-    const double weights[32] = {
-        .048690957009139689,.048575467441503428,.048344762234802933,
-        .047999388596458303,.047540165714830343,.046968182816210007,
-        .046284796581314375,.0454916279274181,.044590558163756601,
-        .043583724529323471,.042473515123653542,.041262563242623486,
-        .039953741132720454,.038550153178615605,.037055128540240019,
-        .035472213256882226,.033805161837141877,.032057928354851412,
-        .030234657072402488,.028339672614259424,.026377469715054894,
-        .024352702568711086,.022270173808382945,.020134823153530039,
-        .017951715775697288,.01572603047602511,.01346304789671912,
-        .011168139460131008,.0088467598263633606,.0065044579689784374,
-        .0041470332605646485,.0017832807216942642};
-    for(int j=0;j<32;++j) {
-        for(int sign=-1;sign<=1;sign+=2) {
-            const xt_float_or_tpsa z=sign*H*nodes[j];
-            xt_float_or_tpsa p[5];CavityModel_source_envelope(z,source,p);
-            out[0]+=H*weights[j]*p[0]*cos(detuning*z);
-            out[1]+=H*weights[j]*p[0]*sin(detuning*z);
+    if(source->rf_profile==0) {
+        out[0]=CavityModel_p16_integral(H,detuning);
+        return CavityModel_scalar_finite(out[0])?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+    }
+    const xt_float_or_tpsa sigma=source->profile_sigma;
+    const xt_float_or_tpsa centre=source->profile_center;
+    const double h=xt_float_or_tpsa_const_part(H);
+    const double width=xt_float_or_tpsa_const_part(sigma);
+    const double offset=xt_float_or_tpsa_const_part(centre);
+    const double frequency=fabs(xt_float_or_tpsa_const_part(detuning));
+    if(!(isfinite(h)&&h>0.&&isfinite(width)&&width>0.
+        &&isfinite(offset)&&isfinite(frequency)
+        &&isfinite(absolute_tolerance)&&absolute_tolerance>0.))
+        return CAVITY_MODEL_ARGUMENT;
+    if(xt_float_or_tpsa_is_zero(detuning)) {
+        const xt_float_or_tpsa left=(-H-centre)/(sqrt(2.)*sigma);
+        const xt_float_or_tpsa right=(H-centre)/(sqrt(2.)*sigma);
+        xt_float_or_tpsa first,second;
+        int separated=0;
+        // erfc avoids subtracting two rounded ones in a one-sided tail.
+        if(xt_float_or_tpsa_const_part(left)>=0.) {
+            first=CavityModel_erfc(left);second=CavityModel_erfc(right);
+        } else if(xt_float_or_tpsa_const_part(right)<=0.) {
+            first=CavityModel_erfc(-right);second=CavityModel_erfc(-left);
+        } else {
+            first=CavityModel_erf(right);second=CavityModel_erf(left);
+            separated=1; // opposite-sign primals: no cancellation in subtraction
         }
+        out[0]=first-second;
+        // Close same-side endpoints can cancel even in erfc. Fall back to
+        // the bounded integral instead of magnifying subtraction roundoff.
+        if(separated||fabs(xt_float_or_tpsa_const_part(out[0]))>=.125*
+            (fabs(xt_float_or_tpsa_const_part(first))+fabs(xt_float_or_tpsa_const_part(second)))) {
+            out[0]*=sigma*sqrt(PI/2.);
+            return CavityModel_scalar_finite(out[0])?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+        }
+        out[0]=0.;
     }
+    const double nodes[8]={
+        .095012509837637440185,.28160355077925891323,
+        .45801677765722738634,.61787624440264374845,
+        .75540440835500303390,.86563120238783174388,
+        .94457502307323257608,.98940093499164993260};
+    const double weights[8]={
+        .18945061045506849629,.18260341504492358887,
+        .16915651939500253819,.14959598881657673208,
+        .12462897125553387205,.095158511682492784810,
+        .062253523938647892863,.027152459411754094852};
+    // This central radius minimizes -32log(R)+R²/(2sigma²)+abs(d)*R.
+    // It remains a valid Cauchy radius for panels away from the centre.
+    const double scale=hypot(frequency,sqrt(128.)/width);
+    const double radius=(64./scale)/(1.+frequency/scale);
+    if(!(isfinite(radius)&&radius>0.))return CAVITY_MODEL_NONFINITE;
+    const double log_coefficient=log(33.)+2.*log(601080390.);
+    xt_float_or_tpsa correction[2]={0.,0.};
+    uint64_t index=0;int depth=0;
+    // Dyadic traversal needs no recursion or per-thread interval stack.
+    for(int work=0;work<65536;++work) {
+        const double fraction=ldexp(1.,1-depth);
+        const double left=-1.+index*fraction,right=left+fraction;
+        const double length=h*fraction;
+        const double distance=fmax(0.,fmax(h*left-offset,offset-h*right));
+        const double separated=fmax(0.,distance-radius)/width;
+        const double ratio=radius/width;
+        double log_error=log(length)+32.*log(length/radius)-log_coefficient
+            -.5*separated*separated+.5*ratio*ratio+frequency*radius;
+        // Positivity of Gauss weights also gives |I-Q|<=2*l*max|f|.
+        const double scaled_distance=distance/width;
+        log_error=fmin(log_error,log(2.*length)-.5*scaled_distance*scaled_distance);
+        const double budget=absolute_tolerance*fraction*.5;
+        if(log_error>log(budget)) {
+            if(depth>=48)return CAVITY_MODEL_ITERATIONS;
+            index*=2;++depth;continue;
+        }
+        *error+=exp(log_error);
+        for(int j=0;j<8;++j)for(int sign=-1;sign<=1;sign+=2) {
+            const xt_float_or_tpsa z=H*((left+right)*.5+sign*fraction*.5*nodes[j]);
+            const xt_float_or_tpsa u=(z-centre)/sigma;
+            const xt_float_or_tpsa weighted=H*(fraction*.5*weights[j])*exp(-.5*u*u);
+            const xt_float_or_tpsa phase=detuning*z;
+            const xt_float_or_tpsa terms[2]={weighted*cos(phase),weighted*sin(phase)};
+            for(int k=0;k<2;++k) {
+                const xt_float_or_tpsa adjusted=terms[k]-correction[k];
+                const xt_float_or_tpsa next=out[k]+adjusted;
+                correction[k]=(next-out[k])-adjusted;out[k]=next;
+            }
+        }
+        ++index;
+        while(depth>0&&(index&1)==0){index/=2;--depth;}
+        if(depth==0&&index==1)
+            return CavityModel_vector_finite(out,2)?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+    }
+    return CAVITY_MODEL_ITERATIONS;
 }
 
 // Same fixed-beta integrated electric-crest convention as the built-in P16.
-// The Gaussian complex integral uses this declared 64-node Gauss rule over
-// the SAME finite parent interval. It is not a universal calibration bound.
+// Gaussian quadrature budgets are refined against the combined calibration
+// phasor, including cancellation. An exhausted rule refuses; it never returns
+// the last unresolved calibration. Physical/source and binary qualification
+// remain separate from the quadrature-truncation estimate.
 GPUFUN
 int CavityModel_prepare_profile(xt_float_or_tpsa_arg frequency,
         xt_float_or_tpsa_arg voltage,xt_float_or_tpsa_arg length,
@@ -704,12 +795,35 @@ int CavityModel_prepare_profile(xt_float_or_tpsa_arg frequency,
         xt_float_or_tpsa ratio=0.;if(!xt_float_or_tpsa_is_zero(eta))ratio=sqrt(eta);
         forward=1./(1.+ratio);backward=ratio/(1.+ratio);
     }
-    xt_float_or_tpsa slow[2],fast[2];
-    CavityModel_profile_integral(source->half_span,1./calibration_beta-source->carrier,source,slow);
-    CavityModel_profile_integral(source->half_span,1./calibration_beta+source->carrier,source,fast);
-    const xt_float_or_tpsa real=forward*slow[0]+backward*(fast[0]*cos(counter_phase)-fast[1]*sin(counter_phase));
-    const xt_float_or_tpsa imag=forward*slow[1]+backward*(fast[1]*cos(counter_phase)+fast[0]*sin(counter_phase));
-    const xt_float_or_tpsa square=real*real+imag*imag;
+    xt_float_or_tpsa slow[2]={0.,0.},fast[2]={0.,0.};
+    xt_float_or_tpsa real=0.,imag=0.,square=0.;
+    const double eps=2.2204460492503131e-16;
+    double tolerance=8.*eps*fmin(2.*xt_float_or_tpsa_const_part(source->half_span),
+        sqrt(2.*PI)*xt_float_or_tpsa_const_part(source->profile_sigma));
+    if(profile==1)tolerance=8.*eps*2.*xt_float_or_tpsa_const_part(source->half_span);
+    int resolved=0;
+    for(int refinement=0;refinement<4;++refinement) {
+        double slow_error=0.,fast_error=0.;
+        if(!xt_float_or_tpsa_is_zero(forward)) {
+            status=CavityModel_profile_integral(source->half_span,
+                1./calibration_beta-source->carrier,source,tolerance,slow,&slow_error);
+            if(status!=CAVITY_MODEL_OK)return status;
+        }
+        if(!xt_float_or_tpsa_is_zero(backward)) {
+            status=CavityModel_profile_integral(source->half_span,
+                1./calibration_beta+source->carrier,source,tolerance,fast,&fast_error);
+            if(status!=CAVITY_MODEL_OK)return status;
+        }
+        real=forward*slow[0]+backward*(fast[0]*cos(counter_phase)-fast[1]*sin(counter_phase));
+        imag=forward*slow[1]+backward*(fast[1]*cos(counter_phase)+fast[0]*sin(counter_phase));
+        square=real*real+imag*imag;
+        const double magnitude=sqrt(xt_float_or_tpsa_const_part(square));
+        const double error=fabs(xt_float_or_tpsa_const_part(forward))*slow_error
+            +fabs(xt_float_or_tpsa_const_part(backward))*fast_error;
+        if(error<=8.*eps*fmax(0.,magnitude-error)) {resolved=1;break;}
+        tolerance=8.*eps*fmax(magnitude,error);
+    }
+    if(!resolved)return CAVITY_MODEL_ITERATIONS;
     const double scale=fabs(xt_float_or_tpsa_const_part(forward))*hypot(xt_float_or_tpsa_const_part(slow[0]),xt_float_or_tpsa_const_part(slow[1]))
         +fabs(xt_float_or_tpsa_const_part(backward))*hypot(xt_float_or_tpsa_const_part(fast[0]),xt_float_or_tpsa_const_part(fast[1]));
     const double floor=64.*2.2204460492503131e-16*scale;
