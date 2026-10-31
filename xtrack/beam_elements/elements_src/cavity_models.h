@@ -877,15 +877,27 @@ int CavityModel_effects_profile(double T,double z,const CavityModelSource *sourc
     const double amp[2]={xt_float_or_tpsa_const_part(source->forward),
                          xt_float_or_tpsa_const_part(source->backward)};
     const double cp=xt_float_or_tpsa_const_part(source->counter_phase);
+    // Match the conservative source: keep event time separate from local phase.
+    const double sinT=sin(T),cosT=cos(T);
+    double sine[2],cosine[2];
+    for(int wave=0;wave<2;++wave) {
+        const double w=wave?nu:-nu,spatial=w*z+(wave?cp:0.);
+        const double ss=sin(spatial),cs=cos(spatial);
+        sine[wave]=sinT*cs+cosT*ss;
+        cosine[wave]=cosT*cs-sinT*ss;
+    }
     for(int n=0;n<6;++n) {S[n]=0.;C[n]=0.;
         for(int wave=0;wave<2;++wave) {
-            const double w=wave?nu:-nu,theta=T+w*z+(wave?cp:0.);
+            const double w=wave?nu:-nu;
             double choose=1.;
             for(int j=0;j<=n;++j) {
                 const int degree=n-j;
                 const double factor=amp[wave]*choose*f[j]*pow(w,degree);
-                const double angle=theta+degree*(PI/2.);
-                S[n]+=factor*sin(angle);C[n]+=factor*cos(angle);
+                const int quadrant=degree%4;
+                if(quadrant==0){S[n]+=factor*sine[wave];C[n]+=factor*cosine[wave];}
+                if(quadrant==1){S[n]+=factor*cosine[wave];C[n]-=factor*sine[wave];}
+                if(quadrant==2){S[n]-=factor*sine[wave];C[n]-=factor*cosine[wave];}
+                if(quadrant==3){S[n]-=factor*cosine[wave];C[n]+=factor*sine[wave];}
                 choose*=((double)(n-j))/(j+1.);
             }
         }
@@ -972,30 +984,48 @@ int CavityModel_effects_law(const double u[3],double Q,double anomaly,
     if(!isfinite(Q)||!isfinite(anomaly))return CAVITY_MODEL_ARGUMENT;
     double u2=0.;for(int j=0;j<3;++j){if(!isfinite(u[j]))return CAVITY_MODEL_NONFINITE;u2+=u[j]*u[j];}
     const double gamma=sqrt(1.+u2);if(!(u[2]>0.)||!isfinite(gamma))return CAVITY_MODEL_DOMAIN;
-    double beta[3],DE[3],DB[3],G[3],bxB[3],ExB[3],BxBxBeta[3],bxe[3];
-    double bE=0.,bB=0.,g2=0.;
+    double beta[3],DE[3],DB[3],GxB[3],bxe[3];
+    double bE=0.,bB=0.;
+    const double momentum=hypot(hypot(u[0],u[1]),u[2]);
+    double direction[3],perpendicular[3],perpendicular_force[3],nxB[3];
+    double parallel=0.;
+    for(int j=0;j<3;++j){direction[j]=momentum>0.?u[j]/momentum:0.;
+        parallel+=direction[j]*field->E[j];}
+    for(int j=0;j<3;++j)perpendicular[j]=field->E[j]-parallel*direction[j];
     for(int j=0;j<3;++j)beta[j]=u[j]/gamma;
-    CavityModel_effects_cross(beta,field->B,bxB);
-    CavityModel_effects_cross(field->E,field->B,ExB);
-    CavityModel_effects_cross(field->B,bxB,BxBxBeta);
-    // B cross (B cross beta) = -B cross (beta cross B).
+
     CavityModel_effects_cross(beta,field->E,bxe);
-    for(int j=0;j<3;++j){G[j]=field->E[j]+bxB[j];g2+=G[j]*G[j];
+    for(int j=0;j<3;++j){
         bE+=beta[j]*field->E[j];bB+=beta[j]*field->B[j];
         DE[j]=field->dE[0][j];DB[j]=field->dB[0][j];
         for(int a=0;a<3;++a){DE[j]+=beta[a]*field->dE[a+1][j];DB[j]+=beta[a]*field->dB[a+1][j];}}
+    // beta_magnitude+deficit=1 by the same positive mass shell.
+    // This form retains the small force when E_perp and n cross B cancel.
+    const double beta_magnitude=momentum/gamma;
+    const double deficit=(1./gamma)/(gamma+momentum);
+    CavityModel_effects_cross(direction,field->B,nxB);
+    double transverse_square=0.;
+    for(int j=0;j<3;++j){
+        perpendicular_force[j]=beta_magnitude*(perpendicular[j]+nxB[j])
+            +deficit*perpendicular[j];
+        transverse_square+=perpendicular_force[j]*perpendicular_force[j];}
+    CavityModel_effects_cross(perpendicular_force,field->B,GxB);
     double bxdB[3],R[3],Rxu[3];CavityModel_effects_cross(beta,DB,bxdB);
-    const double emitted=Q*Q*gamma*gamma*(g2-bE*bE),clock=gamma/u[2];
+    // The longitudinal electric quadratic term cancels its parallel drag.
+    // This remaining transverse drag is not the total emitted power.
+    const double transverse_drag=Q*Q*gamma*gamma*transverse_square,clock=gamma/u[2];
+    double pre_drag[3];
     double energy=0.;
     for(int j=0;j<3;++j){
-        R[j]=Q*gamma*(DE[j]+bxdB[j])
-            +Q*Q*(ExB[j]-BxBxBeta[j]+field->E[j]*bE)-emitted*beta[j];
+        pre_drag[j]=Q*gamma*(DE[j]+bxdB[j])+Q*Q*(GxB[j]+perpendicular_force[j]*bE+((parallel/gamma)/gamma)*nxB[j]);
+        R[j]=pre_drag[j]-transverse_drag*beta[j];
         energy+=beta[j]*R[j];
         omega[j]=-Q*((anomaly+1./gamma)*field->B[j]
             -anomaly*gamma/(gamma+1.)*bB*beta[j]
             -(anomaly+1./(gamma+1.))*bxe[j]);
     }
-    CavityModel_effects_cross(R,u,Rxu);
+    // Drag is parallel to u and contributes exactly zero Thomas rotation.
+    CavityModel_effects_cross(pre_drag,u,Rxu);
     for(int j=0;j<3;++j){S1[j]=0.;thomas[j]=Rxu[j]/(gamma+1.);}
     S1[3]=clock*R[0];S1[4]=clock*R[1];S1[5]=clock*energy;
     for(int j=0;j<6;++j)if(!isfinite(S1[j]))return CAVITY_MODEL_NONFINITE;

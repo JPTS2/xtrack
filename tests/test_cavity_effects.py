@@ -43,7 +43,7 @@ def wave_jets(point, settings, maximum=5):
     values = np.zeros(maximum+1, complex)
     for strength, axial, phase in ((slow, -nu, 0.), (fast, nu, counter)):
         for n in range(maximum+1):
-            values[n] += strength*np.exp(1j*(time+axial*z+phase))*sum(
+            values[n] += strength*np.exp(1j*time)*np.exp(1j*(axial*z+phase))*sum(
                 math.comb(n, j)*profile[j]*(1j*axial)**(n-j)
                 for j in range(n+1))
     return values.imag, values.real
@@ -206,6 +206,73 @@ def test_m2_fields_material_and_rho_free_ll_bmt_thomas(effects_context):
     # The LL cancellation does not mean that emitted power vanishes.
     positive_emission=point_oracle(u,-1.,1.,.001,raw[:3],raw[3:6],np.zeros(3),np.zeros(3))[0][20]
     assert positive_emission==pytest.approx(.49,rel=3e-15)
+
+
+def test_high_gamma_axial_and_near_force_free_ll_thomas(effects_context):
+    """Resolve physical cancellations before scaling by tiny species rho."""
+    compile_point_queries(effects_context)
+    raw=np.zeros(30);raw[2]=1.
+    for momentum in (2.,1e3,1.37e4,1e6,1e8):
+        for charge in (-.5,1.,1.7):
+            out=np.full(12,np.nan);status=np.zeros(1,dtype=np.int64)
+            effects_context.kernels.cavity_effects_direct_law_review(
+                u=np.array([0.,0.,momentum]),charge=charge,anomaly=.17,
+                raw=raw,out=out,status=status)
+            assert status[0]==1
+            # Constant parallel electric field has zero mechanical LL force
+            # for every momentum; its nonzero emission is checked above.
+            np.testing.assert_array_equal(out,np.zeros(12))
+
+    momentum=1e8;gamma=np.hypot(1.,momentum);parallel_electric=1e4
+    raw=np.zeros(30);raw[:3]=[1.,0.,parallel_electric];raw[3:6]=[0.,1.,0.]
+    out=np.full(12,np.nan);status=np.zeros(1,dtype=np.int64)
+    effects_context.kernels.cavity_effects_direct_law_review(
+        u=np.array([0.,0.,momentum]),charge=1.,anomaly=.001,
+        raw=raw,out=out,status=status)
+    assert status[0]==1
+    # Independent closed forms for E=(1,0,K),B=(0,1,0),u=(0,0,p).
+    # No subtraction of beta from one occurs in these reference values.
+    expected=np.array([
+        -parallel_electric/(momentum*(gamma+momentum)),
+        1./(gamma+momentum)**2,
+        parallel_electric*momentum/(gamma*(gamma+momentum)*(gamma+1.))])
+    assert np.all(expected!=0.)
+    np.testing.assert_allclose(out[[3,5,10]],expected,rtol=5e-14,atol=0.)
+
+    # Pure transverse E gives a drag parallel to u and zero Thomas torque.
+    # Forming R cross u after including that enormous drag loses this zero.
+    u=np.array([3e7,4e7,8e7]);gamma=np.hypot(1.,np.linalg.norm(u))
+    raw=np.zeros(30);raw[:3]=[-4.,3.,0.]
+    effects_context.kernels.cavity_effects_direct_law_review(
+        u=u,charge=1.,anomaly=.001,raw=raw,out=out,status=status)
+    assert status[0]==1
+    expected_drag=-25.*gamma*u
+    expected=np.r_[gamma/u[2]*expected_drag[:2],
+                   -25.*gamma*np.dot(u,u)/u[2]]
+    np.testing.assert_allclose(out[3:6],expected,rtol=5e-14,atol=0.)
+    np.testing.assert_allclose(out[9:12],0.,rtol=0.,atol=5e-13)
+
+
+@pytest.mark.parametrize('time',[0.,.37,1e6,1e12,1e16])
+def test_effects_fields_preserve_local_phase_at_large_event_clock(effects_context,time):
+    """Keep local carrier phase and true derivative rotations at large T."""
+    compile_point_queries(effects_context)
+    settings=np.array([2.3,.83,.7,.31,.47,0.])
+    u=np.array([.2,-.1,2.]);gamma=np.hypot(1.,np.linalg.norm(u))
+    for z in (.19,-.37):
+        point=np.array([time,.013,-.009,z])
+        q=np.array([point[1],point[2],time,0.,0.,gamma])
+        q[3:5]=u[:2]+potential(point,settings)[:2]
+        out=np.full(54,np.nan);status=np.zeros(1,dtype=np.int64)
+        effects_context.kernels.cavity_effects_review(q=q,z=z,settings=settings,
+            u=u,charge=1.,anomaly=.001,out=out,status=status)
+        assert status[0]==1
+        np.testing.assert_allclose(out[:6],fields(point,settings),atol=2e-10,rtol=2e-8)
+        # Differentiate only local Z: perturbing a huge T loses the FD step.
+        axial_derivative=derivative(lambda p:fields(p,settings),point,
+                                    np.array([0.,0.,0.,1.]),1e-4)
+        np.testing.assert_allclose(np.r_[out[15:18],out[27:30]],
+                                   axial_derivative,atol=2e-9,rtol=2e-7)
 
 
 def physical_case():
