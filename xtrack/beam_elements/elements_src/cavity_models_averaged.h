@@ -174,6 +174,23 @@ int CavityFull_count(int rank) {
 GPUFUN
 void CavityFull_product(const xt_float_or_tpsa *a,const xt_float_or_tpsa *b,
         int rank,xt_float_or_tpsa *out) {
+    // Exact scalar/linear/quadratic convolution in the same summand order.
+    if(rank<=2) {
+        out[0]=0.;out[0]+=a[0]*b[0];
+        if(rank==0)return;
+        for(int i=1;i<=6;++i) {
+            out[i]=0.;out[i]+=a[0]*b[i];out[i]+=a[i]*b[0];
+        }
+        if(rank==1)return;
+        int i=7;
+        for(int right=1;right<=6;++right)for(int left=1;left<=right;++left,++i) {
+            out[i]=0.;out[i]+=a[0]*b[i];out[i]+=a[left]*b[right];
+            if(left!=right)out[i]+=a[right]*b[left];
+            out[i]+=a[i]*b[0];
+        }
+        return;
+    }
+
     const int offset[211]={
         0,1,3,5,7,9,11,13,16,20,23,27,31,34,38,42,46,49,53,57,61,65,68,72,
         76,80,84,88,91,95,101,107,111,117,125,131,137,143,147,153,161,167,175,183,189,195,201,207,
@@ -449,10 +466,11 @@ CavityFullJet CavityFull_mul(CavityFullJet_arg a,CavityFullJet_arg b,int rank) {
 GPUFUN
 CavityFullJet CavityFull_inverse_sqrt(CavityFullJet_arg a,int rank) {
     CavityFullJet delta=CavityFull_scale(a,1./a.c[0],rank);delta.c[0]=0.;
-    CavityFullJet power=CavityFull_constant(1.,rank),out=power;
+    CavityFullJet power=delta,out=CavityFull_constant(1.,rank);
     double binomial=1.;
     for(int n=1;n<=rank;++n) {
-        power=CavityFull_mul(power,delta,rank);binomial*=((-.5-(n-1))/n);
+        if(n>1)power=CavityFull_mul(power,delta,rank);
+        binomial*=((-.5-(n-1))/n);
         out=CavityFull_linear(out,power,1.,binomial,rank);
     }
     return CavityFull_scale(out,1./sqrt(a.c[0]),rank);
@@ -462,10 +480,10 @@ void CavityFull_sincos(CavityFullJet a,int rank,CavityFullJet *sine,CavityFullJe
     xt_float_or_tpsa s=sin(a.c[0]),c=cos(a.c[0]);
     xt_float_or_tpsa st[5]={s,c,-s/2.,-c/6.,s/24.};
     xt_float_or_tpsa ct[5]={c,-s,-c/2.,s/6.,c/24.};
-    a.c[0]=0.;CavityFullJet power=CavityFull_constant(1.,rank);
+    a.c[0]=0.;CavityFullJet power=a;
     *sine=CavityFull_constant(st[0],rank);*cosine=CavityFull_constant(ct[0],rank);
     for(int n=1;n<=rank;++n) {
-        power=CavityFull_mul(power,a,rank);
+        if(n>1)power=CavityFull_mul(power,a,rank);
         *sine=CavityFull_linear(*sine,power,1.,st[n],rank);
         *cosine=CavityFull_linear(*cosine,power,1.,ct[n],rank);
     }
@@ -621,9 +639,21 @@ int CavityFull_rf_slow_flow(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
     return CAVITY_MODEL_OK;
 }
 GPUFUN
+int CavityFull_has_static_field(const CavityAveragedSource *source) {
+    const CavityModelSource *physical=source->static_source;
+    if(!physical)return 0;
+    const xt_float_or_tpsa scale=source->static_charge*physical->magnetic_scale;
+    if(!xt_float_or_tpsa_is_zero(scale*physical->ks))return 1;
+    for(int64_t i=0;i<=physical->order;++i)
+        if(!xt_float_or_tpsa_is_zero(scale*CavityModel_static_coefficient(physical,i,0))
+            ||!xt_float_or_tpsa_is_zero(scale*CavityModel_static_coefficient(physical,i,1)))
+            return 1;
+    return 0;
+}
+GPUFUN
 int CavityFull_slow_flow(const CavityFullJet q[6],xt_float_or_tpsa_arg z,
         const CavityAveragedSource *source,CavityFullJet out[6],int rank) {
-    if(!source->static_source)return CavityFull_rf_slow_flow(q,z,source,out,rank);
+    if(!CavityFull_has_static_field(source))return CavityFull_rf_slow_flow(q,z,source,out,rank);
     CavityFullPotential potential;CavityFull_potential(q,z,source,source->counter_phase,0,rank,&potential);
     CavityFullJet px=CavityFull_linear(q[3],potential.a[0],1.,-1.,rank);
     CavityFullJet py=CavityFull_linear(q[4],potential.a[1],1.,-1.,rank);
@@ -867,10 +897,14 @@ int CavityFull_primitive_step(CavityFullPrimitive *prior,
     CavityFullJet local[2][5][4],a1[2][5],r2[2][5],a2[2][5],m[2],mp[2];
     CavityFullJet d[2][5],dp[2][5],r3[2][5],a3[2][5],residual4[2][5];
     CavityFullJet b4[2],r4[2][5],log_rate[2];
-    for(int stage=0;stage<2;++stage)for(int offset=0;offset<5;++offset) {
-        int status=CavityFull_local_sources(qstages[stage],z+nodes[stage]*h,source,
-            source->counter_phase+offset*(2.*PI/5.),local[stage][offset]);
+    for(int stage=0;stage<2;++stage) {
+        CavityFullJet px,py,inverse;
+        int status=CavityFull_local_slow_root(qstages[stage],z+nodes[stage]*h,
+            source,4,&px,&py,&inverse);
         if(status!=CAVITY_MODEL_OK)return status;
+        for(int offset=0;offset<5;++offset)
+            CavityFull_local_fast_sources(qstages[stage],z+nodes[stage]*h,source,
+                source->counter_phase+offset*(2.*PI/5.),4,px,py,inverse,local[stage][offset]);
     }
     for(int stage=0;stage<2;++stage)for(int offset=0;offset<5;++offset)
         a1[stage][offset]=CavityFull_stage(prior->f1[offset],local[0][offset][0],local[1][offset][0],h,stage,4);

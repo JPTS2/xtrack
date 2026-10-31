@@ -150,13 +150,13 @@ def test_field_getter_preserves_orders_and_rejects_incompatible_handles(tmp_path
 
 
 @pytest.mark.parametrize('order,model', [(2,'phase-averaged-full-slow'),
+                                      (3,'phase-averaged-full-slow'),
                                       (3,'phase-resolved')])
 def test_calibration_order_one_handle_on_higher_order_map(cavity_magnetic_context, order, model):
     """Descriptor.param's direct order-one handle must not alter source constants."""
-    # Full-slow order-three convergence is a separate recorded limitation;
-    # its N2/N4 finite implicit solves currently refuse with -99742. This test
-    # isolates the common field bridge at orders two and three without claiming
-    # that every model/control/mesh combination is thereby qualified.
+    # The RF-only full-slow word also checks its former N2/order-three
+    # all-coefficient stage refusal. Static-field order-three convergence and
+    # other controls/meshes are not established by this selected RF case.
     context = cavity_magnetic_context
     launch = dict(LAUNCH, p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1))
     line = xt.Line(elements={'c':xt.Cavity(length=.167, voltage=2e4,
@@ -180,6 +180,10 @@ def test_calibration_order_one_handle_on_higher_order_map(cavity_magnetic_contex
     np.testing.assert_allclose(series.const_part, _values(scalar), rtol=0., atol=3e-12)
     gradient = series.param_jacobian()[:,0].copy()
     mixed = series.coefficient('x', (0,1,0,0,0,0,1))
+    check_cubic = order == 3 and model == 'phase-averaged-full-slow'
+    if check_cubic:
+        cubic = np.array([series.coefficient('x', powers) for powers in (
+            (0,1,2,0,0,0,0), (0,3,0,0,0,0,0))])
     line.disable_tpsa_elements()
     finite = np.zeros(6)
     finite_mixed = 0.
@@ -194,6 +198,79 @@ def test_calibration_order_one_handle_on_higher_order_map(cavity_magnetic_contex
             line.track(particle)
             finite_mixed += wb*wp*float(particle.x[0])/(144*1e-4*1e-3)
     np.testing.assert_allclose(gradient, finite, rtol=3e-6, atol=3e-8)
+    np.testing.assert_allclose(mixed, finite_mixed, rtol=3e-5, atol=3e-8)
+    if check_cubic:
+        # Differentiate independently tracked ORDER-TWO coefficient maps.
+        # d/dpx [x]_(y^2) = [x]_(px*y^2), whereas d/dpx [x]_(px^2)
+        # is three times [x]_(px^3), in the divided-coefficient convention.
+        line['c'].calibration_beta = .9
+        lower = madng_tpsa.Descriptor(6, 2)
+        finite_cubic = np.zeros(2)
+        for offset, weight in weights.items():
+            ray = xtpsa.ParticlesTpsa(order=2, descriptor=lower,
+                **dict(launch, px=launch['px']+offset*1e-3))
+            line.track(ray)
+            assert ray._xobject.state == 1
+            finite_cubic += weight*np.array([
+                ray.coefficient('x', (0,0,2,0,0,0)),
+                ray.coefficient('x', (0,2,0,0,0,0))/3.])/(12e-3)
+        assert np.all(abs(cubic) > .01)
+        np.testing.assert_allclose(cubic, finite_cubic, rtol=3e-5, atol=3e-7)
+
+
+def test_full_slow_zero_primal_static_controls_keep_derivatives(cavity_magnetic_context):
+    """Zero hardware values with live static jets must retain the static flow."""
+    context = cavity_magnetic_context
+    mass = xt.ELECTRON_MASS_EV
+    launch = dict(LAUNCH, p0c=mass*np.sqrt(2.4**2-1), x=4e-4, y=-3e-4)
+    line = xt.Line(elements={'c':xt.Cavity(length=.05, voltage=2e3,
+        frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
+        calibration_beta=1., model='phase-averaged-full-slow', num_kicks=4)})
+    controls = ('solenoid', 'normal', 'skew')
+    for name in controls:
+        line.vars[name] = 0.
+    line.element_refs['c'].ks = line.vars['solenoid']
+    line.element_refs['c'].knl[1] = line.vars['normal']
+    line.element_refs['c'].ksl[2] = line.vars['skew']
+    line.particle_ref = xt.Particles(p0c=launch['p0c'], mass0=mass, q0=1.)
+    line.reset_s_at_end_turn = False
+    _build_shared_cavity_tracker(line, context)
+    scalar = xt.Particles(_context=context, **launch)
+    line.track(scalar)
+    assert scalar.state[0] == 1
+    descriptor = madng_tpsa.Descriptor(6, 2, num_params=3, param_order=1)
+    knobs = KnobParameters(line, controls, descriptor)
+    knobs.apply()
+    series = xtpsa.ParticlesTpsa(order=2, descriptor=descriptor, **launch)
+    line.track(series)
+    assert series._xobject.state == 1
+    np.testing.assert_allclose(series.const_part, _values(scalar), rtol=0., atol=3e-13)
+    gradient = series.param_jacobian().copy()
+    mixed = series.coefficient('px', (1,0,0,0,0,0,0,1,0))
+    knobs.teardown()
+    for column, name in enumerate(controls):
+        endpoints = []
+        for sign in (-1, 1):
+            line.vars[name] = sign*1e-5
+            ray = xt.Particles(_context=context, **launch)
+            line.track(ray)
+            assert ray.state[0] == 1
+            endpoints.append(_values(ray))
+        line.vars[name] = 0.
+        finite = (endpoints[1]-endpoints[0])/(2e-5)
+        assert np.max(abs(gradient[:, column])) > 1e-7
+        np.testing.assert_allclose(gradient[:, column], finite, rtol=3e-6, atol=3e-10)
+    finite_mixed = 0.
+    for sx in (-1, 1):
+        for sg in (-1, 1):
+            line.vars['normal'] = sg*1e-4
+            ray = xt.Particles(_context=context,
+                **dict(launch, x=launch['x']+sx*1e-5))
+            line.track(ray)
+            assert ray.state[0] == 1
+            finite_mixed += sx*sg*float(ray.px[0])/(4e-9)
+    line.vars['normal'] = 0.
+    assert abs(mixed) > 1e-4
     np.testing.assert_allclose(mixed, finite_mixed, rtol=3e-5, atol=3e-8)
 
 
