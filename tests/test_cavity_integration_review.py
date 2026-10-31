@@ -1111,3 +1111,71 @@ def test_p16_face_frequency_tpsa_has_zero_cache_coefficients(cpu_context):
     assert series._xobject.state == 1
     assert series._local_series['ax'].is_zero()
     assert series._local_series['ay'].is_zero()
+
+
+@pytest.mark.parametrize('mode', (None, 'thick', 'thin'),
+                         ids=('direct', 'thick', 'thin'))
+def test_accepted_transformed_species_and_reference_rows_are_independent(
+        transaction_context, mode):
+    """One-lane frame views must preserve every lane's reference and RF clock.
+
+    Check accepted maps, not just rejection rollback: each ray has different
+    reference momentum, physical mass and charge. Reference updates surround
+    the transformed source, and the partial Line excludes shared turn-clock
+    advancement. Thin slicing also exercises manual source-bearing drifts.
+    The reverse tolerance is a selected finite-word regression, not a domain
+    or physical inverse-error bound.
+    """
+    context = transaction_context
+    controls = dict(hardware('phase-resolved'), num_kicks=24,
+        shift_x=.001, shift_y=-.0003, shift_s=.001,
+        rot_x_rad=-.02, rot_y_rad=.03, rot_s_rad=.12)
+    line = xt.Line(elements=[
+        xt.ReferenceEnergyIncrease(Delta_p0c=.2*MASS_EV),
+        xt.Cavity(**controls),
+        xt.ReferenceEnergyIncrease(Delta_p0c=-.2*MASS_EV), xt.Marker()],
+        element_names=['reference_in', 'rf', 'reference_out', 'end'])
+    line.particle_ref = xt.Particles(mass0=MASS_EV, p0c=P0C_EV, q0=1.)
+    line.reset_s_at_end_turn = False
+    line.use_time_based_zeta_update = True
+    if mode:
+        # N24 aligns both thick halves and the thin 1/6, 2/3, 1/6 intervals.
+        line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode=mode),
+                                              element_type=xt.Cavity)])
+    line.build_tracker(_context=context)
+    stop = line.element_names.index('end')
+    launch = dict(x=[.0002, -.0003, .0004], px=[.0001, -.0002, .0003],
+        y=[-.0001, .0002, -.0003], py=[.0003, -.0001, .0002],
+        p0c=P0C_EV*np.array([.93, 1.1, 1.4]), mass_ratio=[1., 1.5, 3.],
+        charge_ratio=[1., -1., .5], particle_id=[7, 3, 11],
+        zeta=[.0002, -.0003, .0001], delta=[.001, -.002, .003],
+        spin_x=.1, spin_y=.2, spin_z=.3, s=.17, time_s=1.9e-9)
+    rays = particle(context, **launch)
+    before = numeric_rows_by_id(rays)
+    expected = {}
+    for index, identifier in enumerate(launch['particle_id']):
+        one_launch = {name: (value[index]
+            if isinstance(value, (list, np.ndarray)) else value)
+            for name, value in launch.items()}
+        one = particle(context, **one_launch)
+        line.track(one, ele_start=0, ele_stop=stop)
+        assert one.state[0] == 1
+        expected[identifier] = numeric_rows_by_id(one)[identifier]
+    line.track(rays, ele_start=0, ele_stop=stop)
+    assert np.all(rays.state == 1)
+    for identifier, row in numeric_rows_by_id(rays).items():
+        np.testing.assert_array_equal(row, expected[identifier])
+    assert rays.time_s == launch['time_s']
+
+    line.track(rays, ele_start=0, ele_stop=stop, backtrack=True)
+    assert np.all(rays.state == 1)
+    coordinate_slots = [TRANSACTION_NUMERIC_FIELDS.index(name) for name in
+        COORDINATES+('s', 'rpp', 'rvv', 'pzeta', 'spin_x', 'spin_y', 'spin_z')]
+    reference_slots = [TRANSACTION_NUMERIC_FIELDS.index(name) for name in
+        ('p0c', 'gamma0', 'beta0', 'chi', 'charge_ratio')]
+    for identifier, row in numeric_rows_by_id(rays).items():
+        np.testing.assert_allclose(row[coordinate_slots],
+            before[identifier][coordinate_slots], rtol=0., atol=2e-13)
+        np.testing.assert_allclose(row[reference_slots],
+            before[identifier][reference_slots], rtol=3e-15, atol=0.)
+    assert rays.time_s == launch['time_s']
