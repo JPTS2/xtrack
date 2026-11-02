@@ -151,16 +151,13 @@ def test_field_getter_preserves_orders_and_rejects_incompatible_handles(tmp_path
 
 
 @pytest.mark.parametrize('order,model,static_fields', [
-    (2,'phase-averaged-full-slow',False),
-    (3,'phase-averaged-full-slow',False),
-    (3,'phase-averaged-full-slow',True),
-    (3,'phase-resolved',False)])
+    (2,'phase-resolved',False),
+    (3,'phase-resolved',False),
+    (3,'phase-resolved',True)])
 def test_calibration_order_one_handle_on_higher_order_map(
         cavity_magnetic_context, order, model, static_fields):
     """Descriptor.param's direct order-one handle must not alter source constants."""
-    # The RF-only full-slow word also checks its former N2/order-three
-    # all-coefficient stage refusal. A weak straight-static case also checks
-    # the retained generic static RHS; arbitrary controls/meshes remain open.
+    # A weak straight-static case also checks the retained generic static RHS.
     context = cavity_magnetic_context
     launch = dict(LAUNCH, p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1))
     fields = dict(ks=.2, knl=[0.,.01], ksl=[0.,0.,.005]) if static_fields else {}
@@ -169,8 +166,7 @@ def test_calibration_order_one_handle_on_higher_order_map(
         voltage=2e3 if static_fields else 2e4,
         frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
         calibration_beta=.9, model=model,
-        num_kicks=(4 if static_fields else 2)
-            if model=='phase-averaged-full-slow' else 8, **fields)})
+        num_kicks=8, **fields)})
     line.particle_ref = xt.Particles(p0c=launch['p0c'], mass0=launch['mass0'], q0=1.)
     line.reset_s_at_end_turn = False
     _build_shared_cavity_tracker(line, context)
@@ -188,7 +184,9 @@ def test_calibration_order_one_handle_on_higher_order_map(
     np.testing.assert_allclose(series.const_part, _values(scalar), rtol=0., atol=3e-12)
     gradient = series.param_jacobian()[:,0].copy()
     mixed = series.coefficient('x', (0,1,0,0,0,0,1))
-    check_cubic = order == 3 and model == 'phase-averaged-full-slow'
+    # Order three also checks that the fixed stage sweeps after primal
+    # convergence settle the cubic coefficients.
+    check_cubic = order == 3
     if check_cubic:
         cubic = np.array([series.coefficient('x', powers) for powers in (
             (0,1,2,0,0,0,0), (0,3,0,0,0,0,0))])
@@ -226,14 +224,14 @@ def test_calibration_order_one_handle_on_higher_order_map(
         np.testing.assert_allclose(cubic, finite_cubic, rtol=3e-5, atol=3e-7)
 
 
-def test_full_slow_zero_primal_static_controls_keep_derivatives(cavity_magnetic_context):
+def test_zero_primal_static_controls_keep_derivatives(cavity_magnetic_context):
     """Zero hardware values with live static jets must retain the static flow."""
     context = cavity_magnetic_context
     mass = xt.ELECTRON_MASS_EV
     launch = dict(LAUNCH, p0c=mass*np.sqrt(2.4**2-1), x=4e-4, y=-3e-4)
     line = xt.Line(elements={'c':xt.Cavity(length=.05, voltage=2e3,
         frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
-        calibration_beta=1., model='phase-averaged-full-slow', num_kicks=4)})
+        calibration_beta=1., model='phase-resolved', num_kicks=4)})
     controls = ('solenoid', 'normal', 'skew')
     for name in controls:
         line.vars[name] = 0.
@@ -485,8 +483,7 @@ def test_legacy_standalone_cavity_nonzero_s_tpsa(tmp_path):
                                    rtol=0., atol=3e-14)
 
 
-@pytest.mark.parametrize('model', ['phase-resolved',
-    'phase-resolved-paraxial', 'phase-resolved-longitudinal'])
+@pytest.mark.parametrize('model', ['phase-resolved'])
 @pytest.mark.parametrize('order',[2,3])
 def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order):
     """Nontrivial calibration and two waves expose hidden frozen preparation."""
@@ -560,14 +557,13 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
     np.testing.assert_allclose(mixed,fd_mixed,rtol=2e-4,atol=3e-8)
 
 
-@pytest.mark.parametrize('model',['phase-resolved','phase-resolved-paraxial',
-                                 'phase-resolved-longitudinal'])
+@pytest.mark.parametrize('model',['phase-resolved'])
 @pytest.mark.parametrize('explicit_carrier',[False,True])
 def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,explicit_carrier):
     mass=xt.ELECTRON_MASS_EV
     launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
     values=dict(voltage=2e4,frequency=400e6,counter_phase=.3,
-        calibration_beta=.9,ks=.03,delta_taper=.02,phase_taper=.07,lag_taper=1.2)
+        calibration_beta=.9,ks=.03,phase_taper=.07,lag_taper=1.2)
     if explicit_carrier:
         values['wave_number']=1.1*2*np.pi*400e6/299792458.
     context=cavity_magnetic_context
@@ -635,104 +631,6 @@ def test_frozen_cavity_tpsa_phase_and_clock(tmp_path,absolute_time):
         np.testing.assert_allclose(derivative,
             (endpoints[1]-endpoints[0])/(2e-5),rtol=3e-6,atol=3e-10)
 
-
-@pytest.mark.parametrize('order',[1,2])
-def test_second_order_averaged_cavity_tpsa(cavity_magnetic_context,order):
-    """Differentiate the actual retained characteristic/product, not a proxy."""
-    mass=xt.ELECTRON_MASS_EV
-    launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
-    context=cavity_magnetic_context
-    line=xt.Line(elements={'c':xt.Cavity(length=.05,voltage=2e3,
-        frequency=400e6,phase=.4,eta=.25,counter_phase=.3,
-        model='phase-averaged-second-order',num_kicks=4,num_factor_steps=1)})
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
-    line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
-    scalar=xt.Particles(_context=context,**launch)
-    line.track(scalar)
-    assert scalar.state[0]==1
-    desc=madng_tpsa.Descriptor(6,order,num_params=2,param_order=1)
-    line['c'].eta=desc.param(1,.25)
-    line['c'].phase=desc.param(2,.4)
-    series=xtpsa.ParticlesTpsa(order=order,descriptor=desc,**launch)
-    try:
-        line.track(series)
-    except RuntimeError as error:
-        raise AssertionError(f"native TPSA status {series._xobject.state}") from error
-    assert series._xobject.state==1
-    np.testing.assert_allclose(series.const_part,_values(scalar),
-                               rtol=0.,atol=3e-12)
-    gradients=series.param_jacobian().copy()
-    jacobian=series.jacobian().copy()
-    mixed=series.coefficient('x',(0,1,0,0,0,0,1,0)) if order>=2 else None
-    line.disable_tpsa_elements()
-    for index,(name,value) in enumerate([('eta',.25),('phase',.4)]):
-        endpoints=[]
-        for sign in (-1,1):
-            setattr(line['c'],name,value+sign*3e-4)
-            particle=xt.Particles(_context=context,**launch)
-            line.track(particle)
-            assert particle.state[0]==1
-            endpoints.append(_values(particle))
-        setattr(line['c'],name,value)
-        fd=(endpoints[1]-endpoints[0])/(6e-4)
-        np.testing.assert_allclose(gradients[:,index],fd,
-                                   rtol=3e-5,atol=2e-8)
-        if index==0:
-            coarse_eta_fd=fd.copy()
-
-
-    if order==2:
-        weights={-2:1.,-1:-8.,1:8.,2:-1.}
-        finite_jacobian=np.zeros((6,6))
-        for column,name in enumerate(COORDS):
-            for offset,weight in weights.items():
-                particle=xt.Particles(_context=context,**dict(
-                    launch,**{name:launch[name]+offset*2e-6}))
-                line.track(particle)
-                assert particle.state[0]==1
-                finite_jacobian[:,column]+=weight*_values(particle)/(24e-6)
-        np.testing.assert_allclose(jacobian,finite_jacobian,
-                                   rtol=3e-6,atol=3e-8)
-        finite_mixed=0.
-        for ip,wp in weights.items():
-            for ie,we in weights.items():
-                line['c'].eta=.25+ie*.005
-                particle=xt.Particles(_context=context,**dict(
-                    launch,px=launch['px']+ip*1e-4))
-                line.track(particle)
-                assert particle.state[0]==1
-                finite_mixed+=wp*we*float(particle.x[0])/(144*1e-4*.005)
-        line['c'].eta=.25
-        np.testing.assert_allclose(mixed,finite_mixed,rtol=3e-4,atol=3e-8)
-        # Refine the parent's characteristic mesh, keeping the selected
-        # retained product and outer factor mesh unchanged. This is a
-        # local consistency check, not a trajectory-error certificate.
-        refinements=[_values(scalar)]
-        # Use the same centred scalar stencil at every mesh, so this comparison
-        # measures mesh changes without mixing TPSA and finite-difference bias.
-        derivatives=[coarse_eta_fd]
-        for count in (8,16):
-            line['c'].num_kicks=count
-            particle=xt.Particles(_context=context,**launch)
-            line.track(particle)
-            assert particle.state[0]==1
-            refinements.append(_values(particle))
-            endpoints=[]
-            for eta in (.25-3e-4,.25+3e-4):
-                line['c'].eta=eta
-                particle=xt.Particles(_context=context,**launch)
-                line.track(particle)
-                assert particle.state[0]==1
-                endpoints.append(_values(particle))
-            derivatives.append((endpoints[1]-endpoints[0])/(6e-4))
-            line['c'].eta=.25
-        map_steps=[np.max(abs(refinements[i+1]-refinements[i])) for i in (0,1)]
-        gradient_steps=[np.max(abs(derivatives[i+1]-derivatives[i])) for i in (0,1)]
-        print('C2 parent mesh N4,N8,N16 map changes',map_steps,
-              'eta gradient changes',gradient_steps)
-        assert map_steps[1]<map_steps[0]+3e-13
-        assert gradient_steps[1]<gradient_steps[0]+3e-10
 
 def test_frozen_solenoid_zero_strength_parameter_tpsa(tmp_path):
     """The exact frozen SOL body uses an entire chart at zero field."""
@@ -928,7 +826,7 @@ def test_multisetter_resolves_canonical_slice_parent(tmp_path):
 
 def test_indexed_cavity_knob_lifecycle(tmp_path):
     with native_context(tmp_path) as context:
-        line=xt.Line(elements={'c':xt.Cavity(length=.05,knl=[0.,.2],ksl=[0.,.3])})
+        line=xt.Line(elements={'c':xt.Cavity(model='phase-resolved',length=.05,knl=[0.,.2],ksl=[0.,.3])})
         line.vars['normal']=.2;line.vars['skew']=.3
         line.element_refs['c'].knl[1]=line.vars['normal']
         line.element_refs['c'].ksl[1]=line.vars['skew']
@@ -984,7 +882,7 @@ def test_indexed_cavity_knob_lifecycle(tmp_path):
 def test_cavity_array_masked_ufunc_preserves_untouched_storage(active):
     """Masked outputs preserve scalar mirrors and the actual owned series."""
     context = xo.ContextCpu(omp_num_threads=0)
-    owner = xt.Cavity(_context=context, order=2,
+    owner = xt.Cavity(model='phase-resolved',_context=context, order=2,
                      knl=[1.,2.,3.], ksl=[91.,82.,73.])
     mask = np.array([True,False,True])
     if active:
@@ -1018,7 +916,7 @@ def test_cavity_array_masked_ufunc_preserves_untouched_storage(active):
 
 def test_cavity_array_ufunc_allocated_and_aliased_multiple_outputs():
     context = xo.ContextCpu(omp_num_threads=0)
-    owner = xt.Cavity(_context=context, order=2,
+    owner = xt.Cavity(model='phase-resolved',_context=context, order=2,
                      knl=[1.25,2.5,3.75], ksl=[91.,82.,73.])
     allocated = np.add(owner.knl,1.,out=(None,))
     assert isinstance(allocated,np.ndarray)
@@ -1045,7 +943,7 @@ def test_cavity_array_ufunc_allocated_and_aliased_multiple_outputs():
 
 def test_cavity_array_ufunc_numpy_outputs_keep_casting_and_mask_rules():
     context = xo.ContextCpu(omp_num_threads=0)
-    owner = xt.Cavity(_context=context, order=2,knl=[1.25,2.5,3.75])
+    owner = xt.Cavity(model='phase-resolved',_context=context, order=2,knl=[1.25,2.5,3.75])
     integer_target = np.array([91,82,73],dtype=np.int64)
     with pytest.raises(TypeError,match='cast'):
         np.add(owner.knl,.5,out=integer_target)
@@ -1070,8 +968,8 @@ def test_cavity_array_ufunc_numpy_outputs_keep_casting_and_mask_rules():
 @pytest.mark.parametrize('same_owner', [False, True])
 def test_cavity_array_ufunc_promotes_scalar_output_without_losing_mask(same_owner):
     context = xo.ContextCpu(omp_num_threads=0)
-    source = xt.Cavity(_context=context, order=2,ksl=[91.,82.,73.])
-    target = source if same_owner else xt.Cavity(
+    source = xt.Cavity(model='phase-resolved',_context=context, order=2,ksl=[91.,82.,73.])
+    target = source if same_owner else xt.Cavity(model='phase-resolved',
         _context=context, order=2,ksl=[91.,82.,73.])
     descriptor = madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
     source.knl[:] = [descriptor.param(1,value) for value in (1.,2.,3.)]
@@ -1095,7 +993,7 @@ def test_cavity_array_ufunc_promotes_scalar_output_without_losing_mask(same_owne
 def test_cavity_array_ufunc_rejects_invalid_results_before_target_mutation(active):
     """A late invalid result must not alter earlier coefficients or activation."""
     context = xo.ContextCpu(omp_num_threads=0)
-    owner = xt.Cavity(_context=context, order=2,
+    owner = xt.Cavity(model='phase-resolved',_context=context, order=2,
                      knl=[1.,2.,3.], ksl=[91.,82.,73.])
     descriptor = madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
     foreign = madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
@@ -1140,9 +1038,7 @@ def cavity_magnetic_context(tmp_path_factory):
         yield context
 
 
-@pytest.mark.parametrize('model',['phase-resolved','phase-resolved-paraxial',
-                                  'phase-resolved-longitudinal','phase-resolved-frozen',
-                                  'phase-averaged-full-slow'])
+@pytest.mark.parametrize('model',['phase-resolved','phase-resolved-frozen'])
 def test_native_indexed_magnetic_parameter_tpsa(cavity_magnetic_context,model):
     mass=xt.ELECTRON_MASS_EV
     launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1),x=4e-4,y=-3e-4)
@@ -1150,10 +1046,9 @@ def test_native_indexed_magnetic_parameter_tpsa(cavity_magnetic_context,model):
     values={'normal':0. if frozen else .01}
     if not frozen: values['skew']=.005
     context=cavity_magnetic_context
-    full_slow=model=='phase-averaged-full-slow'
-    line=xt.Line(elements={'c':xt.Cavity(length=.05,voltage=2e3 if full_slow else 2e4,
+    line=xt.Line(elements={'c':xt.Cavity(length=.05,voltage=2e4,
         frequency=400e6,phase=.4,eta=0. if frozen else .25,
-        model=model,num_kicks=4 if full_slow else 8)})
+        model=model,num_kicks=8)})
     for name,value in values.items():line.vars[name]=value
     line.element_refs['c'].knl[1]=line.vars['normal']
     if not frozen:line.element_refs['c'].ksl[2]=line.vars['skew']
@@ -1223,190 +1118,6 @@ def test_cavity_descriptor_change_is_atomic():
     assert not np.any(owner._knl_tpsa)
 
 
-def test_compact_averaged_public_tpsa(cavity_magnetic_context):
-    """Public C2/C3/C4 maps and jets use their actual compact tracking word."""
-    context=cavity_magnetic_context
-    mass=xt.ELECTRON_MASS_EV
-    launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,voltage=2e4,
-        frequency=400e6,phase=.4,eta=.25,counter_phase=.3,
-        calibration_beta=.9,model='phase-averaged-second-order',
-        num_kicks=1,num_factor_steps=1)})
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
-    line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
-    weights={-2:1.,-1:-8.,1:8.,2:-1.}
-    for model in ('phase-averaged-second-order','phase-averaged-cubic',
-                  'phase-averaged-quartic'):
-        line['c'].model=model
-        scalar=xt.Particles(_context=context,**launch)
-        line.track(scalar)
-        assert scalar.state[0]==1,model
-        desc=madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
-        line['c'].phase=desc.param(1,.4)
-        line['c'].eta=desc.param(2,.25)
-        series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
-        line.track(series)
-        np.testing.assert_allclose(series.const_part,_values(scalar),
-                                   rtol=0.,atol=3e-12,err_msg=model)
-        jacobian=series.jacobian().copy()
-        gradients=series.param_jacobian().copy()
-        mixed=series.coefficient('x',(0,1,0,0,0,0,0,1))
-        line.disable_tpsa_elements()
-        finite_jacobian=np.zeros((6,6))
-        for column,name in enumerate(COORDS):
-            for offset,weight in weights.items():
-                particle=xt.Particles(_context=context,**dict(
-                    launch,**{name:launch[name]+offset*1e-4}))
-                line.track(particle)
-                assert particle.state[0]==1,model
-                finite_jacobian[:,column]+=weight*_values(particle)/(12e-4)
-        np.testing.assert_allclose(jacobian,finite_jacobian,
-                                   rtol=3e-6,atol=3e-9,err_msg=model)
-        for column,(name,value) in enumerate((('phase',.4),('eta',.25))):
-            derivative=np.zeros(6)
-            for offset,weight in weights.items():
-                setattr(line['c'],name,value+offset*1e-3)
-                particle=xt.Particles(_context=context,**launch)
-                line.track(particle)
-                assert particle.state[0]==1,model
-                derivative+=weight*_values(particle)/(12e-3)
-            setattr(line['c'],name,value)
-            np.testing.assert_allclose(gradients[:,column],derivative,
-                                       rtol=3e-6,atol=3e-9,err_msg=model+name)
-        finite_mixed=0.
-        for ip,wp in weights.items():
-            for ie,we in weights.items():
-                line['c'].eta=.25+ie*.01
-                particle=xt.Particles(_context=context,**dict(
-                    launch,px=launch['px']+ip*1e-3))
-                line.track(particle)
-                assert particle.state[0]==1,model
-                finite_mixed+=wp*we*float(particle.x[0])/(144*1e-3*.01)
-        line['c'].eta=.25
-        assert abs(mixed)>1e-5,model
-        np.testing.assert_allclose(mixed,finite_mixed,
-                                   rtol=3e-5,atol=3e-8,err_msg=model)
-
-
-@pytest.mark.parametrize('model',[
-    'phase-averaged-uniform-quadratic-first-boundary',
-    'phase-averaged-uniform-quadratic','phase-averaged-full-slow'])
-def test_full_slow_and_uniform_public_tpsa(cavity_magnetic_context,model):
-    """Executed 17/18/19 maps retain state and calibrated hardware derivatives."""
-    context=cavity_magnetic_context
-    mass=xt.ELECTRON_MASS_EV
-    launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
-    values=dict(phase=.4,eta=.25,counter_phase=.3,voltage=2e4,
-                frequency=400e6,calibration_beta=.9)
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,
-        model='phase-averaged-full-slow',num_kicks=2,num_factor_steps=1,**values)})
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
-    line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
-    weights={-2:1.,-1:-8.,1:8.,2:-1.}
-    line['c'].model=model
-    # The profile is a stored physical input, not retargeted implicitly
-    # when selecting another model on the same parent element.
-    line['c'].rf_profile='p16' if model=='phase-averaged-full-slow' else 'uniform'
-    line['c'].num_kicks=2 if model=='phase-averaged-full-slow' else 8
-    scalar=xt.Particles(_context=context,**launch)
-    line.track(scalar)
-    assert scalar.state[0]==1,model
-    desc=madng_tpsa.Descriptor(6,2,num_params=len(values),param_order=1)
-    for index,(name,value) in enumerate(values.items(),start=1):
-        setattr(line['c'],name,desc.param(index,value))
-    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
-    line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),
-                               rtol=0.,atol=3e-12,err_msg=model)
-    jacobian=series.jacobian().copy()
-    gradients=series.param_jacobian().copy()
-    mixed=series.coefficient('x',(0,1,0,0,0,0,0,1,0,0,0,0))
-    line.disable_tpsa_elements()
-    finite_jacobian=np.zeros((6,6))
-    for column,name in enumerate(COORDS):
-        for offset,weight in weights.items():
-            particle=xt.Particles(_context=context,**dict(
-                launch,**{name:launch[name]+offset*1e-4}))
-            line.track(particle)
-            assert particle.state[0]==1,model
-            finite_jacobian[:,column]+=weight*_values(particle)/(12e-4)
-    np.testing.assert_allclose(jacobian,finite_jacobian,
-                               rtol=3e-6,atol=3e-9,err_msg=model)
-    for column,(name,value) in enumerate(values.items()):
-        scale=max(1.,abs(value));step=scale*1e-4
-        derivative=np.zeros(6)
-        for offset,weight in weights.items():
-            setattr(line['c'],name,value+offset*step)
-            particle=xt.Particles(_context=context,**launch)
-            line.track(particle)
-            assert particle.state[0]==1,model
-            derivative+=weight*_values(particle)/(12*step)
-        setattr(line['c'],name,value)
-        np.testing.assert_allclose(gradients[:,column]*scale,derivative*scale,
-                                   rtol=3e-6,atol=3e-8,err_msg=model+name)
-    finite_mixed=0.
-    for ip,wp in weights.items():
-        for ie,we in weights.items():
-            line['c'].eta=.25+ie*.01
-            particle=xt.Particles(_context=context,**dict(
-                launch,px=launch['px']+ip*1e-3))
-            line.track(particle)
-            assert particle.state[0]==1,model
-            finite_mixed+=wp*we*float(particle.x[0])/(144*1e-3*.01)
-    line['c'].eta=.25
-    np.testing.assert_allclose(mixed,finite_mixed,
-                               rtol=3e-5,atol=3e-8,err_msg=model)
-    print(model,'mixed dR12/deta',mixed,'FD',finite_mixed)
-
-
-def test_full_slow_zero_fast_and_zero_voltage_series(cavity_magnetic_context):
-    """Only entire-series zero fast fields may skip the counter-wave factors."""
-    context=cavity_magnetic_context
-    mass=xt.ELECTRON_MASS_EV
-    launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,voltage=2e4,
-        frequency=400e6,phase=.4,eta=0.,calibration_beta=.9,
-        model='phase-averaged-full-slow',num_kicks=2,num_factor_steps=1)})
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
-    line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
-    scalar=xt.Particles(_context=context,**launch)
-    line.track(scalar)
-    assert scalar.state[0]==1
-    desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
-    line['c'].phase=desc.param(1,.4)
-    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
-    line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-12)
-    derivative=series.param_jacobian()[:,0]
-    line.disable_tpsa_elements()
-    endpoints=[]
-    for phase in (.4-1e-4,.4+1e-4):
-        line['c'].phase=phase
-        particle=xt.Particles(_context=context,**launch);line.track(particle)
-        assert particle.state[0]==1
-        endpoints.append(_values(particle))
-    np.testing.assert_allclose(derivative,(endpoints[1]-endpoints[0])/2e-4,
-                               rtol=3e-6,atol=3e-9)
-    line['c'].phase=.4;line['c'].eta=.25
-    second=madng_tpsa.Descriptor(6,2,num_params=1,param_order=2)
-    line['c'].voltage=2e4*second.param(1,0.)
-    series=xtpsa.ParticlesTpsa(order=2,descriptor=second,**launch)
-    line.track(series)
-    quadratic=np.array([series.coefficient(name,(0,0,0,0,0,0,2)) for name in COORDS])
-    line.disable_tpsa_elements()
-    h=.02;finite=np.zeros(6)
-    for offset,weight in {0:-30.,-1:16.,1:16.,-2:-1.,2:-1.}.items():
-        line['c'].voltage=2e4*offset*h
-        particle=xt.Particles(_context=context,**launch);line.track(particle)
-        assert particle.state[0]==1
-        finite+=weight*_values(particle)/(24*h*h)
-    assert np.max(abs(quadratic))>1e-10
-    np.testing.assert_allclose(quadratic,finite,rtol=3e-5,atol=3e-9)
-
-
 def test_gaussian_magnetic_profile_tpsa(cavity_magnetic_context):
     """Differentiate the native Gaussian M1 lift, including source calibration."""
     context=cavity_magnetic_context
@@ -1415,8 +1126,8 @@ def test_gaussian_magnetic_profile_tpsa(cavity_magnetic_context):
         frequency=400e6,calibration_beta=.9,rf_profile_sigma=.035,
         rf_profile_center=.012)
     line=xt.Line(elements={'c':xt.Cavity(length=.167,
-        model='phase-averaged-magnetic',rf_profile='gaussian',
-        num_kicks=8,num_factor_steps=2,**values)})
+        model='phase-resolved',rf_profile='gaussian',
+        num_kicks=8,**values)})
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
     line.reset_s_at_end_turn=False
     _build_shared_cavity_tracker(line,context)
@@ -1463,279 +1174,3 @@ def test_gaussian_magnetic_profile_tpsa(cavity_magnetic_context):
     print('Gaussian20 mixed dR12/dsigma',mixed,'FD',finite_mixed)
 
 
-def test_gaussian_fringe_static_parameter_tpsa(cavity_magnetic_context):
-    """Native localized static fields retain their width and indexed knobs."""
-    context=cavity_magnetic_context
-    launch=dict(LAUNCH,p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1),
-                x=4e-4,y=-3e-4)
-    values=dict(phase=.4,eta=.25,magnetic_profile_sigma=.04,ks=.3,
-                normal=.004,skew=.001)
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,voltage=2e4,
-        frequency=400e6,counter_phase=.3,calibration_beta=.9,
-        model='phase-averaged-magnetic-fringe',rf_profile='gaussian',
-        rf_profile_sigma=.035,rf_profile_center=.012,
-        magnetic_profile='gaussian',magnetic_profile_sigma=.04,
-        edge_entry_active=False,edge_exit_active=False,
-        num_kicks=8,num_factor_steps=2)})
-    for name,value in values.items():
-        line.vars[name]=value
-        if name=='normal':line.element_refs['c'].knl[1]=line.vars[name]
-        elif name=='skew':line.element_refs['c'].ksl[1]=line.vars[name]
-        else:setattr(line.element_refs['c'],name,line.vars[name])
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
-    line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
-    scalar=xt.Particles(_context=context,**launch);line.track(scalar)
-    assert scalar.state[0]==1
-    desc=madng_tpsa.Descriptor(6,2,num_params=len(values),param_order=1)
-    knobs=KnobParameters(line,list(values),desc)
-    knobs.apply()
-    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
-    line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-12)
-    potential_gradients=np.array([series._local_series[name].param_grad()
-                                  for name in ('ax','ay')])
-    np.testing.assert_allclose([series._local_series[name].const_part for name in ('ax','ay')],
-                               [float(scalar.ax[0]),float(scalar.ay[0])],rtol=0.,atol=3e-12)
-    gradients=series.param_jacobian().copy()
-    jacobian=series.jacobian().copy()
-    mixed=series.coefficient('x',(0,1,0,0,0,0,0,0,1,0,0,0))
-    knobs.teardown()
-    weights={-2:1.,-1:-8.,1:8.,2:-1.}
-    for column,(name,value) in enumerate(values.items()):
-        step=abs(value)*1e-4
-        finite=np.zeros(6)
-        finite_potential=np.zeros(2)
-        for offset,weight in weights.items():
-            line.vars[name]=value+offset*step
-            particle=xt.Particles(_context=context,**launch);line.track(particle)
-            assert particle.state[0]==1
-            finite+=weight*_values(particle)/(12*step)
-            finite_potential+=weight*np.array([float(particle.ax[0]),float(particle.ay[0])])/(12*step)
-        line.vars[name]=value
-        np.testing.assert_allclose(gradients[:,column]*abs(value),finite*abs(value),
-                                   rtol=3e-6,atol=3e-8,err_msg=name)
-        np.testing.assert_allclose(potential_gradients[:,column]*abs(value),finite_potential*abs(value),
-                                   rtol=3e-6,atol=3e-8,err_msg=name+' potential metadata')
-        assert np.max(abs(gradients[:,column]))>0.,name
-    finite_jacobian=np.zeros((6,6))
-    for column,name in enumerate(COORDS):
-        for offset,weight in weights.items():
-            particle=xt.Particles(_context=context,**dict(launch,**{name:launch[name]+offset*1e-4}))
-            line.track(particle)
-            finite_jacobian[:,column]+=weight*_values(particle)/(12e-4)
-    np.testing.assert_allclose(jacobian,finite_jacobian,rtol=3e-6,atol=3e-8)
-    finite_mixed=0.
-    for ip,wp in weights.items():
-        for iw,ww in weights.items():
-            line.vars['magnetic_profile_sigma']=values['magnetic_profile_sigma']+iw*1e-4
-            particle=xt.Particles(_context=context,**dict(launch,px=launch['px']+ip*1e-3))
-            line.track(particle)
-            finite_mixed+=wp*ww*float(particle.x[0])/(144*1e-3*1e-4)
-    np.testing.assert_allclose(mixed,finite_mixed,rtol=3e-5,atol=3e-8)
-    print('Gaussian22 mixed dR12/dmagnetic_sigma',mixed,'FD',finite_mixed)
-
-
-def test_gaussian_dipole_public_parameter_tpsa(cavity_magnetic_context):
-    """The fixed reference orbit is a hardware/reduction input, not tracked px."""
-    context=cavity_magnetic_context
-    launch=dict(LAUNCH,p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1),x=4e-4,y=-3e-4)
-    values=dict(phase=.4,eta=.25,calibration_beta=.9,frequency=400e6,
-                reference_px=.003,dipole=.002)
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,voltage=2e4,
-        model='phase-averaged-dipole',rf_profile='gaussian',
-        frequency=400e6,
-        rf_profile_sigma=.035,rf_profile_center=.012,
-        counter_phase=.3,num_kicks=8,num_factor_steps=2)})
-    for name,value in values.items():
-        line.vars[name]=value
-        if name=='dipole':line.element_refs['c'].knl[0]=line.vars[name]
-        else:setattr(line.element_refs['c'],name,line.vars[name])
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
-    line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
-    scalar=xt.Particles(_context=context,**launch);line.track(scalar)
-    assert scalar.state[0]==1
-    desc=madng_tpsa.Descriptor(6,2,num_params=len(values),param_order=1)
-    knobs=KnobParameters(line,list(values),desc);knobs.apply()
-    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch);line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-12)
-    gradients=series.param_jacobian().copy();jacobian=series.jacobian().copy()
-    mixed=series.coefficient('x',(0,1,0,0,0,0,0,0,0,0,1,0))
-    knobs.teardown()
-    weights={-2:1.,-1:-8.,1:8.,2:-1.}
-    for column,(name,value) in enumerate(values.items()):
-        step=abs(value)*1e-4;finite=np.zeros(6)
-        for offset,weight in weights.items():
-            line.vars[name]=value+offset*step
-            particle=xt.Particles(_context=context,**launch);line.track(particle)
-            assert particle.state[0]==1
-            finite+=weight*_values(particle)/(12*step)
-        line.vars[name]=value
-        np.testing.assert_allclose(gradients[:,column]*abs(value),finite*abs(value),
-                                   rtol=3e-6,atol=3e-8,err_msg=name)
-    finite_jacobian=np.zeros((6,6))
-    for column,name in enumerate(COORDS):
-        for offset,weight in weights.items():
-            particle=xt.Particles(_context=context,**dict(launch,**{name:launch[name]+offset*1e-4}))
-            line.track(particle)
-            finite_jacobian[:,column]+=weight*_values(particle)/(12e-4)
-    np.testing.assert_allclose(jacobian,finite_jacobian,rtol=3e-6,atol=3e-8)
-    finite_mixed=0.
-    for ip,wp in weights.items():
-        for ir,wr in weights.items():
-            line.vars['reference_px']=values['reference_px']+ir*1e-4
-            particle=xt.Particles(_context=context,**dict(launch,px=launch['px']+ip*1e-3))
-            line.track(particle)
-            finite_mixed+=wp*wr*float(particle.x[0])/(144*1e-3*1e-4)
-    np.testing.assert_allclose(mixed,finite_mixed,rtol=3e-5,atol=3e-8)
-    print('Gaussian23 mixed dR12/dreference_px',mixed,'FD',finite_mixed)
-
-
-def test_gaussian_dipole_zero_strength_order_three(cavity_magnetic_context):
-    """A seeded zero bend must retain the analytic nilpotent source clock."""
-    context=cavity_magnetic_context
-    launch=dict(LAUNCH,p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1))
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,voltage=2e4,frequency=400e6,
-        phase=.4,eta=.25,counter_phase=.3,calibration_beta=.9,reference_px=.003,
-        model='phase-averaged-dipole',rf_profile='gaussian',
-        rf_profile_sigma=.035,rf_profile_center=.012,num_kicks=8,num_factor_steps=2)})
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
-    line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
-    scalar=xt.Particles(_context=context,**launch);line.track(scalar)
-    desc=madng_tpsa.Descriptor(6,3,num_params=1,param_order=3)
-    line['c'].knl[0]=desc.param(1,0.)
-    series=xtpsa.ParticlesTpsa(order=3,descriptor=desc,**launch);line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-12)
-    cubic=np.array([series.coefficient(name,(0,0,0,0,0,0,3)) for name in COORDS])
-    line.disable_tpsa_elements()
-    offsets=np.arange(-3,4,dtype=float)
-    # Seven scalar samples isolate the cubic Taylor coefficient while
-    # cancelling monomials through degree six; TPSA itself uses no stencil.
-    moments=np.array([offsets**power for power in range(7)])
-    target=np.zeros(7);target[3]=1.
-    weights=np.linalg.solve(moments,target)
-    finite=np.zeros(6);step=.002
-    for offset,weight in zip(offsets,weights):
-        line['c'].knl[0]=offset*step
-        particle=xt.Particles(_context=context,**launch);line.track(particle)
-        assert particle.state[0]==1
-        finite+=weight*_values(particle)/step**3
-    np.testing.assert_allclose(cubic,finite,rtol=3e-4,atol=3e-7)
-    print('Gaussian23 zero-bend cubic',cubic.tolist(),'FD',finite.tolist())
-
-
-def test_gaussian_moving_reference_public_tpsa(cavity_magnetic_context):
-    """Public SI/strength wiring of the full-static moving-reference word.
-
-    The source2/factor1/reference2 mesh is an implementation check. It is not
-    a numerical-accuracy recommendation or a physical/source qualification.
-    """
-    context=cavity_magnetic_context
-    launch=dict(LAUNCH,p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1),x=4e-4,y=-3e-4)
-    values=dict(phase=.4,eta=.25,frequency=400e6,calibration_beta=.9,
-        reference_x=.001,reference_y=-.0008,reference_px=.003,reference_py=-.0025,
-        ks=.3,normal=.004,skew=.001)
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,voltage=2e3,frequency=400e6,
-        model='phase-averaged-moving-reference',rf_profile='gaussian',
-        rf_profile_sigma=.035,rf_profile_center=.012,counter_phase=.3,
-        num_kicks=2,num_factor_steps=1,num_reference_steps=2,
-        edge_entry_active=False,edge_exit_active=False)})
-    for name,value in values.items():
-        line.vars[name]=value
-        if name=='normal':line.element_refs['c'].knl[1]=line.vars[name]
-        elif name=='skew':line.element_refs['c'].ksl[1]=line.vars[name]
-        else:setattr(line.element_refs['c'],name,line.vars[name])
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
-    line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
-    scalar=xt.Particles(_context=context,**launch);line.track(scalar)
-    assert scalar.state[0]==1
-    desc=madng_tpsa.Descriptor(6,2,num_params=len(values),param_order=1)
-    knobs=KnobParameters(line,list(values),desc);knobs.apply()
-    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch);line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-12)
-    gradients=series.param_jacobian().copy();jacobian=series.jacobian().copy()
-    potential_gradients=np.array([series._local_series[name].param_grad() for name in ('ax','ay')])
-    powers=[0]*(6+len(values));powers[1]=1;powers[6+list(values).index('reference_px')]=1
-    mixed=series.coefficient('x',tuple(powers))
-    knobs.teardown()
-    weights={-2:1.,-1:-8.,1:8.,2:-1.}
-    for column,(name,value) in enumerate(values.items()):
-        step=abs(value)*1e-4;finite=np.zeros(6);finite_potential=np.zeros(2)
-        for offset,weight in weights.items():
-            line.vars[name]=value+offset*step
-            particle=xt.Particles(_context=context,**launch);line.track(particle)
-            assert particle.state[0]==1,name
-            finite+=weight*_values(particle)/(12*step)
-            finite_potential+=weight*np.array([float(particle.ax[0]),float(particle.ay[0])])/(12*step)
-        line.vars[name]=value
-        np.testing.assert_allclose(gradients[:,column]*abs(value),finite*abs(value),
-                                   rtol=3e-6,atol=3e-8,err_msg=name)
-        np.testing.assert_allclose(potential_gradients[:,column]*abs(value),finite_potential*abs(value),
-                                   rtol=3e-6,atol=3e-8,err_msg=name+' potential metadata')
-    finite_jacobian=np.zeros((6,6))
-    for column,name in enumerate(COORDS):
-        for offset,weight in weights.items():
-            particle=xt.Particles(_context=context,**dict(launch,**{name:launch[name]+offset*1e-4}))
-            line.track(particle)
-            finite_jacobian[:,column]+=weight*_values(particle)/(12e-4)
-    np.testing.assert_allclose(jacobian,finite_jacobian,rtol=3e-6,atol=3e-8)
-    finite_mixed=0.
-    for ip,wp in weights.items():
-        for ir,wr in weights.items():
-            line.vars['reference_px']=values['reference_px']+ir*1e-4
-            particle=xt.Particles(_context=context,**dict(launch,px=launch['px']+ip*1e-3))
-            line.track(particle)
-            finite_mixed+=wp*wr*float(particle.x[0])/(144*1e-3*1e-4)
-    line.vars['reference_px']=values['reference_px']
-    np.testing.assert_allclose(mixed,finite_mixed,rtol=3e-5,atol=3e-8)
-    print('Gaussian24 mixed dR12/dreference_px',mixed,'FD',finite_mixed)
-
-
-def test_moving_reference_energy_frozen_analysis_metadata(cavity_magnetic_context):
-    """Exercise the separate energy-constrained analysis word through Line.
-
-    These end-state/derivative checks complement the independent physical
-    stage-mask tests. They do not identify this constrained word with the
-    unconstrained six-dimensional map or establish its physical accuracy.
-    """
-    context=cavity_magnetic_context
-    launch=dict(LAUNCH,p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1))
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,voltage=2e3,frequency=400e6,
-        phase=.4,eta=.25,counter_phase=.3,calibration_beta=.9,ks=.3,
-        reference_x=.001,reference_y=-.0008,reference_px=.003,reference_py=-.0025,
-        model='phase-averaged-moving-reference',rf_profile='gaussian',
-        rf_profile_sigma=.035,rf_profile_center=.012,num_kicks=2,
-        num_factor_steps=1,num_reference_steps=2,edge_entry_active=False,edge_exit_active=False)})
-    line['c'].knl[1]=.004;line['c'].ksl[1]=.001
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
-    line.reset_s_at_end_turn=False
-    line.freeze_energy(force=True)
-    _build_shared_cavity_tracker(line,context)
-    scalar=xt.Particles(_context=context,**launch)
-    before={name:float(getattr(scalar,name)[0]) for name in ('delta','ptau','pzeta','rpp','rvv')}
-    line.track(scalar)
-    for name,value in before.items():
-        assert float(getattr(scalar,name)[0])==pytest.approx(value,abs=3e-14,rel=0.)
-    desc=madng_tpsa.Descriptor(6,1,num_params=1,param_order=1)
-    line['c'].phase=desc.param(1,.4)
-    series=xtpsa.ParticlesTpsa(order=1,descriptor=desc,**launch)
-    derived_before={name:series._local_series[name].grad()[5]
-                    for name in ('pzeta','rpp','rvv')}
-    line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-12)
-    np.testing.assert_allclose(series.jacobian()[5],[0.,0.,0.,0.,0.,1.],rtol=0.,atol=3e-12)
-    assert series.param_jacobian()[5,0]==0.
-    for name,value in derived_before.items():
-        assert series._local_series[name].const_part==pytest.approx(float(getattr(scalar,name)[0]),abs=3e-14,rel=0.)
-        assert series._local_series[name].grad()[5]==pytest.approx(value,abs=3e-12,rel=0.)
-    gradient=series.param_jacobian()[:,0].copy()
-    line.disable_tpsa_elements()
-    endpoints=[]
-    for phase in (.4-1e-4,.4+1e-4):
-        line['c'].phase=phase
-        particle=xt.Particles(_context=context,**launch);line.track(particle)
-        endpoints.append(_values(particle))
-    np.testing.assert_allclose(gradient,(endpoints[1]-endpoints[0])/2e-4,rtol=3e-5,atol=3e-8)

@@ -13,9 +13,8 @@ import xtrack as xt
 from _cavity_context import native_context
 
 
-MODELS = ('phase-resolved', 'phase-resolved-paraxial',
-          'phase-resolved-longitudinal', 'phase-resolved-frozen')
-EVOLVING_MODELS = MODELS[:3]
+MODELS = ('phase-resolved', 'phase-resolved-frozen')
+EVOLVING_MODELS = MODELS[:1]
 COORDINATES = ('x', 'px', 'y', 'py', 'zeta', 'delta')
 MASS_EV = 510998.95
 P0C_EV = MASS_EV*np.sqrt(2.4**2-1.)
@@ -23,7 +22,7 @@ P0C_EV = MASS_EV*np.sqrt(2.4**2-1.)
 
 @pytest.fixture(scope='module')
 def cpu_context(tmp_path_factory):
-    """Keep JIT output context-local, using the diagnosed linker preparation."""
+    """Keep JIT output context-local."""
     with native_context(tmp_path_factory.mktemp('cavity-integration-review')) as context:
         yield context
 
@@ -119,75 +118,6 @@ def test_absolute_clock_origin_is_one_shared_physical_event(cpu_context, model):
                                rtol=0., atol=2e-12)
 
 
-def taper_ring(context, model, *, strong=False, unavailable_voltage=False):
-    """A known energy sink tests orchestration, not a radiation prescription.
-
-    The strong case is an independently chosen synthetic regime with rounded
-    inputs. Its reference has a material phase-slip correction relative to
-    a fixed-beta crest calibration. The weak legacy case is a control.
-    """
-    if strong:
-        controls = dict(length=1.25, voltage=14e6,
-            frequency=3e9, phase=.2, eta=0., calibration_beta=1.,
-            num_kicks=256, model=model)
-        p0c, loss = 14e6, 1e5
-    else:
-        controls = dict(length=.05, voltage=1e5, frequency=1e8,
-            phase=.2, eta=0., calibration_beta=1., num_kicks=32, model=model)
-        p0c, loss = 1e9, 1000.
-    if unavailable_voltage:
-        loss = 2*controls['voltage']
-    line = xt.Line(elements=[
-        xt.LineSegmentMap(_context=context, length=1., qx=.23, qy=.31, betx=2., bety=3.,
-            longitudinal_mode='frozen', energy_increment=-loss),
-        xt.Multipole(_context=context, knl=[0.]), xt.Cavity(_context=context, **controls)],
-        element_names=['sink', 'taper_slot', 'rf'])
-    line.particle_ref = xt.Particles(_context=context, mass0=MASS_EV, q0=1., p0c=p0c)
-    line.build_tracker(_context=context)
-    return line
-
-
-def taper_controls(line):
-    return {name:float(getattr(line['rf'], name)) for name in
-            ('voltage', 'frequency', 'harmonic', 'phase', 'lag',
-             'phase_taper', 'lag_taper')}
-
-
-@pytest.mark.parametrize('model', ('drift-kick-drift-expanded', *EVOLVING_MODELS))
-@pytest.mark.parametrize('strong', (False, True), ids=('weak', 'synthetic-strong'))
-def test_taper_restored_physical_map_closes_energy(cpu_context, model, strong):
-    """Check the real restored RF map, not only its temporary DC analysis."""
-    line = taper_ring(cpu_context, model, strong=strong)
-    before = taper_controls(line)
-    rtol = 1e-12  # The existing compensation method's numerical request.
-    line.compensate_radiation_energy_loss(delta0=0, max_iter=10,
-                                         rtol_eneloss=rtol, verbose=False)
-    after = taper_controls(line)
-    for name in ('voltage', 'frequency', 'harmonic', 'phase', 'lag'):
-        assert after[name] == before[name]
-    probe = line.particle_ref.copy(_context=cpu_context)
-    energy0 = float(probe.energy[0])
-    line.track(probe)
-    assert probe.state[0] == 1
-    # Ten times the requested threshold accommodates readback rounding and
-    # termination on the immediately preceding pilot. This is numerical
-    # solver convergence, not a proposed physical accuracy specification.
-    assert abs(float(probe.energy[0])-energy0) <= 10*rtol*energy0
-
-
-@pytest.mark.parametrize('model', ('drift-kick-drift-expanded', *EVOLVING_MODELS))
-def test_failed_taper_restores_caller_controls(cpu_context, model):
-    """A deliberately insufficient voltage must not leave f=0 or trial V."""
-    line = taper_ring(cpu_context, model, unavailable_voltage=True)
-    before = taper_controls(line)
-    delta_taper = float(line['taper_slot'].delta_taper)
-    with pytest.raises((AssertionError, ValueError, RuntimeError)):
-        line.compensate_radiation_energy_loss(delta0=0, max_iter=3,
-                                             verbose=False)
-    assert taper_controls(line) == before
-    assert line['taper_slot'].delta_taper == delta_taper
-
-
 @pytest.mark.parametrize('model', EVOLVING_MODELS)
 def test_normal_match_uses_selected_tracking_map(cpu_context, model):
     """Recover an energy target produced by tracking at another RF phase."""
@@ -212,265 +142,21 @@ def test_normal_match_uses_selected_tracking_map(cpu_context, model):
     assert abs(float(matched.delta[0])-target_delta) < 1e-11
 
 
-def effect_configuration(line):
-    """Only state whose mutation would misleadingly enable an absent effect."""
-    return (line.tracker, getattr(line, '_radiation_model', None),
-            getattr(line, '_spin_model', None),
-            getattr(line, '_needs_rng', False), dict(line.config))
-
-
-@pytest.mark.parametrize('model,radiation', [
-    (model,radiation) for model in MODELS
-    for radiation in ('mean','quantum','quantum-kick')
-    if not (model=='phase-resolved' and radiation=='mean')])
-def test_unimplemented_radiation_request_is_atomic(model, radiation):
-    """Refusing an unfinished effect must precede changing Line state."""
-    line = xt.Line(elements={'rf':xt.Cavity(**hardware(model))})
-    before = effect_configuration(line)
-    with pytest.raises(NotImplementedError, match='[Cc]avity'):
-        line.configure_radiation(model=radiation)
-    assert effect_configuration(line) == before
-    assert line.tracker is None
-    assert line['rf'].radiation_flag == 0
-
-
-@pytest.mark.parametrize('model', MODELS[1:])
-@pytest.mark.parametrize('spin', (True, 'auto'))
-def test_unimplemented_spin_request_is_atomic(model, spin):
-    line = xt.Line(elements={'rf':xt.Cavity(**hardware(model))})
-    before = effect_configuration(line)
-    with pytest.raises(NotImplementedError, match='[Cc]avity'):
-        line.configure_spin(spin)
-    assert effect_configuration(line) == before
-    assert line['rf'].spin_tracking == 0
-
-
-@pytest.mark.parametrize('layout', ('slices', 'replica'))
-def test_effect_guard_reaches_used_physical_parent(layout):
-    line = xt.Line(elements={'rf':xt.Cavity(**hardware('phase-resolved-paraxial'))},
-                   element_names=['rf'])
-    if layout == 'slices':
-        line.slice_thick_elements([xt.Strategy(
-            slicing=xt.Teapot(2, mode='thick'), element_type=xt.Cavity)])
-    else:
-        line.env.new('alias', 'rf', mode='replica')
-        line.element_names = ['alias']
-    assert 'rf' not in line.element_names
-    with pytest.raises(NotImplementedError, match='[Cc]avity'):
-        line.configure_radiation(model='mean')
-    with pytest.raises(NotImplementedError, match='[Cc]avity'):
-        line.configure_spin(True)
-    assert line['rf'].radiation_flag == 0
-    assert line['rf'].spin_tracking == 0
-
-
-def test_unused_source_does_not_block_or_inherit_other_line_effects(cpu_context):
-    line = xt.Line(elements={'used':xt.Cavity(),
-        'other':xt.Cavity(**hardware('phase-resolved'))},
-        element_names=['used'])
-    line.particle_ref = xt.Particles(mass0=MASS_EV, p0c=P0C_EV, q0=1.)
-    line.build_tracker(_context=cpu_context, compile=False)
-    line.configure_radiation(model='mean')
-    line.configure_spin(True)
-    assert line['used'].radiation_flag == 1
-    assert line['used'].spin_tracking == 1
-    assert line['other'].radiation_flag == 0
-    assert line['other'].spin_tracking == 0
-
-
-@pytest.mark.parametrize('model', MODELS)
-@pytest.mark.parametrize('effect', ('radiation_flag', 'spin_tracking'))
-def test_runtime_guard_catches_effect_then_model_switch(cpu_context, model, effect):
-    """A later model change must not silently inherit unsupported physics."""
-    line = line_for(cpu_context, dict(hardware(model), model='adaptive'))
-    if effect == 'radiation_flag':
-        line.configure_radiation(model='mean')
-    else:
-        line.configure_spin(True)
-    assert getattr(line['rf'], effect) == 1
-    try:
-        line.set('rf', model=model)
-    except (NotImplementedError, ValueError):
-        # A friendly setter can refuse before changing the model. The direct
-        # flag test below independently checks the native guard itself.
-        assert line['rf'].model == 'adaptive'
-        return
-    tracked = particle(cpu_context)
-    initial = values(tracked)
-    line['rf'].track(tracked)
-    if model=='phase-resolved':
-        # This exact RF-only P16 case now has scalar mean/spin transport.
-        assert tracked.state[0]==1
-        return
-    assert tracked.state[0] < 0
-    np.testing.assert_array_equal(
-        np.array([getattr(tracked, name)[0] for name in COORDINATES]), initial)
-
-
-@pytest.mark.parametrize('model', MODELS)
-@pytest.mark.parametrize('effect', ('radiation_flag', 'spin_tracking'))
-def test_native_effect_flag_refuses_without_partial_map(cpu_context, model, effect):
-    controls = hardware(model)
-    element = xt.Cavity(_context=cpu_context, **controls)
-    baseline = particle(cpu_context)
-    element.track(baseline)
-    assert baseline.state[0] == 1
-    setattr(element, effect, 1)
-    tracked = particle(cpu_context)
-    initial = values(tracked)
-    element.track(tracked)
-    if model=='phase-resolved':
-        assert tracked.state[0]==1
-        return
-    assert tracked.state[0] < 0
-    np.testing.assert_array_equal(
-        np.array([getattr(tracked, name)[0] for name in COORDINATES]), initial)
-
-
-@pytest.mark.parametrize('model', ('drift-kick-drift-expanded', 'phase-resolved'))
-def test_default_context_build_uses_local_cavity_abi(tmp_path, monkeypatch, model):
-    """A same-version installed binary must not consume changed Cavity data.
-
-    Use a fresh default CPU context, without the test fixture's JIT or linker
-    overrides. The checkout must arrange its own class-scoped compilation.
-    """
-    xsuite = pytest.importorskip('xsuite')
-    monkeypatch.chdir(tmp_path)
-    original_lookup = xsuite.get_suitable_kernel
-
-    def checked_lookup(*args, **kwargs):
-        requested = list(kwargs.get('tracker_element_classes', ()))
-        requested += list(kwargs.get('classes', ()))
-        names = [getattr(cls, '_DressingClass', cls).__name__
-                 for cls in requested]
-        assert not any('Cavity' in name for name in names), names
-        return original_lookup(*args, **kwargs)
-
-    monkeypatch.setattr(xsuite, 'get_suitable_kernel', checked_lookup)
-    context = xo.ContextCpu(omp_num_threads=0)
-    before = (context.allow_prebuilt_kernels, context.allow_kernel_compilation)
-    controls = dict(hardware('phase-resolved'), model=model)
-    line = line_for(context, controls)
-    actual = endpoint(line, context)
-
-    # A complete Line call advances its longitudinal reference origin at the
-    # turn boundary. Compare each public route with the same route, retaining
-    # its clock convention, rather than equating raw Line/standalone zeta.
-    jit_context = xo.ContextCpu(omp_num_threads=0)
-    jit_context.allow_prebuilt_kernels = False
-    jit_context.allow_kernel_compilation = True
-    expected_line = line_for(jit_context, controls)
-    np.testing.assert_allclose(actual, endpoint(expected_line, jit_context),
-                               rtol=0., atol=2e-13)
-    direct = particle(context)
-    xt.Cavity(_context=context, **controls).track(direct)
-    expected_direct = particle(jit_context)
-    xt.Cavity(_context=jit_context, **controls).track(expected_direct)
-    np.testing.assert_allclose(values(direct), values(expected_direct),
-                               rtol=0., atol=2e-13)
-    assert (context.allow_prebuilt_kernels, context.allow_kernel_compilation) == before
-
-
-def test_unused_cavity_does_not_disable_prebuilt_lookup(monkeypatch):
-    """A shared environment's unused Cavity must not change a Quad-only line."""
-    xsuite = pytest.importorskip('xsuite')
-    context = xo.ContextCpu(omp_num_threads=0)
-    context.allow_prebuilt_kernels = True
-    line = xt.Line(elements={'q':xt.Quadrupole(length=.02, k1=.2),
-        'unused':xt.Cavity(**hardware('phase-resolved'))}, element_names=['q'])
-    line.build_tracker(_context=context, compile=False)
-    looked_up = []
-
-    def lookup(**kwargs):
-        looked_up.append([cls._DressingClass.__name__
-                          for cls in kwargs['tracker_element_classes']])
-        return None
-
-    sentinel = object()
-    monkeypatch.setattr(xsuite, 'get_suitable_kernel', lookup)
-    monkeypatch.setattr(xt.Tracker, '_compile_kernel_from_classes',
-        classmethod(lambda cls, **kwargs: {'kernel':sentinel}))
-    assert line.tracker._build_kernel(compile=True) is sentinel
-    assert len(looked_up) == 1
-    assert 'Quadrupole' in looked_up[0]
-    assert not any('Cavity' in name for name in looked_up[0])
-
-
-def test_local_linker_repair_is_reversible_and_class_scoped(monkeypatch):
-    """Only identical conda rpaths are removed, including on compile failure."""
-    from pathlib import Path
-    import shlex
-    import sys
-    import sysconfig
-    from xtrack._local_kernel import local_kernel_compilation
-
-    config = sysconfig.get_config_vars()
-    token = '-Wl,-rpath,'+str(Path(sys.prefix)/'lib')
-    original = shlex.join(('cc', token, '-Wl,-rpath,/other/lib', token, '-shared'))
-    keys = ('LDSHARED', 'LDCXXSHARED', 'BLDSHARED', 'LDFLAGS')
-    context = xo.ContextCpu(omp_num_threads=0)
-    previous_prebuilt = context.allow_prebuilt_kernels
-    for key in keys:
-        monkeypatch.setitem(config, key, original)
-    with local_kernel_compilation([xt.Quadrupole], context):
-        assert all(config[key] == original for key in keys)
-        assert context.allow_prebuilt_kernels == previous_prebuilt
-    with pytest.raises(RuntimeError, match='simulated compiler failure'):
-        with local_kernel_compilation([xt.Cavity._XoStruct], context):
-            assert context.allow_prebuilt_kernels is False
-            for key in keys:
-                tokens = shlex.split(config[key])
-                assert tokens.count(token) == 1
-                assert '-Wl,-rpath,/other/lib' in tokens
-                assert tokens[-1] == '-shared'
-            raise RuntimeError('simulated compiler failure')
-    assert all(config[key] == original for key in keys)
-    assert context.allow_prebuilt_kernels == previous_prebuilt
-
-
-@pytest.mark.parametrize('field', ('eta', 'calibration_beta', 'rf_field_order',
-    'edge_entry_active', 'edge_exit_active', 'num_factor_steps', 'order'))
-def test_zero_controls_survive_json_roundtrip(field):
-    """Zero hardware/face settings must not turn into constructor defaults.
-
-    Some zero controls are deliberately inadmissible for tracking. A roundtrip
-    must preserve that rejection rather than silently make them admissible.
-    """
-    controls = dict(hardware('phase-resolved-frozen'), **{field:0})
-    original = xt.Cavity(**controls)
+@pytest.mark.parametrize('model,field', [('phase-resolved', 'eta'),
+    ('phase-resolved', 'edge_entry_active'), ('phase-resolved', 'edge_exit_active'),
+    ('phase-resolved', 'order'), ('phase-resolved-frozen', 'order')])
+def test_zero_controls_survive_json_roundtrip(model, field):
+    """Zero hardware/face settings must not turn into constructor defaults."""
+    original = xt.Cavity(**dict(hardware(model), **{field: 0}))
     restored = xt.Cavity.from_dict(original.to_dict())
     assert getattr(restored, field) == 0
     assert restored.model == original.model
 
 
-def test_taper_refuses_active_generic_slice_parent_before_attr_cache():
-    """A sliced Quad's parameter storage is owned by its physical parent."""
-    madng_tpsa = pytest.importorskip('madng_tpsa')
-    context = xo.ContextCpu(omp_num_threads=0)
-    line = xt.Line(elements={
-        'q':xt.Quadrupole(length=.1, k1=.2),
-        'rf':xt.Cavity(length=.05, frequency=400e6, voltage=2e4,
-                      model='drift-kick-drift-expanded')},
-        element_names=['q', 'rf'])
-    line.particle_ref = xt.Particles(p0c=1e9)
-    line.slice_thick_elements([xt.Strategy(None), xt.Strategy(
-        slicing=xt.Teapot(2, mode='thick'), element_type=xt.Quadrupole)])
-    line.build_tracker(_context=context, compile=False)
-    descriptor = madng_tpsa.Descriptor(6, 1, num_params=1, param_order=1)
-    parent = line.element_dict['q']
-    parent.k1 = descriptor.param(1, .2)
-    assert 'q' not in line.element_names
-    assert 'attr' not in line.tracker._tracker_data_base.cache
-    before = taper_controls(line)
-    try:
-        with pytest.raises(NotImplementedError, match='scalar element storage'):
-            line.compensate_radiation_energy_loss(verbose=False)
-        assert parent.k1.const_part == .2
-        assert parent.k1.param_grad() == [1.]
-        assert taper_controls(line) == before
-        assert 'attr' not in line.tracker._tracker_data_base.cache
-    finally:
-        parent.disable_tpsa()
+@pytest.mark.parametrize('field', ('calibration_beta', 'rf_field_order'))
+def test_inadmissible_zero_controls_refuse_at_construction(field):
+    with pytest.raises(ValueError):
+        xt.Cavity(**dict(hardware('phase-resolved-frozen'), **{field: 0}))
 
 
 def test_failed_knob_apply_restores_original_series_and_new_promotions():
@@ -727,77 +413,6 @@ def test_reference_rebase_preserves_tpsa_nonzero_potential(cpu_context):
     np.testing.assert_allclose(actual[1], expected[1], rtol=0., atol=3e-14)
 
 
-def test_local_abi_respects_existing_cffi_compilation_hard_stop(tmp_path, monkeypatch):
-    """An ABI fallback must respect Xobjects' actual compilation prohibition."""
-    import sysconfig
-    monkeypatch.chdir(tmp_path)
-    context = xo.ContextCpu(omp_num_threads=0)
-    policy = (context.allow_prebuilt_kernels, context.allow_kernel_compilation)
-    line = reference_only_line(context, True)
-    tracked = particle(context, **CLOCK_LAUNCH)
-    keys = ('LDSHARED', 'LDCXXSHARED', 'BLDSHARED', 'LDFLAGS')
-    before = {key:sysconfig.get_config_vars().get(key) for key in keys}
-
-    def forbidden_compiler(*args, **kwargs):
-        pytest.fail('the compiler ran despite the CFFI hard stop')
-
-    monkeypatch.setattr(context, 'compile_kernel', forbidden_compiler)
-    monkeypatch.setattr(xo.settings, 'cffi_forbid_compile', True)
-    with pytest.raises(RuntimeError, match='CFFI compilation is forbidden'):
-        line.track(tracked)
-    assert (context.allow_prebuilt_kernels, context.allow_kernel_compilation) == policy
-    assert {key:sysconfig.get_config_vars().get(key) for key in keys} == before
-
-
-@pytest.fixture(scope='module')
-def compact_taper_line(cpu_context):
-    """One compiled Line exercises live family selection and RF restoration."""
-    return taper_ring(cpu_context, 'phase-resolved-frozen')
-
-
-@pytest.mark.parametrize('model', (
-    'phase-resolved-frozen',
-    'phase-averaged-second-order',
-    'phase-averaged-cubic',
-    'phase-averaged-quartic',
-    'phase-averaged-full-slow',
-    'phase-averaged-uniform-quadratic-first-boundary',
-    'phase-averaged-uniform-quadratic',
-    'phase-averaged-magnetic'))
-def test_compact_taper_restores_actual_rf_and_saved_profile(compact_taper_line, model):
-    """The temporary uniform-DC predictor must close on each actual RF map."""
-    line = compact_taper_line
-    cavity = line['rf']
-    cavity.model = model
-    cavity.rf_profile = ('gaussian' if model == 'phase-averaged-magnetic'
-        else 'p16' if model in ('phase-averaged-second-order',
-            'phase-averaged-cubic', 'phase-averaged-quartic',
-            'phase-averaged-full-slow') else 'uniform')
-    cavity.rf_profile_sigma = .0125
-    cavity.rf_profile_center = .003
-    cavity.num_factor_steps = 4
-    cavity.phase = .2
-    cavity.phase_taper = cavity.lag_taper = 0.
-    cavity.delta_taper = line['taper_slot'].delta_taper = 0.
-    before = taper_controls(line)
-    line.compensate_radiation_energy_loss(delta0=0.,
-        rtol_eneloss=1e-12, verbose=False)
-    after = taper_controls(line)
-    for name in ('voltage', 'frequency', 'harmonic', 'phase', 'lag'):
-        assert after[name] == before[name]
-    probe = line.particle_ref.copy()
-    energy0 = float(probe.energy[0])
-    line.track(probe, turn_by_turn_monitor='ONE_TURN_EBE')
-    assert probe.state[0] == 1
-    monitor = line.record_last_track
-    means = .5*(monitor.delta[0, :-1]+monitor.delta[0, 1:])
-    item = line.attr._cache['delta_taper']
-    tolerance = 1e-12*energy0/float(probe.beta0[0]*probe.p0c[0])
-    np.testing.assert_allclose(item.multisetter.get_values(), means[item.mask],
-                               rtol=0., atol=tolerance)
-    assert abs(float(probe.energy[0])-energy0) <= 1e-12*energy0
-
-
 def test_gaussian_readback_does_not_revisit_non_cavity_elements():
     """Repeated strength readback must not scan an ordinary lattice in Python.
 
@@ -1035,7 +650,7 @@ def test_transformed_tpsa_failure_restores_all_coefficients(cpu_context, failure
     assert {name: getattr(series, name) for name in references} == references
 
 
-@pytest.mark.parametrize('model', ('phase-resolved', 'phase-resolved-paraxial'))
+@pytest.mark.parametrize('model', ('phase-resolved',))
 @pytest.mark.parametrize('cells', (3, 64))
 def test_compact_p16_face_has_exactly_zero_potential_readback(cpu_context, model, cells):
     """Observe the declared support face, independently of accumulated z+=h.

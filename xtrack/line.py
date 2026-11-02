@@ -5076,23 +5076,7 @@ class Line:
                     raise NotImplementedError('Cavity spin transport is not yet supported through slices')
                 pending.append(parent_name)
         for element in cavities:
-            if (element._model != 10 or element._rf_profile != 0
-                    or element._magnetic_profile != 0
-                    or element.rf_field_order != 2 or element._integrator not in (0, 6)):
-                raise NotImplementedError('Cavity spin transport requires the phase-resolved model '
-                                          'with the P16 profile and a uniform magnetic profile')
-            normal = np.asarray(element.knl)
-            skew = np.asarray(element.ksl)
-            if (np.any(normal[np.arange(len(normal)) != 1] != 0.)
-                    or np.any(skew[np.arange(len(skew)) != 1] != 0.)
-                    or (element.order < 1 and (np.any(normal != 0.) or np.any(skew != 0.)))):
-                raise NotImplementedError('Cavity spin transport supports only solenoid and '
-                                          'normal/skew quadrupole static strengths')
-            static = element.ks != 0. or np.any(normal != 0.) or np.any(skew != 0.)
-            if static and (element.edge_entry_active or element.edge_exit_active):
-                raise NotImplementedError('Cavity spin transport with static fields requires both faces disabled')
-            if static and element.transformations_active:
-                raise NotImplementedError('Cavity spin transport with static fields does not support alignment transformations')
+            element._check_spin_support()
 
     @doc_group("Radiation, Spin and Intra-Beam Scattering")
     def configure_radiation(self, model=None, model_beamstrahlung=None,

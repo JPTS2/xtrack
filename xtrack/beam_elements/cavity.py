@@ -7,6 +7,7 @@ from ..base_element import BeamElement, FloatOrTpsa
 from ..general import DEPRECATION_INFO_PREP_1_0
 from warnings import warn
 from math import isfinite
+import numpy as np
 import xobjects as xo
 import xtrack as xt
 from ._common import (
@@ -40,6 +41,16 @@ _CAVITY_MAGNETIC_PROFILE_IDS = {
 def _constant_part(value):
     """Inspect a knob's base point without stripping its stored dependence."""
     return getattr(value, 'const_part', value)
+
+
+_NONZERO_DEFAULTS = {
+    'eta': 1., 'calibration_beta': 1., 'rf_field_order': 2,
+    'edge_entry_active': 1, 'edge_exit_active': 1, 'order': 5,
+}
+
+
+def _default_eta(model):
+    return 0. if model == 'phase-resolved-frozen' else 1.
 
 
 def _default_rf_profile(model):
@@ -253,7 +264,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
             if handles is not None and any(handles):
                 raise ValueError('Cavity TPSA array handles cannot be imported')
             kwargs[name + '_tpsa'] = [0] * len(kwargs[name])
-        kwargs.setdefault('eta', 1.)
+        kwargs.setdefault('eta', _default_eta(model))
         kwargs.setdefault('counter_phase', 0.)
         kwargs.setdefault('calibration_beta', 1.)
         kwargs.setdefault('rf_field_order', 2)
@@ -285,19 +296,24 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
         self._check_physical_model()
 
-    def _check_physical_model(self):
+    def _check_physical_model(self, tracking=False):
         """Raise for settings the physical models cannot track."""
         if self._model < 10:
             if self._rf_profile == 2:
                 raise ValueError('Legacy Cavity models do not support a '
                                  'Gaussian RF profile')
+            if (_constant_part(self.ks) != 0. or np.any(np.asarray(self.knl) != 0.)
+                    or np.any(np.asarray(self.ksl) != 0.)):
+                raise ValueError('Legacy Cavity models do not support static '
+                                 'ks/knl/ksl strengths')
             return
         if self.rf_profile == 'gaussian':
             width = float(_constant_part(self.rf_profile_sigma))
             centre = float(_constant_part(self.rf_profile_center))
             if not (isfinite(width) and width > 0. and isfinite(centre)):
                 raise ValueError('A Gaussian RF profile requires a positive '
-                                 'finite rf_profile_sigma and finite centre')
+                                 'finite width rf_profile_sigma and a finite '
+                                 'centre rf_profile_center')
         if self.magnetic_profile == 'gaussian':
             if self._model != 10:
                 raise ValueError(f'{self.model} does not support a Gaussian '
@@ -305,12 +321,53 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
             width = float(_constant_part(self.magnetic_profile_sigma))
             if not (isfinite(width) and width > 0.):
                 raise ValueError('A Gaussian magnetic profile requires a '
-                                 'positive finite magnetic_profile_sigma')
+                                 'positive finite width magnetic_profile_sigma')
             if self.edge_entry_active or self.edge_exit_active:
                 raise ValueError('A Gaussian magnetic profile requires '
                                  'inactive entry/exit faces')
         if self.model == 'phase-resolved-frozen' and self.rf_profile != 'uniform':
             raise ValueError('phase-resolved-frozen requires rf_profile="uniform"')
+        # Length is commonly assigned after construction.
+        if tracking and not (isfinite(_constant_part(self.length))
+                             and _constant_part(self.length) > 0.):
+            raise ValueError(f'{self.model} requires a positive finite length')
+        if self.num_kicks < 0:
+            raise ValueError('num_kicks must be non-negative')
+        if self.rf_field_order != 2:
+            raise ValueError(f'{self.model} supports only rf_field_order=2')
+        if self.model == 'phase-resolved-frozen':
+            if self.integrator not in ('adaptive', 'geometric-kick-drift'):
+                raise ValueError('phase-resolved-frozen supports only the '
+                                 '"geometric-kick-drift" integrator')
+            if (_constant_part(self.eta) != 0.
+                    or _constant_part(self.calibration_beta) != 1.
+                    or not self.wave_number_from_frequency):
+                raise ValueError('phase-resolved-frozen requires eta=0, '
+                                 'calibration_beta=1 and the carrier from frequency')
+        elif self.integrator not in ('adaptive', 'gauss2'):
+            raise ValueError('phase-resolved supports only the "gauss2" integrator')
+        if self.spin_tracking:
+            self._check_spin_support()
+
+    def _check_spin_support(self):
+        """Raise if spin transport is not implemented for these settings."""
+        if (self._model != 10 or self._rf_profile != 0
+                or self._magnetic_profile != 0
+                or self.rf_field_order != 2 or self._integrator not in (0, 6)):
+            raise NotImplementedError('Cavity spin transport requires the phase-resolved model '
+                                      'with the P16 profile and a uniform magnetic profile')
+        normal = np.asarray(self.knl)
+        skew = np.asarray(self.ksl)
+        if (np.any(normal[np.arange(len(normal)) != 1] != 0.)
+                or np.any(skew[np.arange(len(skew)) != 1] != 0.)
+                or (self.order < 1 and (np.any(normal != 0.) or np.any(skew != 0.)))):
+            raise NotImplementedError('Cavity spin transport supports only solenoid and '
+                                      'normal/skew quadrupole static strengths')
+        static = self.ks != 0. or np.any(normal != 0.) or np.any(skew != 0.)
+        if static and (self.edge_entry_active or self.edge_exit_active):
+            raise NotImplementedError('Cavity spin transport with static fields requires both faces disabled')
+        if static and self.transformations_active:
+            raise NotImplementedError('Cavity spin transport with static fields does not support alignment transformations')
 
     @property
     def model(self):
@@ -421,25 +478,35 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     def to_dict(self, **kwargs):
         result = super().to_dict(**kwargs)
-        # Zero-valued fields are normally omitted. Here an explicit zero
-        # carrier differs physically from the constructor default None.
-        result['wave_number'] = self.wave_number
-        result['wave_number_from_frequency'] = int(self.wave_number_from_frequency)
-        result['nominal_energy_gain'] = self.nominal_energy_gain
-        result['nominal_energy_gain_from_rf'] = int(self.nominal_energy_gain_from_rf)
-        result['rf_profile'] = self.rf_profile
-        result['rf_profile_sigma'] = self.rf_profile_sigma
-        result['rf_profile_center'] = self.rf_profile_center
-        result['magnetic_profile'] = self.magnetic_profile
-        result['magnetic_profile_sigma'] = self.magnetic_profile_sigma
-        # Explicit zeros must not be replaced by nonzero constructor defaults.
-        for name in ('eta', 'calibration_beta', 'rf_field_order',
-                     'edge_entry_active', 'edge_exit_active', 'order'):
-            result[name] = getattr(self, name)
-        for name in ('knl_tpsa', 'ksl_tpsa', '_knl_tpsa', '_ksl_tpsa'):
-            result.pop(name, None)
-        result['knl'] = self._context.nparray_from_context_array(self._knl).tolist()
-        result['ksl'] = self._context.nparray_from_context_array(self._ksl).tolist()
+        # The base class omits zeros; these defaults are nonzero, so an
+        # explicit zero must be written and the default itself omitted.
+        defaults = dict(_NONZERO_DEFAULTS, eta=_default_eta(self.model))
+        for name, default in defaults.items():
+            value = getattr(self, name)
+            if value == default:
+                result.pop(name, None)
+            else:
+                result[name] = value
+        # An explicit zero carrier differs physically from the derived default.
+        for name, derived in (('wave_number', 'wave_number_from_frequency'),
+                              ('nominal_energy_gain', 'nominal_energy_gain_from_rf')):
+            result.pop(derived, None)
+            if getattr(self, derived):
+                result.pop(name, None)
+            else:
+                result[name] = getattr(self, name)
+        for name, default in (('rf_profile', _default_rf_profile(self.model)),
+                              ('magnetic_profile', 'uniform')):
+            if getattr(self, name) == default:
+                result.pop(name, None)
+            else:
+                result[name] = getattr(self, name)
+        for name in ('knl', 'ksl'):
+            values = self._context.nparray_from_context_array(getattr(self, '_' + name))
+            if np.any(values != 0.):
+                result[name] = values.tolist()
+            else:
+                result.pop(name, None)
         return result
 
     @classmethod
@@ -454,6 +521,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     def track(self, particles, *args, **kwargs):
 
+        self._check_physical_model(tracking=True)
         if _constant_part(self.harmonic) != 0:
             raise RuntimeError("Cavity cannot be used in standalone tracking "
                                "when harmonic is not zero. Please use the "

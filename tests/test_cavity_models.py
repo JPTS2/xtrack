@@ -11,8 +11,7 @@ import xtrack as xt
 from _cavity_context import native_context
 
 
-MODELS = ('phase-resolved', 'phase-resolved-paraxial',
-          'phase-resolved-longitudinal')
+MODELS = ('phase-resolved',)
 COORDS = ('x', 'px', 'y', 'py', 'zeta', 'delta')
 
 
@@ -29,13 +28,6 @@ def cavity(model='phase-resolved', **kwargs):
                     model=model, integrator='gauss2', num_kicks=16)
     if model == 'phase-resolved-frozen':
         controls.update(eta=0., integrator='geometric-kick-drift')
-    if model in ('phase-averaged-magnetic', 'phase-averaged-dipole',
-                 'phase-averaged-magnetic-fringe',
-                 'phase-averaged-moving-reference'):
-        controls.update(rf_profile='gaussian', rf_profile_sigma=.02,
-                        integrator='midpoint')
-    if model == 'phase-averaged-magnetic-fringe':
-        controls.update(magnetic_profile='gaussian', magnetic_profile_sigma=.015)
     controls.update(kwargs)
     return xt.Cavity(**controls)
 
@@ -62,11 +54,7 @@ def physical_coordinates(particles):
 def test_new_selectors_are_cavity_specific():
     for model in (name for name in xt.Cavity.get_available_models()
                   if name.startswith('phase-')):
-        if model=='phase-averaged-envelope':
-            with pytest.raises(ValueError,match='envelope_table'):
-                xt.Cavity(model=model,rf_profile='gaussian',rf_profile_sigma=.02)
-        else:
-            assert cavity(model).model == model
+        assert cavity(model).model == model
         assert model not in xt.CrabCavity.get_available_models()
     assert xt.Cavity().model == 'adaptive'
     assert xt.Cavity().integrator == 'adaptive'
@@ -75,17 +63,12 @@ def test_new_selectors_are_cavity_specific():
 
 
 @pytest.mark.parametrize('model,profile', [(None, 'p16'),
-    ('phase-resolved', 'p16'), ('phase-averaged-full-slow', 'p16'),
-    ('phase-resolved-frozen', 'uniform'),
-    ('phase-averaged-uniform-quadratic-first-boundary', 'uniform'),
-    ('phase-averaged-uniform-quadratic', 'uniform')])
+    ('phase-resolved', 'p16'), ('phase-resolved-frozen', 'uniform')])
 def test_builtin_profile_inference_is_stored(model, profile):
     rf = xt.Cavity(**({} if model is None else {'model': model}))
     assert rf.rf_profile == profile
     data = rf.to_dict()
-    assert data['rf_profile'] == profile
-    assert data['rf_profile_sigma'] == 0.
-    assert data['rf_profile_center'] == 0.
+    assert not {'rf_profile', 'rf_profile_sigma', 'rf_profile_center'} & set(data)
     restored = xt.Cavity.from_dict(data)
     assert restored.rf_profile == profile
     assert restored.rf_profile_sigma == restored.rf_profile_center == 0.
@@ -94,14 +77,15 @@ def test_builtin_profile_inference_is_stored(model, profile):
 @pytest.mark.parametrize('sigma', [None, 0., -.01, np.inf, np.nan])
 def test_gaussian_profile_never_guesses_a_width(sigma):
     with pytest.raises(ValueError, match='width'):
-        xt.Cavity(model='phase-averaged-magnetic', rf_profile='gaussian',
+        xt.Cavity(model='phase-resolved', rf_profile='gaussian',
                    rf_profile_sigma=sigma)
 
 
 def test_builtin_profile_model_changes_do_not_retarget_source():
     rf = cavity(rf_profile='uniform')
-    rf.model = 'phase-averaged-full-slow'
+    rf.model = 'phase-resolved-frozen'
     assert rf.rf_profile == 'uniform'
+    rf.model = 'phase-resolved'
     assert xt.Cavity.from_dict(rf.to_dict()).rf_profile == 'uniform'
     # Raw enum zero must not disappear and acquire a different inferred source.
     rf.rf_profile = 'p16'
@@ -112,7 +96,7 @@ def test_builtin_profile_model_changes_do_not_retarget_source():
 
 
 def test_gaussian_profile_live_metres_and_roundtrip():
-    line = xt.Line(elements={'rf': cavity('phase-averaged-magnetic',
+    line = xt.Line(elements={'rf': cavity('phase-resolved',
         rf_profile_sigma=.012, rf_profile_center=0.)})
     line.vars['sigma_m'] = .012
     line.vars['center_m'] = 0.
@@ -132,8 +116,7 @@ def test_gaussian_profile_live_metres_and_roundtrip():
 
 
 @pytest.mark.parametrize('model,profile', [('phase-resolved-frozen', 'p16'),
-    ('phase-averaged-uniform-quadratic', 'gaussian'),
-    ('phase-averaged-magnetic', 'p16'), ('adaptive', 'gaussian')])
+    ('phase-resolved-frozen', 'gaussian'), ('adaptive', 'gaussian')])
 def test_builtin_profile_model_mismatches_refuse(model, profile):
     with pytest.raises(ValueError):
         xt.Cavity(model=model, rf_profile=profile, rf_profile_sigma=.02)
@@ -154,7 +137,7 @@ def test_owned_ref_null_move_preserves_active_scalar_and_array_handles():
     context = xo.ContextCpu(omp_num_threads=0)
     buffer = context.new_buffer()
     rf.move(_buffer=buffer)
-    assert rf._buffer is buffer and rf.envelope_table is None
+    assert rf._buffer is buffer
     assert rf.__dict__['_tpsa_handles'] is scalar_owner
     assert rf.__dict__['_tpsa_array_handles'] is array_owner
     for name, raw in bits.items():
@@ -179,7 +162,24 @@ def test_null_owned_ref_ordinary_line_moves_to_common_buffer():
     assert rf._buffer is marker._buffer is line._buffer
     copied = rf.copy()
     copied.move(_buffer=context.new_buffer())
-    assert copied.envelope_table is None
+    assert copied.voltage == rf.voltage
+
+
+def test_serialization_writes_only_non_default_fields():
+    assert xt.Cavity().to_dict() == {'__class__': 'Cavity'}
+    legacy = xt.Cavity(voltage=1e6, frequency=4e8, phase=.3).to_dict()
+    assert set(legacy) == {'__class__', 'voltage', 'frequency', 'phase'}
+    # Explicit zeros of nonzero defaults, and explicit zero carriers, survive.
+    explicit = dict(model='phase-resolved', eta=0., calibration_beta=.9,
+        edge_entry_active=0, edge_exit_active=0, order=2,
+        knl=[0., .1, 0.], wave_number=0., nominal_energy_gain=0.,
+        rf_profile='uniform')
+    data = xt.Cavity(**explicit).to_dict()
+    assert set(data) == {'__class__', *explicit}
+    restored = xt.Cavity.from_dict(data)
+    for name, value in explicit.items():
+        np.testing.assert_array_equal(getattr(restored, name), value)
+    assert restored.to_dict() == data
 
 
 def test_physical_controls_round_trip_and_carrier_origin():
@@ -228,21 +228,7 @@ def test_frozen_nominal_programme_live_expression():
     assert not line['rf'].nominal_energy_gain_from_rf
 
 
-@pytest.mark.parametrize('controls', [dict(ks=.1), dict(knl=[0., .1]),
-    dict(ksl=[0., .1]), dict(wave_number=0.), dict(rf_field_order=0),
-    dict(radiation_flag=1), dict(spin_tracking=1)])
-def test_private_diagnostic_does_not_ignore_new_public_controls(controls):
-    from xtrack.beam_elements.cavity_native import prepare_p16_native_data
-
-    rf = xt.Cavity(length=.05, frequency=400e6, voltage=2e4,
-                    absolute_time=True, **controls)
-    with pytest.raises(ValueError, match='private native diagnostic'):
-        prepare_p16_native_data(rf, particle(), eta=.25, radius_m=.001)
-
-
-@pytest.mark.parametrize('model', (*MODELS, 'phase-averaged-second-order',
-                                  'phase-averaged-cubic',
-                                  'phase-averaged-quartic'))
+@pytest.mark.parametrize('model', (*MODELS, 'phase-resolved-frozen'))
 def test_thin_source_strength_readback_follows_parent_model(model_context, model):
     line = xt.Line(elements={'rf': cavity(model, voltage=20e3,
                                          _context=model_context,
@@ -290,28 +276,6 @@ def test_source_interval_alignment_readback_is_live():
     assert all(not line[name].rot_and_shift_from_parent
                for name in line.element_names
                if isinstance(line[name], xt.DriftSliceCavity))
-
-
-@pytest.mark.parametrize('model', MODELS)
-def test_saved_static_taper_is_physical_field_setting(model_context, model):
-    controls = dict(voltage=0., frequency=0., ks=.2,
-                    knl=[.0001, .012], ksl=[-.0002, -.003])
-    prepared = cavity(model, _context=model_context, delta_taper=.07, **controls)
-    explicit = cavity(model, _context=model_context, delta_taper=0.,
-        **dict(controls, ks=.2*1.07,
-               knl=np.array(controls['knl'])*1.07,
-               ksl=np.array(controls['ksl'])*1.07))
-    initial = particle(model_context)
-    for no_sr in (True, False):
-        line = xt.Line(elements={'rf': prepared})
-        line.build_tracker(_context=model_context)
-        line.config.XTRACK_MULTIPOLE_NO_SYNRAD = no_sr
-        a = initial.copy(); b = initial.copy()
-        line.track(a, ele_start=0, ele_stop=1)
-        explicit.track(b)
-        assert a.state[0] == b.state[0] == 1
-        np.testing.assert_allclose(coordinates(a), coordinates(b),
-                                   rtol=0., atol=2e-13)
 
 
 @pytest.mark.parametrize('model', MODELS)
@@ -439,23 +403,11 @@ def test_old_serialized_slice_distance_loads(kind):
     assert restored.slice_offset == .025
 
 
-@pytest.mark.parametrize('model', ('phase-resolved-frozen',
-                                  'phase-averaged-cubic',
-                                  'phase-averaged-quartic',
-                                  'phase-averaged-magnetic-fringe',
-                                  'phase-averaged-moving-reference'))
-@pytest.mark.parametrize('mode', ('thick', 'thin'))
+@pytest.mark.parametrize('model,mode', [('phase-resolved-frozen', 'thick'),
+    ('phase-resolved-frozen', 'thin'), ('phase-resolved', 'thick')])
 def test_finite_parent_words_survive_layout_partition(model_context, model, mode):
-    controls = dict(num_kicks=4, num_factor_steps=1,
+    controls = dict(num_kicks=4,
                     edge_entry_active=0, edge_exit_active=1)
-    if model in ('phase-averaged-magnetic-fringe',
-                 'phase-averaged-moving-reference'):
-        controls.update(edge_exit_active=0, ks=.2,
-                        knl=[0., .01], ksl=[0., .002])
-    if model == 'phase-averaged-moving-reference':
-        controls.update(reference_x=2e-4, reference_y=-1e-4,
-                        reference_px=3e-4, reference_py=-2e-4,
-                        num_reference_steps=4)
     rf = cavity(model, _context=model_context, **controls)
     line = xt.Line(elements={'rf': rf, 'end': xt.Marker(_context=model_context)})
     line.particle_ref = particle(model_context)
@@ -559,78 +511,21 @@ def test_legacy_selector_refuses_new_static_strengths(model_context):
         else:
             getattr(rf, name)[:len(value)] = value
         rejected = initial.copy()
-        rf.track(rejected)
-        assert rejected.state[0] == -99744
+        with pytest.raises(ValueError, match='static'):
+            rf.track(rejected)
         np.testing.assert_array_equal(coordinates(rejected), coordinates(initial))
-
-
-def test_taper_saved_profile_uses_restored_actual_map(model_context):
-    from test_cavity_integration_review import taper_ring
-
-    line = taper_ring(model_context, 'phase-resolved', strong=True)
-    line.compensate_radiation_energy_loss(delta0=0., max_iter=10,
-                                         rtol_eneloss=1e-12, verbose=False)
-    probe = line.particle_ref.copy()
-    energy0 = float(probe.energy[0])
-    line.track(probe, turn_by_turn_monitor='ONE_TURN_EBE')
-    assert probe.state[0] == 1
-    monitor = line.record_last_track
-    means = .5*(monitor.delta[0, :-1]+monitor.delta[0, 1:])
-    item = line.attr._cache['delta_taper']
-    tolerance = 1e-12*energy0/float(probe.beta0[0]*probe.p0c[0])
-    np.testing.assert_allclose(item.multisetter.get_values(), means[item.mask],
-                               rtol=0., atol=tolerance)
-    assert abs(float(probe.energy[0])-energy0) <= 1e-12*energy0
-
-
-def test_default_taper_zero_mean_uses_restored_actual_map(model_context):
-    from test_cavity_integration_review import taper_ring
-
-    line = taper_ring(model_context, 'phase-resolved', strong=True)
-    line.compensate_radiation_energy_loss(max_iter=10,
-                                         rtol_eneloss=1e-12, verbose=False)
-    entrance_delta = float(line.record_last_track.delta[0, 0])
-    probe = line.particle_ref.copy()
-    probe.delta = entrance_delta
-    energy0 = float(probe.energy[0])
-    delta_tolerance = 1e-12*energy0/float(
-        probe.p0c[0]*probe.beta0[0]*probe.rvv[0])
-    line.track(probe, turn_by_turn_monitor='ONE_TURN_EBE')
-    assert probe.state[0] == 1
-    monitor = line.record_last_track
-    means = .5*(monitor.delta[0, :-1]+monitor.delta[0, 1:])
-    positions = np.r_[line._get_s_elements(), line.get_length()]
-    mean_delta = np.sum(means*np.diff(positions))/positions[-1]
-    assert abs(mean_delta) <= delta_tolerance
-    item = line.attr._cache['delta_taper']
-    np.testing.assert_allclose(item.multisetter.get_values(), means[item.mask],
-                               rtol=0., atol=delta_tolerance)
-    assert abs(float(probe.energy[0])-energy0) <= 1e-12*energy0
-
-
-def test_taper_refuses_slice_before_inspecting_numeric_storage(model_context):
-    line = xt.Line(elements={'rf': cavity(_context=model_context)})
-    line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
-    line.build_tracker(_context=model_context)
-    assert line.tracker._tracker_data_base.cache.get('attr') is None
-    with pytest.raises(ValueError, match='Cavity slices'):
-        line.compensate_radiation_energy_loss(verbose=False)
-    assert line.tracker._tracker_data_base.cache.get('attr') is None
 
 
 @pytest.mark.parametrize('mode', [None, 'thick', 'thin'])
 def test_gaussian_magnetic_integrated_strength_readback(mode):
     from math import erf, sqrt, pi
-    rf = cavity('phase-averaged-magnetic-fringe', ks=.4,
-                knl=[0., .03], ksl=[0., -.02])
-    assert rf.edge_entry_active == rf.edge_exit_active == 0
+    rf = cavity(ks=.4, knl=[0., .03], ksl=[0., -.02],
+                magnetic_profile='gaussian', magnetic_profile_sigma=.015,
+                edge_entry_active=0, edge_exit_active=0)
     data = rf.to_dict()
     restored = xt.Cavity.from_dict(data)
     assert restored.magnetic_profile == 'gaussian'
     assert restored.magnetic_profile_sigma == .015
-    rf.model = 'phase-resolved-paraxial'
-    assert rf.magnetic_profile == 'gaussian'
-    rf.model = 'phase-averaged-magnetic-fringe'
     line = xt.Line(elements={'rf': rf})
     if mode:
         line.slice_thick_elements([xt.Strategy(xt.Teapot(3, mode=mode))])
@@ -668,34 +563,7 @@ def test_gaussian_magnetic_integrated_strength_readback(mode):
 @pytest.mark.parametrize('width', [None, 0., -.01, np.inf, np.nan])
 def test_gaussian_magnetic_width_is_explicit(width):
     with pytest.raises(ValueError, match='width'):
-        cavity('phase-averaged-magnetic-fringe', magnetic_profile_sigma=width)
+        cavity(magnetic_profile='gaussian', magnetic_profile_sigma=width,
+               edge_entry_active=0, edge_exit_active=0)
 
 
-@pytest.mark.parametrize('count', [1, 4, 8])
-def test_moving_reference_programme_metadata(count):
-    controls = dict(model='phase-averaged-moving-reference', rf_profile='gaussian',
-        rf_profile_sigma=.012, length=.05, reference_x=.0002,
-        reference_y=-.0001, reference_px=.0003, reference_py=-.0002,
-        num_reference_steps=count)
-    rf = xt.Cavity(**controls)
-    assert rf.magnetic_profile == 'uniform'
-    for copied in (rf.copy(), xt.Cavity.from_dict(rf.to_dict())):
-        for name in ('reference_x', 'reference_y', 'reference_px',
-                     'reference_py', 'num_reference_steps'):
-            assert getattr(copied, name) == controls[name]
-    rf.model = 'phase-averaged-magnetic'
-    assert rf.reference_x == controls['reference_x']
-    rf.model = 'phase-averaged-moving-reference'
-    assert rf.rf_profile == 'gaussian'
-    line = xt.Line(elements={'rf': rf})
-    line.vars['fixed_reference_x'] = .0004
-    line.element_refs['rf'].reference_x = line.vars['fixed_reference_x']
-    assert rf.reference_x == .0004
-    line.vars['fixed_reference_x'] = -.0005
-    assert rf.reference_x == -.0005
-
-
-@pytest.mark.parametrize('count', [0, -1, 1.5])
-def test_moving_reference_requires_positive_integer_steps(count):
-    with pytest.raises(ValueError, match='num_reference_steps'):
-        xt.Cavity(num_reference_steps=count)

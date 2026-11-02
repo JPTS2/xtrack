@@ -287,6 +287,14 @@ class Tracker:
             self._tracker_data_cache = None
         self._is_invalidated = True
 
+    def _physical_cavities(self):
+        # Cached so legacy-only lines pay nothing per call; a cavity switched
+        # to a physical model afterwards still meets the kernel's refusal.
+        if not hasattr(self, '_physical_cavity_cache'):
+            self._physical_cavity_cache = tuple(
+                ee for ee in self.line._used_cavity_owners() if ee._model >= 10)
+        return self._physical_cavity_cache
+
     def _check_invalidated(self):
         if hasattr(self, '_is_invalidated') and self._is_invalidated:
             raise RuntimeError(
@@ -294,6 +302,8 @@ class Tracker:
                 "Please rebuild the tracker, for example using `line.build_tracker(...)`.")
 
     def _track(self, particles, *args, **kwargs):
+        for cavity in self._physical_cavities():
+            cavity._check_physical_model(tracking=True)
         original_tpsa_track = self.config.XTRACK_TPSA_TRACK
         self.config.XTRACK_TPSA_TRACK = isinstance(particles, ParticlesTpsa)
         try:

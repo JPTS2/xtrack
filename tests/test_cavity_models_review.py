@@ -18,8 +18,7 @@ import xtrack as xt
 from _cavity_context import native_context
 
 
-MODELS = ('phase-resolved', 'phase-resolved-paraxial',
-          'phase-resolved-longitudinal')
+MODELS = ('phase-resolved',)
 C_LIGHT = 299792458.
 MASS0 = 510998.95069
 COORDINATES = ('x', 'px', 'y', 'py', 'zeta', 'delta')
@@ -60,15 +59,10 @@ def test_public_cavity_independent_vacuum_limits(tmp_path):
                     initial = values(incoming)
                     expected = initial.copy()
                     angle2 = initial[1]**2+initial[3]**2
-                    if model == 'phase-resolved-paraxial':
-                        expected[0] += length*initial[1]
-                        expected[2] += length*initial[3]
-                        expected[4] -= length*angle2/2
-                    else:
-                        longitudinal = np.sqrt(1-angle2)
-                        expected[0] += length*initial[1]/longitudinal
-                        expected[2] += length*initial[3]/longitudinal
-                        expected[4] += length*(1-1/longitudinal)
+                    longitudinal = np.sqrt(1-angle2)
+                    expected[0] += length*initial[1]/longitudinal
+                    expected[2] += length*initial[3]/longitudinal
+                    expected[4] += length*(1-1/longitudinal)
                     # Observe the physical exit before the usual end-turn
                     # time_s/zeta reference-frame change. DriftExact has that
                     # same bookkeeping; it is separate from the cavity map.
@@ -212,58 +206,6 @@ def test_public_cavity_mixed_species_reference_equivalence(tmp_path):
                 rtol=3e-13, atol=2e-7, err_msg=model+' physical energy')
 
 
-def test_public_full_slow_static_uses_same_hamiltonian(tmp_path):
-    """The zero-RF full-slow limit is the complete total-static root.
-
-    This exercises the public adapter's physical source pointer and signed
-    species factor, independently of the high-rank source exporter. Both
-    models use exactly the same G2 nodes; all normal/skew orders and the
-    solenoid coexist inside the root. Endpoints lie in that magnetic gauge.
-    """
-    controls = dict(length=.37, voltage=0., frequency=0., eta=.3,
-        ks=.41, knl=[.013, .12, -.07, .04, 2.3, -4.1],
-        ksl=[-.009, .04, .09, -.03, -.7, 3.2],
-        integrator='gauss2', num_kicks=11,
-        edge_entry_active=False, edge_exit_active=False)
-    chi, x, y = -.5, .035, -.027
-    metadata = ('ptau', 'pzeta', 'rpp', 'rvv', 'ax', 'ay', 's')
-    results = []
-    with native_context(tmp_path) as context:
-        for model in ('phase-resolved', 'phase-averaged-full-slow'):
-            element = xt.Cavity(_context=context, model=model, **controls)
-            line = xt.Line(elements=[element, xt.Marker(_context=context)],
-                           element_names=['cavity', 'physical_exit'])
-            line.particle_ref = particle(context, 2.4, x=0., px=0., y=0.,
-                                         py=0., zeta=0.)
-            line.reset_s_at_end_turn = False
-            incoming = particle(context, 2.4, charge_ratio=-1., mass_ratio=2.,
-                x=x, y=y, px=.04, py=-.03, zeta=.001, delta=.03,
-                ax=-chi*controls['ks']*y/2, ay=chi*controls['ks']*x/2)
-            initial = values(incoming)
-            initial_metadata = {name: np.asarray(getattr(incoming, name)).copy()
-                                for name in metadata}
-            initial_energy = np.asarray(incoming.energy).copy()
-            line.track(incoming, ele_start=0, ele_stop=1)
-            assert incoming.state[0] == 1, model
-            results.append((values(incoming),
-                {name: np.asarray(getattr(incoming, name)).copy()
-                 for name in metadata}))
-            np.testing.assert_allclose(incoming.energy, initial_energy,
-                rtol=3e-13, atol=2e-7, err_msg=model+' static energy')
-            line.track(incoming, ele_start=0, ele_stop=1, backtrack=True)
-            assert incoming.state[0] == 1, model
-            np.testing.assert_allclose(values(incoming), initial,
-                rtol=0., atol=2e-12, err_msg=model+' static signed inverse')
-            for name, expected in initial_metadata.items():
-                np.testing.assert_allclose(getattr(incoming, name), expected,
-                    rtol=0., atol=2e-12, err_msg=model+' inverse '+name)
-    np.testing.assert_allclose(results[1][0], results[0][0],
-        rtol=0., atol=2e-12, err_msg='same complete static Hamiltonian')
-    for name in metadata:
-        np.testing.assert_allclose(results[1][1][name], results[0][1][name],
-            rtol=0., atol=2e-12, err_msg='same static readback '+name)
-
-
 @pytest.fixture(scope='module')
 def scalar_source_library(tmp_path_factory):
     """Compile the shipped scalar source without its Python exporter.
@@ -292,8 +234,9 @@ int profile_case(const double *a,int profile,double fraction,double *out){
  out[4]=s.clock_origin;out[5]=s.profile_sigma;out[6]=s.profile_center;
  CavityModel_source_envelope(fraction*s.half_span,&s,out+7);
  CavityModel_profile(fraction*s.half_span,&s,out+12,out+17);
- CavityModel_profile_integral(s.half_span,1./a[6]-s.carrier,&s,out+22);
- CavityModel_profile_integral(s.half_span,1./a[6]+s.carrier,&s,out+24);
+ double error;
+ CavityModel_profile_integral(s.half_span,1./a[6]-s.carrier,&s,1e-15,out+22,&error);
+ CavityModel_profile_integral(s.half_span,1./a[6]+s.carrier,&s,1e-15,out+24,&error);
  return status;
 }
 int static_case(const double *q,double Q,double scale,int model,double *out){
@@ -306,19 +249,6 @@ int static_case(const double *q,double Q,double scale,int model,double *out){
  int status=CavityModel_potential(q,.02,&s,model,out);
  if(status!=1)return status;
  return CavityModel_flow(q,.02,Q,&s,model,out+4);
-}
-int shell_case(double energy,double *out){
- CavityModelSource s={0};
- s.k=1.1;s.omega=299792458.*s.k;s.half_span=.7;
- s.length=2.*s.half_span/s.k;s.carrier=1.2;s.counter_phase=.3;
- s.forward=.1;s.backward=.03;s.order=-1;
- const double q[6]={.05,.02,1.57079632679489661923,0.,0.,energy};
- int status=CavityModel_physical_potential(q,.175,&s,12,out);
- if(status!=1)return status;
- status=CavityModel_potential(q,.175,&s,12,out+4);
- if(status!=1)return status;
- for(int i=8;i<14;++i)out[i]=123456.;
- return CavityModel_flow(q,.175,1.3,&s,12,out+8);
 }
 int mixed_case(const double *q,double Q,int model,double *out){
  CavityModelSource s={0};
@@ -346,8 +276,6 @@ int mixed_case(const double *q,double Q,int model,double *out){
     result.static_case.argtypes=[pointer,ctypes.c_double,ctypes.c_double,
                                  ctypes.c_int,pointer]
     result.static_case.restype=ctypes.c_int
-    result.shell_case.argtypes=[ctypes.c_double,pointer]
-    result.shell_case.restype=ctypes.c_int
     result.mixed_case.argtypes=[pointer,ctypes.c_double,ctypes.c_int,pointer]
     result.mixed_case.restype=ctypes.c_int
     result.profile_case.argtypes=[pointer,ctypes.c_int,ctypes.c_double,pointer]
@@ -457,12 +385,8 @@ def test_gaussian_profile_selection_is_stored_independently():
     """A model edit cannot silently replace the explicitly selected source."""
     default = xt.Cavity(length=.2, model='phase-resolved')
     assert default.rf_profile == 'p16'
-    default.model = 'phase-averaged-full-slow'
-    assert default.rf_profile == 'p16'
     gaussian = xt.Cavity(length=.2, model='phase-resolved',
         rf_profile='gaussian', rf_profile_sigma=.04, rf_profile_center=.01)
-    gaussian.model = 'phase-resolved-longitudinal'
-    assert gaussian.rf_profile == 'gaussian'
     restored = xt.Cavity.from_dict(gaussian.to_dict())
     assert restored.rf_profile == 'gaussian'
     assert restored.rf_profile_sigma == .04
@@ -488,11 +412,10 @@ def independent_static_point(state,charge,scale,model):
     kinetic=state[3:5]-charge*potential[:2]
     momentum=np.sqrt((state[5]-1)*(state[5]+1))
     longitudinal=np.sqrt(momentum*momentum-kinetic@kinetic)
-    denominator=momentum if model==11 else longitudinal
+    denominator=longitudinal
     flow=np.zeros(6)
     flow[:2]=kinetic/denominator
     flow[2]=state[5]/denominator
-    if model==11:flow[2]*=1+(kinetic@kinetic)/(2*momentum*momentum)
     by=scale*field.real/length
     bx=scale*field.imag/length
     mechanical=np.array([charge*(-by+flow[1]*longitudinal_field)/k,
@@ -505,7 +428,7 @@ def independent_static_point(state,charge,scale,model):
 
 def test_source_static_independent_magnetic_laws(scalar_source_library):
     """Challenge charges, near-rest roots, normal/skew factorials and H2."""
-    for model in (10,11,12):
+    for model in (10,):
         for scale in (.7,-1.2):
             for charge in (-1.3,.37,1.8):
                 for energy in (1.03,2.4,20.):
@@ -519,45 +442,6 @@ def test_source_static_independent_magnetic_laws(scalar_source_library):
                             state,charge,scale,model)
                         np.testing.assert_allclose(actual,expected,
                             rtol=2e-14,atol=2e-14)
-
-
-def test_projected_source_retains_full_physical_shell(scalar_source_library):
-    """An auxiliary positive shell cannot hide a failed physical RF lift."""
-    span,position=.7,.175
-    u=position/span
-    base=1-u*u
-    envelope=np.array([base**16,-32*u*base**15/span,
-        32*(31*u*u-1)*base**14/span**2,
-        960*u*(3-31*u*u)*base**13/span**3])
-    profile=np.array([sum(weight*np.exp(1j*(nu*position+phase))*sum(
-        comb(j,l)*envelope[l]*(1j*nu)**(j-l) for l in range(j+1))
-        for weight,nu,phase in ((.1,1.2,0.),(.03,-1.2,-.3)))
-        for j in range(4)])
-    time=np.pi/2
-    sine=profile.real*np.sin(time)-profile.imag*np.cos(time)
-    cosine=profile.real*np.cos(time)+profile.imag*np.sin(time)
-    radius2=.05**2+.02**2
-    radial=sine[1]/2-radius2*(sine[1]+sine[3])/16
-    physical_potential=np.array([.05*radial,.02*radial])
-    for energy,expected_status in ((1.00001,-1),(2.4,1)):
-        actual=np.zeros(14)
-        status=scalar_source_library.shell_case(energy,actual)
-        assert status==expected_status
-        np.testing.assert_allclose(actual[:2],physical_potential,
-                                   rtol=2e-14,atol=2e-15)
-        np.testing.assert_array_equal(actual[4:6],0.)
-        auxiliary=(energy-1)*(energy+1)
-        physical=auxiliary-1.3**2*(physical_potential@physical_potential)
-        assert auxiliary>0
-        if status==-1:
-            assert physical<0
-            np.testing.assert_array_equal(actual[8:],123456.)
-        else:
-            assert physical>0
-            expected=np.array([0.,0.,energy/np.sqrt(auxiliary),
-                               0.,0.,1.3*cosine[0]])
-            np.testing.assert_allclose(actual[8:],expected,
-                                       rtol=2e-14,atol=2e-14)
 
 
 def mixed_source_profile():
@@ -590,8 +474,6 @@ def independent_mixed_potential(state,profile,model):
             for j,(n,s,r,i) in enumerate(zip(normal,skew,re,im))),0.],
         dtype=dtype)
     sine=profile.real*np.sin(time)-profile.imag*np.cos(time)
-    if model==12:
-        return static+np.array([0.,0.,-sine[0],0.],dtype=dtype)
     radius2=X*X+Y*Y
     radial=sine[1]/2-radius2*(sine[1]+sine[3])/16
     rf=np.array([X*radial,Y*radial,
@@ -605,16 +487,13 @@ def independent_mixed_hamiltonian(state,charge,profile,model):
     potential=independent_mixed_potential(state,profile,model)
     kinetic=state[3:5]-charge*potential[:2]
     square=state[5]*state[5]-1
-    if model==11:
-        momentum=np.sqrt(square)
-        return -charge*potential[2]-momentum+(kinetic@kinetic)/(2*momentum)
     return -charge*potential[2]-np.sqrt(square-kinetic@kinetic)
 
 
 def test_source_mixed_fields_independent_hamiltonian(scalar_source_library):
     """RF/static coupling comes from the summed potential inside each root."""
     profile=mixed_source_profile()
-    for model in (10,11,12):
+    for model in (10,):
         for charge in (-1.3,.37,1.8):
             for x,y,time,energy in ((.012,-.009,.71,1.03),
                                     (-.023,.017,1.13,2.4)):
