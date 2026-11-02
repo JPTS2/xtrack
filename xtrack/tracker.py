@@ -291,9 +291,26 @@ class Tracker:
         # Cached so legacy-only lines pay nothing per call; a cavity switched
         # to a physical model afterwards still meets the kernel's refusal.
         if not hasattr(self, '_physical_cavity_cache'):
-            self._physical_cavity_cache = tuple(
+            cavities = tuple(
                 ee for ee in self.line._used_cavity_owners() if ee._model >= 10)
+            self._physical_cavity_cache = cavities
+            self._physical_cavity_sliced = any(
+                isinstance(getattr(self.line[nn], '_parent', None), xt.Cavity)
+                and self.line[nn]._parent._model >= 10
+                for nn in self.line.element_names) if cavities else False
         return self._physical_cavity_cache
+
+    def _check_cavity_spin_call(self, particles):
+        # Line-level spin conditions that can change after configure_spin.
+        if isinstance(particles, ParticlesTpsa):
+            raise NotImplementedError('Cavity spin transport is scalar only, not TPSA')
+        if any(name.startswith('FREEZE_VAR_') and value
+               for name, value in self.config.items()):
+            raise NotImplementedError('Cavity spin transport does not support '
+                                      'frozen-coordinate analysis')
+        if self._physical_cavity_sliced:
+            raise NotImplementedError('Cavity spin transport is not yet '
+                                      'supported through slices')
 
     def _check_invalidated(self):
         if hasattr(self, '_is_invalidated') and self._is_invalidated:
@@ -302,8 +319,11 @@ class Tracker:
                 "Please rebuild the tracker, for example using `line.build_tracker(...)`.")
 
     def _track(self, particles, *args, **kwargs):
-        for cavity in self._physical_cavities():
+        cavities = self._physical_cavities()
+        for cavity in cavities:
             cavity._check_physical_model(tracking=True)
+        if cavities and getattr(self.line, '_spin_model', None) is not None:
+            self._check_cavity_spin_call(particles)
         original_tpsa_track = self.config.XTRACK_TPSA_TRACK
         self.config.XTRACK_TPSA_TRACK = isinstance(particles, ParticlesTpsa)
         try:

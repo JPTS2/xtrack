@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 import xtrack as xt
-from _cavity_context import native_context
+from _cavity_context import kernel_context
 
 
 def eligible_line(**changes):
@@ -63,7 +63,7 @@ def test_supported_spin_configuration_and_disable(strength):
 
 
 def test_later_unsupported_mutation_refuses_before_tracking(tmp_path):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line=eligible_line()
         line.build_tracker(_context=context)
         line.configure_spin(True)
@@ -79,7 +79,7 @@ def test_later_unsupported_mutation_refuses_before_tracking(tmp_path):
 @pytest.mark.parametrize('changes',[dict(integrator='gauss2'),
                                     dict(rf_field_order=1),dict(eta=.3)])
 def test_later_invalid_configuration_raises_before_tracking(tmp_path,changes):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line=eligible_line(model='phase-resolved-frozen')
         line.build_tracker(_context=context)
         for name,value in changes.items():
@@ -88,3 +88,27 @@ def test_later_invalid_configuration_raises_before_tracking(tmp_path,changes):
         with pytest.raises(ValueError):
             line.track(particle)
         assert particle.state[0]==1
+
+
+def test_slicing_after_spin_configuration_refuses_before_tracking(tmp_path):
+    with kernel_context(tmp_path) as context:
+        line=eligible_line()
+        line.configure_spin(True)
+        line.slice_thick_elements([xt.Strategy(xt.Teapot(2))])
+        line.build_tracker(_context=context)
+        particle=xt.Particles(_context=context,p0c=14e6,mass0=xt.ELECTRON_MASS_EV,
+                              x=2e-4,spin_z=1.)
+        with pytest.raises(NotImplementedError,match='through slices'):
+            line.track(particle)
+        assert particle.state[0]==1
+
+
+def test_tpsa_tracking_with_spin_refuses_before_tracking(tmp_path):
+    import xtrack.tpsa as xtpsa
+    with kernel_context(tmp_path) as context:
+        line=eligible_line()
+        line.build_tracker(_context=context)
+        line.configure_spin(True)
+        with pytest.raises(NotImplementedError,match='not TPSA'):
+            line.track(xtpsa.ParticlesTpsa(order=1,p0c=14e6,
+                                           mass0=xt.ELECTRON_MASS_EV,x=2e-4))
