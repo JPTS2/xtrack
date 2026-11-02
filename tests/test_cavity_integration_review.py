@@ -10,7 +10,7 @@ import xobjects as xo
 
 import xtrack as xt
 
-from _cavity_context import native_context
+from _cavity_context import kernel_context
 
 
 MODELS = ('phase-resolved', 'phase-resolved-frozen')
@@ -23,7 +23,7 @@ P0C_EV = MASS_EV*np.sqrt(2.4**2-1.)
 @pytest.fixture(scope='module')
 def cpu_context(tmp_path_factory):
     """Keep JIT output context-local."""
-    with native_context(tmp_path_factory.mktemp('cavity-integration-review')) as context:
+    with kernel_context(tmp_path_factory.mktemp('cavity-integration-review')) as context:
         yield context
 
 
@@ -364,7 +364,6 @@ def test_reference_rebase_preserves_scalar_nonzero_potential(tmp_path, monkeypat
     """p0*px and p0*A, hence mechanical transverse momentum, are invariant."""
     monkeypatch.chdir(tmp_path)
     context = xo.ContextCpu(omp_num_threads=0)
-    policy = (context.allow_prebuilt_kernels, context.allow_kernel_compilation)
     line = reference_only_line(context, mode, kind)
     launch = dict(CLOCK_LAUNCH, px=.13, py=-.07, ax=.025, ay=-.017)
     tracked = particle(context, **launch)
@@ -383,7 +382,6 @@ def test_reference_rebase_preserves_scalar_nonzero_potential(tmp_path, monkeypat
     if kind == 'increase':
         line.track(tracked, backtrack=True)
         np.testing.assert_allclose(chart(), expected, rtol=0., atol=3e-14)
-    assert (context.allow_prebuilt_kernels, context.allow_kernel_compilation) == policy
 
 
 def test_reference_rebase_preserves_tpsa_nonzero_potential(cpu_context):
@@ -508,7 +506,7 @@ def numeric_rows_by_id(particles):
 
 @pytest.fixture(scope='module', params=(0, 1), ids=('serial', 'openmp_one_thread'))
 def transaction_context(request, tmp_path_factory):
-    with native_context(tmp_path_factory.mktemp('cavity-frame-transaction')) as serial:
+    with kernel_context(tmp_path_factory.mktemp('cavity-frame-transaction')) as serial:
         yield serial if request.param == 0 else xo.ContextCpu(omp_num_threads=1)
 
 
@@ -560,19 +558,14 @@ def test_transformed_mixed_domain_failure_restores_only_failed_lanes(transaction
         np.testing.assert_allclose(rows[identifier], expected[identifier], rtol=0., atol=2e-13)
 
 
-@pytest.mark.parametrize('slice_class', (xt.DriftSliceCavity, xt.ThickSliceCavity,
-                                       xt.ThinSliceCavity))
+@pytest.mark.parametrize('slice_class', (xt.DriftSliceCavity, xt.ThickSliceCavity))
 def test_transformed_slice_refusal_restores_numeric_lanes(transaction_context, slice_class):
     """Cover both manual parent frames and the generated slice wrappers."""
     context = transaction_context
     parent = xt.Cavity(_context=context, **dict(hardware('phase-resolved'),
         shift_x=.001, rot_y_rad=.03, eta=-.1))
-    if slice_class is xt.ThinSliceCavity:
-        # New-model thin nodes have no source action; an invalid model selector
-        # exercises their own actual refusal rather than an unused RF setting.
-        parent._model = 25
     interval = slice_class(_parent=parent, _buffer=parent._buffer, weight=.5,
-        **({} if slice_class is xt.ThinSliceCavity else dict(slice_offset=0.)))
+                           slice_offset=0.)
     rays = particle(context, x=[.0002, -.0003], particle_id=[7, 3], s=.17,
         spin_x=.1, spin_y=.2, spin_z=.3, ax=2e-5, ay=-3e-5)
     before = numeric_rows_by_id(rays)

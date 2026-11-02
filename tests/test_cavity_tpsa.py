@@ -13,7 +13,7 @@ import xtrack as xt
 import xtrack.tpsa as xtpsa
 from xtrack.base_element import FloatOrTpsa
 from xtrack.tpsa._knobs import KnobParameters
-from _cavity_context import native_context
+from _cavity_context import kernel_context
 
 
 COORDS = ('x', 'px', 'y', 'py', 'zeta', 'delta')
@@ -51,7 +51,7 @@ class _DefaultSeriesAggregate(xt.BeamElement):
 
 
 def test_generic_series_arrays_follow_active_descriptor(tmp_path):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         for order, param_order in ((1, 1), (3, 2)):
             desc = madng_tpsa.Descriptor(6, order, num_params=1,
                                          param_order=param_order)
@@ -98,7 +98,7 @@ def test_initial_energy_metadata_series(order,delta):
 
 
 def test_frozen_energy_drift_uses_input_delta_series(tmp_path):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line=xt.Line(elements={'d':xt.Drift(length=.17)})
         line.particle_ref=xt.Particles(p0c=1e9)
         line.reset_s_at_end_turn=False
@@ -120,7 +120,7 @@ def test_frozen_energy_drift_uses_input_delta_series(tmp_path):
 
 def test_field_getter_preserves_orders_and_rejects_incompatible_handles(tmp_path):
     """Exercise the real generated FoT getter, including its no-truncation guard."""
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         desc = madng_tpsa.Descriptor(6, 3, num_params=1, param_order=3)
         element = _DefaultSeriesAggregate(_context=context, strength=2.)
         parameter = desc.param(1, 0.)
@@ -319,7 +319,7 @@ def test_frozen_fixed_nominal_gain_with_absolute_clock(cavity_magnetic_context):
 @pytest.mark.parametrize('absolute_time', [False, True])
 def test_legacy_cavity_tpsa_clock_and_phase_knob(tmp_path, absolute_time):
     """Same physical clock, including a nonzero cavity position and time_s."""
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line = xt.Line(elements=[xt.Drift(length=.17),
             xt.Cavity(voltage=2e5, frequency=400e6, phase=.7,
                       absolute_time=absolute_time)],
@@ -350,7 +350,7 @@ def test_legacy_cavity_tpsa_clock_and_phase_knob(tmp_path, absolute_time):
 
 
 def test_legacy_cavity_tpsa_knob_refresh_and_teardown(tmp_path):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line = xt.Line(elements=[xt.Cavity(voltage=2e5, frequency=400e6)],
                        element_names=['c'])
         line.particle_ref = xt.Particles(p0c=LAUNCH['p0c'],
@@ -471,7 +471,7 @@ def test_knob_teardown_cleans_its_shared_variable_promotions():
 
 
 def test_legacy_standalone_cavity_nonzero_s_tpsa(tmp_path):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         element = xt.Cavity(_context=context, voltage=2e5, frequency=400e6,
                             phase=.7, absolute_time=True)
         launch = dict(LAUNCH, s=.17)
@@ -602,7 +602,7 @@ def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,ex
 
 @pytest.mark.parametrize('absolute_time',[False,True])
 def test_frozen_cavity_tpsa_phase_and_clock(tmp_path,absolute_time):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
             voltage=2e4,frequency=400e6,phase=.4,eta=0.,
             model='phase-resolved-frozen',num_kicks=8,
@@ -636,7 +636,7 @@ def test_frozen_solenoid_zero_strength_parameter_tpsa(tmp_path):
     """The exact frozen SOL body uses an entire chart at zero field."""
     mass=xt.ELECTRON_MASS_EV
     launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line=xt.Line(elements={'c':xt.Cavity(length=.05,frequency=400e6,
             voltage=0.,eta=0.,ks=0.,edge_entry_active=False,
             edge_exit_active=False,model='phase-resolved-frozen',num_kicks=4)})
@@ -670,7 +670,7 @@ def test_frozen_solenoid_zero_strength_parameter_tpsa(tmp_path):
 def test_frozen_cavity_tpsa_voltage_and_frequency(tmp_path):
     """Both the actual kick and fixed nominal programme carry RF knobs."""
     values=dict(voltage=2e4,frequency=400e6,phase_taper=.07,lag_taper=1.2)
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
             phase=.4,eta=0.,model='phase-resolved-frozen',num_kicks=8,
             absolute_time=True,**values)],element_names=['d','c'])
@@ -741,7 +741,7 @@ def test_tpsa_field_metadata_survives_continuation(tmp_path,monkeypatch,default_
     from contextlib import nullcontext
     import xobjects as xo
     monkeypatch.chdir(tmp_path)
-    scope=nullcontext(xo.ContextCpu()) if default_context else native_context(tmp_path)
+    scope=nullcontext(xo.ContextCpu()) if default_context else kernel_context(tmp_path)
     with scope as context:
         line=xt.Line(elements={'write':_FieldMetadataWriter(),
                               'read':_FieldMetadataReader()})
@@ -771,7 +771,7 @@ def test_tpsa_field_metadata_survives_continuation(tmp_path,monkeypatch,default_
 
 
 def test_multisetter_preserves_active_cavity_parameters(tmp_path):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,eta=.25),
                               'd':xt.Drift(length=.2)})
         line.build_tracker(_context=context)
@@ -804,7 +804,7 @@ def test_multisetter_preserves_active_cavity_parameters(tmp_path):
 
 
 def test_multisetter_resolves_canonical_slice_parent(tmp_path):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,eta=.25)})
         line.slice_thick_elements([xt.Strategy(
             slicing=xt.Teapot(2,mode='thick'),element_type=xt.Cavity)])
@@ -825,7 +825,7 @@ def test_multisetter_resolves_canonical_slice_parent(tmp_path):
 
 
 def test_indexed_cavity_knob_lifecycle(tmp_path):
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         line=xt.Line(elements={'c':xt.Cavity(model='phase-resolved',length=.05,knl=[0.,.2],ksl=[0.,.3])})
         line.vars['normal']=.2;line.vars['skew']=.3
         line.element_refs['c'].knl[1]=line.vars['normal']
@@ -1034,7 +1034,7 @@ def _build_shared_cavity_tracker(line, context):
 def cavity_magnetic_context(tmp_path_factory):
     # All model values share one public data/kernel ABI. Reuse the actual JIT
     # kernel instead of recompiling the same heavy scalar/TPSA sources per case.
-    with native_context(tmp_path_factory.mktemp('cavity_magnetic_tpsa')) as context:
+    with kernel_context(tmp_path_factory.mktemp('cavity_magnetic_tpsa')) as context:
         yield context
 
 

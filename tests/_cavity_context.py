@@ -6,14 +6,11 @@ import xobjects as xo
 
 
 @contextmanager
-def native_context(directory):
-    """Compile locally in `directory`; restore the working directory."""
+def kernel_context(directory):
+    """Compile in `directory`, so build files stay out of the checkout."""
     old_cwd = os.getcwd()
     os.chdir(directory)
     try:
-        context = xo.ContextCpu(omp_num_threads=0)
-        context.allow_kernel_compilation = True
-        context.allow_prebuilt_kernels = False
-        yield context
+        yield xo.ContextCpu(omp_num_threads=0)
     finally:
         os.chdir(old_cwd)

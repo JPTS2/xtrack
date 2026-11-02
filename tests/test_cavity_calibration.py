@@ -14,7 +14,7 @@ import xtrack as xt
 import xtrack.tpsa as xtpsa
 from xtrack.base_element import FloatOrTpsa
 
-from _cavity_context import native_context
+from _cavity_context import kernel_context
 
 
 MASS_EV = 510998.95069
@@ -112,7 +112,7 @@ def analytic_source(settings):
 
 @pytest.fixture(scope='module')
 def calibration_context(tmp_path_factory):
-    with native_context(tmp_path_factory.mktemp('independent-calibration')) as context:
+    with kernel_context(tmp_path_factory.mktemp('independent-calibration')) as context:
         yield context
 
 

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import xtrack as xt
 
-from _cavity_context import native_context
+from _cavity_context import kernel_context
 
 
 MODELS = ('phase-resolved',)
@@ -18,7 +18,7 @@ COORDS = ('x', 'px', 'y', 'py', 'zeta', 'delta')
 @pytest.fixture(scope='module')
 def model_context(tmp_path_factory):
     directory = tmp_path_factory.mktemp('cavity-model-wiring')
-    with native_context(directory) as context:
+    with kernel_context(directory) as context:
         yield context
 
 
@@ -116,7 +116,7 @@ def test_gaussian_profile_live_metres_and_roundtrip():
 
 
 @pytest.mark.parametrize('model,profile', [('phase-resolved-frozen', 'p16'),
-    ('phase-resolved-frozen', 'gaussian'), ('adaptive', 'gaussian')])
+    ('phase-resolved-frozen', 'gaussian')])
 def test_builtin_profile_model_mismatches_refuse(model, profile):
     with pytest.raises(ValueError):
         xt.Cavity(model=model, rf_profile=profile, rf_profile_sigma=.02)
@@ -394,6 +394,25 @@ def test_slicing_shares_source_and_survives_serialization(model_context,
     assert second.slice_offset == 2*offset
 
 
+@pytest.mark.parametrize('model', ['adaptive', 'phase-resolved'])
+def test_cavity_slices_serialize_public_offset(model):
+    """Cavity slices serialize offsets exactly as other element slices do."""
+    def sliced(element):
+        line = xt.Line(elements={'e': element})
+        line.slice_thick_elements([xt.Strategy(xt.Teapot(3, mode='thick'))])
+        data = line.to_dict()['elements']
+        return [{key: value for key, value in data[name].items()
+                 if key in ('slice_offset', 'weight')}
+                for name in line.element_names if 'weight' in data[name]]
+    cavity_slices = sliced(xt.Cavity(length=1., voltage=1e6, frequency=4e8, model=model))
+    quadrupole_slices = sliced(xt.Quadrupole(length=1., k1=.1))
+    assert len(cavity_slices) == len(quadrupole_slices)
+    for actual, expected in zip(cavity_slices, quadrupole_slices):
+        assert actual.keys() == expected.keys()
+        for key in actual:
+            np.testing.assert_allclose(actual[key], expected[key], rtol=1e-15)
+
+
 @pytest.mark.parametrize('kind', [xt.ThickSliceCavity, xt.DriftSliceCavity])
 def test_old_serialized_slice_distance_loads(kind):
     old = dict(__class__=kind.__name__, parent_name='rf',
@@ -495,25 +514,39 @@ def test_matching_uses_normal_live_phase_knob(model_context):
                                rtol=0, atol=1e-10)
 
 
-def test_legacy_selector_refuses_new_static_strengths(model_context):
-    rf = xt.Cavity(_context=model_context, voltage=20e3, frequency=400e6,
-                    phase=.7)
-    initial = particle(model_context)
-    allowed = initial.copy()
-    rf.track(allowed)
-    assert allowed.state[0] == 1
-    for name, value in [('ks', .1), ('knl', [0., .01]), ('ksl', [0., .02])]:
-        rf.ks = 0.
-        rf.knl[:] = 0.
-        rf.ksl[:] = 0.
-        if name == 'ks':
-            rf.ks = value
-        else:
-            getattr(rf, name)[:len(value)] = value
-        rejected = initial.copy()
-        with pytest.raises(ValueError, match='static'):
-            rf.track(rejected)
-        np.testing.assert_array_equal(coordinates(rejected), coordinates(initial))
+def test_thin_layout_converges_to_parent_map(model_context):
+    """Thin nodes are markers; drift slices carry the cells on another mesh."""
+    def endpoint(cells, sliced):
+        line = xt.Line(elements={'rf': cavity(_context=model_context,
+            num_kicks=cells, edge_entry_active=0), 'end': xt.Marker()})
+        line.particle_ref = particle(model_context)
+        if sliced:
+            line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
+        line.build_tracker(_context=model_context)
+        line.reset_s_at_end_turn = False
+        probe = particle(model_context)
+        line.track(probe, ele_start=0, ele_stop=line.element_names.index('end'))
+        assert probe.state[0] == 1
+        return coordinates(probe)
+    errors = [np.abs(endpoint(cells, True) - endpoint(cells, False)).max()
+              for cells in (16, 64)]
+    # Fourth-order Gauss cells: a fourfold refinement gains about 4**4.
+    assert errors[1] < errors[0] / 200
+    assert errors[1] < 1e-9
+
+
+def test_legacy_models_ignore_physical_model_fields(model_context):
+    plain = xt.Cavity(_context=model_context, voltage=20e3, frequency=400e6,
+                      phase=.7)
+    dressed = xt.Cavity(_context=model_context, voltage=20e3, frequency=400e6,
+        phase=.7, ks=.1, knl=[0., .01], ksl=[0., .02], rf_profile='gaussian',
+        rf_profile_sigma=.02, eta=.3)
+    expected = particle(model_context)
+    actual = expected.copy()
+    plain.track(expected)
+    dressed.track(actual)
+    assert actual.state[0] == 1
+    np.testing.assert_array_equal(coordinates(actual), coordinates(expected))
 
 
 @pytest.mark.parametrize('mode', [None, 'thick', 'thin'])

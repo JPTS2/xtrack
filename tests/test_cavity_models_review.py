@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 import xtrack as xt
 
-from _cavity_context import native_context
+from _cavity_context import kernel_context
 
 
 MODELS = ('phase-resolved',)
@@ -43,7 +43,7 @@ def particle(context, gamma, charge=1., **changes):
 def test_public_cavity_independent_vacuum_limits(tmp_path):
     """H2 keeps its own finite-angle drift, rather than aliasing full drift."""
     length = .37
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         for model in MODELS:
             element = xt.Cavity(_context=context, length=length, voltage=0.,
                 frequency=0., eta=.3, model=model, integrator='gauss2',
@@ -85,7 +85,7 @@ def test_public_cavity_independent_quadrupole_limit(tmp_path):
     angle = wave*length
     expected_x = epsilon*np.array([np.cos(angle), -wave*np.sin(angle)])
     expected_y = epsilon*np.array([np.cosh(angle), wave*np.sinh(angle)])
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         for model in MODELS:
             element = xt.Cavity(_context=context, length=length, voltage=0.,
                 frequency=0., eta=0., knl=[0., k1*length], ks=0.,
@@ -111,7 +111,7 @@ def test_public_cavity_physical_clock_frame_invariance(tmp_path):
     gamma = 2.4
     beta0 = np.sqrt((gamma-1.)*(gamma+1.))/gamma
     shift_zeta = beta0*C_LIGHT*delay
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         for model in MODELS:
             element = xt.Cavity(_context=context, length=.05, voltage=20e3,
                 frequency=400e6, phase=.23, eta=.25, counter_phase=.3,
@@ -134,7 +134,7 @@ def test_public_cavity_rejects_nonpositive_native_momentum(tmp_path):
     """Squaring p cannot turn a backward native ray into a forward one."""
     checked=0
     names=(*COORDINATES,'ptau','pzeta','rpp','rvv','s','ax','ay')
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         for model in MODELS:
             element=xt.Cavity(_context=context,length=.05,voltage=0.,
                 frequency=0.,eta=.3,model=model,integrator='gauss2',
@@ -179,7 +179,7 @@ def test_public_cavity_mixed_species_reference_equivalence(tmp_path):
                     eta=.25, counter_phase=.3, calibration_beta=1.,
                     integrator='gauss2', num_kicks=16, absolute_time=True)
     metadata = ('ptau', 'pzeta', 'rpp', 'rvv', 'ax', 'ay', 's')
-    with native_context(tmp_path) as context:
+    with kernel_context(tmp_path) as context:
         for model in MODELS:
             fixed = xt.Cavity(_context=context, model=model,
                               **controls, **base_static)
