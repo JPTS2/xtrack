@@ -5044,27 +5044,18 @@ class Line:
             if parent is not None:
                 pending.append(parent)
 
-    def _check_cavity_effect(self, effect, radiation_model=None):
-        self._validate_cavity_first_effect(effect, radiation_model=radiation_model)
-
-    def _validate_cavity_first_effect(self, effect, radiation_model=None):
-        """Validate the restricted scalar first-effects route without mutation.
-
-        This validator never promotes/demotes a series or reads its constant
-        part as a substitute for supported spin/radiation differentiation.
-        """
+    def _check_cavity_spin(self):
+        """Raise if a used physical-model cavity cannot transport spin."""
         cavities = tuple(ee for ee in self._used_cavity_owners() if ee._model >= 10)
         if not cavities:
             return
-        if effect == 'radiation' and radiation_model != 'mean':
-            raise NotImplementedError('Cavity first-effects transport supports mean radiation only')
         if any(name.startswith('FREEZE_VAR_') and value for name, value in self.config.items()):
-            raise NotImplementedError('Cavity effects do not support frozen-coordinate analysis')
+            raise NotImplementedError('Cavity spin transport does not support frozen-coordinate analysis')
         if self.config.get('XTRACK_TPSA_TRACK', False):
-            raise NotImplementedError('Cavity spin/radiation transport is scalar only, not TPSA')
+            raise NotImplementedError('Cavity spin transport is scalar only, not TPSA')
         context = self._context
         if context is not None and not isinstance(context, xo.ContextCpu):
-            raise NotImplementedError('Cavity first-effects transport is implemented only for CPU')
+            raise NotImplementedError('Cavity spin transport is implemented only for CPU')
         pending = list(self.element_names)
         visited = set()
         while pending:
@@ -5075,44 +5066,33 @@ class Line:
                 continue
             visited.add(id(element))
             if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0):
-                raise NotImplementedError('Cavity spin/radiation transport does not support active TPSA owners')
+                raise NotImplementedError('Cavity spin transport does not support active TPSA owners')
             parent_name = getattr(element, 'parent_name', None)
             if parent_name is not None:
                 parent = self._element_dict[parent_name]
                 if isinstance(parent, xt.Replica):
                     parent = parent.resolve(self)
                 if isinstance(parent, xt.Cavity) and parent._model >= 10:
-                    raise NotImplementedError('Cavity first-effects transport is not yet supported through slices')
+                    raise NotImplementedError('Cavity spin transport is not yet supported through slices')
                 pending.append(parent_name)
-        if self._has_valid_tracker():
-            flags = self.tracker.track_flags
-            if (flags.XS_FLAG_KILL_CAVITY_KICK or flags.XS_FLAG_SR_TAPER
-                    or flags.XS_FLAG_SR_KICK_SAME_AS_FIRST):
-                raise NotImplementedError('Cavity effects do not support radiation/taper preparation analysis')
-            mean_active = effect == 'radiation' or any(ee.radiation_flag == 1 for ee in cavities)
-            if flags.XS_FLAG_BACKTRACK and mean_active:
-                raise NotImplementedError('Cavity mean radiation backtracking is not supported')
         for element in cavities:
             if (element._model != 10 or element._rf_profile != 0
                     or element._magnetic_profile != 0
                     or element.rf_field_order != 2 or element._integrator not in (0, 6)):
-                raise NotImplementedError('Cavity effects require the full phase-resolved P16 M2/Gauss map with uniform magnetic profile')
-            if not isinstance(element._context, xo.ContextCpu):
-                raise NotImplementedError('Cavity first-effects transport is implemented only for CPU')
+                raise NotImplementedError('Cavity spin transport requires the phase-resolved model '
+                                          'with the P16 profile and a uniform magnetic profile')
             normal = np.asarray(element.knl)
             skew = np.asarray(element.ksl)
             if (np.any(normal[np.arange(len(normal)) != 1] != 0.)
                     or np.any(skew[np.arange(len(skew)) != 1] != 0.)
                     or (element.order < 1 and (np.any(normal != 0.) or np.any(skew != 0.)))):
-                raise NotImplementedError('Cavity effects support only solenoid and normal/skew quadrupole static strengths')
+                raise NotImplementedError('Cavity spin transport supports only solenoid and '
+                                          'normal/skew quadrupole static strengths')
             static = element.ks != 0. or np.any(normal != 0.) or np.any(skew != 0.)
             if static and (element.edge_entry_active or element.edge_exit_active):
-                raise NotImplementedError('Cavity static effects require both faces disabled: body observation planes inside the field')
+                raise NotImplementedError('Cavity spin transport with static fields requires both faces disabled')
             if static and element.transformations_active:
-                raise NotImplementedError('Cavity static effects do not support generic alignment transformations')
-            other_flag = element.spin_tracking if effect == 'radiation' else element.radiation_flag
-            if other_flag not in (0, 1):
-                raise NotImplementedError('Cavity effects do not support the existing spin/radiation flag')
+                raise NotImplementedError('Cavity spin transport with static fields does not support alignment transformations')
 
     @doc_group("Radiation, Spin and Intra-Beam Scattering")
     def configure_radiation(self, model=None, model_beamstrahlung=None,
@@ -5143,15 +5123,12 @@ class Line:
         if mode != 'deprecated':
             raise NameError('mode is deprecated, use model instead')
 
+        if not self._has_valid_tracker():
+            self.build_tracker(compile=False)
+
         assert model in [None, 'mean', 'quantum', 'quantum-kick']
         assert model_beamstrahlung in [None, 'mean', 'quantum']
         assert model_bhabha in [None, 'quantum']
-
-        if model is not None:
-            self._check_cavity_effect('radiation', radiation_model=model)
-
-        if not self._has_valid_tracker():
-            self.build_tracker(compile=False)
 
         if model == 'mean':
             radiation_flag = 1
@@ -5183,10 +5160,7 @@ class Line:
             bhabha_flag = 0
             self._bhabha_model = None
 
-        used_cavities = {id(ee) for ee in self._used_cavity_owners()}
         for kk, ee in self._element_dict.items():
-            if isinstance(ee, xt.Cavity) and id(ee) not in used_cavities:
-                continue
             if hasattr(ee, 'radiation_flag'):
                 ee.radiation_flag = radiation_flag
 
@@ -5238,7 +5212,7 @@ class Line:
             raise ValueError("spin_model must be None, 'auto', True, or False")
 
         if spin_model is not None:
-            self._check_cavity_effect('spin')
+            self._check_cavity_spin()
         for element in self._used_cavity_owners():
             element.spin_tracking = int(spin_model is not None)
 

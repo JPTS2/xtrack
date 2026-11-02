@@ -107,13 +107,11 @@ for td in to_do:
                     'const int model=' + generated_data_class
                     + '_get__parent_model(el);\n'
                     '        if (' + generated_data_class
-                    + '_get__parent_radiation_flag(el) || '
-                    + generated_data_class
                     + '_get__parent_spin_tracking(el)) {\n'
                     '            START_PER_PARTICLE_BLOCK(part0, part)\n'
                     '                LocalParticle_set_state(part, -99744);\n'
                     '            END_PER_PARTICLE_BLOCK;\n'
-                    '        } else if (model>24) {\n'
+                    '        } else if (model!=10 && model!=13) {\n'
                     '            START_PER_PARTICLE_BLOCK(part0, part)\n'
                     '                LocalParticle_set_state(part, -99730);\n'
                     '            END_PER_PARTICLE_BLOCK;\n'
@@ -421,7 +419,7 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
         marker = '        double weight = DriftSliceCavityData_get_weight(el);'
         branch = '''        const int model=DriftSliceCavityData_get__parent_model(el);
         if (model>=10) {
-            if (model<=24) {
+            if (model==10 || model==13) {
                 const double start=DriftSliceCavityData_get_slice_offset_fraction(el);
                 CavityModels_track_source_interval(
                     DriftSliceCavityData_getp__parent(el),part0,

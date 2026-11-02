@@ -5,9 +5,8 @@ orbital stages. Spin is passive: there is no Stern--Gerlach force, spin-flip
 sampling or polarization model. The first implementation is CPU scalar,
 M2/P16 with optional uniform solenoid and normal/skew quadrupole fields.
 The overlap case observes two planes INSIDE the static field, with canonical
-input momenta: it does not model hard-edge spin fringes. Mean radiation is
-off in this reversible example. Magnetic fringes, GPU and TPSA effects remain
-unsupported.
+input momenta: it does not model hard-edge spin fringes. Cavities do not
+radiate. Magnetic fringes, GPU and TPSA spin remain unsupported.
 """
 
 ################################################################################

@@ -22,11 +22,11 @@ void ThinSliceCavity_track_local_particle(ThinSliceCavityData el, LocalParticle*
 {
     if (ThinSliceCavityData_get__parent_model(el) >= 10) {
         const int model=ThinSliceCavityData_get__parent_model(el);
-        if (ThinSliceCavityData_get__parent_radiation_flag(el) || ThinSliceCavityData_get__parent_spin_tracking(el)) {
+        if (ThinSliceCavityData_get__parent_spin_tracking(el)) {
             START_PER_PARTICLE_BLOCK(part0, part)
                 LocalParticle_set_state(part, -99744);
             END_PER_PARTICLE_BLOCK;
-        } else if (model>24) {
+        } else if (model!=10 && model!=13) {
             START_PER_PARTICLE_BLOCK(part0, part)
                 LocalParticle_set_state(part, -99730);
             END_PER_PARTICLE_BLOCK;

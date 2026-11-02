@@ -8,7 +8,7 @@ import pytest
 import xtrack as xt
 import madng_tpsa
 from xtrack.beam_elements.cavity import _CAVITY_MODELS
-from test_cavity_native import native_context
+from _cavity_context import native_context
 
 
 def eligible_line(**changes):

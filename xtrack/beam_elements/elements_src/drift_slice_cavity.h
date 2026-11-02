@@ -43,7 +43,7 @@
 
         const int model=DriftSliceCavityData_get__parent_model(el);
         if (model>=10) {
-            if (model<=24) {
+            if (model==10 || model==13) {
                 const double start=DriftSliceCavityData_get_slice_offset_fraction(el);
                 CavityModels_track_source_interval(
                     DriftSliceCavityData_getp__parent(el),part0,

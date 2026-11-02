@@ -13,7 +13,7 @@ import xtrack as xt
 import xtrack.tpsa as xtpsa
 from xtrack.base_element import FloatOrTpsa
 from xtrack.tpsa._knobs import KnobParameters
-from test_cavity_native import native_context
+from _cavity_context import native_context
 
 
 COORDS = ('x', 'px', 'y', 'py', 'zeta', 'delta')

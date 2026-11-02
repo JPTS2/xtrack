@@ -14,7 +14,7 @@ import xtrack as xt
 import xtrack.tpsa as xtpsa
 from xtrack.base_element import FloatOrTpsa
 
-from test_cavity_native import native_context
+from _cavity_context import native_context
 
 
 MASS_EV = 510998.95069

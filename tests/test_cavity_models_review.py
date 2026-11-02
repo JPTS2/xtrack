@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 import xtrack as xt
 
-from test_cavity_native import native_context
+from _cavity_context import native_context
 
 
 MODELS = ('phase-resolved', 'phase-resolved-paraxial',

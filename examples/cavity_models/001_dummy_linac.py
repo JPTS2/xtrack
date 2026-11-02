@@ -5,15 +5,12 @@
 
 """Synthetic RF cells and separate quadrupoles: tracking-derived optics.
 
-Every case computes Twiss and tracks both 9×9 grids. P16 cases traverse the
-two-cell linac with one prescribed momentum/clock programme. Uniform cases
-are separate single-cavity maps and never enter downstream drifts or quads.
-Continuous and averaged uniform maps are observed inside the RF field, with
-native canonical Twiss functions. The frozen voltage-action faces and averaging
-are distinct approximations. Radiation is off; numerical mesh differences
-are not physical error bounds.
-The grids share canonical launches; different boundary assumptions can give
-different mechanical slopes at those same canonical coordinates.
+Every case computes Twiss and tracks both 9×9 grids. The P16 case traverses
+the two-cell linac with one prescribed momentum/clock programme. The uniform
+case compares the phase-resolved and frozen models on a single cavity,
+observed inside the RF field. The frozen voltage-action faces are a distinct
+approximation. The grids share canonical launches; different boundary
+assumptions can give different mechanical slopes at those coordinates.
 """
 
 ################################################################################
@@ -43,9 +40,7 @@ GAMMA0            = 2.4
 QUAD_LENGTH_M     = .06
 QUAD_STRENGTH     = 3.             # 1/m²; external alternating quadrupoles
 DRIFT_LENGTH_M    = .15
-SOURCE_CELLS      = 16             # full/H2/longitudinal Gauss cells
-AVERAGED_STEPS    = 4              # uniform quadratic body midpoint steps
-BOUNDARY_STEPS    = 1              # averaged boundary midpoint steps
+SOURCE_CELLS      = 16             # phase-resolved Gauss cells
 FROZEN_CELLS      = 0              # model-specific geometric word
 GRID_SIZE         = 9
 X_LIMIT_M         = .005
@@ -56,31 +51,16 @@ PX_LIMIT          = .03
 # Explicit source/transport assumptions
 ########################################
 COHORTS = [
-    ('p16', .25, .3, .9, [
-        'phase-resolved', 'phase-resolved-paraxial',
-        'phase-resolved-longitudinal']),
-    ('uniform', 0., 0., 1., [
-        'phase-resolved', 'phase-resolved-frozen']),
-    ('uniform', .25, .3, .9, [
-        'phase-resolved',
-        'phase-averaged-uniform-quadratic-first-boundary',
-        'phase-averaged-uniform-quadratic']),
+    ('p16', .25, .3, .9, ['phase-resolved']),
+    ('uniform', 0., 0., 1., ['phase-resolved', 'phase-resolved-frozen']),
 ]
 INTEGRATORS = {
     'phase-resolved': 'gauss2',
-    'phase-resolved-paraxial': 'gauss2',
-    'phase-resolved-longitudinal': 'gauss2',
     'phase-resolved-frozen': 'geometric-kick-drift',
-    'phase-averaged-uniform-quadratic-first-boundary': 'midpoint',
-    'phase-averaged-uniform-quadratic': 'midpoint',
 }
 LABELS = {
     'phase-resolved': 'Full resolved',
-    'phase-resolved-paraxial': 'Paraxial resolved',
-    'phase-resolved-longitudinal': 'Longitudinal RF',
     'phase-resolved-frozen': 'Frozen coefficients and faces',
-    'phase-averaged-uniform-quadratic-first-boundary': 'Quadratic averaged, W1',
-    'phase-averaged-uniform-quadratic': 'Quadratic averaged, W1 + W2',
 }
 
 
@@ -166,13 +146,8 @@ for profile, eta, counter_phase, beta_cal, models in COHORTS:
             cavity.counter_phase = counter_phase
             cavity.calibration_beta = beta_cal
             cavity.integrator = INTEGRATORS[model]
-            cavity.num_factor_steps = BOUNDARY_STEPS
-            if model == 'phase-resolved-frozen':
-                cavity.num_kicks = FROZEN_CELLS
-            elif model.startswith('phase-averaged'):
-                cavity.num_kicks = AVERAGED_STEPS
-            else:
-                cavity.num_kicks = SOURCE_CELLS
+            cavity.num_kicks = (FROZEN_CELLS if model == 'phase-resolved-frozen'
+                                else SOURCE_CELLS)
         twiss_started = perf_counter()
         twiss = line.twiss(method='6d', **twiss_range,
                           betx=2., bety=3., alfx=0., alfy=0.)
