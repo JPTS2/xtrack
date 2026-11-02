@@ -10,7 +10,8 @@ from .octupole import Octupole
 from .quadrupole import Quadrupole
 from .rbend import RBend
 from .sextupole import Sextupole
-from .slice_base import _SliceBase, COMMON_SLICE_XO_FIELDS
+from .slice_base import (_SliceBase, COMMON_SLICE_XO_FIELDS,
+                         _CavitySliceOffset, cavity_slice_xofields)
 from ..base_element import BeamElement
 
 
@@ -101,45 +102,15 @@ class DriftSliceOctupole(_DriftSliceElementBase, BeamElement):
                      _buffer=self._buffer)
         return out
 
-class DriftSliceCavity(_DriftSliceElementBase, BeamElement):
+class DriftSliceCavity(_CavitySliceOffset, _DriftSliceElementBase, BeamElement):
 
     _track_local_particle_preflight = 'DriftSliceCavity_preflight'
 
-    _xofields = {'_parent': xo.Ref(Cavity), **COMMON_SLICE_XO_FIELDS,
-                 '_slice_offset_fraction': xo.Float64,
-                 '_legacy_slice_offset': xo.Float64}
-    del _xofields['slice_offset']
+    _xofields = cavity_slice_xofields(Cavity)
 
     _extra_c_sources = [
         '#include "xtrack/beam_elements/elements_src/drift_slice_cavity.h"'
     ]
-
-    def __init__(self, slice_offset=None, **kwargs):
-        if slice_offset is not None:
-            parent = kwargs.get('_parent')
-            if parent is None:
-                kwargs['_legacy_slice_offset'] = slice_offset
-                kwargs['_slice_offset_fraction'] = -1.
-            else:
-                kwargs['_slice_offset_fraction'] = (
-                    slice_offset / parent.length if parent.length else 0.)
-        super().__init__(**kwargs)
-
-    @property
-    def slice_offset(self):
-        if self._slice_offset_fraction < 0:
-            return self._legacy_slice_offset
-        return self._slice_offset_fraction * self._parent.length
-
-    @slice_offset.setter
-    def slice_offset(self, value):
-        parent = self._parent
-        if parent is None:
-            self._legacy_slice_offset = value
-            self._slice_offset_fraction = -1.
-        else:
-            self._slice_offset_fraction = (
-                value / parent.length if parent.length else 0.)
 
     @property
     def behaves_like_drift(self):

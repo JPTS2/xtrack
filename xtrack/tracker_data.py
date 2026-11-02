@@ -178,6 +178,8 @@ class TrackerData:
             if this_parent._buffer is not self._element_dict[nn]._buffer:
                 this_parent.move(_buffer=self._element_dict[nn]._buffer)
             self._element_dict[nn]._parent = this_parent
+            if hasattr(self._element_dict[nn], '_on_parent_linked'):
+                self._element_dict[nn]._on_parent_linked()
             this_parent._movable = True
             assert self._element_dict[nn]._parent._offset == self._element_dict[nn]._xobject._parent._offset
 
