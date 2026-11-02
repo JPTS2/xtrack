@@ -90,11 +90,12 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     The following parameters are used only by the physical models
     "phase-resolved" and "phase-resolved-frozen"; the legacy models ignore
-    them and refuse nonzero static strengths.
+    them.
 
     eta : float
         Squared amplitude ratio of the counter- to the co-propagating RF wave.
-        Default is 1 (standing wave).
+        Default is 1 (standing wave), or 0 when constructed with the frozen
+        model. Like `rf_profile`, it is not re-inferred when `model` changes.
     counter_phase : float
         Phase of the counter-propagating wave in radians. Default is 0.
     calibration_beta : float
@@ -299,13 +300,6 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     def _check_physical_model(self, tracking=False):
         """Raise for settings the physical models cannot track."""
         if self._model < 10:
-            if self._rf_profile == 2:
-                raise ValueError('Legacy Cavity models do not support a '
-                                 'Gaussian RF profile')
-            if (_constant_part(self.ks) != 0. or np.any(np.asarray(self.knl) != 0.)
-                    or np.any(np.asarray(self.ksl) != 0.)):
-                raise ValueError('Legacy Cavity models do not support static '
-                                 'ks/knl/ksl strengths')
             return
         if self.rf_profile == 'gaussian':
             width = float(_constant_part(self.rf_profile_sigma))

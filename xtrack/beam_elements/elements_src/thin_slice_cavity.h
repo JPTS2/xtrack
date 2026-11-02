@@ -21,40 +21,11 @@ GPUFUN
 void ThinSliceCavity_track_local_particle(ThinSliceCavityData el, LocalParticle* part0)
 {
     if (ThinSliceCavityData_get__parent_model(el) >= 10) {
-        const int model=ThinSliceCavityData_get__parent_model(el);
         if (ThinSliceCavityData_get__parent_spin_tracking(el)) {
             START_PER_PARTICLE_BLOCK(part0, part)
                 LocalParticle_set_state(part, -99744);
             END_PER_PARTICLE_BLOCK;
-        } else if (model!=10 && model!=13) {
-            START_PER_PARTICLE_BLOCK(part0, part)
-                LocalParticle_set_state(part, -99730);
-            END_PER_PARTICLE_BLOCK;
         }
-        return;
-    }
-    // Legacy RF recipes have no simultaneous static-field Hamiltonian.
-    // Do not silently ignore newly exposed magnetic strengths after Line.set
-    // or an indexed expression update. Zero fields leave the legacy path exact.
-    int static_field=!xt_float_or_tpsa_is_zero(ThinSliceCavityData_get__parent_ks(el));
-    for (int64_t i=0; i<ThinSliceCavityData_len__parent_knl(el); ++i)
-        static_field |= ThinSliceCavityData_get__parent_knl(el,i)!=0.;
-    for (int64_t i=0; i<ThinSliceCavityData_len__parent_ksl(el); ++i)
-        static_field |= ThinSliceCavityData_get__parent_ksl(el,i)!=0.;
-    // A zero constant with a nonzero static-field TPSA jet is still an
-    // unsupported simultaneous field in the legacy RF recipes.
-    for (int64_t i=0; i<ThinSliceCavityData_len__parent_knl_tpsa(el); ++i)
-        static_field |= ThinSliceCavityData_get__parent_knl_tpsa(el,i)!=0;
-    for (int64_t i=0; i<ThinSliceCavityData_len__parent_ksl_tpsa(el); ++i)
-        static_field |= ThinSliceCavityData_get__parent_ksl_tpsa(el,i)!=0;
-    // Legacy voltage-only projections support their existing P16/uniform
-    // reductions, but cannot silently consume a requested Gaussian source.
-    if (static_field || ThinSliceCavityData_get__parent_rf_profile(el)<0
-                     || ThinSliceCavityData_get__parent_rf_profile(el)>1
-                     || ThinSliceCavityData_get__parent_magnetic_profile(el)!=0) {
-        START_PER_PARTICLE_BLOCK(part0,part)
-            LocalParticle_set_state(part,-99744);
-        END_PER_PARTICLE_BLOCK;
         return;
     }
     track_rf_particles(

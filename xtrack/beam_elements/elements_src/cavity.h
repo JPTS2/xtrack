@@ -16,30 +16,6 @@ void Cavity_track_local_particle(CavityData el, LocalParticle* part0)
         CavityModels_track_local_particle(el, part0, 1., 0.);
         return;
     }
-    // Legacy RF recipes have no simultaneous static-field Hamiltonian.
-    // Do not silently ignore newly exposed magnetic strengths after Line.set
-    // or an indexed expression update. Zero fields leave the legacy path exact.
-    int static_field=!xt_float_or_tpsa_is_zero(CavityData_get_ks(el));
-    for (int64_t i=0; i<CavityData_len_knl(el); ++i)
-        static_field |= CavityData_get_knl(el,i)!=0.;
-    for (int64_t i=0; i<CavityData_len_ksl(el); ++i)
-        static_field |= CavityData_get_ksl(el,i)!=0.;
-    // A zero constant with a nonzero static-field TPSA jet is still an
-    // unsupported simultaneous field in the legacy RF recipes.
-    for (int64_t i=0; i<CavityData_len_knl_tpsa(el); ++i)
-        static_field |= CavityData_get_knl_tpsa(el,i)!=0;
-    for (int64_t i=0; i<CavityData_len_ksl_tpsa(el); ++i)
-        static_field |= CavityData_get_ksl_tpsa(el,i)!=0;
-    // Legacy voltage-only projections support their existing P16/uniform
-    // reductions, but cannot silently consume a requested Gaussian source.
-    if (static_field || CavityData_get_rf_profile(el)<0
-                     || CavityData_get_rf_profile(el)>1
-                     || CavityData_get_magnetic_profile(el)!=0) {
-        START_PER_PARTICLE_BLOCK(part0,part)
-            LocalParticle_set_state(part,-99744);
-        END_PER_PARTICLE_BLOCK;
-        return;
-    }
     track_rf_particles(
         /*weight*/                1.,
         /*part0*/                 part0,

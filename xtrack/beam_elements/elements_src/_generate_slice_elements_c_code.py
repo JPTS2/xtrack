@@ -104,16 +104,10 @@ for td in to_do:
                 # These nodes are identity partition markers, not RF kicks.
                 # Other finite words need their own exact decomposition.
                 replacement = (
-                    'const int model=' + generated_data_class
-                    + '_get__parent_model(el);\n'
-                    '        if (' + generated_data_class
+                    'if (' + generated_data_class
                     + '_get__parent_spin_tracking(el)) {\n'
                     '            START_PER_PARTICLE_BLOCK(part0, part)\n'
                     '                LocalParticle_set_state(part, -99744);\n'
-                    '            END_PER_PARTICLE_BLOCK;\n'
-                    '        } else if (model!=10 && model!=13) {\n'
-                    '            START_PER_PARTICLE_BLOCK(part0, part)\n'
-                    '                LocalParticle_set_state(part, -99730);\n'
                     '            END_PER_PARTICLE_BLOCK;\n'
                     '        }')
             if old_call not in out_content:
@@ -419,25 +413,10 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
         marker = '        double weight = DriftSliceCavityData_get_weight(el);'
         branch = '''        const int model=DriftSliceCavityData_get__parent_model(el);
         if (model>=10) {
-            if (model==10 || model==13) {
-                const double start=DriftSliceCavityData_get_slice_offset_fraction(el);
-                CavityModels_track_source_interval(
-                    DriftSliceCavityData_getp__parent(el),part0,
-                    DriftSliceCavityData_get_weight(el),start);
-            } else {
-                START_PER_PARTICLE_BLOCK(part0,part)
-                    LocalParticle_set_state(part,-99730);
-                END_PER_PARTICLE_BLOCK;
-            }
-            return;
-        }
-
-        if (DriftSliceCavityData_get__parent_rf_profile(el)<0
-                || DriftSliceCavityData_get__parent_rf_profile(el)>1
-                || DriftSliceCavityData_get__parent_magnetic_profile(el)!=0) {
-            START_PER_PARTICLE_BLOCK(part0,part)
-                LocalParticle_set_state(part,-99744);
-            END_PER_PARTICLE_BLOCK;
+            CavityModels_track_source_interval(
+                DriftSliceCavityData_getp__parent(el),part0,
+                DriftSliceCavityData_get_weight(el),
+                DriftSliceCavityData_get_slice_offset_fraction(el));
             return;
         }
 
