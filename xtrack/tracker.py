@@ -14,7 +14,6 @@ import numpy as np
 import xobjects as xo
 import xtrack as xt
 
-from ._local_kernel import prebuilt_compatible, local_kernel_compilation
 from .base_element import _handle_per_particle_blocks
 from .beam_elements import Drift
 from .general import _pkg_root, DEPRECATION_INFO_PREP_1_0
@@ -704,13 +703,7 @@ class Tracker:
                 and self.particles_monitor_class._XoStruct not in extra_classes):
             extra_classes.append(self.particles_monitor_class._XoStruct)
 
-        if (self.config.XTRACK_TPSA_TRACK
-                or any(not prebuilt_compatible(cls)
-                       for cls in self.line_element_classes)):
-            # Installed metadata checks versions, not this checkout's ABI.
-            # Its TPSA wrappers also reset the physical input s at entry.
-            use_prebuilt_kernels = False
-        elif compile == 'force' or xo.settings.force_kernel_compilation:
+        if compile == 'force' or xo.settings.force_kernel_compilation:
             use_prebuilt_kernels = False
         elif not self._context.allow_prebuilt_kernels:  # only CPU serial
             use_prebuilt_kernels = False
@@ -765,8 +758,7 @@ class Tracker:
                 if self.config.XTRACK_TPSA_TRACK:
                     kernel_description.update(
                         self._tpsa_element_kernel_descriptions(
-                            [cls for cls in kernel_info['tracker_element_classes']
-                             if prebuilt_compatible(cls)]))
+                            kernel_info['tracker_element_classes']))
                 kernels = self._context.kernels_from_file(
                     module_name=kernel_info['module_name'],
                     containing_dir=PREBUILT_KERNELS_LOCATION,
@@ -1181,12 +1173,7 @@ class Tracker:
                 compiler_language=compiler_language,
             )
 
-        local_classes = list(all_classes)
-        if tpsa_track:
-            from xtrack.tpsa.particles import TpsaParticleData
-            local_classes.append(TpsaParticleData)
-        with local_kernel_compilation(local_classes, context):
-            out_kernels = context.build_kernels(**build_kwargs)
+        out_kernels = context.build_kernels(**build_kwargs)
         return {
             'kernel': out_kernels['track_line'],
             'tracker_element_classes': kernel_element_classes,
