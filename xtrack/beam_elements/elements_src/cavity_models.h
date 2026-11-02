@@ -510,10 +510,19 @@ int CavityModel_flow(const xt_float_or_tpsa q[6],
     return CavityModel_vector_finite(flow,6) ? CAVITY_MODEL_OK : CAVITY_MODEL_NONFINITE;
 }
 
+#ifndef CAVITY_MODEL_JET_SWEEPS
+#ifdef XTRACK_TPSA_TRACK
+#define CAVITY_MODEL_JET_SWEEPS 4
+#else
+#define CAVITY_MODEL_JET_SWEEPS 0
+#endif
+#endif
+
 // Two-stage Gauss--Legendre: the same equations and constants as the existing
 // Python owner. Signed h reverses the deterministic word. All outputs are
-// transactional. The defining residual is checked after reassignment, and
-// TPSA convergence includes its represented coefficients, not only the orbit.
+// transactional. The defining residual is checked after reassignment. Both
+// tests use the primal only; under TPSA the coefficients lag the primal by a
+// few contractions, so fixed sweeps after primal convergence settle them.
 // Stage unknowns are increments about q: this exact translation avoids
 // subtracting a large base energy/clock in the defining residual. The physical
 // primal increment retains the same absolute tolerance; reconstructed stages
@@ -533,7 +542,8 @@ int CavityModel_gauss_stages(const xt_float_or_tpsa q[6],
     if (status!=CAVITY_MODEL_OK) return status;
     for (int i=0;i<2;++i)
         for (int j=0;j<6;++j) stages[i][j]=C[i]*h*initial[j];
-    for (int64_t iteration=0;iteration<max_iter;++iteration) {
+    int sweeps=CAVITY_MODEL_JET_SWEEPS;
+    for (int64_t iteration=0;iteration<max_iter+CAVITY_MODEL_JET_SWEEPS;++iteration) {
         for (int i=0;i<2;++i) {
             for (int j=0;j<6;++j) initial[j]=q[j]+stages[i][j];
             status=CavityModel_flow(initial,z+C[i]*h,Q,source,model,values[i]);
@@ -543,8 +553,8 @@ int CavityModel_gauss_stages(const xt_float_or_tpsa q[6],
         for (int i=0;i<2;++i)
             for (int j=0;j<6;++j) {
                 proposed[i][j]=h*(A[i][0]*values[0][j]+A[i][1]*values[1][j]);
-                change=fmax(change,CavityModel_scalar_residual(
-                    proposed[i][j]-stages[i][j],q[j]+proposed[i][j],1));
+                change=fmax(change,CavityModel_primal_residual(
+                    proposed[i][j]-stages[i][j]));
                 stages[i][j]=proposed[i][j];
             }
         if (change>=tolerance) continue;
@@ -556,9 +566,10 @@ int CavityModel_gauss_stages(const xt_float_or_tpsa q[6],
         double residual=0.;
         for (int i=0;i<2;++i)
             for (int j=0;j<6;++j)
-                residual=fmax(residual,CavityModel_scalar_residual(stages[i][j]
-                    -h*(A[i][0]*values[0][j]+A[i][1]*values[1][j]),q[j]+stages[i][j],1));
+                residual=fmax(residual,CavityModel_primal_residual(stages[i][j]
+                    -h*(A[i][0]*values[0][j]+A[i][1]*values[1][j])));
         if (residual>=tolerance) continue;
+        if (sweeps>0) {--sweeps; continue;}
         xt_float_or_tpsa result[6],check[6];
         for (int j=0;j<6;++j) result[j]=q[j]+h*(values[0][j]+values[1][j])*.5;
         status=CavityModel_flow(result,z+h,Q,source,model,check);

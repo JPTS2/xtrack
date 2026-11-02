@@ -63,6 +63,19 @@ double CavityModel_scalar_residual(xt_float_or_tpsa_arg residual,
 #endif
 }
 
+// Convergence test on the primal (constant part) only; Taylor coefficients
+// are settled by the fixed sweeps that follow primal convergence.
+GPUFUN
+double CavityModel_primal_residual(xt_float_or_tpsa_arg residual) {
+#ifdef XTRACK_TPSA_TRACK
+    const int64_t count=mad_tpsa_len(residual.ptr(),0);
+    for (int64_t i=0;i<count;++i)
+        if (!isfinite(mad_tpsa_geti(residual.ptr(),i))) return INFINITY;
+#endif
+    const double value=xt_float_or_tpsa_const_part(residual);
+    return isfinite(value) ? fabs(value) : INFINITY;
+}
+
 // Optional CPU diagnostics; absent from ordinary builds. This reports the
 // actual residual without changing the solver or its stopping criterion.
 GPUFUN
