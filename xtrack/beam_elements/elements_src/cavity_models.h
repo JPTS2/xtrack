@@ -5,7 +5,7 @@
 #ifndef XTRACK_CAVITY_MODELS_H
 #define XTRACK_CAVITY_MODELS_H
 
-// Full, paraxial and longitudinal phase-resolved source/maps.
+// Phase-resolved source and maps.
 // Conservative source-based RF maps. Coordinates are (X,Y,T,Px,Py,E),
 // scaled by (1/k,1/k,1/(kc),mc,mc,mc^2); the T--E block has negative sign.
 // k is the coordinate scale omega/c, independent of the physical carrier.
@@ -542,8 +542,7 @@ int CavityModel_gauss_stages(const xt_float_or_tpsa q[6],
     if (status!=CAVITY_MODEL_OK) return status;
     for (int i=0;i<2;++i)
         for (int j=0;j<6;++j) stages[i][j]=C[i]*h*initial[j];
-    int sweeps=CAVITY_MODEL_JET_SWEEPS;
-    for (int64_t iteration=0;iteration<max_iter+CAVITY_MODEL_JET_SWEEPS;++iteration) {
+    for (int64_t iteration=0;iteration<max_iter;++iteration) {
         for (int i=0;i<2;++i) {
             for (int j=0;j<6;++j) initial[j]=q[j]+stages[i][j];
             status=CavityModel_flow(initial,z+C[i]*h,Q,source,model,values[i]);
@@ -569,7 +568,19 @@ int CavityModel_gauss_stages(const xt_float_or_tpsa q[6],
                 residual=fmax(residual,CavityModel_primal_residual(stages[i][j]
                     -h*(A[i][0]*values[0][j]+A[i][1]*values[1][j])));
         if (residual>=tolerance) continue;
-        if (sweeps>0) {--sweeps; continue;}
+        for (int sweep=0;sweep<CAVITY_MODEL_JET_SWEEPS;++sweep) {
+            for (int i=0;i<2;++i)
+                for (int j=0;j<6;++j)
+                    proposed[i][j]=h*(A[i][0]*values[0][j]+A[i][1]*values[1][j]);
+            for (int i=0;i<2;++i) {
+                for (int j=0;j<6;++j) {
+                    stages[i][j]=proposed[i][j];
+                    initial[j]=q[j]+stages[i][j];
+                }
+                status=CavityModel_flow(initial,z+C[i]*h,Q,source,model,values[i]);
+                if (status!=CAVITY_MODEL_OK) return status;
+            }
+        }
         xt_float_or_tpsa result[6],check[6];
         for (int j=0;j<6;++j) result[j]=q[j]+h*(values[0][j]+values[1][j])*.5;
         status=CavityModel_flow(result,z+h,Q,source,model,check);
@@ -580,14 +591,6 @@ int CavityModel_gauss_stages(const xt_float_or_tpsa q[6],
         for (int j=0;j<6;++j) output[j]=result[j];
         return CAVITY_MODEL_OK;
     }
-#ifdef CAVITY_MODEL_DEBUG
-    for (int i=0;i<2;++i) {
-        for (int j=0;j<6;++j) initial[j]=q[j]+stages[i][j];
-        CavityModel_flow(initial,z+C[i]*h,Q,source,model,values[i]);
-    }
-    CavityModel_debug_stages("physical-gauss",q,stages[0],stages[1],
-                             values[0],values[1],h,6);
-#endif
     return CAVITY_MODEL_ITERATIONS;
 }
 
