@@ -51,15 +51,17 @@ PX_LIMIT          = .03
 # Explicit source/transport assumptions
 ########################################
 COHORTS = [
-    ('p16', .25, .3, .9, ['phase-resolved']),
-    ('uniform', 0., 0., 1., ['phase-resolved', 'phase-resolved-frozen']),
+    ('p16', .25, .3, .9, ['phase-resolved', 'phase-averaged']),
+    ('uniform', 0., 0., 1., ['phase-resolved', 'phase-averaged', 'phase-resolved-frozen']),
 ]
 INTEGRATORS = {
     'phase-resolved': 'uniform',
+    'phase-averaged': 'uniform',
     'phase-resolved-frozen': 'geometric',
 }
 LABELS = {
     'phase-resolved': 'Full resolved',
+    'phase-averaged': 'Phase averaged (Sagan type)',
     'phase-resolved-frozen': 'Frozen coefficients and faces',
 }
 
