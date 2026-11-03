@@ -13,6 +13,7 @@
 // forward wave on axis is Q f e(Z) cos(T - nu Z).
 #include "xtrack/beam_elements/elements_src/cavity_models.h"
 #include "xtrack/beam_elements/elements_src/cavity_models_compat.h"
+#include "xtrack/beam_elements/elements_src/cavity_models_frozen.h"
 
 #define CAVITY_AVERAGED_MIDPOINT_ITERATIONS 60
 
@@ -63,6 +64,46 @@ int CavityModel_averaged_drift(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg lengt
     q[0]+=length*q[3]/pz;
     q[1]+=length*q[4]/pz;
     if (!freeze_zeta) q[2]+=length*q[5]/pz;
+    return CAVITY_MODEL_OK;
+}
+
+// The static field of the step body (D15): a uniform solenoid or a normal
+// quadrupole replaces the free drift by the exact canonical bodies of the
+// frozen model, in metres and a clock relative to the reference.
+typedef struct {
+    xt_float_or_tpsa solenoid, gradient, reference_momentum;
+} CavityAveragedStatic;
+
+GPUFUN
+int CavityModel_averaged_body(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg length,
+        const CavityModelSource *source, const CavityAveragedStatic *field) {
+    if (xt_float_or_tpsa_is_zero(field->solenoid) && xt_float_or_tpsa_is_zero(field->gradient))
+        return CavityModel_averaged_drift(q, length, source->freeze_zeta);
+    const xt_float_or_tpsa k=source->k;
+    xt_float_or_tpsa state[6]={q[0]/k, q[1]/k, 0., q[3], q[4], q[5]};
+    const int status=CavityModel_frozen_body(state, length/k, source->reference_beta,
+        field->solenoid, field->gradient, field->reference_momentum, source->freeze_zeta);
+    if (status!=CAVITY_MODEL_OK) return status;
+    q[0]=k*state[0]; q[1]=k*state[1];
+    if (!source->freeze_zeta) q[2]+=k*state[2]+length/source->reference_beta;
+    q[3]=state[3]; q[4]=state[4]; q[5]=state[5];
+    return CAVITY_MODEL_OK;
+}
+
+// Normal-quadrupole face of the static field (frozen-model map).
+GPUFUN
+int CavityModel_averaged_static_face(xt_float_or_tpsa q[6], const CavityModelSource *source,
+        const CavityAveragedStatic *field, int negate, int inverse) {
+    if (xt_float_or_tpsa_is_zero(field->gradient)) return CAVITY_MODEL_OK;
+    const xt_float_or_tpsa k=source->k;
+    xt_float_or_tpsa state[6]={q[0]/k, q[1]/k, 0., q[3], q[4], q[5]};
+    xt_float_or_tpsa gradient=field->gradient;
+    if (negate) gradient=-gradient;
+    const int status=CavityModel_static_quad_face(state, gradient, inverse, source->freeze_zeta);
+    if (status!=CAVITY_MODEL_OK) return status;
+    q[0]=k*state[0]; q[1]=k*state[1];
+    if (!source->freeze_zeta) q[2]+=k*state[2];
+    q[3]=state[3]; q[4]=state[4]; q[5]=state[5];
     return CAVITY_MODEL_OK;
 }
 
@@ -186,11 +227,12 @@ GPUFUN
 int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
         xt_float_or_tpsa_arg z_mid, xt_float_or_tpsa_arg gradient,
         xt_float_or_tpsa_arg counter_gradient, xt_float_or_tpsa_arg Q,
-        const CavityModelSource *source, const CavityAveragedSpin *spin) {
+        const CavityModelSource *source, const CavityAveragedStatic *field,
+        const CavityAveragedSpin *spin) {
     const int freeze_energy=source->freeze_energy, freeze_zeta=source->freeze_zeta;
     const xt_float_or_tpsa coefficient=h*counter_gradient*counter_gradient/32.;
     const xt_float_or_tpsa phase=source->carrier*z_mid;
-    int status=CavityModel_averaged_drift(q, .5*h, freeze_zeta);
+    int status=CavityModel_averaged_body(q, .5*h, source, field);
     if (status==CAVITY_MODEL_OK)
         status=CavityModel_averaged_ponderomotive(q, coefficient, freeze_zeta, spin);
     for (int factor=0; factor<2 && status==CAVITY_MODEL_OK; ++factor) {
@@ -239,7 +281,7 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
     if (status==CAVITY_MODEL_OK)
         status=CavityModel_averaged_ponderomotive(q, coefficient, freeze_zeta, spin);
     if (status==CAVITY_MODEL_OK)
-        status=CavityModel_averaged_drift(q, .5*h, freeze_zeta);
+        status=CavityModel_averaged_body(q, .5*h, source, field);
     return status;
 }
 
@@ -249,10 +291,32 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
 GPUFUN
 int CavityModel_averaged_interval(const xt_float_or_tpsa q_in[6],
         xt_float_or_tpsa_arg Q, const CavityModelSource *source, int64_t cells,
-        double left, double right, int reverse, const CavityAveragedSpin *spin,
+        double left, double right, int reverse, int entry_face, int exit_face,
+        xt_float_or_tpsa_arg reference_momentum, const CavityAveragedSpin *spin,
         xt_float_or_tpsa q[6]) {
     if (cells<=0 || !(right>left)) return CAVITY_MODEL_ARGUMENT;
     if (!xt_float_or_tpsa_is_zero(source->dc_gradient)) return CAVITY_MODEL_ARGUMENT;
+    // Supported static fields, as for the frozen model: a uniform solenoid
+    // with its faces off, or a normal quadrupole with its own faces.
+    for (int64_t i=0;i<=source->order;++i)
+        if ((i!=1 && !xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source,i,0)))
+            || !xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source,i,1)))
+            return CAVITY_MODEL_ARGUMENT;
+    CavityAveragedStatic field;
+    field.solenoid=Q*source->magnetic_scale*source->ks;
+    field.gradient=0.;
+    if (source->order>=1)
+        field.gradient=Q*source->magnetic_scale
+            *CavityModel_static_coefficient(source,1,0)/source->length;
+    field.reference_momentum=reference_momentum;
+    const int static_present=!xt_float_or_tpsa_is_zero(field.solenoid)
+                             || !xt_float_or_tpsa_is_zero(field.gradient);
+    if (!xt_float_or_tpsa_is_zero(field.solenoid)
+        && (!xt_float_or_tpsa_is_zero(field.gradient) || entry_face || exit_face))
+        return CAVITY_MODEL_ARGUMENT;
+    if (static_present && spin && spin->spin) return CAVITY_MODEL_ARGUMENT;
+    entry_face=entry_face && left==0.;
+    exit_face=exit_face && right==1.;
     for (int i=0;i<6;++i) q[i]=q_in[i];
     const xt_float_or_tpsa length=source->k*source->length;
     const xt_float_or_tpsa z_left=length*(left-.5), z_right=length*(right-.5);
@@ -268,6 +332,8 @@ int CavityModel_averaged_interval(const xt_float_or_tpsa q_in[6],
         outer_right=Q*source->forward*envelope[0];
     }
     int status=CAVITY_MODEL_OK;
+    if ((!reverse && entry_face) || (reverse && exit_face))
+        status=CavityModel_averaged_static_face(q, source, &field, reverse, reverse);
     xt_float_or_tpsa signed_h=h;
     if (reverse) signed_h=-h;
     xt_float_or_tpsa previous=reverse ? outer_right : outer_left;
@@ -283,7 +349,7 @@ int CavityModel_averaged_interval(const xt_float_or_tpsa q_in[6],
         status=CavityModel_averaged_edge(q, gradient-previous, boundary, source, spin);
         if (status==CAVITY_MODEL_OK)
             status=CavityModel_averaged_step(q, signed_h, z_mid,
-                                             gradient, counter, Q, source, spin);
+                                             gradient, counter, Q, source, &field, spin);
         previous=gradient;
     }
     if (status==CAVITY_MODEL_OK) {
@@ -291,6 +357,8 @@ int CavityModel_averaged_interval(const xt_float_or_tpsa q_in[6],
         const xt_float_or_tpsa boundary=reverse ? z_left : z_right;
         status=CavityModel_averaged_edge(q, outer-previous, boundary, source, spin);
     }
+    if (status==CAVITY_MODEL_OK && ((!reverse && exit_face) || (reverse && entry_face)))
+        status=CavityModel_averaged_static_face(q, source, &field, !reverse, reverse);
     return status;
 }
 

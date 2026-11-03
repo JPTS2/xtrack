@@ -350,10 +350,17 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         elif self.model == 'phase-averaged':
             if self.integrator not in ('adaptive', 'uniform'):
                 raise ValueError('phase-averaged supports the "uniform" integrator')
-            if (_constant_part(self.ks) != 0. or np.any(np.asarray(self.knl) != 0.)
-                    or np.any(np.asarray(self.ksl) != 0.)
-                    or self.magnetic_profile != 'uniform'):
-                raise ValueError('phase-averaged does not yet support static fields')
+            normal, skew = np.asarray(self.knl), np.asarray(self.ksl)
+            others = (np.any(normal[np.arange(len(normal)) != 1] != 0.)
+                      or np.any(skew != 0.) or self.magnetic_profile != 'uniform')
+            solenoid = _constant_part(self.ks) != 0.
+            if others or (solenoid and (np.any(normal != 0.) or self.edge_entry_active
+                                        or self.edge_exit_active)):
+                raise ValueError('phase-averaged supports a uniform solenoid with '
+                                 'faces off or a normal quadrupole as static field')
+            if self.spin_tracking and (solenoid or np.any(normal != 0.)):
+                raise NotImplementedError('Cavity spin transport with static fields '
+                                          'is not implemented for phase-averaged')
         elif self.integrator == 'teapot':
             raise ValueError('phase-resolved has no kicks to place: "teapot" '
                              'does not apply')

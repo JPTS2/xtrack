@@ -196,8 +196,7 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
             || !CavityData_get_wave_number_from_frequency(el))
             controls=CAVITY_MODEL_ARGUMENT;
     } else if (model==CAVITY_MODEL_AVERAGED) {
-        if ((integrator!=0 && integrator!=3)
-            || CavityModels_effects_static_present(el) || magnetic_profile!=0)
+        if ((integrator!=0 && integrator!=3) || magnetic_profile!=0)
             controls=CAVITY_MODEL_ARGUMENT;
     } else if (integrator==1 || integrator<0 || integrator>7 || integrator==6) {
         controls=CAVITY_MODEL_ARGUMENT;
@@ -385,7 +384,9 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
             {
                 CavityAveragedSpin averaged_spin={spin_tracking ? spin : NULL, anomaly};
                 status=CavityModel_averaged_interval(q,Q,&source,cells,
-                    left_fraction,right_fraction,reverse,&averaged_spin,next);
+                    left_fraction,right_fraction,reverse,
+                    CavityData_get_edge_entry_active(el),CavityData_get_edge_exit_active(el),
+                    kappa0,&averaged_spin,next);
             }
             if (status==CAVITY_MODEL_OK) {
                 for (int j=0;j<6;++j) q[j]=next[j];

@@ -808,11 +808,27 @@ def test_phase_averaged_tpsa_matches_finite_differences():
     np.testing.assert_allclose(series.jacobian(), finite, rtol=0, atol=2e-8)
 
 
-def test_phase_averaged_refuses_static_fields_and_other_integrators():
+def test_phase_averaged_refuses_unsupported_static_fields_and_integrators():
     with pytest.raises(ValueError, match='static'):
-        _averaged_cavity(ks=.1)
+        _averaged_cavity(ks=.1)                     # solenoid with active faces
+    with pytest.raises(ValueError, match='static'):
+        _averaged_cavity(knl=[0., 0., .1], order=2)  # sextupole
     with pytest.raises(ValueError, match='uniform'):
         _averaged_cavity(integrator='yoshida-6')
+
+
+@pytest.mark.parametrize('static', [dict(knl=[0., .05]),
+    dict(ks=.3, edge_entry_active=0, edge_exit_active=0)])
+@pytest.mark.parametrize('voltage', [0., 20e6])
+def test_phase_averaged_static_fields_follow_phase_resolved(static, voltage):
+    ends = []
+    for model in ('phase-averaged', 'phase-resolved'):
+        probe = _launch(2000.)
+        _averaged_cavity(model, voltage=voltage, num_kicks=64, **static).track(probe)
+        assert probe.state[0] == 1
+        ends.append(np.array([getattr(probe, n)[0]
+                              for n in ('x', 'px', 'y', 'py', 'zeta', 'delta')]))
+    np.testing.assert_allclose(ends[0], ends[1], rtol=0, atol=5e-10)
 
 
 @pytest.mark.parametrize('phase', [np.pi/2, 1.])
