@@ -494,7 +494,7 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
     context=cavity_magnetic_context
     line = xt.Line(elements=[xt.Cavity(length=.05, voltage=2e4,
         frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
-        calibration_beta=.9, model=model, integrator='gauss2',
+        calibration_beta=.9, model=model, integrator='uniform',
         num_kicks=8)], element_names=['c'])
     line.particle_ref = xt.Particles(p0c=launch['p0c'], mass0=mass, q0=1.)
     line.reset_s_at_end_turn=False

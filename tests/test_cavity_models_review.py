@@ -46,7 +46,7 @@ def test_public_cavity_independent_vacuum_limits(tmp_path):
     with kernel_context(tmp_path) as context:
         for model in MODELS:
             element = xt.Cavity(_context=context, length=length, voltage=0.,
-                frequency=0., eta=.3, model=model, integrator='gauss2',
+                frequency=0., eta=.3, model=model, integrator='uniform',
                 num_kicks=7, absolute_time=True)
             line = xt.Line(elements=[element,xt.Marker(_context=context)],
                            element_names=['cavity','physical_exit'])
@@ -89,7 +89,7 @@ def test_public_cavity_independent_quadrupole_limit(tmp_path):
         for model in MODELS:
             element = xt.Cavity(_context=context, length=length, voltage=0.,
                 frequency=0., eta=0., knl=[0., k1*length], ks=0.,
-                model=model, integrator='gauss2', num_kicks=64)
+                model=model, integrator='uniform', num_kicks=64)
             for charge in (-1., 1.):
                 incoming = particle(context, 2.4, charge,
                     x=epsilon, px=0., y=epsilon, py=0., zeta=0.)
@@ -115,7 +115,7 @@ def test_public_cavity_physical_clock_frame_invariance(tmp_path):
         for model in MODELS:
             element = xt.Cavity(_context=context, length=.05, voltage=20e3,
                 frequency=400e6, phase=.23, eta=.25, counter_phase=.3,
-                calibration_beta=1., model=model, integrator='gauss2',
+                calibration_beta=1., model=model, integrator='uniform',
                 num_kicks=16, absolute_time=True)
             first = particle(context, gamma, px=.005, py=-.004,
                              zeta=.001, time_s=0.)
@@ -137,7 +137,7 @@ def test_public_cavity_rejects_nonpositive_native_momentum(tmp_path):
     with kernel_context(tmp_path) as context:
         for model in MODELS:
             element=xt.Cavity(_context=context,length=.05,voltage=0.,
-                frequency=0.,eta=.3,model=model,integrator='gauss2',
+                frequency=0.,eta=.3,model=model,integrator='uniform',
                 num_kicks=4)
             for delta in (-1.1,-1.):
                 try:
@@ -177,7 +177,7 @@ def test_public_cavity_mixed_species_reference_equivalence(tmp_path):
     }
     controls = dict(length=.05, voltage=20e3, frequency=400e6, phase=.23,
                     eta=.25, counter_phase=.3, calibration_beta=1.,
-                    integrator='gauss2', num_kicks=16, absolute_time=True)
+                    integrator='uniform', num_kicks=16, absolute_time=True)
     metadata = ('ptau', 'pzeta', 'rpp', 'rvv', 'ax', 'ay', 's')
     with kernel_context(tmp_path) as context:
         for model in MODELS:

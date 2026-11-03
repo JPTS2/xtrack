@@ -55,8 +55,8 @@ COHORTS = [
     ('uniform', 0., 0., 1., ['phase-resolved', 'phase-resolved-frozen']),
 ]
 INTEGRATORS = {
-    'phase-resolved': 'gauss2',
-    'phase-resolved-frozen': 'geometric-kick-drift',
+    'phase-resolved': 'uniform',
+    'phase-resolved-frozen': 'geometric',
 }
 LABELS = {
     'phase-resolved': 'Full resolved',

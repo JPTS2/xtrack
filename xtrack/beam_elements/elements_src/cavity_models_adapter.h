@@ -147,7 +147,7 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
             || !xt_float_or_tpsa_is_zero(CavityData_get_calibration_beta(el)-1.)
             || !CavityData_get_wave_number_from_frequency(el))
             controls=CAVITY_MODEL_ARGUMENT;
-    } else if (integrator!=0 && integrator!=6) {
+    } else if (integrator!=0 && integrator!=3) {
         controls=CAVITY_MODEL_ARGUMENT;
     }
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);

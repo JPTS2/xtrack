@@ -25,9 +25,9 @@ def model_context(tmp_path_factory):
 def cavity(model='phase-resolved', **kwargs):
     controls = dict(length=.05, voltage=20e3, frequency=400e6, phase=.7,
                     eta=.25, counter_phase=.3, calibration_beta=1.,
-                    model=model, integrator='gauss2', num_kicks=16)
+                    model=model, integrator='uniform', num_kicks=16)
     if model == 'phase-resolved-frozen':
-        controls.update(eta=0., integrator='geometric-kick-drift')
+        controls.update(eta=0., integrator='geometric')
     controls.update(kwargs)
     return xt.Cavity(**controls)
 
@@ -476,13 +476,13 @@ def test_optimized_source_layout_keeps_live_legacy_rf_switch(model_context, mode
 
     reference = xt.Line(elements={'rf': cavity(model, _context=model_context,
                         integrator='adaptive', num_kicks=24)})
-    reference['rf'].model = 'drift-kick-drift-expanded'
+    reference['rf'].model = 'longitudinal-only'
     reference.reset_s_at_end_turn = False
     reference.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
     reference.build_tracker(_context=model_context)
     expected_legacy = initial.copy()
     reference.track(expected_legacy)
-    line['rf'].model = 'drift-kick-drift-expanded'
+    line['rf'].model = 'longitudinal-only'
     actual = initial.copy()
     line.track(actual)
     assert expected_legacy.state[0] == actual.state[0] == 1
@@ -629,3 +629,33 @@ def test_frozen_model_is_symplectic_with_canonical_faces(model_context, faces):
         form[2*i, 2*i+1], form[2*i+1, 2*i] = 1, -1
     # The SAD face fails this at 4e-6; finite differences give about 1e-9.
     assert np.abs(matrix.T @ form @ matrix - form).max() < 1e-7
+
+
+@pytest.mark.parametrize('old,new', [
+    ('drift-kick-drift-expanded', 'longitudinal-only'),
+    ('drift-kick-drift-exact', 'longitudinal-only-exact'),
+    ('rot-kick-rot-low-order', 'longitudinal-only-exact'),
+    ('rot-kick-rot-high-order', 'longitudinal-only-exact')])
+def test_legacy_model_names_are_deprecated_aliases(model_context, old, new):
+    with pytest.warns(FutureWarning, match='deprecated'):
+        aliased = xt.Cavity(_context=model_context, length=1., voltage=20e6,
+                            frequency=1.3e9, phase=.3, num_kicks=4, model=old)
+    assert aliased.model == new
+    direct = xt.Cavity(_context=model_context, length=1., voltage=20e6,
+                       frequency=1.3e9, phase=.3, num_kicks=4, model=new)
+    tracked = []
+    for element in (aliased, direct):
+        probe = particle(model_context)
+        element.track(probe)
+        tracked.append(coordinates(probe))
+    np.testing.assert_array_equal(tracked[0], tracked[1])
+
+
+def test_old_integrator_names_are_deprecated_aliases():
+    with pytest.warns(FutureWarning, match='deprecated'):
+        rf = xt.Cavity(model='phase-resolved', length=.1, integrator='gauss2')
+    assert rf.integrator == 'uniform'
+    with pytest.warns(FutureWarning, match='deprecated'):
+        rf = xt.Cavity(model='phase-resolved-frozen', length=.1,
+                       integrator='geometric-kick-drift')
+    assert rf.integrator == 'geometric'

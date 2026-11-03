@@ -21,16 +21,25 @@ from ._common import (
     _for_docstring_alignment,
 )
 
-# These physical models belong to Cavity. Extending the shared RF table would
-# also advertise them on CrabCavity/RFMultipole, whose kernels lack them.
-_CAVITY_MODELS = dict(_INDEX_TO_MODEL_RF)
-_CAVITY_MODELS.update({10: 'phase-resolved', 13: 'phase-resolved-frozen'})
+# Cavity has its own physics model axis; CrabCavity and RFMultipole keep the
+# shared RF table. The kernel ids 5 and 6 are the legacy kick-drift maps.
+_CAVITY_MODELS = {0: 'adaptive', 6: 'longitudinal-only',
+                  5: 'longitudinal-only-exact', 10: 'phase-resolved',
+                  13: 'phase-resolved-frozen'}
 _CAVITY_MODEL_IDS = {value: key for key, value in _CAVITY_MODELS.items()}
+# For RF the rot-kick-rot maps equal drift-kick-drift-exact bit for bit.
+_DEPRECATED_CAVITY_MODELS = {
+    'drift-kick-drift-expanded': 'longitudinal-only',
+    'drift-kick-drift-exact': 'longitudinal-only-exact',
+    'rot-kick-rot-low-order': 'longitudinal-only-exact',
+    'rot-kick-rot-high-order': 'longitudinal-only-exact',
+}
 _CAVITY_INTEGRATORS = dict(_INDEX_TO_INTEGRATOR)
-_CAVITY_INTEGRATORS[6] = 'gauss2'
-_CAVITY_INTEGRATORS[7] = 'geometric-kick-drift'
+_CAVITY_INTEGRATORS[7] = 'geometric'
 _CAVITY_INTEGRATOR_IDS = {
     value: key for key, value in _CAVITY_INTEGRATORS.items()}
+_DEPRECATED_CAVITY_INTEGRATORS = {'gauss2': 'uniform',
+                                  'geometric-kick-drift': 'geometric'}
 _CAVITY_RF_PROFILES = {0: 'p16', 1: 'uniform', 2: 'gaussian'}
 _CAVITY_RF_PROFILE_IDS = {value: key for key, value in _CAVITY_RF_PROFILES.items()}
 _CAVITY_MAGNETIC_PROFILES = {0: 'uniform', 1: 'gaussian'}
@@ -125,12 +134,17 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     '''.strip()
 
     _docstring_models = '''model : str
-        Legacy RF models keep their behaviour. "phase-resolved" integrates the
-        full Hamiltonian of the RF and static fields with Gauss collocation;
-        "phase-resolved-frozen" is the frozen-coefficient voltage-action model.
+        "longitudinal-only" (default, expanded drifts) and
+        "longitudinal-only-exact" (exact drifts) apply RF energy kicks only.
+        "phase-resolved" integrates the full Hamiltonian of the RF and static
+        fields in Gauss collocation cells; "phase-resolved-frozen" is the
+        frozen-coefficient voltage-action model with canonical faces. The
+        drift-kick-drift and rot-kick-rot names are deprecated aliases.
     integrator : str
-        "adaptive" selects "gauss2" for the phase-resolved model and
-        "geometric-kick-drift" for the frozen model.
+        How the model's base step is placed: "uniform" (equal steps; Gauss
+        cells for "phase-resolved"), "teapot", "yoshida-4/6/8" and, for the
+        frozen model, "geometric" (steps graded by the energy ratio, its
+        default). "gauss2" and "geometric-kick-drift" are deprecated aliases.
     num_kicks : int
         Number of integration cells (phase-resolved default 64; the frozen
         model chooses its own count when zero).
@@ -324,16 +338,16 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         if self.rf_field_order != 2:
             raise ValueError(f'{self.model} supports only rf_field_order=2')
         if self.model == 'phase-resolved-frozen':
-            if self.integrator not in ('adaptive', 'geometric-kick-drift'):
+            if self.integrator not in ('adaptive', 'geometric'):
                 raise ValueError('phase-resolved-frozen supports only the '
-                                 '"geometric-kick-drift" integrator')
+                                 '"geometric" integrator')
             if (_constant_part(self.eta) != 0.
                     or _constant_part(self.calibration_beta) != 1.
                     or not self.wave_number_from_frequency):
                 raise ValueError('phase-resolved-frozen requires eta=0, '
                                  'calibration_beta=1 and the carrier from frequency')
-        elif self.integrator not in ('adaptive', 'gauss2'):
-            raise ValueError('phase-resolved supports only the "gauss2" integrator')
+        elif self.integrator not in ('adaptive', 'uniform'):
+            raise ValueError('phase-resolved supports only the "uniform" integrator')
         if self.spin_tracking:
             self._check_spin_support()
 
@@ -341,7 +355,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         """Raise if spin transport is not implemented for these settings."""
         if (self._model != 10 or self._rf_profile != 0
                 or self._magnetic_profile != 0
-                or self.rf_field_order != 2 or self._integrator not in (0, 6)):
+                or self.rf_field_order != 2 or self._integrator not in (0, 3)):
             raise NotImplementedError('Cavity spin transport requires the phase-resolved model '
                                       'with the P16 profile and a uniform magnetic profile')
         normal = np.asarray(self.knl)
@@ -363,6 +377,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     @model.setter
     def model(self, value):
+        if value in _DEPRECATED_CAVITY_MODELS:
+            new = _DEPRECATED_CAVITY_MODELS[value]
+            warn(f'Cavity model "{value}" is deprecated; use "{new}".',
+                 FutureWarning)
+            value = new
         try:
             self._model = _CAVITY_MODEL_IDS[value]
         except KeyError:
@@ -382,6 +401,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
             # Preserve the shared mixin's deprecated historical spelling.
             _HasIntegrator.integrator.fset(self, value)
             return
+        if value in _DEPRECATED_CAVITY_INTEGRATORS:
+            new = _DEPRECATED_CAVITY_INTEGRATORS[value]
+            warn(f'Cavity integrator "{value}" is deprecated; use "{new}".',
+                 FutureWarning)
+            value = new
         try:
             self._integrator = _CAVITY_INTEGRATOR_IDS[value]
         except KeyError:
