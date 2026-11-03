@@ -1865,20 +1865,9 @@ class Line:
         # active TPSA elements intentionally cannot be copied. Visit the actual
         # owners instead, including parents used only through their slices.
         # The environment may contain unrelated lines: do not disable those.
-        pending = list(self.element_names)
-        visited = set()
-        while pending:
-            name = pending.pop()
-            element = self._element_dict[name]
-            identity = id(element)
-            if identity in visited:
-                continue
-            visited.add(identity)
+        for element in self._used_owners():
             if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0):
                 element.disable_tpsa()
-            parent_name = getattr(element, 'parent_name', None)
-            if parent_name is not None:
-                pending.append(parent_name)
 
     @doc_group("Reference Particle and Particle Generation")
     def set_particle_ref(self, *args, **kwargs):
@@ -5027,8 +5016,8 @@ class Line:
             integrator=integrator,
         )
 
-    def _used_cavity_owners(self):
-        """Visit physical Cavity owners used directly, by replica or slice."""
+    def _used_owners(self):
+        """Visit every element owner the line uses, by replica or slice."""
         pending = list(self.element_names)
         seen = set()
         while pending:
@@ -5038,11 +5027,27 @@ class Line:
             if id(element) in seen:
                 continue
             seen.add(id(element))
-            if isinstance(element, xt.Cavity):
-                yield element
+            yield element
             parent = getattr(element, 'parent_name', None)
             if parent is not None:
                 pending.append(parent)
+
+    def _used_cavity_owners(self):
+        """Visit Cavity owners used directly, by replica or slice."""
+        return (ee for ee in self._used_owners() if isinstance(ee, xt.Cavity))
+
+    def _slices_physical_cavity(self):
+        """Whether a physical-model cavity is used through its slices."""
+        for element in self._used_owners():
+            parent = getattr(element, 'parent_name', None)
+            if parent is None:
+                continue
+            owner = self._element_dict[parent]
+            if isinstance(owner, xt.Replica):
+                owner = owner.resolve(self)
+            if isinstance(owner, xt.Cavity) and owner._model >= 10:
+                return True
+        return False
 
     def _check_cavity_spin(self):
         """Raise if a used physical-model cavity cannot transport spin."""
@@ -5056,25 +5061,11 @@ class Line:
         context = self._context
         if context is not None and not isinstance(context, xo.ContextCpu):
             raise NotImplementedError('Cavity spin transport is implemented only for CPU')
-        pending = list(self.element_names)
-        visited = set()
-        while pending:
-            element = self._element_dict[pending.pop()]
-            if isinstance(element, xt.Replica):
-                element = element.resolve(self)
-            if id(element) in visited:
-                continue
-            visited.add(id(element))
-            if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0):
-                raise NotImplementedError('Cavity spin transport does not support active TPSA owners')
-            parent_name = getattr(element, 'parent_name', None)
-            if parent_name is not None:
-                parent = self._element_dict[parent_name]
-                if isinstance(parent, xt.Replica):
-                    parent = parent.resolve(self)
-                if isinstance(parent, xt.Cavity) and parent._model >= 10:
-                    raise NotImplementedError('Cavity spin transport is not yet supported through slices')
-                pending.append(parent_name)
+        if any(getattr(getattr(ee, '_xobject', None), '_tpsa_enabled', 0)
+               for ee in self._used_owners()):
+            raise NotImplementedError('Cavity spin transport does not support active TPSA owners')
+        if self._slices_physical_cavity():
+            raise NotImplementedError('Cavity spin transport is not yet supported through slices')
         for element in cavities:
             element._check_spin_support()
 

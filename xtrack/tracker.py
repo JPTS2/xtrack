@@ -294,10 +294,8 @@ class Tracker:
             cavities = tuple(
                 ee for ee in self.line._used_cavity_owners() if ee._model >= 10)
             self._physical_cavity_cache = cavities
-            self._physical_cavity_sliced = any(
-                isinstance(getattr(self.line[nn], '_parent', None), xt.Cavity)
-                and self.line[nn]._parent._model >= 10
-                for nn in self.line.element_names) if cavities else False
+            self._physical_cavity_sliced = (bool(cavities)
+                                            and self.line._slices_physical_cavity())
         return self._physical_cavity_cache
 
     def _check_cavity_spin_call(self, particles):
