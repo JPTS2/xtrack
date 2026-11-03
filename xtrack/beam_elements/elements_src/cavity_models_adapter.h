@@ -176,7 +176,14 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
         ||(spin_tracking&&(LocalParticle_check_track_flag(part0,XS_FLAG_SR_KICK_SAME_AS_FIRST)
             ||weight!=1.||slice_start!=0.)))
         controls=CAVITY_MODEL_ARGUMENT;
-    const int64_t parent_cells=requested>0 ? requested : 64;
+    int64_t parent_cells=requested>0 ? requested : 64;
+    // Two averaged steps per half-wavelength resolve the stepped profile;
+    // beyond that the averaging error dominates.
+    if (model==CAVITY_MODEL_AVERAGED && requested==0) {
+        const double frequency=xt_float_or_tpsa_const_part(CavityData_get_frequency(el));
+        const double half_cells=2.*frequency*length/C_LIGHT;
+        parent_cells=half_cells>.5 ? (int64_t)ceil(2.*half_cells) : 1;
+    }
     const int64_t cells=controls==CAVITY_MODEL_OK
         ? (int64_t)ceil(parent_cells*weight) : 1;
     // Slicing sums can differ from a parent boundary by a few ulps. Use

@@ -146,8 +146,9 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         frozen model, "geometric" (steps graded by the energy ratio, its
         default). "gauss2" and "geometric-kick-drift" are deprecated aliases.
     num_kicks : int
-        Number of integration cells (phase-resolved default 64; the frozen
-        model chooses its own count when zero).
+        Number of integration cells when nonzero. With zero, phase-resolved
+        uses 64, phase-averaged two steps per half RF wavelength, and the
+        frozen model its own count.
     '''.strip()
 
     __doc__ = '\n    '.join([_docstring_start, _docstring_models,
