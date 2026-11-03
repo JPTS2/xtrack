@@ -491,7 +491,7 @@ def test_gaussian_readback_keeps_live_parent_slice_and_replica_controls():
                 assert actual is nominal
 
 
-TRANSACTION_NUMERIC_FIELDS = COORDINATES + (
+NUMERIC_FIELDS = COORDINATES + (
     'pzeta', 'rvv', 'rpp', 's', 'ax', 'ay', 'spin_x', 'spin_y', 'spin_z',
     'p0c', 'gamma0', 'beta0', 'chi', 'charge_ratio', 'weight',
     'anomalous_magnetic_moment')
@@ -500,147 +500,14 @@ TRANSACTION_NUMERIC_FIELDS = COORDINATES + (
 def numeric_rows_by_id(particles):
     """A failed ordinary kernel can compact losses; identity owns each row."""
     return {int(identifier): np.array([getattr(particles, name)[index]
-            for name in TRANSACTION_NUMERIC_FIELDS])
+            for name in NUMERIC_FIELDS])
             for index, identifier in enumerate(particles.particle_id)}
 
 
 @pytest.fixture(scope='module', params=(0, 1), ids=('serial', 'openmp_one_thread'))
-def transaction_context(request, tmp_path_factory):
-    with kernel_context(tmp_path_factory.mktemp('cavity-frame-transaction')) as serial:
+def thread_context(request, tmp_path_factory):
+    with kernel_context(tmp_path_factory.mktemp('cavity-thread-context')) as serial:
         yield serial if request.param == 0 else xo.ContextCpu(omp_num_threads=1)
-
-
-@pytest.mark.parametrize('invalid', (
-    dict(eta=-.1), dict(calibration_beta=0.),
-    dict(rf_profile='uniform', wave_number=0., eta=1., counter_phase=np.pi)))
-def test_transformed_source_refusal_restores_each_numeric_lane(transaction_context, invalid):
-    """Invalid hardware/calibration must leave each laboratory row intact."""
-    context = transaction_context
-    controls = dict(hardware('phase-resolved'), shift_x=.001, rot_y_rad=.03)
-    controls.update(invalid)
-    cavity = xt.Cavity(_context=context, **controls)
-    rays = particle(context, x=[.0002, -.0003, .0004], px=[.0001, -.0002, .0003],
-        particle_id=[7, 3, 11], spin_x=.1, spin_y=.2, spin_z=.3,
-        ax=2e-5, ay=-3e-5, s=.17)
-    before = numeric_rows_by_id(rays)
-    cavity.track(rays)
-    assert np.all(rays.state <= 0)
-    for identifier, row in numeric_rows_by_id(rays).items():
-        np.testing.assert_array_equal(row.view(np.uint64), before[identifier].view(np.uint64))
-
-
-def test_transformed_mixed_domain_failure_restores_only_failed_lanes(transaction_context):
-    """One inadmissible off-axis map must not disturb a different valid ray."""
-    context = transaction_context
-    controls = dict(hardware('phase-resolved'), shift_x=.001, rot_y_rad=.03,
-                    num_kicks=8)
-    cavity = xt.Cavity(_context=context, **controls)
-    rays = particle(context, x=[.0002, 5., -.0003, 1.],
-        px=[.0001, .0001, -.0002, .0001], particle_id=[7, 3, 11, 5],
-        spin_x=.1, spin_y=.2, spin_z=.3, ax=2e-5, ay=-3e-5)
-    before = numeric_rows_by_id(rays)
-    expected = {}
-    for identifier, x, px in ((7, .0002, .0001), (11, -.0003, -.0002)):
-        one = particle(context, x=x, px=px, particle_id=identifier,
-            spin_x=.1, spin_y=.2, spin_z=.3, ax=2e-5, ay=-3e-5)
-        cavity.track(one)
-        assert one.state[0] == 1
-        expected[identifier] = numeric_rows_by_id(one)[identifier]
-    cavity.track(rays)
-    rows = numeric_rows_by_id(rays)
-    states = dict(zip(map(int, rays.particle_id), map(int, rays.state)))
-    for identifier in (3, 5):
-        assert states[identifier] <= 0
-        np.testing.assert_array_equal(rows[identifier].view(np.uint64),
-                                      before[identifier].view(np.uint64))
-    for identifier in (7, 11):
-        assert states[identifier] == 1
-        np.testing.assert_allclose(rows[identifier], expected[identifier], rtol=0., atol=2e-13)
-
-
-@pytest.mark.parametrize('slice_class', (xt.DriftSliceCavity, xt.ThickSliceCavity))
-def test_transformed_slice_refusal_restores_numeric_lanes(transaction_context, slice_class):
-    """Cover both manual parent frames and the generated slice wrappers."""
-    context = transaction_context
-    parent = xt.Cavity(_context=context, **dict(hardware('phase-resolved'),
-        shift_x=.001, rot_y_rad=.03, eta=-.1))
-    interval = slice_class(_parent=parent, _buffer=parent._buffer, weight=.5,
-                           slice_offset=0.)
-    rays = particle(context, x=[.0002, -.0003], particle_id=[7, 3], s=.17,
-        spin_x=.1, spin_y=.2, spin_z=.3, ax=2e-5, ay=-3e-5)
-    before = numeric_rows_by_id(rays)
-    interval.track(rays)
-    assert np.all(rays.state <= 0)
-    for identifier, row in numeric_rows_by_id(rays).items():
-        np.testing.assert_array_equal(row.view(np.uint64), before[identifier].view(np.uint64))
-
-
-def test_partial_line_transformed_refusal_keeps_numeric_launch(transaction_context):
-    """Exercise the actual Line route, ending before any turn-clock action."""
-    context = transaction_context
-    cavity = xt.Cavity(_context=context, **dict(hardware('phase-resolved'),
-        shift_x=.001, rot_y_rad=.03))
-    line = xt.Line(elements=[cavity, xt.Marker(_context=context)],
-                   element_names=['rf', 'end'])
-    line.particle_ref = xt.Particles(_context=context, mass0=MASS_EV,
-                                    q0=1., p0c=P0C_EV)
-    line.reset_s_at_end_turn = False
-    line.build_tracker(_context=context)
-    line.set('rf', eta=-.1)
-    rays = particle(context, x=[.0002, -.0003], particle_id=[7, 3], s=.17,
-        spin_x=.1, spin_y=.2, spin_z=.3, ax=2e-5, ay=-3e-5)
-    before = numeric_rows_by_id(rays)
-    line.track(rays, ele_start=0, ele_stop=1)
-    assert np.all(rays.state <= 0)
-    for identifier, row in numeric_rows_by_id(rays).items():
-        np.testing.assert_array_equal(row.view(np.uint64), before[identifier].view(np.uint64))
-
-
-@pytest.mark.parametrize('failure', ('source_refusal', 'descriptor_exception'))
-def test_transformed_tpsa_failure_restores_all_coefficients(cpu_context, failure):
-    """Rollback includes series coefficients, even when field access throws."""
-    import madng_tpsa
-    import xtrack.tpsa as xtpsa
-
-    descriptor = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=1)
-    controls = dict(hardware('phase-resolved'), shift_x=.001, rot_y_rad=.03)
-    if failure == 'source_refusal':
-        controls['eta'] = -.1
-    cavity = xt.Cavity(_context=cpu_context, **controls)
-    if failure == 'descriptor_exception':
-        foreign = madng_tpsa.Descriptor(6, 2, num_params=2, param_order=1)
-        cavity.phase = foreign.param(1, controls['phase'])
-    series = xtpsa.ParticlesTpsa(order=2, descriptor=descriptor,
-        mass0=MASS_EV, p0c=P0C_EV, q0=1., x=.0002, px=.0001,
-        y=-.0003, py=.0002, zeta=.0004, delta=.002, s=.17,
-        ax=2e-5, ay=-3e-5, spin_x=.1, spin_y=.2, spin_z=.3)
-
-    def coefficients():
-        from itertools import combinations_with_replacement
-        items = dict(zip(COORDINATES, series.coords))
-        items.update(series._local_series)
-        result = {}
-        for name, value in items.items():
-            coefficients = []
-            dimension = descriptor.monomial_length
-            for degree in range(value.order+1):
-                for indices in combinations_with_replacement(range(dimension), degree):
-                    powers = [indices.count(axis) for axis in range(dimension)]
-                    if descriptor.is_valid_monomial(powers):
-                        coefficients.append(value.get(powers))
-            result[name] = np.asarray(coefficients)
-        return result
-
-    before = coefficients()
-    references = {name: getattr(series, name) for name in (
-        'p0c', 'gamma0', 'beta0', 'chi', 'charge_ratio', 'weight',
-        'anomalous_magnetic_moment')}
-    with pytest.raises(RuntimeError, match='TPSA map lost'):
-        cavity.track(series)
-    assert series._xobject.state <= 0
-    for name, values in coefficients().items():
-        np.testing.assert_array_equal(values.view(np.uint64), before[name].view(np.uint64))
-    assert {name: getattr(series, name) for name in references} == references
 
 
 @pytest.mark.parametrize('model', ('phase-resolved',))
@@ -724,17 +591,17 @@ def test_p16_face_frequency_tpsa_has_zero_cache_coefficients(cpu_context):
 @pytest.mark.parametrize('mode', (None, 'thick', 'thin'),
                          ids=('direct', 'thick', 'thin'))
 def test_accepted_transformed_species_and_reference_rows_are_independent(
-        transaction_context, mode):
-    """One-lane frame views must preserve every lane's reference and RF clock.
+        thread_context, mode):
+    """Transformed sources must preserve every lane's reference and RF clock.
 
-    Check accepted maps, not just rejection rollback: each ray has different
+    Check accepted maps: each ray has different
     reference momentum, physical mass and charge. Reference updates surround
     the transformed source, and the partial Line excludes shared turn-clock
     advancement. Thin slicing also exercises manual source-bearing drifts.
     The reverse tolerance is a selected finite-word regression, not a domain
     or physical inverse-error bound.
     """
-    context = transaction_context
+    context = thread_context
     controls = dict(hardware('phase-resolved'), num_kicks=24,
         shift_x=.001, shift_y=-.0003, shift_s=.001,
         rot_x_rad=-.02, rot_y_rad=.03, rot_s_rad=.12)
@@ -777,9 +644,9 @@ def test_accepted_transformed_species_and_reference_rows_are_independent(
 
     line.track(rays, ele_start=0, ele_stop=stop, backtrack=True)
     assert np.all(rays.state == 1)
-    coordinate_slots = [TRANSACTION_NUMERIC_FIELDS.index(name) for name in
+    coordinate_slots = [NUMERIC_FIELDS.index(name) for name in
         COORDINATES+('s', 'rpp', 'rvv', 'pzeta', 'spin_x', 'spin_y', 'spin_z')]
-    reference_slots = [TRANSACTION_NUMERIC_FIELDS.index(name) for name in
+    reference_slots = [NUMERIC_FIELDS.index(name) for name in
         ('p0c', 'gamma0', 'beta0', 'chi', 'charge_ratio')]
     for identifier, row in numeric_rows_by_id(rays).items():
         np.testing.assert_allclose(row[coordinate_slots],

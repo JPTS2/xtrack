@@ -183,12 +183,6 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         'integrator': xo.Int64,
     }
 
-    _track_local_particle_preflight = 'CavityModels_preflight'
-    # The constrained taper pass anchors fields to its first reference lane.
-    _track_transformations_transaction = (
-        'GET_PARAM(el, model) >= 10 && '
-        '!LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER)')
-
     _extra_c_sources = [
         '#include "xtrack/beam_elements/elements_src/cavity.h"',
     ]

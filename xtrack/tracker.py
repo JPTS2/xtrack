@@ -311,6 +311,10 @@ class Tracker:
         if self._physical_cavity_sliced:
             raise NotImplementedError('Cavity spin transport is not yet '
                                       'supported through slices')
+        if (self.track_flags.XS_FLAG_KILL_CAVITY_KICK
+                or self.track_flags.XS_FLAG_SR_KICK_SAME_AS_FIRST):
+            raise NotImplementedError('Cavity spin transport does not support '
+                                      '4D or kick-as-closed-orbit analysis')
 
     def _check_invalidated(self):
         if hasattr(self, '_is_invalidated') and self._is_invalidated:

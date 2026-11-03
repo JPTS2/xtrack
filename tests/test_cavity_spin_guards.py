@@ -112,3 +112,17 @@ def test_tpsa_tracking_with_spin_refuses_before_tracking(tmp_path):
         with pytest.raises(NotImplementedError,match='not TPSA'):
             line.track(xtpsa.ParticlesTpsa(order=1,p0c=14e6,
                                            mass0=xt.ELECTRON_MASS_EV,x=2e-4))
+
+
+@pytest.mark.parametrize('flag',['XS_FLAG_KILL_CAVITY_KICK','XS_FLAG_SR_KICK_SAME_AS_FIRST'])
+def test_spin_with_closed_orbit_analysis_flags_refuses(tmp_path,flag):
+    with kernel_context(tmp_path) as context:
+        line=eligible_line()
+        line.build_tracker(_context=context)
+        line.configure_spin(True)
+        setattr(line.tracker.track_flags,flag,True)
+        particle=xt.Particles(_context=context,p0c=14e6,mass0=xt.ELECTRON_MASS_EV,
+                              x=2e-4,spin_z=1.)
+        with pytest.raises(NotImplementedError,match='4D'):
+            line.track(particle)
+        assert particle.state[0]==1

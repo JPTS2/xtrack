@@ -104,8 +104,6 @@ class DriftSliceOctupole(_DriftSliceElementBase, BeamElement):
 
 class DriftSliceCavity(_CavitySliceOffset, _DriftSliceElementBase, BeamElement):
 
-    _track_local_particle_preflight = 'DriftSliceCavity_preflight'
-
     _xofields = cavity_slice_xofields(Cavity)
 
     _extra_c_sources = [

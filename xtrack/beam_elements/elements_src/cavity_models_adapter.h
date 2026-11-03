@@ -74,57 +74,6 @@ int CavityModels_transformations_active(CavityData el) {
         ||CavityData_get_rot_s_rad_no_frame(el)!=0.;
 }
 
-// Reject this unsupported chart before the generic wrapper changes any lane.
-// Canonical P and source A are authoritative; ax/ay are derived readback caches.
-GPUFUN
-int CavityModels_preflight(CavityData el, LocalParticle* part0) {
-    const int spin=CavityData_get_spin_tracking(el);
-    if(CavityData_get_model(el)<CAVITY_MODEL_FULL||!spin)return 1;
-    int reject=CavityData_get__tpsa_enabled(el)!=0
-        ||spin<0||spin>1
-        ||CavityData_get_model(el)!=CAVITY_MODEL_FULL
-        ||CavityData_get_rf_profile(el)!=0||CavityData_get_magnetic_profile(el)!=0
-        ||CavityData_get_rf_field_order(el)!=2
-        ||(CavityData_get_integrator(el)!=0&&CavityData_get_integrator(el)!=6);
-#if defined(XTRACK_TPSA_TRACK) || (!defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)) || defined(XTRACK_MULTIPOLE_NO_SYNRAD)
-    reject=1;
-#endif
-    if(!reject) {
-        reject=CavityModels_effects_static_unsupported(el);
-        if(CavityModels_effects_static_present(el)
-            &&(CavityModels_transformations_active(el)
-                ||CavityData_get_edge_entry_active(el)||CavityData_get_edge_exit_active(el)))
-            reject=1;
-    }
-    reject|=XT_LP_IS_FROZEN(x)||XT_LP_IS_FROZEN(px)
-        ||XT_LP_IS_FROZEN(y)||XT_LP_IS_FROZEN(py)||XT_LP_IS_FROZEN(zeta)
-        ||XT_LP_IS_FROZEN(delta)||XT_LP_IS_FROZEN(pzeta)||XT_LP_IS_FROZEN(s)
-        ||XT_LP_IS_FROZEN(rpp)||XT_LP_IS_FROZEN(rvv)
-        ||XT_LP_IS_FROZEN(ax)||XT_LP_IS_FROZEN(ay)
-        ||XT_LP_IS_FROZEN(spin_x)||XT_LP_IS_FROZEN(spin_y)||XT_LP_IS_FROZEN(spin_z)
-        ||LocalParticle_check_track_flag(part0,XS_FLAG_KILL_CAVITY_KICK)
-        ||LocalParticle_check_track_flag(part0,XS_FLAG_SR_TAPER)
-        ||LocalParticle_check_track_flag(part0,XS_FLAG_SR_KICK_SAME_AS_FIRST);
-    if(reject) {
-        START_PER_PARTICLE_BLOCK(part0,part)
-            LocalParticle_set_state(part,-99740+CAVITY_MODEL_ARGUMENT);
-        END_PER_PARTICLE_BLOCK;
-        return 0;
-    }
-    return 1;
-}
-
-// All source-based effects slices remain unsupported. Reject before either
-// the generic slice wrapper or its manual parent-frame entry can move a lane.
-GPUFUN
-int CavityModels_slice_preflight(CavityData el, LocalParticle* part0) {
-    if(CavityData_get_model(el)<CAVITY_MODEL_FULL||!CavityData_get_spin_tracking(el))return 1;
-    START_PER_PARTICLE_BLOCK(part0,part)
-        LocalParticle_set_state(part,-99740+CAVITY_MODEL_ARGUMENT);
-    END_PER_PARTICLE_BLOCK;
-    return 0;
-}
-
 // Physical kinetic lift follows each model's retained source projection.
 GPUFUN
 int CavityModels_potential(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
@@ -170,7 +119,7 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
         || CavityData_len_ksl(el)<=CavityData_get_order(el))
         controls=CAVITY_MODEL_ARGUMENT;
     // Spin is integrated on the scalar CPU full model only.
-#if defined(XTRACK_TPSA_TRACK) || (!defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP))
+#if defined(XTRACK_TPSA_TRACK) || (!defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)) || defined(XTRACK_MULTIPOLE_NO_SYNRAD)
     if(spin_tracking)controls=CAVITY_MODEL_ARGUMENT;
 #endif
     if(spin_tracking&&controls==CAVITY_MODEL_OK) {

@@ -266,17 +266,10 @@ def _generate_track_local_particle_with_transformations(
     isthick,
     xofields,
     is_thin_slice,
-    preflight=None,
-    transformations_transaction=None,
 ):
     options = {
         'ELEMENT_NAME': element_name,
     }
-
-    if preflight is not None:
-        options['TRACK_LOCAL_PARTICLE_PREFLIGHT'] = preflight
-    if transformations_transaction is not None:
-        options['TRACK_TRANSFORMATIONS_TRANSACTION'] = transformations_transaction
 
     if allow_rot_and_shift:
         options['ALLOW_ROT_AND_SHIFT'] = 1
@@ -504,8 +497,6 @@ class MetaBeamElement(xo.MetaHybridClass):
                     xofields=xofields,
                     is_thin_slice=(
                         '_ThinSliceElementBase' in (base.__name__ for base in bases)),
-                    preflight=data.get('_track_local_particle_preflight'),
-                    transformations_transaction=data.get('_track_transformations_transaction'),
                 )
             )
 
