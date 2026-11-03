@@ -813,8 +813,20 @@ def test_phase_averaged_refuses_unsupported_static_fields_and_integrators():
         _averaged_cavity(ks=.1)                     # solenoid with active faces
     with pytest.raises(ValueError, match='static'):
         _averaged_cavity(knl=[0., 0., .1], order=2)  # sextupole
-    with pytest.raises(ValueError, match='uniform'):
-        _averaged_cavity(integrator='yoshida-6')
+    for integrator in ('teapot', 'yoshida-6'):
+        with pytest.raises(ValueError, match='geometric'):
+            _averaged_cavity(integrator=integrator)
+
+
+def test_phase_averaged_geometric_and_uniform_converge_together():
+    def endpoint(integrator, cells):
+        probe = _launch(20.)
+        _averaged_cavity(integrator=integrator, num_kicks=cells,
+                         rf_profile='uniform', eta=0.).track(probe)
+        return np.array([probe.x[0], probe.px[0], probe.zeta[0], probe.delta[0]])
+    gaps = [np.abs(endpoint('geometric', n) - endpoint('uniform', n)).max()
+            for n in (16, 64)]
+    assert gaps[1] < gaps[0]/10
 
 
 @pytest.mark.parametrize('static', [dict(knl=[0., .05]),

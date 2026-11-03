@@ -239,14 +239,15 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
     return status;
 }
 
-// Interval [left, right] of the parent (fractions), cells equal steps. A
+// Interval [left, right] of the parent (fractions), cells steps. A
 // slice edge inside the parent closes against the envelope at its boundary,
 // so adjacent slices telescope to the parent's jumps.
 GPUFUN
 int CavityModel_averaged_interval(const xt_float_or_tpsa q_in[6],
         xt_float_or_tpsa_arg Q, const CavityModelSource *source, int64_t cells,
         double left, double right, int reverse, int entry_face, int exit_face,
-        xt_float_or_tpsa_arg reference_momentum, const CavitySpin *spin,
+        xt_float_or_tpsa_arg reference_momentum, int integrator,
+        xt_float_or_tpsa_arg grading, const CavitySpin *spin,
         xt_float_or_tpsa q[6]) {
     if (cells<=0 || !(right>left)) return CAVITY_MODEL_ARGUMENT;
     if (!xt_float_or_tpsa_is_zero(source->dc_gradient)) return CAVITY_MODEL_ARGUMENT;
@@ -288,28 +289,40 @@ int CavityModel_averaged_interval(const xt_float_or_tpsa q_in[6],
     int status=CAVITY_MODEL_OK;
     if ((!reverse && entry_face) || (reverse && exit_face))
         status=CavityModel_averaged_static_face(q, source, &field, reverse, reverse);
-    xt_float_or_tpsa signed_h=h;
-    if (reverse) signed_h=-h;
-    xt_float_or_tpsa previous=reverse ? outer_right : outer_left;
+    // Signed cells cross the interval (backwards when reversed), uniform or
+    // graded; an edge sits at every gradient change. Compositions are not
+    // offered: the energy kicks integrate the waves along the reference
+    // trajectory, which keeps one step second order but caps compositions.
+    const xt_float_or_tpsa grading_log=CavityModel_log1p(grading);
+    const int graded=integrator==7 && xt_float_or_tpsa_const_part(grading)>1.e-6;
+    xt_float_or_tpsa previous=outer_left;
+    if (reverse) previous=outer_right;
     for (int64_t n=0; n<cells && status==CAVITY_MODEL_OK; ++n) {
         const int64_t j=reverse ? cells-1-n : n;
-        const xt_float_or_tpsa z_mid=z_left+(j+.5)*h;
+        // Cell ends from the cell index, so slices and parents share them.
+        xt_float_or_tpsa start=z_left+j*h, end=z_left+(j+1.)*h;
+        if (graded) {
+            start=z_left+(z_right-z_left)*CavityModel_expm1(j*grading_log/cells)/grading;
+            end=z_left+(z_right-z_left)*CavityModel_expm1((j+1.)*grading_log/cells)/grading;
+        }
+        xt_float_or_tpsa boundary=start, step=end-start;
+        if (reverse) {boundary=end; step=start-end;}
+        const xt_float_or_tpsa z_mid=(start+end)*.5;
         CavityModel_source_envelope(z_mid, source, envelope);
         const xt_float_or_tpsa gradient=Q*source->forward*envelope[0];
         const xt_float_or_tpsa counter=Q*source->backward*envelope[0];
-        const xt_float_or_tpsa boundary=reverse ? z_left+(j+1.)*h : z_left+j*h;
         // The inverse word crosses the same boundaries with the same jump
         // gradient-previous: the edge inverse negates the jump it undoes.
         status=CavityModel_averaged_edge(q, gradient-previous, boundary, source, spin);
         if (status==CAVITY_MODEL_OK)
-            status=CavityModel_averaged_step(q, signed_h, z_mid,
-                                             gradient, counter, Q, source, &field, spin);
+            status=CavityModel_averaged_step(q, step, z_mid,
+                gradient, counter, Q, source, &field, spin);
         previous=gradient;
     }
     if (status==CAVITY_MODEL_OK) {
-        const xt_float_or_tpsa outer=reverse ? outer_left : outer_right;
-        const xt_float_or_tpsa boundary=reverse ? z_left : z_right;
-        status=CavityModel_averaged_edge(q, outer-previous, boundary, source, spin);
+        xt_float_or_tpsa outer=outer_right, end=z_right;
+        if (reverse) {outer=outer_left; end=z_left;}
+        status=CavityModel_averaged_edge(q, outer-previous, end, source, spin);
     }
     if (status==CAVITY_MODEL_OK && ((!reverse && exit_face) || (reverse && entry_face)))
         status=CavityModel_averaged_static_face(q, source, &field, !reverse, reverse);

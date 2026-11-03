@@ -348,8 +348,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
                 raise ValueError('phase-resolved-frozen requires eta=0, '
                                  'calibration_beta=1 and the carrier from frequency')
         elif self.model == 'phase-averaged':
-            if self.integrator not in ('adaptive', 'uniform'):
-                raise ValueError('phase-averaged supports the "uniform" integrator')
+            if self.integrator not in ('adaptive', 'uniform', 'geometric'):
+                raise ValueError('phase-averaged supports the "uniform" and '
+                                 '"geometric" integrators: its cell-tied factors '
+                                 'admit no teapot placement or higher-order '
+                                 'composition')
             normal, skew = np.asarray(self.knl), np.asarray(self.ksl)
             others = (np.any(normal[np.arange(len(normal)) != 1] != 0.)
                       or np.any(skew != 0.) or self.magnetic_profile != 'uniform')
