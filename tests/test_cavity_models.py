@@ -600,3 +600,32 @@ def test_gaussian_magnetic_width_is_explicit(width):
                edge_entry_active=0, edge_exit_active=0)
 
 
+
+
+@pytest.mark.parametrize('faces', [0, 1])
+def test_frozen_model_is_symplectic_with_canonical_faces(model_context, faces):
+    """The SAD face rescales momenta by p_after/p; the canonical face does not."""
+    names = ('x', 'px', 'y', 'py', 'zeta', 'pzeta')
+    base = dict(x=1e-3, px=2e-4, y=-1e-3, py=1e-4, zeta=1e-3, pzeta=1e-4)
+    p0c = xt.ELECTRON_MASS_EV * np.sqrt(3.2**2 - 1)
+    rf = xt.Cavity(_context=model_context, length=1., voltage=2e6,
+                   frequency=1.3e9, phase=.4, model='phase-resolved-frozen',
+                   edge_entry_active=faces, edge_exit_active=faces)
+    step = 1e-6
+    matrix = np.zeros((6, 6))
+    for column, name in enumerate(names):
+        ends = []
+        for sign in (1, -1):
+            launch = dict(base)
+            launch[name] += sign * step
+            probe = xt.Particles(_context=model_context, p0c=p0c,
+                                 mass0=xt.ELECTRON_MASS_EV, **launch)
+            rf.track(probe)
+            assert probe.state[0] == 1
+            ends.append(np.array([getattr(probe, n)[0] for n in names]))
+        matrix[:, column] = (ends[0] - ends[1]) / (2 * step)
+    form = np.zeros((6, 6))
+    for i in range(3):
+        form[2*i, 2*i+1], form[2*i+1, 2*i] = 1, -1
+    # The SAD face fails this at 4e-6; finite differences give about 1e-9.
+    assert np.abs(matrix.T @ form @ matrix - form).max() < 1e-7

@@ -291,10 +291,11 @@ int CavityModel_frozen_face(xt_float_or_tpsa state[6],
     xt_float_or_tpsa energy=state[5]+dh;
     if (inverse) energy=state[5]-dh;
     if (xt_float_or_tpsa_const_part(energy)<=1.) return CAVITY_MODEL_DOMAIN;
-    xt_float_or_tpsa ratio=sqrt((energy-1.)*(energy+1.))/p;
+    // Exact flow of the ideal-edge generator W(x, y, t): a pure kick. SAD
+    // also rescales the momenta by p_after/p, which is not canonical.
     for (int plane=0;plane<2;++plane) {
-        if (inverse) state[plane+3]=ratio*state[plane+3]-kick*state[plane];
-        else state[plane+3]=ratio*(state[plane+3]+kick*state[plane]);
+        if (inverse) state[plane+3]-=kick*state[plane];
+        else state[plane+3]+=kick*state[plane];
     }
     state[5]=energy;
     return CavityModel_frozen_shell(state,&p,&ps);
