@@ -813,3 +813,25 @@ def test_phase_averaged_refuses_static_fields_and_other_integrators():
         _averaged_cavity(ks=.1)
     with pytest.raises(ValueError, match='uniform'):
         _averaged_cavity(integrator='yoshida-6')
+
+
+@pytest.mark.parametrize('phase', [np.pi/2, 1.])
+def test_phase_averaged_spin_follows_phase_resolved(phase):
+    """Thomas-BMT rotations of the averaged factors (PLAN P4, D15)."""
+    gamma, anomaly = 200., 0.00115965218
+    p0c = xt.ELECTRON_MASS_EV*np.sqrt(gamma**2 - 1)
+    turned = {}
+    for model in ('phase-averaged', 'phase-resolved'):
+        line = xt.Line(elements={'rf': _averaged_cavity(model, phase=phase,
+                                                        num_kicks=64)})
+        line.particle_ref = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV)
+        line.build_tracker()
+        line.configure_spin(True)
+        probe = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV, x=2e-3, y=-1e-3,
+            px=1e-4, anomalous_magnetic_moment=anomaly, spin_z=1.)
+        line.track(probe)
+        assert probe.state[0] == 1
+        turned[model] = np.array([probe.spin_x[0], probe.spin_y[0],
+                                  probe.spin_z[0] - 1.])
+    gap = np.linalg.norm(turned['phase-averaged'] - turned['phase-resolved'])
+    assert gap < .03*np.linalg.norm(turned['phase-resolved'])

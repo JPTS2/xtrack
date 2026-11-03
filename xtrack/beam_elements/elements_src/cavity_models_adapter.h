@@ -133,8 +133,8 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
           && weight<=1. && slice_start+weight<=1.+8e-15)
         || CavityData_get_rf_field_order(el)!=2
         || spin_tracking<0||spin_tracking>1
-        ||(spin_tracking&&(model!=CAVITY_MODEL_FULL||profile!=0||magnetic_profile!=0
-            ||CavityData_get__tpsa_enabled(el)!=0))
+        ||(spin_tracking&&(model==CAVITY_MODEL_FROZEN||CavityData_get__tpsa_enabled(el)!=0
+            ||(model==CAVITY_MODEL_FULL&&(profile!=0||magnetic_profile!=0))))
         || requested<0
         || (model!=CAVITY_MODEL_FULL && model!=CAVITY_MODEL_FROZEN
             && model!=CAVITY_MODEL_AVERAGED)
@@ -164,7 +164,7 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
             || !CavityData_get_wave_number_from_frequency(el))
             controls=CAVITY_MODEL_ARGUMENT;
     } else if (model==CAVITY_MODEL_AVERAGED) {
-        if ((integrator!=0 && integrator!=3) || spin_tracking
+        if ((integrator!=0 && integrator!=3)
             || CavityModels_effects_static_present(el) || magnetic_profile!=0)
             controls=CAVITY_MODEL_ARGUMENT;
     } else if (integrator==1 || integrator<0 || integrator>7 || integrator==6) {
@@ -349,8 +349,11 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
             if (source.freeze_x || source.freeze_px || source.freeze_y || source.freeze_py)
                 status=CAVITY_MODEL_ARGUMENT;
             else
+            {
+                CavityAveragedSpin averaged_spin={spin_tracking ? spin : NULL, anomaly};
                 status=CavityModel_averaged_interval(q,Q,&source,cells,
-                    left_fraction,right_fraction,reverse,next);
+                    left_fraction,right_fraction,reverse,&averaged_spin,next);
+            }
             if (status==CAVITY_MODEL_OK) {
                 for (int j=0;j<6;++j) q[j]=next[j];
                 z=source.k*length*(end_fraction-.5);

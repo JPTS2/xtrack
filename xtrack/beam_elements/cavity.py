@@ -362,6 +362,8 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     def _check_spin_support(self):
         """Raise if spin transport is not implemented for these settings."""
+        if self._model == 11:
+            return
         if (self._model != 10 or self._rf_profile != 0
                 or self._magnetic_profile != 0
                 or self.rf_field_order != 2 or self.integrator == 'teapot'):
