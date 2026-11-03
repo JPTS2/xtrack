@@ -89,9 +89,22 @@ int CavityModels_potential(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
 // ax/ay report Q*A_perp/kappa_ref for physical kinetic readback, without
 // changing canonical P. Q=q_ref*chi carries charge and mass-ratio scaling.
 // One physical parent source/calibration is used throughout all thick slices.
+// Element-level resolution of one physical-model cavity call, prepared once
+// before the per-particle loop (the CavityPlan analogue of MagnetPlan). The
+// RF source stays per particle: it depends on each particle's reference.
+typedef struct CavityPlan_s {
+    int controls;
+    int model, profile, magnetic_profile, spin_tracking;
+    int64_t requested, cells;
+    double length, weight;
+    double left_fraction, right_fraction;
+    double start_fraction, end_fraction, direction;
+    int reverse, clear_face, physical_outer;
+} CavityPlan;
+
 GPUFUN
-void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
-                                       double weight, double slice_start) {
+void CavityPlan_prepare(CavityData el, LocalParticle* part0,
+                        double weight, double slice_start, CavityPlan* plan) {
     const double length=CavityData_get_length(el);
     const int model=CavityData_get_model(el);
     const int profile=CavityData_get_rf_profile(el);
@@ -157,6 +170,38 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
     const int clear_face=reverse ? CavityData_get_edge_entry_active(el)
                                 : CavityData_get_edge_exit_active(el);
     const int physical_outer=reverse ? left_fraction==0. : right_fraction==1.;
+
+    plan->controls=controls;
+    plan->model=model; plan->profile=profile;
+    plan->magnetic_profile=magnetic_profile; plan->spin_tracking=spin_tracking;
+    plan->requested=requested; plan->cells=cells;
+    plan->length=length; plan->weight=weight;
+    plan->left_fraction=left_fraction; plan->right_fraction=right_fraction;
+    plan->start_fraction=start_fraction; plan->end_fraction=end_fraction;
+    plan->direction=direction; plan->reverse=reverse;
+    plan->clear_face=clear_face; plan->physical_outer=physical_outer;
+}
+
+// One executor for the physical models, shared by the Cavity and its slices.
+GPUFUN
+void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* part0) {
+    const int controls=plan->controls;
+    const int model=plan->model;
+    const int profile=plan->profile;
+    const int magnetic_profile=plan->magnetic_profile;
+    const int spin_tracking=plan->spin_tracking;
+    const int64_t requested=plan->requested;
+    const int64_t cells=plan->cells;
+    const double length=plan->length;
+    const double weight=plan->weight;
+    const double left_fraction=plan->left_fraction;
+    const double right_fraction=plan->right_fraction;
+    const double start_fraction=plan->start_fraction;
+    const double end_fraction=plan->end_fraction;
+    const double direction=plan->direction;
+    const int reverse=plan->reverse;
+    const int clear_face=plan->clear_face;
+    const int physical_outer=plan->physical_outer;
 
     START_PER_PARTICLE_BLOCK(part0,part);
         int status=controls;
@@ -375,6 +420,15 @@ void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
             LocalParticle_set_state(part,-99740+status);
         }
     END_PER_PARTICLE_BLOCK;
+}
+
+
+GPUFUN
+void CavityModels_track_local_particle(CavityData el, LocalParticle* part0,
+                                       double weight, double slice_start) {
+    CavityPlan plan;
+    CavityPlan_prepare(el, part0, weight, slice_start, &plan);
+    track_cavity_plan(el, &plan, part0);
 }
 
 #endif
