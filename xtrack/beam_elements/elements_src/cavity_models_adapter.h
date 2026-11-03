@@ -209,12 +209,13 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
             ||weight!=1.||slice_start!=0.)))
         controls=CAVITY_MODEL_ARGUMENT;
     int64_t parent_cells=requested>0 ? requested : 64;
-    // Two averaged steps per half-wavelength resolve the stepped profile;
-    // beyond that the averaging error dominates.
+    // Phase-averaged steps per half-wavelength (PLAN P8): two for a travelling
+    // wave, four once a counter wave turns its phase by 2k along the orbit.
     if (model==CAVITY_MODEL_AVERAGED && requested==0) {
         const double frequency=xt_float_or_tpsa_const_part(CavityData_get_frequency(el));
         const double half_cells=2.*frequency*length/C_LIGHT;
-        parent_cells=half_cells>.5 ? (int64_t)ceil(2.*half_cells) : 1;
+        const double per_half=xt_float_or_tpsa_const_part(CavityData_get_eta(el))>0. ? 4. : 2.;
+        parent_cells=half_cells>.5 ? (int64_t)ceil(per_half*half_cells) : 1;
     }
     const int64_t cells=controls==CAVITY_MODEL_OK
         ? (int64_t)ceil(parent_cells*weight) : 1;
@@ -241,6 +242,29 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
     plan->clear_face=clear_face; plan->physical_outer=physical_outer;
 }
 
+// Gauge transformation between the phase-resolved temporal RF potential and
+// the field-free-outside gauge of the end-plane impulse (PLAN P9). The gauge
+// function Lambda = (r^2/4) S1 - (r^4/64)(S1+S3) gives the temporal A_perp =
+// grad Lambda and the outside gauge's phi = d_T Lambda; to_temporal applies
+// P += Q grad Lambda, E -= Q d_T Lambda, otherwise the inverse.
+GPUFUN
+void CavityModels_rf_gauge(xt_float_or_tpsa q[6], const CavityModelSource *source,
+                           xt_float_or_tpsa_arg Q, xt_float_or_tpsa_arg z, int to_temporal) {
+    xt_float_or_tpsa real[5], imag[5];
+    CavityModel_profile(z, source, real, imag);
+    const xt_float_or_tpsa c=cos(q[2]), s=sin(q[2]);
+    const xt_float_or_tpsa S1=real[1]*s-imag[1]*c, S3=real[3]*s-imag[3]*c;
+    const xt_float_or_tpsa C1=real[1]*c+imag[1]*s, C3=real[3]*c+imag[3]*s;
+    const xt_float_or_tpsa r2=q[0]*q[0]+q[1]*q[1];
+    const xt_float_or_tpsa radial=S1*.5-r2*(S1+S3)/16.;
+    const xt_float_or_tpsa scalar=r2*C1/4.-r2*r2*(C1+C3)/64.;
+    xt_float_or_tpsa charge=Q;
+    if (!to_temporal) charge=-Q;
+    q[3]+=charge*q[0]*radial;
+    q[4]+=charge*q[1]*radial;
+    if (!source->freeze_energy) q[5]-=charge*scalar;
+}
+
 // One executor for the physical models, shared by the Cavity and its slices.
 GPUFUN
 void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* part0) {
@@ -262,6 +286,9 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
     const int reverse=plan->reverse;
     const int clear_face=plan->clear_face;
     const int physical_outer=plan->physical_outer;
+    // Reference-only phase-averaged step generators, reused across the call.
+    CavityMagnusCache magnus_cache;
+    magnus_cache.valid=0;
 
     START_PER_PARTICLE_BLOCK(part0,part);
         int status=controls;
@@ -390,7 +417,7 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
                     fabs(q0*xt_float_or_tpsa_const_part(CavityData_get_voltage(el)))*weight/mass0
                         *(1./sqrt(1.+kappa0*kappa0)
                           +1./(sqrt(1.+kappa0*kappa0)+fabs(q0*xt_float_or_tpsa_const_part(CavityData_get_voltage(el)))*weight/mass0)),
-                    &averaged_spin,next);
+                    &averaged_spin,&magnus_cache,next);
             }
             if (status==CAVITY_MODEL_OK) {
                 for (int j=0;j<6;++j) q[j]=next[j];
@@ -420,6 +447,15 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
                 for (int j=0;j<6;++j) q[j]=next[j];
                 z=source.k*length*(end_fraction-.5);
             }
+        }
+        // A whole cavity's end planes are hard edges of both waves (PLAN P9):
+        // the impulse in the field-free-outside gauge, then the temporal gauge.
+        const int physical_start=reverse ? right_fraction==1. : left_fraction==0.;
+        if (status==CAVITY_MODEL_OK && model==CAVITY_MODEL_FULL && physical_start) {
+            xt_float_or_tpsa envelope[5];
+            CavityModel_source_envelope(z, &source, envelope);
+            status=CavityMagnus_edge(q, &source, Q, z, direction*envelope[0], direction, NULL);
+            if (status==CAVITY_MODEL_OK) CavityModels_rf_gauge(q, &source, Q, z, 1);
         }
         // Composition of the fourth-order Gauss cell (D24): yoshida-6 is one
         // triple jump, yoshida-8 two; geometric grades the cell lengths.
@@ -458,6 +494,7 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
             }
         }
         xt_float_or_tpsa result[6], potential[4];
+        CavityModelSource field_source=source;
         if (status==CAVITY_MODEL_OK) {
             // Observation planes are fixed by the parent interval, as in s
             // and the zeta conversion below. Repeated z+=h can finish a few
@@ -466,10 +503,20 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
             // evaluate the physical readback at the declared endpoint.
             if (model==CAVITY_MODEL_FULL)
                 z=source.k*length*(end_fraction-.5);
+            // The exit plane of a whole cavity: back to the outside gauge and
+            // the closing impulse, after which only static fields remain.
+            if (model==CAVITY_MODEL_FULL && physical_outer) {
+                xt_float_or_tpsa envelope[5];
+                CavityModel_source_envelope(z, &source, envelope);
+                CavityModels_rf_gauge(q, &source, Q, z, 0);
+                status=CavityMagnus_edge(q, &source, Q, z, -direction*envelope[0], direction, NULL);
+                field_source.forward=0.; field_source.backward=0.;
+            }
             // The longitudinal-projected generator still samples its full
             // retained physical field for mechanical readback. Its auxiliary
             // geometric slope is a separate approximation, not kin_px/p_s.
-            status=CavityModels_potential(q,z,&source,model,potential);
+            if (status==CAVITY_MODEL_OK)
+                status=CavityModels_potential(q,z,&field_source,model,potential);
         }
         if (status==CAVITY_MODEL_OK) {
             const xt_float_or_tpsa energy=q[5]-Q*potential[3];
@@ -489,13 +536,13 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
                     status=CAVITY_MODEL_DOMAIN;
             }
         }
-        // A declared magnetic face removes only the static gauge contribution.
-        // Gaussian/uniform RF tails are NOT field-free observation planes.
+        // A declared magnetic face removes only the static gauge contribution;
+        // internal slice planes keep the RF window chart.
         xt_float_or_tpsa readback[4];
         if(status==CAVITY_MODEL_OK) {
             for(int i=0;i<4;++i)readback[i]=potential[i];
             if(clear_face&&physical_outer&&source.magnetic_profile==0) {
-                CavityModelSource rf_only=source;
+                CavityModelSource rf_only=field_source;
                 rf_only.ks=0.;rf_only.magnetic_scale=0.;rf_only.order=-1;
                 rf_only.knl=NULL;rf_only.ksl=NULL;rf_only.knl_tpsa=NULL;rf_only.ksl_tpsa=NULL;
                 status=CavityModels_potential(q,z,&rf_only,model,readback);

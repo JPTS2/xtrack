@@ -98,8 +98,10 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         the reference particle (zeta=0). Default is False.
 
     The following parameters are used only by the physical models
-    "phase-resolved" and "phase-resolved-frozen"; the legacy models ignore
-    them.
+    "phase-averaged", "phase-resolved" and "phase-resolved-frozen"; the
+    longitudinal models ignore them. A whole cavity's end planes are hard
+    edges: an RF field that does not vanish there ("uniform", a truncated
+    "gaussian") ends abruptly, and the particle leaves field-free.
 
     eta : float
         Squared amplitude ratio of the counter- to the co-propagating RF wave.
@@ -139,8 +141,10 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         dE/(2E) is at most 1e-4 (or the cavity is thin), "phase-averaged"
         where g/p0 <= 0.05, "phase-resolved" otherwise. "longitudinal-only"
         (expanded drifts) and "longitudinal-only-exact" apply RF energy kicks
-        only. "phase-averaged" is the Sagan-type averaged map with finite-beta
-        terms; "phase-resolved" integrates the full Hamiltonian of the RF and
+        only. "phase-averaged" applies both RF waves per step as an exact
+        second-order generator along the reference orbit, without averaging
+        the counter wave (fast, accurate for any envelope and hard edges);
+        "phase-resolved" integrates the full Hamiltonian of the RF and
         static fields in Gauss collocation cells; "phase-resolved-frozen" is
         the frozen-coefficient voltage-action model with canonical faces. The
         drift-kick-drift and rot-kick-rot names are deprecated aliases.
@@ -153,8 +157,9 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         "geometric-kick-drift" are deprecated aliases.
     num_kicks : int
         Number of integration cells when nonzero. With zero, phase-resolved
-        uses 64, phase-averaged two steps per half RF wavelength, and the
-        frozen model its own count.
+        uses 64, phase-averaged two steps per half RF wavelength for a
+        travelling wave (eta = 0) and four otherwise, and the frozen model its
+        own count.
     '''.strip()
 
     __doc__ = '\n    '.join([_docstring_start, _docstring_models,

@@ -7,6 +7,7 @@ snapshot API. New models remain experimental, without release qualification.
 import numpy as np
 import pytest
 import xtrack as xt
+from scipy.constants import c as clight
 
 from _cavity_context import kernel_context
 
@@ -722,7 +723,7 @@ def _launch(gamma, **changes):
 
 
 def test_phase_averaged_converges_to_phase_resolved_with_energy():
-    """The averaging error falls with g/p (D17)."""
+    """The step error falls with g/p."""
     gaps = []
     for gamma in (200., 2000.):
         ends = []
@@ -877,6 +878,68 @@ def test_phase_averaged_energy_gain_includes_the_counter_wave(eta, counter_phase
         rf.track(probe)
         gains.append(probe.delta[0])
     np.testing.assert_allclose(gains[0], gains[1], rtol=1e-6)
+
+
+def _focusing(rf, gamma=400., step=1e-6):
+    """R11 - 1, R21 and R22 - 1 of the kinetic (x, px) map about the axis."""
+    probe = xt.Particles(p0c=xt.ELECTRON_MASS_EV*np.sqrt(gamma**2 - 1),
+        mass0=xt.ELECTRON_MASS_EV, x=[step, -step, 0., 0.], px=[0., 0., step, -step])
+    rf.track(probe)
+    assert np.all(probe.state == 1)
+    x, px = np.asarray(probe.x), np.asarray(probe.px - probe.ax)
+    return np.array([(x[0] - x[1])/(2*step) - 1, (px[0] - px[1])/(2*step),
+                     (px[2] - px[3])/(2*step) - 1])
+
+
+def _short_cavity(model, cells, **changes):
+    length = cells*clight/801.58e6/2
+    controls = dict(length=length, voltage=20e6*length, frequency=801.58e6,
+                    phase=np.pi/2 - .7, model=model)
+    controls.update(changes)
+    return xt.Cavity(**controls)
+
+
+@pytest.mark.parametrize('cells,profile', [(2, 'p16'), (5, 'p16'), (5.3, 'uniform')])
+@pytest.mark.parametrize('eta', [0., 1.])
+def test_phase_averaged_follows_short_standing_waves(cells, profile, eta):
+    """No slow-envelope average (PLAN P8): sharp envelopes and hard edges at
+    any length, where the ponderomotive average was 17-80 % off in R21."""
+    averaged = _focusing(_short_cavity('phase-averaged', cells, eta=eta,
+                                       rf_profile=profile))
+    resolved = _focusing(_short_cavity('phase-resolved', cells, eta=eta,
+                                       rf_profile=profile, num_kicks=int(100*cells)))
+    np.testing.assert_allclose(averaged, resolved, rtol=1e-3)
+
+
+@pytest.mark.parametrize('profile,extra', [('uniform', {}),
+                                           ('gaussian', dict(rf_profile_sigma=.13))])
+def test_phase_resolved_truncates_end_fields_as_hard_edges(profile, extra):
+    """A whole cavity's end planes are hard edges of both waves (PLAN P9): the
+    particle leaves field-free, as in phase-averaged, and slices compose."""
+    cells = 5.3
+    resolved = _short_cavity('phase-resolved', cells, eta=.6, rf_profile=profile,
+                             num_kicks=530, **extra)
+    averaged = _short_cavity('phase-averaged', cells, eta=.6, rf_profile=profile,
+                             num_kicks=170, **extra)
+    np.testing.assert_allclose(_focusing(resolved), _focusing(averaged), rtol=1e-5)
+    p0c = xt.ELECTRON_MASS_EV*np.sqrt(400.**2 - 1)
+    lines = {}
+    for sliced in (False, True):
+        line = xt.Line(elements={'rf': resolved.copy(), 'end': xt.Marker()})
+        line.particle_ref = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV)
+        if sliced:
+            line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thick'))])
+        line.build_tracker()
+        lines[sliced] = line
+    ends = []
+    for sliced, line in lines.items():
+        probe = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV, x=1e-3, px=1e-4,
+                             y=-5e-4, zeta=1e-3, delta=1e-3)
+        line.track(probe, ele_stop=line.element_names.index('end'))
+        assert probe.ax[0] == 0. and probe.ay[0] == 0.
+        ends.append(np.array([getattr(probe, n)[0]
+                              for n in ('x', 'px', 'y', 'py', 'zeta', 'delta')]))
+    np.testing.assert_allclose(ends[0], ends[1], rtol=0, atol=1e-13)
 
 
 @pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved',
