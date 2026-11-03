@@ -369,7 +369,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     def _check_spin_support(self):
         """Raise if spin transport is not implemented for these settings."""
-        if self._model == 11:
+        if self._model in (11, 13):
+            if self._model == 13 and (self.ks != 0. or np.any(np.asarray(self.knl) != 0.)
+                                      or np.any(np.asarray(self.ksl) != 0.)):
+                raise NotImplementedError('Cavity spin transport with static fields '
+                                          'is not implemented for the frozen model')
             return
         if (self._model != 10 or self._rf_profile != 0
                 or self._magnetic_profile != 0

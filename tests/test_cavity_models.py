@@ -913,3 +913,25 @@ def test_adaptive_thin_cavity_stays_longitudinal():
         rf.track(probe)
         ends.append([probe.px[0], probe.delta[0]])
     assert ends[0] == ends[1]
+
+
+@pytest.mark.parametrize('phase', [np.pi/2, 1.])
+def test_frozen_spin_uses_the_shared_factor_rules(phase):
+    """The frozen factors are the compact eta = 0 factors (PLAN P4)."""
+    gamma, anomaly = 200., 0.00115965218
+    p0c = xt.ELECTRON_MASS_EV*np.sqrt(gamma**2 - 1)
+    turned = {}
+    for model in ('phase-resolved-frozen', 'phase-averaged'):
+        line = xt.Line(elements={'rf': _averaged_cavity(model, phase=phase,
+            num_kicks=64, rf_profile='uniform', eta=0.)})
+        line.particle_ref = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV)
+        line.build_tracker()
+        line.configure_spin(True)
+        probe = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV, x=2e-3, y=-1e-3,
+            px=1e-4, anomalous_magnetic_moment=anomaly, spin_z=1.)
+        line.track(probe)
+        assert probe.state[0] == 1
+        turned[model] = np.array([probe.spin_x[0], probe.spin_y[0],
+                                  probe.spin_z[0] - 1.])
+    gap = np.linalg.norm(turned['phase-resolved-frozen'] - turned['phase-averaged'])
+    assert gap < .01*np.linalg.norm(turned['phase-averaged'])

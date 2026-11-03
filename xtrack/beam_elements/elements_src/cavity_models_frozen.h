@@ -7,6 +7,7 @@
 
 // Phase-resolved source conventions shared with the other families.
 #include "xtrack/beam_elements/elements_src/cavity_models.h"
+#include "xtrack/beam_elements/elements_src/cavity_models_spin_rules.h"
 
 // Authenticated static factors of the frozen nominal-coefficient word.
 // Authenticated straight static factors for the frozen-voltage word.
@@ -279,8 +280,11 @@ GPUFUN
 int CavityModel_frozen_face(xt_float_or_tpsa state[6],
         xt_float_or_tpsa_arg voltage, xt_float_or_tpsa_arg length,
         xt_float_or_tpsa_arg wave_number, xt_float_or_tpsa_arg phase,
-        int inverse, int freeze_energy) {
+        int inverse, int freeze_energy, const CavitySpin *spin) {
     xt_float_or_tpsa p,ps;
+    const double px0=xt_float_or_tpsa_const_part(state[3]);
+    const double py0=xt_float_or_tpsa_const_part(state[4]);
+    const double energy0=xt_float_or_tpsa_const_part(state[5]);
     int status=CavityModel_frozen_shell(state,&p,&ps);
     if (status!=CAVITY_MODEL_OK) return status;
     xt_float_or_tpsa psi=wave_number*state[2]-phase;
@@ -298,6 +302,8 @@ int CavityModel_frozen_face(xt_float_or_tpsa state[6],
         else state[plane+3]+=kick*state[plane];
     }
     state[5]=energy;
+    CavitySpin_kick(spin, xt_float_or_tpsa_const_part(state[3])-px0,
+        xt_float_or_tpsa_const_part(state[4])-py0, energy0, 0);
     return CavityModel_frozen_shell(state,&p,&ps);
 }
 
@@ -306,13 +312,23 @@ int CavityModel_frozen_kick(xt_float_or_tpsa state[6],
         xt_float_or_tpsa_arg weight, xt_float_or_tpsa_arg voltage,
         xt_float_or_tpsa_arg radial, xt_float_or_tpsa_arg wave_number,
         xt_float_or_tpsa_arg phase, int inverse, int freeze_energy,
-        xt_float_or_tpsa_arg solenoid) {
+        xt_float_or_tpsa_arg solenoid, const CavitySpin *spin) {
     xt_float_or_tpsa psi=wave_number*state[2]-phase;
     xt_float_or_tpsa signed_weight=weight;
     if (inverse) signed_weight=-weight;
+    // The energy kick -w V sin(psi) is the compact g l cos(theta) with
+    // theta = psi + pi/2: the carrier precession takes sin(theta) = cos(psi).
+    const double px0=xt_float_or_tpsa_const_part(state[3]);
+    const double py0=xt_float_or_tpsa_const_part(state[4]);
+    const double energy0=xt_float_or_tpsa_const_part(state[5]);
+    CavitySpin_carrier(spin, xt_float_or_tpsa_const_part(signed_weight*voltage
+        *wave_number*cos(psi)), energy0, xt_float_or_tpsa_const_part(state[0]),
+        xt_float_or_tpsa_const_part(state[1]));
     if (!freeze_energy)
         state[5]-=signed_weight*(voltage+radial
             *(state[0]*state[0]+state[1]*state[1]))*sin(psi);
+    CavitySpin_energy(spin, px0, py0, energy0,
+        xt_float_or_tpsa_const_part(state[5])-energy0);
     state[3]-=signed_weight*2.*radial*state[0]*cos(psi)/wave_number;
     state[4]-=signed_weight*2.*radial*state[1]*cos(psi)/wave_number;
     xt_float_or_tpsa p,ps;
@@ -354,7 +370,7 @@ int CavityModel_frozen_prefix(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg 
         xt_float_or_tpsa_arg nominal_gain,
         int64_t requested_cells,
         int entry_face, int exit_face, double fraction, int reverse,
-        xt_float_or_tpsa output[6]) {
+        const CavitySpin *spin, xt_float_or_tpsa output[6]) {
     if (!isfinite(fraction) || fraction<0. || fraction>1.)
         return CAVITY_MODEL_ARGUMENT;
     if (fraction==0.) {
@@ -381,6 +397,8 @@ int CavityModel_frozen_prefix(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg 
     const int solenoid_present=!xt_float_or_tpsa_is_zero(solenoid);
     const int quad_present=!xt_float_or_tpsa_is_zero(gradient);
     if (solenoid_present && (quad_present || entry_face || exit_face))
+        return CAVITY_MODEL_ARGUMENT;
+    if ((solenoid_present || quad_present) && spin && spin->spin)
         return CAVITY_MODEL_ARGUMENT;
     if (xt_float_or_tpsa_const_part(nominal_momentum)<=0. || requested_cells<0)
         return CAVITY_MODEL_ARGUMENT;
@@ -424,7 +442,7 @@ int CavityModel_frozen_prefix(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg 
         xt_float_or_tpsa face_voltage=voltage;
         if (reverse) face_voltage=-voltage;
         status=CavityModel_frozen_face(state,face_voltage,
-            source->length,k,phase,reverse,source->freeze_energy);
+            source->length,k,phase,reverse,source->freeze_energy,spin);
         if (status!=CAVITY_MODEL_OK) return status;
         if (quad_present) {
             xt_float_or_tpsa face_gradient=gradient;
@@ -457,7 +475,7 @@ int CavityModel_frozen_prefix(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg 
             status=CavityModel_frozen_clock(state,clock,source->freeze_zeta,solenoid);
             if (status!=CAVITY_MODEL_OK) return status;
             status=CavityModel_frozen_kick(state,weight,voltage,radial,k,phase,0,
-                                          source->freeze_energy,solenoid);
+                                          source->freeze_energy,solenoid,spin);
             if (status!=CAVITY_MODEL_OK) return status;
             status=CavityModel_frozen_clock(state,clock,source->freeze_zeta,solenoid);
             if (status!=CAVITY_MODEL_OK) return status;
@@ -490,7 +508,7 @@ int CavityModel_frozen_prefix(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg 
             status=CavityModel_frozen_clock(state,-clock,source->freeze_zeta,solenoid);
             if (status!=CAVITY_MODEL_OK) return status;
             status=CavityModel_frozen_kick(state,weight,voltage,radial,k,phase,1,
-                                          source->freeze_energy,solenoid);
+                                          source->freeze_energy,solenoid,spin);
             if (status!=CAVITY_MODEL_OK) return status;
             status=CavityModel_frozen_clock(state,-clock,source->freeze_zeta,solenoid);
             if (status!=CAVITY_MODEL_OK) return status;
@@ -513,7 +531,7 @@ int CavityModel_frozen_prefix(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg 
         xt_float_or_tpsa face_voltage=-voltage;
         if (reverse) face_voltage=voltage;
         status=CavityModel_frozen_face(state,face_voltage,
-            source->length,k,phase,reverse,source->freeze_energy);
+            source->length,k,phase,reverse,source->freeze_energy,spin);
         if (status!=CAVITY_MODEL_OK) return status;
     }
     output[0]=k*state[0];output[1]=k*state[1];
@@ -529,7 +547,7 @@ int CavityModel_frozen(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg Q,
         xt_float_or_tpsa_arg nominal_gain, int64_t requested_cells,
         int entry_face, int exit_face, int reverse, xt_float_or_tpsa output[6]) {
     return CavityModel_frozen_prefix(q,Q,source,nominal_momentum,nominal_gain,
-        requested_cells,entry_face,exit_face,1.,reverse,output);
+        requested_cells,entry_face,exit_face,1.,reverse,NULL,output);
 }
 
 // Any child is the interval M_b M_a^-1 of the same anchored parent family.
@@ -540,7 +558,7 @@ int CavityModel_frozen_interval(const xt_float_or_tpsa q[6], xt_float_or_tpsa_ar
         const CavityModelSource *source, xt_float_or_tpsa_arg nominal_momentum,
         xt_float_or_tpsa_arg nominal_gain, int64_t requested_cells,
         int entry_face, int exit_face, double entrance, double exit,
-        int reverse, xt_float_or_tpsa output[6]) {
+        int reverse, const CavitySpin *spin, xt_float_or_tpsa output[6]) {
     if (!isfinite(entrance) || !isfinite(exit) || entrance<0. || exit>1.
         || entrance>exit) return CAVITY_MODEL_ARGUMENT;
     if (entrance==exit) {
@@ -551,10 +569,10 @@ int CavityModel_frozen_interval(const xt_float_or_tpsa q[6], xt_float_or_tpsa_ar
     double first=entrance,second=exit;
     if (reverse) { first=exit;second=entrance; }
     int status=CavityModel_frozen_prefix(q,Q,source,nominal_momentum,nominal_gain,
-        requested_cells,entry_face,exit_face,first,1,temporary);
+        requested_cells,entry_face,exit_face,first,1,spin,temporary);
     if (status!=CAVITY_MODEL_OK) return status;
     return CavityModel_frozen_prefix(temporary,Q,source,nominal_momentum,nominal_gain,
-        requested_cells,entry_face,exit_face,second,0,output);
+        requested_cells,entry_face,exit_face,second,0,spin,output);
 }
 
 #endif

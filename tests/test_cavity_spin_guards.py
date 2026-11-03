@@ -22,7 +22,7 @@ def snapshot(line):
 
 
 @pytest.mark.parametrize('changes',[
-    dict(model='phase-resolved-frozen'),
+    dict(model='phase-resolved-frozen', knl=[0., .05]),
     dict(rf_profile='uniform'),
     dict(rf_profile='gaussian',rf_profile_sigma=.01),
     dict(ks=.1),

@@ -14,45 +14,9 @@
 #include "xtrack/beam_elements/elements_src/cavity_models.h"
 #include "xtrack/beam_elements/elements_src/cavity_models_compat.h"
 #include "xtrack/beam_elements/elements_src/cavity_models_frozen.h"
+#include "xtrack/beam_elements/elements_src/cavity_models_spin_rules.h"
 
 #define CAVITY_AVERAGED_MIDPOINT_ITERATIONS 60
-
-// Spin (CPU scalar only): each factor turns the spin by its Thomas-BMT
-// rotation (PLAN P4, D15). spin is NULL when spin is not tracked.
-typedef struct {
-    double *spin;
-    double anomaly;
-} CavityAveragedSpin;
-
-GPUFUN
-void CavityModel_averaged_rotate(double spin[3], double ax, double ay, double az) {
-    const double angle=sqrt(ax*ax+ay*ay+az*az);
-    if (angle==0.) return;
-    const double n[3]={ax/angle,ay/angle,az/angle};
-    const double c=cos(angle), s=sin(angle);
-    const double dot=n[0]*spin[0]+n[1]*spin[1]+n[2]*spin[2];
-    const double cross[3]={n[1]*spin[2]-n[2]*spin[1],n[2]*spin[0]-n[0]*spin[2],
-                           n[0]*spin[1]-n[1]*spin[0]};
-    for (int i=0;i<3;++i) spin[i]=spin[i]*c+cross[i]*s+n[i]*dot*(1.-c);
-}
-
-// Rotation with a transverse kick (dpx, dpy) at energy E; kind 0 is an edge
-// (radial electric field), kind 1 the ponderomotive kick.
-GPUFUN
-void CavityModel_averaged_kick_spin(const CavityAveragedSpin *spin, double dpx,
-                                    double dpy, double energy, int kind) {
-    if (!spin || !spin->spin) return;
-    const double a=spin->anomaly, gamma=energy, beta=sqrt(1.-1./(gamma*gamma));
-    const double p=beta*gamma;
-    double factor;
-    if (kind==1) {
-        const double radial=((a+1./gamma)+beta*(a+1./(gamma+1.)))/(1.+beta);
-        factor=beta*gamma*(radial-2.*(a+1./(gamma+1.)))+2.;
-    } else {
-        factor=gamma*beta*beta*(a+1./(gamma+1.));
-    }
-    CavityModel_averaged_rotate(spin->spin, -factor*dpy/p, factor*dpx/p, 0.);
-}
 #define CAVITY_AVERAGED_MIDPOINT_TOLERANCE 1e-15
 
 GPUFUN
@@ -66,6 +30,7 @@ int CavityModel_averaged_drift(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg lengt
     if (!freeze_zeta) q[2]+=length*q[5]/pz;
     return CAVITY_MODEL_OK;
 }
+
 
 // The static field of the step body (D15): a uniform solenoid or a normal
 // quadrupole replaces the free drift by the exact canonical bodies of the
@@ -111,7 +76,7 @@ int CavityModel_averaged_static_face(xt_float_or_tpsa q[6], const CavityModelSou
 GPUFUN
 int CavityModel_averaged_ponderomotive(xt_float_or_tpsa q[6],
         xt_float_or_tpsa_arg coefficient, int freeze_zeta,
-        const CavityAveragedSpin *spin) {
+        const CavitySpin *spin) {
     const double px0=xt_float_or_tpsa_const_part(q[3]);
     const double py0=xt_float_or_tpsa_const_part(q[4]);
     const xt_float_or_tpsa square=(q[5]-1.)*(q[5]+1.);
@@ -121,7 +86,7 @@ int CavityModel_averaged_ponderomotive(xt_float_or_tpsa q[6],
     if (!freeze_zeta) q[2]+=coefficient*q[5]*r2/(p*p*p);
     q[3]-=2.*coefficient*q[0]/p;
     q[4]-=2.*coefficient*q[1]/p;
-    CavityModel_averaged_kick_spin(spin, xt_float_or_tpsa_const_part(q[3])-px0,
+    CavitySpin_kick(spin, xt_float_or_tpsa_const_part(q[3])-px0,
         xt_float_or_tpsa_const_part(q[4])-py0, xt_float_or_tpsa_const_part(q[5]), 1);
     return CAVITY_MODEL_OK;
 }
@@ -180,7 +145,7 @@ int CavityModel_averaged_midpoint(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg a,
 GPUFUN
 int CavityModel_averaged_edge(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg jump,
         xt_float_or_tpsa_arg z, const CavityModelSource *source,
-        const CavityAveragedSpin *spin) {
+        const CavitySpin *spin) {
     if (xt_float_or_tpsa_is_zero(jump)) return CAVITY_MODEL_OK;
     const double px0=xt_float_or_tpsa_const_part(q[3]);
     const double py0=xt_float_or_tpsa_const_part(q[4]);
@@ -189,7 +154,7 @@ int CavityModel_averaged_edge(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg jump,
     const int status=CavityModel_averaged_midpoint(q, jump*r2/4., jump/2.,
         source->carrier*z, 0, source->freeze_energy, source->freeze_zeta);
     if (status==CAVITY_MODEL_OK)
-        CavityModel_averaged_kick_spin(spin, xt_float_or_tpsa_const_part(q[3])-px0,
+        CavitySpin_kick(spin, xt_float_or_tpsa_const_part(q[3])-px0,
             xt_float_or_tpsa_const_part(q[4])-py0, energy, 0);
     return status;
 }
@@ -228,7 +193,7 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
         xt_float_or_tpsa_arg z_mid, xt_float_or_tpsa_arg gradient,
         xt_float_or_tpsa_arg counter_gradient, xt_float_or_tpsa_arg Q,
         const CavityModelSource *source, const CavityAveragedStatic *field,
-        const CavityAveragedSpin *spin) {
+        const CavitySpin *spin) {
     const int freeze_energy=source->freeze_energy, freeze_zeta=source->freeze_zeta;
     const xt_float_or_tpsa coefficient=h*counter_gradient*counter_gradient/32.;
     const xt_float_or_tpsa phase=source->carrier*z_mid;
@@ -243,17 +208,11 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
             status=CavityModel_averaged_midpoint(q, gradient*h*r2/4.,
                 gradient*h/2., phase, 1, freeze_energy, freeze_zeta);
         } else if (!freeze_energy) {
-            if (spin && spin->spin) {
-                // Carrier precession in the forward wave's radial fields,
-                // then the longitudinal-field rotation of the energy kick.
-                const double a=spin->anomaly, E=xt_float_or_tpsa_const_part(q[5]);
-                const double beta=sqrt(1.-1./(E*E));
-                const double carrier=xt_float_or_tpsa_const_part(gradient*h
-                    *sin(q[2]-phase))/(2.*beta)*((a+1./E)-beta*(a+1./(E+1.)));
-                CavityModel_averaged_rotate(spin->spin,
-                    -carrier*xt_float_or_tpsa_const_part(q[1]),
-                    carrier*xt_float_or_tpsa_const_part(q[0]), 0.);
-            }
+            // Carrier precession in the forward wave's radial fields, then
+            // the longitudinal-field rotation of the energy kick.
+            CavitySpin_carrier(spin, xt_float_or_tpsa_const_part(gradient*h*sin(q[2]-phase)),
+                xt_float_or_tpsa_const_part(q[5]), xt_float_or_tpsa_const_part(q[0]),
+                xt_float_or_tpsa_const_part(q[1]));
             const double px=xt_float_or_tpsa_const_part(q[3]);
             const double py=xt_float_or_tpsa_const_part(q[4]);
             const double E0=xt_float_or_tpsa_const_part(q[5]);
@@ -270,12 +229,7 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
             const xt_float_or_tpsa counter_phase=slip+source->counter_phase;
             q[5]+=co_gain[0]*cos(slip)-co_gain[1]*sin(slip)
                 +counter_gain[0]*cos(counter_phase)-counter_gain[1]*sin(counter_phase);
-            if (spin && spin->spin) {
-                const double pz=sqrt(E0*E0-1.-px*px-py*py);
-                const double factor=(spin->anomaly+1./(E0+1.))
-                    *(xt_float_or_tpsa_const_part(q[5])-E0)/(pz/E0);
-                CavityModel_averaged_rotate(spin->spin, factor*py/E0, -factor*px/E0, 0.);
-            }
+            CavitySpin_energy(spin, px, py, E0, xt_float_or_tpsa_const_part(q[5])-E0);
         }
     }
     if (status==CAVITY_MODEL_OK)
@@ -292,7 +246,7 @@ GPUFUN
 int CavityModel_averaged_interval(const xt_float_or_tpsa q_in[6],
         xt_float_or_tpsa_arg Q, const CavityModelSource *source, int64_t cells,
         double left, double right, int reverse, int entry_face, int exit_face,
-        xt_float_or_tpsa_arg reference_momentum, const CavityAveragedSpin *spin,
+        xt_float_or_tpsa_arg reference_momentum, const CavitySpin *spin,
         xt_float_or_tpsa q[6]) {
     if (cells<=0 || !(right>left)) return CAVITY_MODEL_ARGUMENT;
     if (!xt_float_or_tpsa_is_zero(source->dc_gradient)) return CAVITY_MODEL_ARGUMENT;

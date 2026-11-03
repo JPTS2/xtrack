@@ -165,7 +165,7 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
           && weight<=1. && slice_start+weight<=1.+8e-15)
         || CavityData_get_rf_field_order(el)!=2
         || spin_tracking<0||spin_tracking>1
-        ||(spin_tracking&&(model==CAVITY_MODEL_FROZEN||CavityData_get__tpsa_enabled(el)!=0
+        ||(spin_tracking&&(CavityData_get__tpsa_enabled(el)!=0
             ||(model==CAVITY_MODEL_FULL&&(profile!=0||magnetic_profile!=0))))
         || requested<0
         || (model!=CAVITY_MODEL_FULL && model!=CAVITY_MODEL_FROZEN
@@ -382,7 +382,7 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
                 status=CAVITY_MODEL_ARGUMENT;
             else
             {
-                CavityAveragedSpin averaged_spin={spin_tracking ? spin : NULL, anomaly};
+                CavitySpin averaged_spin={spin_tracking ? spin : NULL, anomaly};
                 status=CavityModel_averaged_interval(q,Q,&source,cells,
                     left_fraction,right_fraction,reverse,
                     CavityData_get_edge_entry_active(el),CavityData_get_edge_exit_active(el),
@@ -404,13 +404,14 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
                 : CavityData_get_nominal_energy_gain(el)/mass0;
             // Explicit eV/reference-particle programme already includes the
             // reference charge. Actual-species chi never retunes this input.
+            CavitySpin frozen_spin={spin_tracking ? spin : NULL, anomaly};
             if (!CavityModel_scalar_finite(nominal_gain))
                 status=CAVITY_MODEL_NONFINITE;
             else
                 status=CavityModel_frozen_interval(q,Q,&source,kappa0,nominal_gain,requested,
                     CavityData_get_edge_entry_active(el),
                     CavityData_get_edge_exit_active(el),left_fraction,right_fraction,
-                    reverse,next);
+                    reverse,&frozen_spin,next);
             if (status==CAVITY_MODEL_OK) {
                 for (int j=0;j<6;++j) q[j]=next[j];
                 z=source.k*length*(end_fraction-.5);
