@@ -947,3 +947,22 @@ def test_frozen_spin_uses_the_shared_factor_rules(phase):
                                   probe.spin_z[0] - 1.])
     gap = np.linalg.norm(turned['phase-resolved-frozen'] - turned['phase-averaged'])
     assert gap < .01*np.linalg.norm(turned['phase-averaged'])
+
+
+@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved'])
+def test_geometric_grading_ignores_the_voltage_sign(model):
+    """A decelerating cavity grades its cells too (mesh policy on |V|)."""
+    def endpoint(voltage, integrator):
+        probe = _launch(20.)
+        _averaged_cavity(model, voltage=voltage, phase=-1.2, num_kicks=8,
+                         integrator=integrator).track(probe)
+        return np.array([probe.x[0], probe.delta[0]])
+    graded_gap = np.abs(endpoint(-20e6, 'geometric') - endpoint(-20e6, 'uniform')).max()
+    assert graded_gap > 0.
+
+
+def test_phase_averaged_spin_with_static_fields_refuses_at_configuration():
+    line = xt.Line(elements={'rf': _averaged_cavity(knl=[0., .05])})
+    line.particle_ref = _launch(200., x=0., px=0., y=0., py=0., zeta=0., delta=0.)
+    with pytest.raises(NotImplementedError, match='static'):
+        line.configure_spin(True)

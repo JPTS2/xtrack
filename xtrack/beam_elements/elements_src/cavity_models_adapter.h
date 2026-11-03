@@ -387,9 +387,9 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
                     left_fraction,right_fraction,reverse,
                     CavityData_get_edge_entry_active(el),CavityData_get_edge_exit_active(el),
                     kappa0,integrator,
-                    fabs(q0)*CavityData_get_voltage(el)*weight/mass0
+                    fabs(q0*xt_float_or_tpsa_const_part(CavityData_get_voltage(el)))*weight/mass0
                         *(1./sqrt(1.+kappa0*kappa0)
-                          +1./(sqrt(1.+kappa0*kappa0)+fabs(q0)*CavityData_get_voltage(el)*weight/mass0)),
+                          +1./(sqrt(1.+kappa0*kappa0)+fabs(q0*xt_float_or_tpsa_const_part(CavityData_get_voltage(el)))*weight/mass0)),
                     &averaged_spin,next);
             }
             if (status==CAVITY_MODEL_OK) {
@@ -430,7 +430,7 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
         xt_float_or_tpsa grading=0.,grading_log=0.;
         if (model==CAVITY_MODEL_FULL && integrator==7 && status==CAVITY_MODEL_OK) {
             const xt_float_or_tpsa entry=sqrt(1.+kappa0*kappa0);
-            const xt_float_or_tpsa gain=fabs(q0)*CavityData_get_voltage(el)*weight/mass0;
+            const xt_float_or_tpsa gain=fabs(q0*xt_float_or_tpsa_const_part(CavityData_get_voltage(el)))*weight/mass0;
             grading=gain*(1./entry+1./(entry+gain));
             grading_log=CavityModel_log1p(grading);
         }

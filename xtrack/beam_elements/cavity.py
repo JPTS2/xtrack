@@ -134,17 +134,23 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     '''.strip()
 
     _docstring_models = '''model : str
-        "longitudinal-only" (default, expanded drifts) and
-        "longitudinal-only-exact" (exact drifts) apply RF energy kicks only.
-        "phase-resolved" integrates the full Hamiltonian of the RF and static
-        fields in Gauss collocation cells; "phase-resolved-frozen" is the
-        frozen-coefficient voltage-action model with canonical faces. The
+        "adaptive" (default) chooses per call from the reference energy gain
+        and RF strength: "longitudinal-only" where the first-order RF squeeze
+        dE/(2E) is at most 1e-4 (or the cavity is thin), "phase-averaged"
+        where g/p0 <= 0.05, "phase-resolved" otherwise. "longitudinal-only"
+        (expanded drifts) and "longitudinal-only-exact" apply RF energy kicks
+        only. "phase-averaged" is the Sagan-type averaged map with finite-beta
+        terms; "phase-resolved" integrates the full Hamiltonian of the RF and
+        static fields in Gauss collocation cells; "phase-resolved-frozen" is
+        the frozen-coefficient voltage-action model with canonical faces. The
         drift-kick-drift and rot-kick-rot names are deprecated aliases.
     integrator : str
-        How the model's base step is placed: "uniform" (equal steps; Gauss
-        cells for "phase-resolved"), "teapot", "yoshida-4/6/8" and, for the
-        frozen model, "geometric" (steps graded by the energy ratio, its
-        default). "gauss2" and "geometric-kick-drift" are deprecated aliases.
+        How the model's base step is placed. Longitudinal models: "teapot",
+        "uniform", "yoshida-4/6/8". "phase-resolved": "uniform" (Gauss cells),
+        "yoshida-6/8" (higher-order compositions), "geometric" (cells graded
+        by the energy ratio). "phase-averaged": "uniform", "geometric". Frozen
+        model: "geometric" (default, SAD's mesh), "uniform". "gauss2" and
+        "geometric-kick-drift" are deprecated aliases.
     num_kicks : int
         Number of integration cells when nonzero. With zero, phase-resolved
         uses 64, phase-averaged two steps per half RF wavelength, and the
@@ -373,10 +379,10 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     def _check_spin_support(self):
         """Raise if spin transport is not implemented for these settings."""
         if self._model in (11, 13):
-            if self._model == 13 and (self.ks != 0. or np.any(np.asarray(self.knl) != 0.)
-                                      or np.any(np.asarray(self.ksl) != 0.)):
-                raise NotImplementedError('Cavity spin transport with static fields '
-                                          'is not implemented for the frozen model')
+            if (_constant_part(self.ks) != 0. or np.any(np.asarray(self.knl) != 0.)
+                    or np.any(np.asarray(self.ksl) != 0.)):
+                raise NotImplementedError(f'Cavity spin transport with static fields '
+                                          f'is not implemented for {self.model}')
             return
         if (self._model != 10 or self._rf_profile != 0
                 or self._magnetic_profile != 0
