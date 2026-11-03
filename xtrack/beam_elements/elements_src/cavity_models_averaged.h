@@ -153,13 +153,41 @@ int CavityModel_averaged_edge(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg jump,
     return status;
 }
 
+// The counter-propagating wave's direct energy gain over one step, as the
+// complex amplitude Q b int e(Z) exp(i (1/beta0 + nu) Z) dZ on [z_mid-h/2,
+// z_mid+h/2]; it does not average away in a short cavity, and the shared
+// calibration includes it. Eight-point Gauss-Legendre per step.
+GPUFUN
+void CavityModel_averaged_counter_gain(xt_float_or_tpsa_arg h,
+        xt_float_or_tpsa_arg z_mid, xt_float_or_tpsa_arg Q,
+        const CavityModelSource *source, xt_float_or_tpsa out[2]) {
+    const double nodes[4]={.1834346424956498,.5255324099163290,
+                           .7966664774136267,.9602898564975363};
+    const double weights[4]={.3626837833783620,.3137066458778873,
+                             .2223810344533745,.1012285362903763};
+    const xt_float_or_tpsa detuning=1./source->reference_beta+source->carrier;
+    out[0]=0.; out[1]=0.;
+    xt_float_or_tpsa envelope[5];
+    for (int i=0;i<4;++i) {
+        for (int side=-1; side<=1; side+=2) {
+            const xt_float_or_tpsa z=z_mid+side*nodes[i]*h*.5;
+            CavityModel_source_envelope(z, source, envelope);
+            const xt_float_or_tpsa w=weights[i]*h*.5*envelope[0];
+            out[0]+=w*cos(detuning*z);
+            out[1]+=w*sin(detuning*z);
+        }
+    }
+    const xt_float_or_tpsa scale=Q*source->backward;
+    out[0]*=scale; out[1]*=scale;
+}
+
 // One symmetric step of signed length h around z_mid; a negative length
 // applies the inverse word.
 GPUFUN
 int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
         xt_float_or_tpsa_arg z_mid, xt_float_or_tpsa_arg gradient,
-        xt_float_or_tpsa_arg counter_gradient, const CavityModelSource *source,
-        const CavityAveragedSpin *spin) {
+        xt_float_or_tpsa_arg counter_gradient, xt_float_or_tpsa_arg Q,
+        const CavityModelSource *source, const CavityAveragedSpin *spin) {
     const int freeze_energy=source->freeze_energy, freeze_zeta=source->freeze_zeta;
     const xt_float_or_tpsa coefficient=h*counter_gradient*counter_gradient/32.;
     const xt_float_or_tpsa phase=source->carrier*z_mid;
@@ -188,7 +216,12 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
             const double px=xt_float_or_tpsa_const_part(q[3]);
             const double py=xt_float_or_tpsa_const_part(q[4]);
             const double E0=xt_float_or_tpsa_const_part(q[5]);
-            q[5]+=h*gradient*cos(q[2]-phase);
+            xt_float_or_tpsa counter_gain[2];
+            CavityModel_averaged_counter_gain(h, z_mid, Q, source, counter_gain);
+            const xt_float_or_tpsa counter_phase=q[2]-z_mid/source->reference_beta
+                +source->counter_phase;
+            q[5]+=h*gradient*cos(q[2]-phase)
+                +counter_gain[0]*cos(counter_phase)-counter_gain[1]*sin(counter_phase);
             if (spin && spin->spin) {
                 const double pz=sqrt(E0*E0-1.-px*px-py*py);
                 const double factor=(spin->anomaly+1./(E0+1.))
@@ -244,7 +277,7 @@ int CavityModel_averaged_interval(const xt_float_or_tpsa q_in[6],
         status=CavityModel_averaged_edge(q, gradient-previous, boundary, source, spin);
         if (status==CAVITY_MODEL_OK)
             status=CavityModel_averaged_step(q, signed_h, z_mid,
-                                             gradient, counter, source, spin);
+                                             gradient, counter, Q, source, spin);
         previous=gradient;
     }
     if (status==CAVITY_MODEL_OK) {

@@ -28,14 +28,6 @@ def compensate_radiation_energy_loss(line, delta0='zero_mean', rtol_eneloss=1e-1
                 f"Element type '{et}' is not supported for radiation energy "
                 "loss compensation.")
 
-    for name in enames_no_autodrift:
-        element = line[name]
-        if isinstance(element, xt.Cavity) and element._model >= 10:
-            raise NotImplementedError(
-                f"Cavity '{name}' uses model '{element.model}'; radiation "
-                "energy loss compensation supports only the legacy Cavity "
-                "models.")
-
     if 'record_iterations' in kwargs:
         record_iterations = kwargs['record_iterations']
         kwargs.pop('record_iterations')

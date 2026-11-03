@@ -835,3 +835,35 @@ def test_phase_averaged_spin_follows_phase_resolved(phase):
                                   probe.spin_z[0] - 1.])
     gap = np.linalg.norm(turned['phase-averaged'] - turned['phase-resolved'])
     assert gap < .03*np.linalg.norm(turned['phase-resolved'])
+
+
+@pytest.mark.parametrize('eta,counter_phase', [(1., 0.), (.25, .7)])
+def test_phase_averaged_energy_gain_includes_the_counter_wave(eta, counter_phase):
+    """The shared calibration includes the counter wave's direct gain, which
+    does not average away in a short cavity (2.7 RF wavelengths here)."""
+    gains = []
+    for model in ('phase-averaged', 'phase-resolved'):
+        rf = xt.Cavity(length=1., voltage=350e6, frequency=801.58e6, phase=2.6,
+                       model=model, eta=eta, counter_phase=counter_phase)
+        probe = xt.Particles(p0c=182.5e9, mass0=xt.ELECTRON_MASS_EV)
+        rf.track(probe)
+        gains.append(probe.delta[0])
+    np.testing.assert_allclose(gains[0], gains[1], rtol=1e-6)
+
+
+@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved',
+                                   'phase-resolved-frozen'])
+def test_taper_pass_tracks_physical_cavities_longitudinally(model):
+    """The taper pass shares the energy loss at zero frequency (tapering.py)."""
+    results = []
+    for chosen in (model, 'longitudinal-only'):
+        line = xt.Line(elements=[xt.Cavity(length=1., voltage=10e6,
+                                           frequency=0., phase=np.pi/2,
+                                           model=chosen)])
+        line.particle_ref = xt.Particles(p0c=1e10, mass0=xt.ELECTRON_MASS_EV)
+        line.build_tracker()
+        line.tracker.track_flags.XS_FLAG_SR_TAPER = True
+        probe = xt.Particles(p0c=1e10, mass0=xt.ELECTRON_MASS_EV, x=1e-3)
+        line.track(probe)
+        results.append([probe.x[0], probe.px[0], probe.delta[0]])
+    np.testing.assert_array_equal(results[0], results[1])

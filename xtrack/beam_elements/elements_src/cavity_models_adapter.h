@@ -171,7 +171,8 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
         controls=CAVITY_MODEL_ARGUMENT;
     }
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
-    // Radiation tapering supports only the legacy RF models (tapering.py).
+    // The whole-cavity taper pass takes the longitudinal map (cavity.h);
+    // tapering refuses cavity slices.
     if(LocalParticle_check_track_flag(part0,XS_FLAG_SR_TAPER)
         ||(spin_tracking&&(LocalParticle_check_track_flag(part0,XS_FLAG_SR_KICK_SAME_AS_FIRST)
             ||weight!=1.||slice_start!=0.)))

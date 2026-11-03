@@ -12,7 +12,10 @@
 GPUFUN
 void Cavity_track_local_particle(CavityData el, LocalParticle* part0)
 {
-    if (CavityData_get_model(el) >= 10) {
+    // The taper pass (tapering.py) only shares the energy loss among the
+    // cavities at zero frequency: every model uses the longitudinal map there.
+    const int64_t physical = CavityData_get_model(el) >= 10;
+    if (physical && !LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER)) {
         CavityModels_track_local_particle(el, part0, 1., 0.);
         return;
     }
@@ -37,7 +40,7 @@ void Cavity_track_local_particle(CavityData el, LocalParticle* part0)
         /*phase_n*/               NULL,
         /*phase_s*/               NULL,
         /*num_kicks*/             CavityData_get_num_kicks(el),
-        /*model*/                 CavityData_get_model(el),
+        /*model*/                 physical ? 0 : CavityData_get_model(el),
         /*default_model*/         6, // drift-kick-drift-expanded
         /*integrator*/            CavityData_get_integrator(el),
         /*default_integrator*/    3, // Uniform
