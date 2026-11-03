@@ -8,6 +8,7 @@
 #include "xtrack/headers/track.h"
 #include "xtrack/beam_elements/elements_src/cavity_models.h"
 #include "xtrack/beam_elements/elements_src/cavity_models_frozen.h"
+#include "xtrack/beam_elements/elements_src/cavity_models_averaged.h"
 
 GPUFUN
 int CavityModels_physical_shell(const xt_float_or_tpsa q[6],
@@ -135,7 +136,8 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
         ||(spin_tracking&&(model!=CAVITY_MODEL_FULL||profile!=0||magnetic_profile!=0
             ||CavityData_get__tpsa_enabled(el)!=0))
         || requested<0
-        || (model!=CAVITY_MODEL_FULL && model!=CAVITY_MODEL_FROZEN)
+        || (model!=CAVITY_MODEL_FULL && model!=CAVITY_MODEL_FROZEN
+            && model!=CAVITY_MODEL_AVERAGED)
         || profile<0 || profile>2
         || magnetic_profile<0||magnetic_profile>1
         ||(magnetic_profile==1&&(model!=CAVITY_MODEL_FULL
@@ -160,6 +162,10 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
             || !xt_float_or_tpsa_is_zero(CavityData_get_eta(el))
             || !xt_float_or_tpsa_is_zero(CavityData_get_calibration_beta(el)-1.)
             || !CavityData_get_wave_number_from_frequency(el))
+            controls=CAVITY_MODEL_ARGUMENT;
+    } else if (model==CAVITY_MODEL_AVERAGED) {
+        if ((integrator!=0 && integrator!=3) || spin_tracking
+            || CavityModels_effects_static_present(el) || magnetic_profile!=0)
             controls=CAVITY_MODEL_ARGUMENT;
     } else if (integrator==1 || integrator<0 || integrator>7 || integrator==6) {
         controls=CAVITY_MODEL_ARGUMENT;
@@ -330,6 +336,18 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
             q[4]=kappa0*LocalParticle_get_py(part);
             const xt_float_or_tpsa momentum=kappa0*sigma;
             q[5]=sqrt(1.+momentum*momentum);
+        }
+        if (status==CAVITY_MODEL_OK && model==CAVITY_MODEL_AVERAGED) {
+            xt_float_or_tpsa next[6];
+            if (source.freeze_x || source.freeze_px || source.freeze_y || source.freeze_py)
+                status=CAVITY_MODEL_ARGUMENT;
+            else
+                status=CavityModel_averaged_interval(q,Q,&source,cells,
+                    left_fraction,right_fraction,reverse,next);
+            if (status==CAVITY_MODEL_OK) {
+                for (int j=0;j<6;++j) q[j]=next[j];
+                z=source.k*length*(end_fraction-.5);
+            }
         }
         if (status==CAVITY_MODEL_OK && model==CAVITY_MODEL_FROZEN) {
             xt_float_or_tpsa next[6];

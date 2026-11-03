@@ -705,3 +705,111 @@ def test_frozen_uniform_and_geometric_meshes_share_their_limit():
     gaps = [np.abs(endpoint('uniform', n) - endpoint('geometric', n)).max()
             for n in (32, 128)]
     assert gaps[1] < gaps[0]/3
+
+
+def _averaged_cavity(model='phase-averaged', **changes):
+    controls = dict(length=1.15, voltage=20e6, frequency=1.3e9, phase=1.2,
+                    model=model, num_kicks=32)
+    controls.update(changes)
+    return xt.Cavity(**controls)
+
+
+def _launch(gamma, **changes):
+    values = dict(x=1e-3, px=2e-4, y=-1e-3, py=1e-4, zeta=1e-3, delta=1e-3)
+    values.update(changes)
+    return xt.Particles(p0c=xt.ELECTRON_MASS_EV*np.sqrt(gamma**2 - 1),
+                        mass0=xt.ELECTRON_MASS_EV, **values)
+
+
+def test_phase_averaged_converges_to_phase_resolved_with_energy():
+    """The averaging error falls with g/p (D17)."""
+    gaps = []
+    for gamma in (200., 2000.):
+        ends = []
+        for model in ('phase-averaged', 'phase-resolved'):
+            probe = _launch(gamma)
+            _averaged_cavity(model, num_kicks=64).track(probe)
+            assert probe.state[0] == 1
+            ends.append(np.array([probe.x[0], probe.px[0], probe.zeta[0]]))
+        gaps.append(np.abs(ends[0] - ends[1]).max())
+    assert gaps[0] < 3e-8
+    assert gaps[1] < gaps[0] / 30
+
+
+@pytest.mark.parametrize('eta', [0., 1.])
+def test_phase_averaged_is_symplectic(eta):
+    names = ('x', 'px', 'y', 'py', 'zeta', 'pzeta')
+    rf = _averaged_cavity(eta=eta)
+    step = 1e-6
+    matrix = np.zeros((6, 6))
+    for column, name in enumerate(names):
+        ends = []
+        for sign in (1, -1):
+            probe = xt.Particles(p0c=xt.ELECTRON_MASS_EV*np.sqrt(20.**2 - 1),
+                mass0=xt.ELECTRON_MASS_EV, x=1e-3, px=2e-4, y=-1e-3, py=1e-4,
+                zeta=1e-3, pzeta=1e-3)
+            setattr(probe, name, getattr(probe, name) + sign*step)
+            rf.track(probe)
+            ends.append(np.array([getattr(probe, n)[0] for n in names]))
+        matrix[:, column] = (ends[0] - ends[1]) / (2*step)
+    form = np.zeros((6, 6))
+    for i in range(3):
+        form[2*i, 2*i+1], form[2*i+1, 2*i] = 1, -1
+    assert np.abs(matrix.T @ form @ matrix - form).max() < 1e-7
+
+
+def test_phase_averaged_reverses_and_slices_exactly():
+    names = ('x', 'px', 'y', 'py', 'zeta', 'delta')
+    def line(sliced):
+        out = xt.Line(elements={'rf': _averaged_cavity(), 'end': xt.Marker()})
+        out.particle_ref = _launch(20., x=0., px=0., y=0., py=0., zeta=0., delta=0.)
+        if sliced:
+            # Two slices split the 32 parent steps exactly; an uneven split
+            # (ceil per slice) gives a different staircase.
+            out.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thick'))])
+        out.build_tracker()
+        out.reset_s_at_end_turn = False
+        return out
+    whole, sliced = line(False), line(True)
+    start = _launch(20.)
+    a, b = start.copy(), start.copy()
+    whole.track(a, ele_start=0, ele_stop=1)
+    sliced.track(b, ele_start=0, ele_stop=sliced.element_names.index('end'))
+    for name in names:
+        assert getattr(a, name)[0] == getattr(b, name)[0]
+    whole.track(a, ele_start=0, ele_stop=1, backtrack=True)
+    for name in names:
+        np.testing.assert_allclose(getattr(a, name)[0], getattr(start, name)[0],
+                                   rtol=0, atol=1e-14)
+
+
+def test_phase_averaged_tpsa_matches_finite_differences():
+    import xtrack.tpsa as xtpsa
+    gamma = 20.
+    p0c = xt.ELECTRON_MASS_EV*np.sqrt(gamma**2 - 1)
+    base = dict(x=1e-3, px=2e-4, y=-1e-3, py=1e-4, zeta=1e-3, delta=1e-3)
+    names = ('x', 'px', 'y', 'py', 'zeta', 'delta')
+    line = xt.Line(elements={'rf': _averaged_cavity()})
+    line.particle_ref = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV)
+    line.build_tracker()
+    line.reset_s_at_end_turn = False
+    series = xtpsa.ParticlesTpsa(order=2, p0c=p0c, mass0=xt.ELECTRON_MASS_EV, **base)
+    line.track(series)
+    finite = np.zeros((6, 6))
+    for column, name in enumerate(names):
+        ends = []
+        for sign in (1, -1):
+            launch = dict(base)
+            launch[name] += sign*1e-6
+            probe = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV, **launch)
+            line.track(probe)
+            ends.append(np.array([getattr(probe, n)[0] for n in names]))
+        finite[:, column] = (ends[0] - ends[1]) / 2e-6
+    np.testing.assert_allclose(series.jacobian(), finite, rtol=0, atol=2e-8)
+
+
+def test_phase_averaged_refuses_static_fields_and_other_integrators():
+    with pytest.raises(ValueError, match='static'):
+        _averaged_cavity(ks=.1)
+    with pytest.raises(ValueError, match='uniform'):
+        _averaged_cavity(integrator='yoshida-6')

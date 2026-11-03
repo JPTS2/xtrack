@@ -25,7 +25,7 @@ from ._common import (
 # shared RF table. The kernel ids 5 and 6 are the legacy kick-drift maps.
 _CAVITY_MODELS = {0: 'adaptive', 6: 'longitudinal-only',
                   5: 'longitudinal-only-exact', 10: 'phase-resolved',
-                  13: 'phase-resolved-frozen'}
+                  11: 'phase-averaged', 13: 'phase-resolved-frozen'}
 _CAVITY_MODEL_IDS = {value: key for key, value in _CAVITY_MODELS.items()}
 # For RF the rot-kick-rot maps equal drift-kick-drift-exact bit for bit.
 _DEPRECATED_CAVITY_MODELS = {
@@ -346,6 +346,13 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
                     or not self.wave_number_from_frequency):
                 raise ValueError('phase-resolved-frozen requires eta=0, '
                                  'calibration_beta=1 and the carrier from frequency')
+        elif self.model == 'phase-averaged':
+            if self.integrator not in ('adaptive', 'uniform'):
+                raise ValueError('phase-averaged supports the "uniform" integrator')
+            if (_constant_part(self.ks) != 0. or np.any(np.asarray(self.knl) != 0.)
+                    or np.any(np.asarray(self.ksl) != 0.)
+                    or self.magnetic_profile != 'uniform'):
+                raise ValueError('phase-averaged does not yet support static fields')
         elif self.integrator == 'teapot':
             raise ValueError('phase-resolved has no kicks to place: "teapot" '
                              'does not apply')
