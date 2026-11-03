@@ -15,7 +15,10 @@
 GPUFUN
 void ThinSliceCavity_track_local_particle(ThinSliceCavityData el, LocalParticle* part0)
 {
-    if (ThinSliceCavityData_get__parent_model(el) >= 10) {
+    // The taper pass (tapering.py) only shares the energy loss among the
+    // cavities at zero frequency: every model uses the longitudinal map there.
+    const int64_t model = CavityModels_effective_model(ThinSliceCavityData_getp__parent(el), part0);
+    if (model >= 10 && !LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER)) {
         if (ThinSliceCavityData_get__parent_spin_tracking(el)) {
             START_PER_PARTICLE_BLOCK(part0, part)
                 LocalParticle_set_state(part, -99744);
@@ -44,7 +47,7 @@ void ThinSliceCavity_track_local_particle(ThinSliceCavityData el, LocalParticle*
         /*phase_n*/               NULL,
         /*phase_s*/               NULL,
         /*num_kicks*/             1, // kick only
-        /*model*/                 -1, // kick only
+        /*model*/                 model >= 10 ? 0 : -1, // kick only
         /*default_model*/         6, // drift-kick-drift-expanded
         /*integrator*/            3, // uniform
         /*default_integrator*/    3, // Uniform

@@ -113,6 +113,12 @@ for td in to_do:
             if old_call not in out_content:
                 raise ValueError('Cavity model dispatch template changed')
             out_content = out_content.replace(old_call, replacement)
+            choice = generated_class + 'Models_effective_model(el, part0)'
+            if choice not in out_content:
+                raise ValueError('Cavity adaptive dispatch template changed')
+            out_content = out_content.replace(choice,
+                'CavityModels_effective_model('
+                + generated_data_class + '_getp__parent(el), part0)')
 
 
 
@@ -392,7 +398,8 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
             raise ValueError('Drift Cavity slice template changed')
         out_drift_slice = out_drift_slice.replace(marker,accessor+marker)
         marker = '        double weight = DriftSliceCavityData_get_weight(el);'
-        branch = '''        const int model=DriftSliceCavityData_get__parent_model(el);
+        branch = '''        const int model=CavityModels_effective_model(
+            DriftSliceCavityData_getp__parent(el),part0);
         if (model>=10) {
             CavityModels_track_source_interval(
                 DriftSliceCavityData_getp__parent(el),part0,

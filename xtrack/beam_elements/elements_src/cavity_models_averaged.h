@@ -153,19 +153,19 @@ int CavityModel_averaged_edge(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg jump,
     return status;
 }
 
-// The counter-propagating wave's direct energy gain over one step, as the
-// complex amplitude Q b int e(Z) exp(i (1/beta0 + nu) Z) dZ on [z_mid-h/2,
-// z_mid+h/2]; it does not average away in a short cavity, and the shared
-// calibration includes it. Eight-point Gauss-Legendre per step.
+// A wave's energy gain over one step along the reference trajectory, as the
+// complex amplitude int e(Z) exp(i detuning Z) dZ on [z_mid-h/2, z_mid+h/2]
+// (eight-point Gauss-Legendre). The counter wave's gain does not average
+// away in a short cavity, and the shared calibration includes it.
 GPUFUN
-void CavityModel_averaged_counter_gain(xt_float_or_tpsa_arg h,
-        xt_float_or_tpsa_arg z_mid, xt_float_or_tpsa_arg Q,
-        const CavityModelSource *source, xt_float_or_tpsa out[2]) {
+void CavityModel_averaged_wave_gain(xt_float_or_tpsa_arg h,
+        xt_float_or_tpsa_arg z_mid, xt_float_or_tpsa_arg detuning,
+        xt_float_or_tpsa_arg amplitude, const CavityModelSource *source,
+        xt_float_or_tpsa out[2]) {
     const double nodes[4]={.1834346424956498,.5255324099163290,
                            .7966664774136267,.9602898564975363};
     const double weights[4]={.3626837833783620,.3137066458778873,
                              .2223810344533745,.1012285362903763};
-    const xt_float_or_tpsa detuning=1./source->reference_beta+source->carrier;
     out[0]=0.; out[1]=0.;
     xt_float_or_tpsa envelope[5];
     for (int i=0;i<4;++i) {
@@ -177,8 +177,7 @@ void CavityModel_averaged_counter_gain(xt_float_or_tpsa_arg h,
             out[1]+=w*sin(detuning*z);
         }
     }
-    const xt_float_or_tpsa scale=Q*source->backward;
-    out[0]*=scale; out[1]*=scale;
+    out[0]*=amplitude; out[1]*=amplitude;
 }
 
 // One symmetric step of signed length h around z_mid; a negative length
@@ -216,11 +215,18 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
             const double px=xt_float_or_tpsa_const_part(q[3]);
             const double py=xt_float_or_tpsa_const_part(q[4]);
             const double E0=xt_float_or_tpsa_const_part(q[5]);
-            xt_float_or_tpsa counter_gain[2];
-            CavityModel_averaged_counter_gain(h, z_mid, Q, source, counter_gain);
-            const xt_float_or_tpsa counter_phase=q[2]-z_mid/source->reference_beta
-                +source->counter_phase;
-            q[5]+=h*gradient*cos(q[2]-phase)
+            // Both waves integrated exactly over the step along the
+            // reference trajectory T(Z) = T_mid + (Z - z_mid)/beta0.
+            const xt_float_or_tpsa slip=q[2]-z_mid/source->reference_beta;
+            xt_float_or_tpsa co_gain[2], counter_gain[2];
+            CavityModel_averaged_wave_gain(h, z_mid,
+                1./source->reference_beta-source->carrier, Q*source->forward,
+                source, co_gain);
+            CavityModel_averaged_wave_gain(h, z_mid,
+                1./source->reference_beta+source->carrier, Q*source->backward,
+                source, counter_gain);
+            const xt_float_or_tpsa counter_phase=slip+source->counter_phase;
+            q[5]+=co_gain[0]*cos(slip)-co_gain[1]*sin(slip)
                 +counter_gain[0]*cos(counter_phase)-counter_gain[1]*sin(counter_phase);
             if (spin && spin->spin) {
                 const double pz=sqrt(E0*E0-1.-px*px-py*py);

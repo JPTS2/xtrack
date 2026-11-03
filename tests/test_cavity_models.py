@@ -867,3 +867,33 @@ def test_taper_pass_tracks_physical_cavities_longitudinally(model):
         line.track(probe)
         results.append([probe.x[0], probe.px[0], probe.delta[0]])
     np.testing.assert_array_equal(results[0], results[1])
+
+
+@pytest.mark.parametrize('p0c,mass0,voltage,phase,expected', [
+    (7e12, xt.PROTON_MASS_EV, 2e6, np.pi/2, 'longitudinal-only'),
+    (45.6e9, xt.ELECTRON_MASS_EV, 10e6, np.pi, 'longitudinal-only'),
+    (182.5e9, xt.ELECTRON_MASS_EV, 212e6, 2.6, 'phase-averaged'),
+    (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, 'phase-averaged'),
+    (10e6, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, 'phase-resolved')])
+def test_adaptive_selects_by_energy_gain_and_phase_averaging(
+        p0c, mass0, voltage, phase, expected):
+    """D22/D25: longitudinal-only where dE/(2E) <= 1e-4 for the reference,
+    phase-averaged where g/p0 <= 0.05, phase-resolved otherwise."""
+    ends = {}
+    for model in ('adaptive', expected):
+        rf = xt.Cavity(length=1., voltage=voltage, frequency=1.3e9, phase=phase,
+                       model=model)
+        probe = xt.Particles(p0c=p0c, mass0=mass0, x=1e-3)
+        rf.track(probe)
+        ends[model] = [probe.x[0], probe.px[0], probe.zeta[0], probe.delta[0]]
+    assert ends['adaptive'] == ends[expected]
+
+
+def test_adaptive_thin_cavity_stays_longitudinal():
+    ends = []
+    for model in ('adaptive', 'longitudinal-only'):
+        rf = xt.Cavity(voltage=20e6, frequency=1.3e9, phase=np.pi/2, model=model)
+        probe = xt.Particles(p0c=10e6, mass0=xt.ELECTRON_MASS_EV, x=1e-3)
+        rf.track(probe)
+        ends.append([probe.px[0], probe.delta[0]])
+    assert ends[0] == ends[1]

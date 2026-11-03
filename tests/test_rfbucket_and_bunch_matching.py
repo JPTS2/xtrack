@@ -149,6 +149,9 @@ def test_bucket_with_radiation_and_bunch_matching(sigma_z):
     env['actcse.31632'].frequency = 200e6
     env['actcse.31632'].voltage = 100e6
     env['actcse.31632'].phase = np.pi
+    # The analytic bucket assumes the longitudinal-only RF map; "adaptive"
+    # would pick phase-averaged for this energy gain.
+    env['actcse.31632'].model = 'longitudinal-only'
 
     line.configure_radiation(model='mean')
     line.compensate_radiation_energy_loss()

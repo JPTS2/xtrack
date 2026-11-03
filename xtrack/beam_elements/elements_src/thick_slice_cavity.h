@@ -33,7 +33,10 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
 GPUFUN
 void ThickSliceCavity_track_local_particle(ThickSliceCavityData el, LocalParticle* part0)
 {
-    if (ThickSliceCavityData_get__parent_model(el) >= 10) {
+    // The taper pass (tapering.py) only shares the energy loss among the
+    // cavities at zero frequency: every model uses the longitudinal map there.
+    const int64_t model = CavityModels_effective_model(ThickSliceCavityData_getp__parent(el), part0);
+    if (model >= 10 && !LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER)) {
         CavityModels_track_local_particle(ThickSliceCavityData_getp__parent(el), part0, ThickSliceCavityData_get_weight(el), ThickSliceCavityData_get_slice_offset_fraction(el));
         return;
     }
@@ -58,7 +61,7 @@ void ThickSliceCavity_track_local_particle(ThickSliceCavityData el, LocalParticl
         /*phase_n*/               NULL,
         /*phase_s*/               NULL,
         /*num_kicks*/             ThickSliceCavityData_get__parent_num_kicks(el),
-        /*model*/                 ThickSliceCavityData_get__parent_model(el),
+        /*model*/                 model >= 10 ? 0 : ThickSliceCavityData_get__parent_model(el),
         /*default_model*/         6, // drift-kick-drift-expanded
         /*integrator*/            ThickSliceCavityData_get__parent_integrator(el),
         /*default_integrator*/    3, // Uniform

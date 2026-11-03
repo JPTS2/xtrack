@@ -36,7 +36,8 @@
             LocalParticle* part0
     ) {
 
-        const int model=DriftSliceCavityData_get__parent_model(el);
+        const int model=CavityModels_effective_model(
+            DriftSliceCavityData_getp__parent(el),part0);
         if (model>=10) {
             CavityModels_track_source_interval(
                 DriftSliceCavityData_getp__parent(el),part0,

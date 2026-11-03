@@ -104,6 +104,37 @@ static const double CAVITY_COMPOSITION_ORDER8[9]={
     CAVITY_W8_INNER*CAVITY_W6_OUTER, CAVITY_W8_INNER*CAVITY_W6_INNER, CAVITY_W8_INNER*CAVITY_W6_OUTER,
     CAVITY_W8_OUTER*CAVITY_W6_OUTER, CAVITY_W8_OUTER*CAVITY_W6_INNER, CAVITY_W8_OUTER*CAVITY_W6_OUTER};
 
+// D22/D25: "adaptive" picks the longitudinal map where the reference
+// particle's energy gain gives a squeeze dE/(2E) <= 1e-4 (or the cavity is
+// thin or at zero frequency), phase-averaged where g/p0 <= 0.05 and
+// phase-resolved otherwise. Other selectors are returned unchanged.
+GPUFUN
+int CavityModels_effective_model(CavityData el, LocalParticle* part0) {
+    const int model=CavityData_get_model(el);
+    if (model!=0) return model;
+    const double length=CavityData_get_length(el);
+    double frequency=xt_float_or_tpsa_const_part(CavityData_get_frequency(el));
+    const double harmonic=xt_float_or_tpsa_const_part(CavityData_get_harmonic(el));
+    if (harmonic!=0. && part0->line_length>0.)
+        frequency+=harmonic*LocalParticle_get_beta0(part0)*C_LIGHT/part0->line_length;
+    if (!(length>0.) || !(frequency>0.)) return 0;
+    const double charge=fabs(LocalParticle_get_q0(part0));
+    const double p0c=LocalParticle_get_p0c(part0);
+    const double energy0=sqrt(p0c*p0c+LocalParticle_get_mass0(part0)*LocalParticle_get_mass0(part0));
+    const double voltage=fabs(xt_float_or_tpsa_const_part(CavityData_get_voltage(el)));
+    const double phase=xt_float_or_tpsa_const_part(CavityData_get_phase(el))
+        +DEG2RAD*xt_float_or_tpsa_const_part(CavityData_get_lag(el))
+        +xt_float_or_tpsa_const_part(CavityData_get_phase_taper(el))
+        +DEG2RAD*xt_float_or_tpsa_const_part(CavityData_get_lag_taper(el));
+    // The absolute-time reference phase moves with time: bound by the crest.
+    const double gain=CavityData_get_absolute_time(el) ? charge*voltage
+                                                       : charge*voltage*fabs(sin(phase));
+    if (gain<=2e-4*energy0) return 0;
+    const double wave_number=2.*PI*frequency/C_LIGHT;
+    return charge*voltage<=.05*length*wave_number*p0c ? CAVITY_MODEL_AVERAGED
+                                                      : CAVITY_MODEL_FULL;
+}
+
 // Element-level resolution of one physical-model cavity call, prepared once
 // before the per-particle loop (the CavityPlan analogue of MagnetPlan). The
 // RF source stays per particle: it depends on each particle's reference.
@@ -121,11 +152,12 @@ GPUFUN
 void CavityPlan_prepare(CavityData el, LocalParticle* part0,
                         double weight, double slice_start, CavityPlan* plan) {
     const double length=CavityData_get_length(el);
-    const int model=CavityData_get_model(el);
+    const int model=CavityModels_effective_model(el, part0);
     const int profile=CavityData_get_rf_profile(el);
     const int magnetic_profile=CavityData_get_magnetic_profile(el);
-    const int integrator=CavityData_get_integrator(el);
-    const int64_t requested=CavityData_get_num_kicks(el);
+    const int integrator=CavityData_get_model(el)==0 ? 0 : CavityData_get_integrator(el);
+    // An adaptive choice uses the chosen model's integrator and resolution.
+    const int64_t requested=CavityData_get_model(el)==0 ? 0 : CavityData_get_num_kicks(el);
     const int spin_tracking=CavityData_get_spin_tracking(el);
     int controls=CAVITY_MODEL_OK;
     if (!(isfinite(length) && length>0. && isfinite(weight) && weight>0.
