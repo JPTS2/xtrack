@@ -25,7 +25,8 @@ from ._common import (
 # shared RF table. The kernel ids 5 and 6 are the legacy kick-drift maps.
 _CAVITY_MODELS = {0: 'adaptive', 6: 'longitudinal-only',
                   5: 'longitudinal-only-exact', 10: 'phase-resolved',
-                  11: 'phase-averaged', 13: 'phase-resolved-frozen'}
+                  11: 'phase-averaged', 12: 'phase-resolved-paraxial',
+                  13: 'phase-resolved-frozen'}
 _CAVITY_MODEL_IDS = {value: key for key, value in _CAVITY_MODELS.items()}
 # For RF the rot-kick-rot maps equal drift-kick-drift-exact bit for bit.
 _DEPRECATED_CAVITY_MODELS = {
@@ -98,8 +99,8 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         the reference particle (zeta=0). Default is False.
 
     The following parameters are used only by the physical models
-    "phase-averaged", "phase-resolved" and "phase-resolved-frozen"; the
-    longitudinal models ignore them. A whole cavity's end planes are hard
+    "phase-averaged", "phase-resolved", "phase-resolved-paraxial" and
+    "phase-resolved-frozen"; the longitudinal models ignore them. A whole cavity's end planes are hard
     edges: an RF field that does not vanish there ("uniform", a truncated
     "gaussian") ends abruptly, and the particle leaves field-free.
 
@@ -137,29 +138,36 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     _docstring_models = '''model : str
         "adaptive" (default) chooses per call from the reference energy gain
-        and RF strength: "longitudinal-only" where the first-order RF squeeze
-        dE/(2E) is at most 1e-4 (or the cavity is thin), "phase-averaged"
-        where g/p0 <= 0.05, "phase-resolved" otherwise. "longitudinal-only"
-        (expanded drifts) and "longitudinal-only-exact" apply RF energy kicks
-        only. "phase-averaged" applies both RF waves per step as an exact
-        second-order generator along the reference orbit, without averaging
-        the counter wave (fast, accurate for any envelope and hard edges);
-        "phase-resolved" integrates the full Hamiltonian of the RF and
-        static fields in Gauss collocation cells; "phase-resolved-frozen" is
-        the frozen-coefficient voltage-action model with canonical faces. The
-        drift-kick-drift and rot-kick-rot names are deprecated aliases.
+        and the RF strength g/p0 = |q|V/(L k p0c): "longitudinal-only" where
+        the first-order RF squeeze dE/(2E) is at most 1e-4 (or the cavity is
+        thin), "phase-averaged" where g/p0 <= 0.05 and the wave is travelling
+        or the envelope is smooth over the counter-wave beat,
+        "phase-resolved-paraxial" where g/p0 <= 0.1, "phase-resolved"
+        otherwise. "longitudinal-only" (expanded drifts) and
+        "longitudinal-only-exact" apply RF energy kicks only.
+        "phase-averaged" is Sagan's averaged map with finite-beta terms, the
+        fastest transverse model, valid for envelopes that vary slowly over
+        half a wavelength. "phase-resolved-paraxial" keeps both waves at
+        quadratic transverse order, per step as an exact second-order
+        generator along the reference orbit (accurate for any envelope and
+        hard edges). "phase-resolved" integrates the full Hamiltonian of the
+        RF and static fields in Gauss collocation cells;
+        "phase-resolved-frozen" is the frozen-coefficient voltage-action model
+        with canonical faces. The drift-kick-drift and rot-kick-rot names are
+        deprecated aliases.
     integrator : str
         How the model's base step is placed. Longitudinal models: "teapot",
         "uniform", "yoshida-4/6/8". "phase-resolved": "uniform" (Gauss cells),
         "yoshida-6/8" (higher-order compositions), "geometric" (cells graded
-        by the energy ratio). "phase-averaged": "uniform", "geometric". Frozen
+        by the energy ratio). "phase-averaged" and "phase-resolved-paraxial":
+        "uniform", "geometric". Frozen
         model: "geometric" (default, SAD's mesh), "uniform". "gauss2" and
         "geometric-kick-drift" are deprecated aliases.
     num_kicks : int
         Number of integration cells when nonzero. With zero, phase-resolved
-        uses 64, phase-averaged two steps per half RF wavelength for a
-        travelling wave (eta = 0) and four otherwise, and the frozen model its
-        own count.
+        uses 64, phase-averaged two steps per half RF wavelength,
+        phase-resolved-paraxial two for a travelling wave (eta = 0) and four
+        otherwise, and the frozen model its own count.
     '''.strip()
 
     __doc__ = '\n    '.join([_docstring_start, _docstring_models,
@@ -358,10 +366,10 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
                     or not self.wave_number_from_frequency):
                 raise ValueError('phase-resolved-frozen requires eta=0, '
                                  'calibration_beta=1 and the carrier from frequency')
-        elif self.model == 'phase-averaged':
+        elif self.model in ('phase-averaged', 'phase-resolved-paraxial'):
             if self.integrator not in ('adaptive', 'uniform', 'geometric'):
-                raise ValueError('phase-averaged supports the "uniform" and '
-                                 '"geometric" integrators: its cell-tied factors '
+                raise ValueError(f'{self.model} supports the "uniform" and '
+                                 '"geometric" integrators: its cell-tied steps '
                                  'admit no teapot placement or higher-order '
                                  'composition')
             normal, skew = np.asarray(self.knl), np.asarray(self.ksl)
@@ -370,11 +378,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
             solenoid = _constant_part(self.ks) != 0.
             if others or (solenoid and (np.any(normal != 0.) or self.edge_entry_active
                                         or self.edge_exit_active)):
-                raise ValueError('phase-averaged supports a uniform solenoid with '
+                raise ValueError(f'{self.model} supports a uniform solenoid with '
                                  'faces off or a normal quadrupole as static field')
             if self.spin_tracking and (solenoid or np.any(normal != 0.)):
                 raise NotImplementedError('Cavity spin transport with static fields '
-                                          'is not implemented for phase-averaged')
+                                          f'is not implemented for {self.model}')
         elif self.integrator == 'teapot':
             raise ValueError('phase-resolved has no kicks to place: "teapot" '
                              'does not apply')
@@ -383,7 +391,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     def _check_spin_support(self):
         """Raise if spin transport is not implemented for these settings."""
-        if self._model in (11, 13):
+        if self._model in (11, 12, 13):
             if (_constant_part(self.ks) != 0. or np.any(np.asarray(self.knl) != 0.)
                     or np.any(np.asarray(self.ksl) != 0.)):
                 raise NotImplementedError(f'Cavity spin transport with static fields '

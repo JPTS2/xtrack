@@ -737,10 +737,11 @@ def test_phase_averaged_converges_to_phase_resolved_with_energy():
     assert gaps[1] < gaps[0] / 30
 
 
+@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved-paraxial'])
 @pytest.mark.parametrize('eta', [0., 1.])
-def test_phase_averaged_is_symplectic(eta):
+def test_phase_averaged_is_symplectic(model, eta):
     names = ('x', 'px', 'y', 'py', 'zeta', 'pzeta')
-    rf = _averaged_cavity(eta=eta)
+    rf = _averaged_cavity(model, eta=eta)
     step = 1e-6
     matrix = np.zeros((6, 6))
     for column, name in enumerate(names):
@@ -759,10 +760,11 @@ def test_phase_averaged_is_symplectic(eta):
     assert np.abs(matrix.T @ form @ matrix - form).max() < 1e-7
 
 
-def test_phase_averaged_reverses_and_slices_exactly():
+@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved-paraxial'])
+def test_phase_averaged_reverses_and_slices_exactly(model):
     names = ('x', 'px', 'y', 'py', 'zeta', 'delta')
     def line(sliced):
-        out = xt.Line(elements={'rf': _averaged_cavity(), 'end': xt.Marker()})
+        out = xt.Line(elements={'rf': _averaged_cavity(model), 'end': xt.Marker()})
         out.particle_ref = _launch(20., x=0., px=0., y=0., py=0., zeta=0., delta=0.)
         if sliced:
             # Two slices split the 32 parent steps exactly; an uneven split
@@ -784,13 +786,14 @@ def test_phase_averaged_reverses_and_slices_exactly():
                                    rtol=0, atol=1e-14)
 
 
-def test_phase_averaged_tpsa_matches_finite_differences():
+@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved-paraxial'])
+def test_phase_averaged_tpsa_matches_finite_differences(model):
     import xtrack.tpsa as xtpsa
     gamma = 20.
     p0c = xt.ELECTRON_MASS_EV*np.sqrt(gamma**2 - 1)
     base = dict(x=1e-3, px=2e-4, y=-1e-3, py=1e-4, zeta=1e-3, delta=1e-3)
     names = ('x', 'px', 'y', 'py', 'zeta', 'delta')
-    line = xt.Line(elements={'rf': _averaged_cavity()})
+    line = xt.Line(elements={'rf': _averaged_cavity(model)})
     line.particle_ref = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV)
     line.build_tracker()
     line.reset_s_at_end_turn = False
@@ -809,14 +812,15 @@ def test_phase_averaged_tpsa_matches_finite_differences():
     np.testing.assert_allclose(series.jacobian(), finite, rtol=0, atol=2e-8)
 
 
-def test_phase_averaged_refuses_unsupported_static_fields_and_integrators():
+@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved-paraxial'])
+def test_phase_averaged_refuses_unsupported_static_fields_and_integrators(model):
     with pytest.raises(ValueError, match='static'):
-        _averaged_cavity(ks=.1)                     # solenoid with active faces
+        _averaged_cavity(model, ks=.1)                     # solenoid with active faces
     with pytest.raises(ValueError, match='static'):
-        _averaged_cavity(knl=[0., 0., .1], order=2)  # sextupole
+        _averaged_cavity(model, knl=[0., 0., .1], order=2)  # sextupole
     for integrator in ('teapot', 'yoshida-6'):
         with pytest.raises(ValueError, match='geometric'):
-            _averaged_cavity(integrator=integrator)
+            _averaged_cavity(model, integrator=integrator)
 
 
 def test_phase_averaged_geometric_and_uniform_converge_together():
@@ -833,11 +837,12 @@ def test_phase_averaged_geometric_and_uniform_converge_together():
 @pytest.mark.parametrize('static', [dict(knl=[0., .05]),
     dict(ks=.3, edge_entry_active=0, edge_exit_active=0)])
 @pytest.mark.parametrize('voltage', [0., 20e6])
-def test_phase_averaged_static_fields_follow_phase_resolved(static, voltage):
+@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved-paraxial'])
+def test_phase_averaged_static_fields_follow_phase_resolved(static, voltage, model):
     ends = []
-    for model in ('phase-averaged', 'phase-resolved'):
+    for chosen in (model, 'phase-resolved'):
         probe = _launch(2000.)
-        _averaged_cavity(model, voltage=voltage, num_kicks=64, **static).track(probe)
+        _averaged_cavity(chosen, voltage=voltage, num_kicks=64, **static).track(probe)
         assert probe.state[0] == 1
         ends.append(np.array([getattr(probe, n)[0]
                               for n in ('x', 'px', 'y', 'py', 'zeta', 'delta')]))
@@ -845,13 +850,14 @@ def test_phase_averaged_static_fields_follow_phase_resolved(static, voltage):
 
 
 @pytest.mark.parametrize('phase', [np.pi/2, 1.])
-def test_phase_averaged_spin_follows_phase_resolved(phase):
-    """Thomas-BMT rotations of the averaged factors (PLAN P4, D15)."""
+@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved-paraxial'])
+def test_phase_averaged_spin_follows_phase_resolved(phase, model):
+    """Thomas-BMT: averaged factor rules (D15) and paraxial Magnus rotation."""
     gamma, anomaly = 200., 0.00115965218
     p0c = xt.ELECTRON_MASS_EV*np.sqrt(gamma**2 - 1)
     turned = {}
-    for model in ('phase-averaged', 'phase-resolved'):
-        line = xt.Line(elements={'rf': _averaged_cavity(model, phase=phase,
+    for chosen in (model, 'phase-resolved'):
+        line = xt.Line(elements={'rf': _averaged_cavity(chosen, phase=phase,
                                                         num_kicks=64)})
         line.particle_ref = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV)
         line.build_tracker()
@@ -860,20 +866,21 @@ def test_phase_averaged_spin_follows_phase_resolved(phase):
             px=1e-4, anomalous_magnetic_moment=anomaly, spin_z=1.)
         line.track(probe)
         assert probe.state[0] == 1
-        turned[model] = np.array([probe.spin_x[0], probe.spin_y[0],
-                                  probe.spin_z[0] - 1.])
-    gap = np.linalg.norm(turned['phase-averaged'] - turned['phase-resolved'])
+        turned[chosen] = np.array([probe.spin_x[0], probe.spin_y[0],
+                                   probe.spin_z[0] - 1.])
+    gap = np.linalg.norm(turned[model] - turned['phase-resolved'])
     assert gap < .03*np.linalg.norm(turned['phase-resolved'])
 
 
 @pytest.mark.parametrize('eta,counter_phase', [(1., 0.), (.25, .7)])
-def test_phase_averaged_energy_gain_includes_the_counter_wave(eta, counter_phase):
+@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved-paraxial'])
+def test_phase_averaged_energy_gain_includes_the_counter_wave(eta, counter_phase, model):
     """The shared calibration includes the counter wave's direct gain, which
     does not average away in a short cavity (2.7 RF wavelengths here)."""
     gains = []
-    for model in ('phase-averaged', 'phase-resolved'):
+    for chosen in (model, 'phase-resolved'):
         rf = xt.Cavity(length=1., voltage=350e6, frequency=801.58e6, phase=2.6,
-                       model=model, eta=eta, counter_phase=counter_phase)
+                       model=chosen, eta=eta, counter_phase=counter_phase)
         probe = xt.Particles(p0c=182.5e9, mass0=xt.ELECTRON_MASS_EV)
         rf.track(probe)
         gains.append(probe.delta[0])
@@ -901,27 +908,27 @@ def _short_cavity(model, cells, **changes):
 
 @pytest.mark.parametrize('cells,profile', [(2, 'p16'), (5, 'p16'), (5.3, 'uniform')])
 @pytest.mark.parametrize('eta', [0., 1.])
-def test_phase_averaged_follows_short_standing_waves(cells, profile, eta):
+def test_phase_resolved_paraxial_follows_short_standing_waves(cells, profile, eta):
     """No slow-envelope average (PLAN P8): sharp envelopes and hard edges at
-    any length, where the ponderomotive average was 17-80 % off in R21."""
-    averaged = _focusing(_short_cavity('phase-averaged', cells, eta=eta,
+    any length, where the averaged factors are 17-80 % off in R21."""
+    paraxial = _focusing(_short_cavity('phase-resolved-paraxial', cells, eta=eta,
                                        rf_profile=profile))
     resolved = _focusing(_short_cavity('phase-resolved', cells, eta=eta,
                                        rf_profile=profile, num_kicks=int(100*cells)))
-    np.testing.assert_allclose(averaged, resolved, rtol=1e-3)
+    np.testing.assert_allclose(paraxial, resolved, rtol=1e-3)
 
 
 @pytest.mark.parametrize('profile,extra', [('uniform', {}),
                                            ('gaussian', dict(rf_profile_sigma=.13))])
 def test_phase_resolved_truncates_end_fields_as_hard_edges(profile, extra):
     """A whole cavity's end planes are hard edges of both waves (PLAN P9): the
-    particle leaves field-free, as in phase-averaged, and slices compose."""
+    particle leaves field-free, as in the paraxial map, and slices compose."""
     cells = 5.3
     resolved = _short_cavity('phase-resolved', cells, eta=.6, rf_profile=profile,
                              num_kicks=530, **extra)
-    averaged = _short_cavity('phase-averaged', cells, eta=.6, rf_profile=profile,
+    paraxial = _short_cavity('phase-resolved-paraxial', cells, eta=.6, rf_profile=profile,
                              num_kicks=170, **extra)
-    np.testing.assert_allclose(_focusing(resolved), _focusing(averaged), rtol=1e-5)
+    np.testing.assert_allclose(_focusing(resolved), _focusing(paraxial), rtol=1e-5)
     p0c = xt.ELECTRON_MASS_EV*np.sqrt(400.**2 - 1)
     lines = {}
     for sliced in (False, True):
@@ -960,20 +967,31 @@ def test_taper_pass_tracks_physical_cavities_longitudinally(model):
     np.testing.assert_array_equal(results[0], results[1])
 
 
-@pytest.mark.parametrize('p0c,mass0,voltage,phase,expected', [
-    (7e12, xt.PROTON_MASS_EV, 2e6, np.pi/2, 'longitudinal-only'),
-    (45.6e9, xt.ELECTRON_MASS_EV, 10e6, np.pi, 'longitudinal-only'),
-    (182.5e9, xt.ELECTRON_MASS_EV, 212e6, 2.6, 'phase-averaged'),
-    (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, 'phase-averaged'),
-    (10e6, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, 'phase-resolved')])
-def test_adaptive_selects_by_energy_gain_and_phase_averaging(
-        p0c, mass0, voltage, phase, expected):
-    """D22/D25: longitudinal-only where dE/(2E) <= 1e-4 for the reference,
-    phase-averaged where g/p0 <= 0.05, phase-resolved otherwise."""
+_PI_MODE = 9*clight/1.3e9/2
+
+
+@pytest.mark.parametrize('p0c,mass0,voltage,phase,changes,expected', [
+    (7e12, xt.PROTON_MASS_EV, 2e6, np.pi/2, {}, 'longitudinal-only'),
+    (45.6e9, xt.ELECTRON_MASS_EV, 10e6, np.pi, {}, 'longitudinal-only'),
+    (182.5e9, xt.ELECTRON_MASS_EV, 212e6, 2.6, {}, 'phase-resolved-paraxial'),
+    (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved-paraxial'),
+    (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, dict(eta=0.), 'phase-averaged'),
+    (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2,
+     dict(rf_profile='uniform', length=_PI_MODE), 'phase-averaged'),
+    (10e6, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved-paraxial'),
+    (3e6, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved')])
+def test_adaptive_selects_by_energy_gain_strength_and_envelope(
+        p0c, mass0, voltage, phase, changes, expected):
+    """D22/D25, P11: longitudinal-only where dE/(2E) <= 1e-4 for the
+    reference; phase-averaged where g/p0 <= 0.05 for a travelling wave or an
+    envelope smooth over the counter-wave beat (a pi-mode length); the
+    paraxial map to g/p0 <= 0.1; phase-resolved beyond."""
     ends = {}
     for model in ('adaptive', expected):
-        rf = xt.Cavity(length=1., voltage=voltage, frequency=1.3e9, phase=phase,
-                       model=model)
+        controls = dict(length=1., voltage=voltage, frequency=1.3e9, phase=phase,
+                        model=model)
+        controls.update(changes)
+        rf = xt.Cavity(**controls)
         probe = xt.Particles(p0c=p0c, mass0=mass0, x=1e-3)
         rf.track(probe)
         ends[model] = [probe.x[0], probe.px[0], probe.zeta[0], probe.delta[0]]

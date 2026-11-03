@@ -537,8 +537,9 @@ def test_compact_p16_face_has_exactly_zero_potential_readback(cpu_context, model
 
 
 @pytest.mark.parametrize('profile', ('uniform', 'gaussian'))
-def test_finite_rf_face_keeps_nonzero_potential_readback(cpu_context, profile):
-    """Finite-profile observation planes must not acquire a false zero gauge."""
+def test_finite_rf_face_is_a_hard_edge(cpu_context, profile):
+    """A whole cavity's end planes are hard edges (PLAN D30): a field that does
+    not vanish there ends abruptly and the particle leaves field-free."""
     line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
         model='phase-resolved', rf_profile=profile, rf_profile_sigma=.12,
         rf_profile_center=.02, length=.56, frequency=712e6, voltage=2000.,
@@ -551,12 +552,14 @@ def test_finite_rf_face_keeps_nonzero_potential_readback(cpu_context, profile):
     line.build_tracker(_context=cpu_context)
     ray = particle(cpu_context, x=.0004, y=-.0003, px=.002, py=-.001,
                    s=.17, time_s=1.9e-9)
+    start = ray.copy()
     for reverse in (False, True):
         line.track(ray, ele_start=0, ele_stop=1, backtrack=reverse)
         assert ray.state[0] == 1
-        caches = np.array([ray.ax[0], ray.ay[0]])
-        assert np.all(np.isfinite(caches))
-        assert np.all(caches != 0.)
+        assert ray.ax[0] == 0. and ray.ay[0] == 0.
+    for name in ('x', 'px', 'y', 'py', 'zeta', 'delta'):
+        np.testing.assert_allclose(getattr(ray, name)[0], getattr(start, name)[0],
+                                   rtol=0, atol=1e-14)
 
 
 def test_p16_face_frequency_tpsa_has_zero_cache_coefficients(cpu_context):

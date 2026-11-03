@@ -29,6 +29,7 @@ enum CavityModelStatus {
 enum CavityPhysicalModel {
     CAVITY_MODEL_FULL = 10,
     CAVITY_MODEL_AVERAGED = 11,
+    CAVITY_MODEL_PARAXIAL = 12,
     CAVITY_MODEL_FROZEN = 13
 };
 
@@ -321,7 +322,8 @@ void CavityModel_rf_potential(const xt_float_or_tpsa q[6],
     }
     // Frozen voltage actions have their own body chart and collapsed RF
     // faces. A smooth-P16 interior gauge must never be attached to them.
-    if (model==CAVITY_MODEL_FROZEN || model==CAVITY_MODEL_AVERAGED) return;
+    if (model==CAVITY_MODEL_FROZEN || model==CAVITY_MODEL_AVERAGED
+        || model==CAVITY_MODEL_PARAXIAL) return;
     xt_float_or_tpsa X=q[0],Y=q[1],r2=X*X+Y*Y;
     xt_float_or_tpsa radial=S[1]*.5-r2*(S[1]+S[3])/16.;
     xt_float_or_tpsa radial_T=C[1]*.5-r2*(C[1]+C[3])/16.;
