@@ -76,7 +76,7 @@ def test_later_unsupported_mutation_refuses_before_tracking(tmp_path):
         np.testing.assert_array_equal([particle.x[0],particle.spin_x[0]],[2e-4,.6])
 
 
-@pytest.mark.parametrize('changes',[dict(integrator='uniform'),
+@pytest.mark.parametrize('changes',[dict(integrator='teapot'),
                                     dict(rf_field_order=1),dict(eta=.3)])
 def test_later_invalid_configuration_raises_before_tracking(tmp_path,changes):
     with kernel_context(tmp_path) as context:

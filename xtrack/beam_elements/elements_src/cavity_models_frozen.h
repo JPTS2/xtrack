@@ -400,6 +400,10 @@ int CavityModel_frozen_prefix(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg 
     int64_t count=1+(int64_t)fmin(fabs(xt_float_or_tpsa_const_part(k*source->length)),r/sqrt(.003));
     if (count>1000) count=1000;
     xt_float_or_tpsa logarithm=CavityModel_log1p(ratio);
+    // The uniform mesh keeps the automatic count but equal cell weights.
+    xt_float_or_tpsa mesh_ratio=ratio;
+    if (source->uniform_mesh) mesh_ratio=0.;
+    const double mesh_r=source->uniform_mesh ? 0. : r;
     if (r>1.e-6) {
         int64_t geometric=(int64_t)floor(10.*xt_float_or_tpsa_const_part(logarithm)+.5);
         if (geometric>count) count=geometric;
@@ -437,9 +441,9 @@ int CavityModel_frozen_prefix(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg 
     if (!reverse) {
         xt_float_or_tpsa previous_node=0.,previous_weight=0.;
         for (int64_t i=0;i<count;++i) {
-            xt_float_or_tpsa weight=CavityModel_frozen_weight(i,count,ratio,logarithm);
+            xt_float_or_tpsa weight=CavityModel_frozen_weight(i,count,mesh_ratio,logarithm);
             xt_float_or_tpsa prefix=(i+1.)/count;
-            if (r>1.e-6) prefix=CavityModel_expm1((i+1)*logarithm/count)/ratio;
+            if (mesh_r>1.e-6) prefix=CavityModel_expm1((i+1)*logarithm/count)/ratio;
             xt_float_or_tpsa node=source->length*(prefix-.5*weight);
             if (fraction<1. && xt_float_or_tpsa_const_part(node-target)>0.) break;
             // Preserve the original full-parent body calls and arithmetic;
@@ -467,11 +471,11 @@ int CavityModel_frozen_prefix(const xt_float_or_tpsa q[6], xt_float_or_tpsa_arg 
         xt_float_or_tpsa previous_node=target,previous_weight=0.;
         int first_node=1;
         for (int64_t i=count-1;i>=0;--i) {
-            xt_float_or_tpsa weight=CavityModel_frozen_weight(i,count,ratio,logarithm);
+            xt_float_or_tpsa weight=CavityModel_frozen_weight(i,count,mesh_ratio,logarithm);
             // Closed geometric prefix retains the full reference programme
             // and avoids a second O(N) prefix loop on every reverse stage.
             xt_float_or_tpsa prefix=(i+1.)/count;
-            if (r>1.e-6) prefix=CavityModel_expm1((i+1)*logarithm/count)/ratio;
+            if (mesh_r>1.e-6) prefix=CavityModel_expm1((i+1)*logarithm/count)/ratio;
             xt_float_or_tpsa node=source->length*(prefix-.5*weight);
             if (fraction<1. && xt_float_or_tpsa_const_part(node-target)>0.) continue;
             xt_float_or_tpsa distance=node-previous_node;

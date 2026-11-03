@@ -89,12 +89,26 @@ int CavityModels_potential(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
 // ax/ay report Q*A_perp/kappa_ref for physical kinetic readback, without
 // changing canonical P. Q=q_ref*chi carries charge and mass-ratio scaling.
 // One physical parent source/calibration is used throughout all thick slices.
+// Triple-jump compositions of a symmetric fourth-order step: w1 = 1/(2-2^(1/5))
+// and w0 = 1-2*w1 give order 6; nesting with 2^(1/7) gives order 8.
+#define CAVITY_W6_OUTER 1.1746717580893635
+#define CAVITY_W6_INNER (-1.349343516178727)
+#define CAVITY_W8_OUTER 1.1161829393253857
+#define CAVITY_W8_INNER (-1.2323658786507714)
+static const double CAVITY_COMPOSITION_ORDER4[1]={1.};
+static const double CAVITY_COMPOSITION_ORDER6[3]={
+    CAVITY_W6_OUTER, CAVITY_W6_INNER, CAVITY_W6_OUTER};
+static const double CAVITY_COMPOSITION_ORDER8[9]={
+    CAVITY_W8_OUTER*CAVITY_W6_OUTER, CAVITY_W8_OUTER*CAVITY_W6_INNER, CAVITY_W8_OUTER*CAVITY_W6_OUTER,
+    CAVITY_W8_INNER*CAVITY_W6_OUTER, CAVITY_W8_INNER*CAVITY_W6_INNER, CAVITY_W8_INNER*CAVITY_W6_OUTER,
+    CAVITY_W8_OUTER*CAVITY_W6_OUTER, CAVITY_W8_OUTER*CAVITY_W6_INNER, CAVITY_W8_OUTER*CAVITY_W6_OUTER};
+
 // Element-level resolution of one physical-model cavity call, prepared once
 // before the per-particle loop (the CavityPlan analogue of MagnetPlan). The
 // RF source stays per particle: it depends on each particle's reference.
 typedef struct CavityPlan_s {
     int controls;
-    int model, profile, magnetic_profile, spin_tracking;
+    int model, integrator, profile, magnetic_profile, spin_tracking;
     int64_t requested, cells;
     double length, weight;
     double left_fraction, right_fraction;
@@ -142,12 +156,12 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
                ||CavityModels_transformations_active(el)))controls=CAVITY_MODEL_ARGUMENT;
     }
     if (model==CAVITY_MODEL_FROZEN) {
-        if ((integrator!=0 && integrator!=7)
+        if ((integrator!=0 && integrator!=7 && integrator!=3)
             || !xt_float_or_tpsa_is_zero(CavityData_get_eta(el))
             || !xt_float_or_tpsa_is_zero(CavityData_get_calibration_beta(el)-1.)
             || !CavityData_get_wave_number_from_frequency(el))
             controls=CAVITY_MODEL_ARGUMENT;
-    } else if (integrator!=0 && integrator!=3) {
+    } else if (integrator==1 || integrator<0 || integrator>7 || integrator==6) {
         controls=CAVITY_MODEL_ARGUMENT;
     }
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
@@ -172,7 +186,7 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
     const int physical_outer=reverse ? left_fraction==0. : right_fraction==1.;
 
     plan->controls=controls;
-    plan->model=model; plan->profile=profile;
+    plan->model=model; plan->integrator=integrator; plan->profile=profile;
     plan->magnetic_profile=magnetic_profile; plan->spin_tracking=spin_tracking;
     plan->requested=requested; plan->cells=cells;
     plan->length=length; plan->weight=weight;
@@ -187,6 +201,7 @@ GPUFUN
 void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* part0) {
     const int controls=plan->controls;
     const int model=plan->model;
+    const int integrator=plan->integrator;
     const int profile=plan->profile;
     const int magnetic_profile=plan->magnetic_profile;
     const int spin_tracking=plan->spin_tracking;
@@ -269,6 +284,7 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
             source.knl_tpsa=CavityData_getp1_knl_tpsa(el,0);
             source.ksl_tpsa=CavityData_getp1_ksl_tpsa(el,0);
             source.reference_beta=beta0;
+            source.uniform_mesh=integrator==3;
             status=CavityModel_static_validate(&source);
             source.freeze_energy=LocalParticle_check_track_flag(part,XS_FLAG_KILL_CAVITY_KICK)
                 || XT_LP_IS_FROZEN(delta) || XT_LP_IS_FROZEN(pzeta);
@@ -338,20 +354,40 @@ void track_cavity_plan(CavityData el, const CavityPlan* plan, LocalParticle* par
                 z=source.k*length*(end_fraction-.5);
             }
         }
+        // Composition of the fourth-order Gauss cell (D24): yoshida-6 is one
+        // triple jump, yoshida-8 two; geometric grades the cell lengths.
+        const double *substeps=CAVITY_COMPOSITION_ORDER4;
+        int num_substeps=1;
+        if (integrator==2) {substeps=CAVITY_COMPOSITION_ORDER6; num_substeps=3;}
+        else if (integrator==5) {substeps=CAVITY_COMPOSITION_ORDER8; num_substeps=9;}
+        xt_float_or_tpsa grading=0.,grading_log=0.;
+        if (model==CAVITY_MODEL_FULL && integrator==7 && status==CAVITY_MODEL_OK) {
+            const xt_float_or_tpsa entry=sqrt(1.+kappa0*kappa0);
+            const xt_float_or_tpsa gain=fabs(q0)*CavityData_get_voltage(el)*weight/mass0;
+            grading=gain*(1./entry+1./(entry+gain));
+            grading_log=CavityModel_log1p(grading);
+        }
         for (int64_t cell=0; model==CAVITY_MODEL_FULL
                 && status==CAVITY_MODEL_OK && cell<cells; ++cell) {
-            xt_float_or_tpsa next[6];
+            xt_float_or_tpsa cell_h=h;
+            if (integrator==7)
+                cell_h=h*cells*CavityModel_frozen_weight(reverse ? cells-1-cell : cell,
+                                                         cells,grading,grading_log);
+            for (int sub=0; status==CAVITY_MODEL_OK && sub<num_substeps; ++sub) {
+                const xt_float_or_tpsa step=cell_h*substeps[sub];
+                xt_float_or_tpsa next[6];
 #ifndef XTRACK_TPSA_TRACK
-            if(spin_tracking) {
-                double next_spin[3];
-                status=CavityModel_spin_cell(q,spin,z,h,Q,&source,anomaly,next,next_spin);
-                if(status==CAVITY_MODEL_OK)for(int j=0;j<3;++j)spin[j]=next_spin[j];
-            } else
+                if(spin_tracking) {
+                    double next_spin[3];
+                    status=CavityModel_spin_cell(q,spin,z,step,Q,&source,anomaly,next,next_spin);
+                    if(status==CAVITY_MODEL_OK)for(int j=0;j<3;++j)spin[j]=next_spin[j];
+                } else
 #endif
-                status=CavityModel_gauss(q,z,h,Q,&source,model,80,2e-13,next);
-            if (status==CAVITY_MODEL_OK) {
-                for (int j=0;j<6;++j) q[j]=next[j];
-                z+=h;
+                    status=CavityModel_gauss(q,z,step,Q,&source,model,80,2e-13,next);
+                if (status==CAVITY_MODEL_OK) {
+                    for (int j=0;j<6;++j) q[j]=next[j];
+                    z+=step;
+                }
             }
         }
         xt_float_or_tpsa result[6], potential[4];

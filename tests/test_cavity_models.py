@@ -659,3 +659,49 @@ def test_old_integrator_names_are_deprecated_aliases():
         rf = xt.Cavity(model='phase-resolved-frozen', length=.1,
                        integrator='geometric-kick-drift')
     assert rf.integrator == 'geometric'
+
+
+def _resolved_endpoint(integrator, cells):
+    rf = xt.Cavity(length=.5, voltage=5e6, frequency=1.3e9, phase=.6, eta=.3,
+                   model='phase-resolved', integrator=integrator, num_kicks=cells)
+    probe = xt.Particles(p0c=xt.ELECTRON_MASS_EV*np.sqrt(20.**2 - 1),
+        mass0=xt.ELECTRON_MASS_EV, x=1e-3, px=2e-3, y=-5e-4, zeta=1e-3,
+        delta=1e-3)
+    rf.track(probe)
+    assert probe.state[0] == 1
+    return np.array([probe.x[0], probe.px[0], probe.zeta[0], probe.delta[0]])
+
+
+@pytest.mark.parametrize('integrator,cells,order', [
+    ('uniform', 32, 4), ('geometric', 32, 4), ('yoshida-6', 16, 6),
+    ('yoshida-8', 8, 7.5)])
+def test_resolved_integrators_reach_their_order(integrator, cells, order):
+    """Gauss cells are fourth order; Yoshida compositions raise the order."""
+    reference = _resolved_endpoint('yoshida-8', 512)
+    coarse, fine = (np.abs(_resolved_endpoint(integrator, n) - reference).max()
+                    for n in (cells, 2*cells))
+    assert np.log2(coarse/fine) > order - .5
+
+
+def test_yoshida_4_equals_uniform_for_the_fourth_order_cell():
+    np.testing.assert_array_equal(_resolved_endpoint('yoshida-4', 16),
+                                  _resolved_endpoint('uniform', 16))
+
+
+def test_teapot_refused_for_phase_resolved():
+    with pytest.raises(ValueError, match='teapot'):
+        xt.Cavity(model='phase-resolved', length=.1, integrator='teapot')
+
+
+def test_frozen_uniform_and_geometric_meshes_share_their_limit():
+    def endpoint(integrator, cells):
+        rf = xt.Cavity(length=.5, voltage=5e6, frequency=1.3e9, phase=.6,
+                       model='phase-resolved-frozen', integrator=integrator,
+                       num_kicks=cells)
+        probe = xt.Particles(p0c=xt.ELECTRON_MASS_EV*np.sqrt(20.**2 - 1),
+            mass0=xt.ELECTRON_MASS_EV, x=1e-3, px=2e-3, zeta=1e-3)
+        rf.track(probe)
+        return np.array([probe.x[0], probe.px[0], probe.zeta[0], probe.delta[0]])
+    gaps = [np.abs(endpoint('uniform', n) - endpoint('geometric', n)).max()
+            for n in (32, 128)]
+    assert gaps[1] < gaps[0]/3

@@ -46,6 +46,8 @@ typedef struct {
     double reference_charge, reference_beta;
     int freeze_energy, freeze_zeta;
     int freeze_x, freeze_px, freeze_y, freeze_py;
+    // Frozen model: equal cells instead of the geometric (SAD) grading.
+    int uniform_mesh;
     // q_ref A/(p_ref) conventions: magnetic_scale=p_ref/(q_ref*m_source*c).
     // knl/ksl are the ordinary integrated normal/skew magnetic strengths.
     xt_float_or_tpsa magnetic_scale, ks;

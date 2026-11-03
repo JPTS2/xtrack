@@ -338,16 +338,17 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         if self.rf_field_order != 2:
             raise ValueError(f'{self.model} supports only rf_field_order=2')
         if self.model == 'phase-resolved-frozen':
-            if self.integrator not in ('adaptive', 'geometric'):
-                raise ValueError('phase-resolved-frozen supports only the '
-                                 '"geometric" integrator')
+            if self.integrator not in ('adaptive', 'geometric', 'uniform'):
+                raise ValueError('phase-resolved-frozen supports the "geometric" '
+                                 'and "uniform" integrators')
             if (_constant_part(self.eta) != 0.
                     or _constant_part(self.calibration_beta) != 1.
                     or not self.wave_number_from_frequency):
                 raise ValueError('phase-resolved-frozen requires eta=0, '
                                  'calibration_beta=1 and the carrier from frequency')
-        elif self.integrator not in ('adaptive', 'uniform'):
-            raise ValueError('phase-resolved supports only the "uniform" integrator')
+        elif self.integrator == 'teapot':
+            raise ValueError('phase-resolved has no kicks to place: "teapot" '
+                             'does not apply')
         if self.spin_tracking:
             self._check_spin_support()
 
@@ -355,7 +356,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         """Raise if spin transport is not implemented for these settings."""
         if (self._model != 10 or self._rf_profile != 0
                 or self._magnetic_profile != 0
-                or self.rf_field_order != 2 or self._integrator not in (0, 3)):
+                or self.rf_field_order != 2 or self.integrator == 'teapot'):
             raise NotImplementedError('Cavity spin transport requires the phase-resolved model '
                                       'with the P16 profile and a uniform magnetic profile')
         normal = np.asarray(self.knl)
