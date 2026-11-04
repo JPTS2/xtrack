@@ -23,6 +23,7 @@ script runs independently. Begin with the
 | [008_shared_lines.py](008_shared_lines.py) | Shared selections versus independent environment copies |
 | [009_import_line.py](009_import_line.py) | Import between environments: variable conflicts, independence and slice parents |
 | [010_reference_particles.py](010_reference_particles.py) | Named references and a field-normalized spectrometer |
+| [011_replace_elements.py](011_replace_elements.py) | Replace one magnet, every use of a name, or names matching a pattern |
 
 `003_line_algebra.py` combines already assembled element sequences.
 `005_parametric_geometry.py` uses `compose = True` to retain placement expressions
@@ -36,7 +37,14 @@ for element strengths. Parametric placements are covered in
 tracking are developed with those subjects.
 
 `009_import_line.py` transfers a line's elements and variable dependencies into
-a destination environment, including the parents of sliced elements.
+a destination environment, including the parents of sliced elements. It then
+imports two sliced lines with the same element names and shows how their
+parents are renamed. Separate knob changes expose which source or imported
+line responds.
+
+`011_replace_elements.py` answers: how do I replace just the second magnet when
+several positions share the same element? It then replaces every use of a name
+and both screens selected by a pattern. All replacements preserve length.
 
 The inline lattices teach geometry and object ownership; no periodic optics or
 closed-ring geometry is implied.
