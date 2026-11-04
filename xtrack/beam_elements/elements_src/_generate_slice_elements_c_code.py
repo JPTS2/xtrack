@@ -21,10 +21,11 @@ to_do = [
     ("UniformSolenoid", "uniform_solenoid.h"),
     ("Cavity", "cavity.h"),
     ("CrabCavity", "crab_cavity.h"),
+    ("RFMultipole", "rfmultipole.h"),
     ("Multipole", "multipole.h")
 ]
 
-no_edge_for = ["Cavity", "CrabCavity", "Multipole"]
+no_edge_for = ["Cavity", "CrabCavity", "RFMultipole", "Multipole"]
 
 for td in to_do:
 
@@ -81,19 +82,19 @@ for td in to_do:
 
 
 
-        if parent_class not in ['Cavity', 'CrabCavity']:
+        if parent_class not in ['Cavity', 'CrabCavity', 'RFMultipole']:
             assert generated_data_class + '_getp1_' in out_content
         out_content = out_content.replace(generated_data_class + '_getp1_', generated_data_class + '_getp1__parent_')
 
         # delta_taper must come from the slice and not from the parent
-        if parent_class not in ['Cavity', 'CrabCavity']:
+        if parent_class not in ['Cavity', 'CrabCavity', 'RFMultipole']:
             assert "_get__parent_delta_taper" in out_content
         out_content = out_content.replace("_get__parent_delta_taper", "_get_delta_taper")
 
         # Handle "radiation_flag" and "radiation_flag_parent"
         out_lines = out_content.splitlines()
 
-        if parent_class not in ['Cavity', 'CrabCavity']:
+        if parent_class not in ['Cavity', 'CrabCavity', 'RFMultipole']:
             # Identify the line with "/*radiation_flag*/"
             i_radiation_flag_line = None
             for i, line in enumerate(out_lines):
@@ -243,7 +244,7 @@ for td in to_do:
                 out_lines[i] = ll
         assert found_integrator, "Did not find integrator line to modify"
         assert found_model, "Did not find model line to modify"
-        if parent_class in ["Cavity", "CrabCavity"]:
+        if parent_class in ["Cavity", "CrabCavity", "RFMultipole"]:
             assert found_num_kicks, "Did not find num_kicks line to modify"
         else:
             assert found_num_multipole_kicks, "Did not find num_multipole_kicks line to modify"
@@ -255,6 +256,7 @@ for td in to_do:
 
         # special case
         generated_class_snake = generated_class_snake.replace("_r_bend", "_rbend")
+        generated_class_snake = generated_class_snake.replace("_r_f_multipole", "_rfmultipole")
 
         out_content = "\n".join(out_lines)
 
@@ -368,6 +370,7 @@ for td in to_do:
 
     parent_class_snake = ''.join(['_' + c.lower() if c.isupper() else c for c in parent_class]).lstrip('_')
     parent_class_snake = parent_class_snake.replace("r_bend", "rbend")
+    parent_class_snake = parent_class_snake.replace("r_f_multipole", "rfmultipole")
 
     out_drift_slice_snake = 'drift_slice_' + parent_class_snake + '.h'
     out_drift_slice_path = os.path.join(current_directory, out_drift_slice_snake)
