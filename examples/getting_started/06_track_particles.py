@@ -3,8 +3,8 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Further examples: examples/tracker/
-#                   examples/monitor/
+# Further examples: examples/particles_and_distributions/
+#                   examples/tracker/
 
 ################################################################################
 # Required packages
