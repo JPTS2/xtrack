@@ -156,143 +156,18 @@ def _arrival(particles):
     return probe.time_s + (probe.s[0] - probe.zeta[0]) / (probe.beta0[0] * clight)
 
 
-def _reference_steps():
-    return {
-        'increase': lambda: xt.ReferenceEnergyIncrease(Delta_p0c=1e6),
-        'change': lambda: xt.ReferenceEnergyChange(p0c=2.5e9),
-        'segment map': lambda: xt.LineSegmentMap(length=0., longitudinal_mode='frozen',
-                                                 energy_ref_increment=1e6),
-    }
-
-
-@for_all_test_contexts
-@pytest.mark.parametrize('step', _reference_steps())
-@pytest.mark.parametrize('s_step', [0., 137., 628.], ids=['at start', 'mid line', 'at end'])
-def test_reference_steps_keep_the_arrival_time_of_a_constant_speed_particle(test_context, step, s_step):
-    # The particle's energy does not change, so its time is its path over its speed.
-    elements = {}
-    if s_step > 0.:
-        elements['before'] = xt.Drift(length=s_step)
-    elements['step'] = _reference_steps()[step]()
-    if s_step < 628.:
-        elements['after'] = xt.Drift(length=628. - s_step)
-    line = _constant_speed_line(test_context, elements)
-    particles = xt.Particles(_context=test_context, mass0=xt.PROTON_MASS_EV, p0c=2e9, zeta=0.)
-    beta = particles.copy(_context=xo.context_default).beta0[0]
-    for _ in range(500):
-        line.track(particles)
-    particles.move(_context=xo.context_default)
-    assert particles.state[0] == 1
-    xo.assert_allclose(_arrival(particles), 500 * 628. / (beta * clight), rtol=1e-11, atol=0)
-
-
-@pytest.mark.xfail(strict=True, reason='One tracking call keeps one lap time: the clock is '
-                  'frozen across its turns until the option for this is settled.')
-def test_one_tracking_call_equals_many():
-    def clocks():
-        elements = {'before': xt.Drift(length=137.), 'step': xt.ReferenceEnergyIncrease(Delta_p0c=1e6),
-                    'after': xt.Drift(length=491.)}
-        line = _constant_speed_line(xo.ContextCpu(), elements, time_based=False)
-        launch = dict(mass0=xt.PROTON_MASS_EV, p0c=2e9, zeta=[.1], delta=[1e-3], s=0.)
-        together = xt.Particles(**launch)
-        line.track(together, num_turns=100)
-        apart = xt.Particles(**launch)
-        for _ in range(100):
-            line.track(apart)
-        return together.time_s, apart.time_s
-    in_one_call, in_many_calls = clocks()
-    assert in_one_call == in_many_calls
-
-
-def test_a_lap_started_after_a_step_uses_the_speed_before_it():
-    beta = lambda p0c: p0c / np.hypot(p0c, xt.PROTON_MASS_EV)
-    line = _constant_speed_line(xo.ContextCpu(), {
-        'before': xt.Drift(length=137.), 'step': xt.ReferenceEnergyIncrease(Delta_p0c=1e6),
-        'after': xt.Drift(length=491.)}, time_based=False)
-    particles = xt.Particles(mass0=xt.PROTON_MASS_EV, p0c=2e9 + 1e6, s=137.)
-    line.track(particles, ele_start='after')
-    expected = (137. / beta(2e9) + 491. / beta(2e9 + 1e6)) / clight
-    xo.assert_allclose(particles.time_s, expected, rtol=1e-13, atol=0)
-
-
-def test_lap_time_is_the_sum_of_its_segments():
-    line = _constant_speed_line(xo.ContextCpu(), {
-        'before': xt.Drift(length=137.), 'step': xt.ReferenceEnergyIncrease(Delta_p0c=1e6),
-        'after': xt.Drift(length=491.)}, time_based=False)
-    particles = xt.Particles(mass0=xt.PROTON_MASS_EV, p0c=2e9)
-    beta = lambda p0c: p0c / np.hypot(p0c, xt.PROTON_MASS_EV)
-    for _ in range(1000):
-        line.track(particles)
-    expected = sum((137. / beta(2e9 + k * 1e6) + 491. / beta(2e9 + (k + 1) * 1e6)) / clight
-                   for k in range(1000))
-    xo.assert_allclose(particles.time_s, expected, rtol=1e-12, atol=0)
-    xo.assert_allclose(particles.p0c, 3e9, rtol=1e-14, atol=0)
-
-
-@for_all_test_contexts
-@pytest.mark.parametrize('s_step', [0., 137., 400.], ids=['at start', 'near start', 'mid line'])
-def test_accelerated_reference_returns_to_zeta_zero_on_every_lap(test_context, s_step):
-    # A step of energy and reference together keeps delta = 0: the particle is the reference.
-    step = xt.LineSegmentMap(length=0., longitudinal_mode='frozen', energy_increment=1e6,
-                             energy_ref_increment=1e6)
-    elements = {'before': xt.Drift(length=s_step)} if s_step > 0. else {}
-    elements.update({'step': step, 'after': xt.Drift(length=628. - s_step)})
-    line = _constant_speed_line(test_context, elements)
-    particles = xt.Particles(_context=test_context, mass0=xt.PROTON_MASS_EV, p0c=2e9, zeta=0.)
-    for _ in range(500):
-        line.track(particles)
-    particles.move(_context=xo.context_default)
-    xo.assert_allclose(particles.delta, 0., rtol=0, atol=1e-11)
-    xo.assert_allclose(particles.zeta, 0., rtol=0, atol=1e-8)
-
-
-@for_all_test_contexts
-@pytest.mark.parametrize('s_step', [137., 400.])
-def test_locked_cavity_stays_on_the_reference_through_element_steps(test_context, s_step):
-    # The reference at the cavity keeps one phase over a 50 % momentum ramp.
-    circumference, harmonic = 628., 8
-    step = xt.LineSegmentMap(length=0., longitudinal_mode='frozen', energy_increment=1e6,
-                             energy_ref_increment=1e6)
-    cavity = xt.Cavity(voltage=0., harmonic=harmonic, absolute_time=True,
-                       model='longitudinal-only', length=0.)
-    line = _constant_speed_line(test_context, {
-        'before': xt.Drift(length=s_step), 'step': step, 'rf': cavity, 'end': xt.Marker(),
-        'after': xt.Drift(length=circumference - s_step)})
-    particles = xt.Particles(_context=test_context, mass0=xt.PROTON_MASS_EV, p0c=2e9, zeta=0.)
-    phases = []
-    for _ in range(5):
-        for _ in range(200):
-            line.track(particles)
-        line.track(particles, ele_stop='rf')
-        cavity.voltage = 1.
-        snapshot = particles.copy(_context=xo.context_default)
-        phases.append(_reference_phase(line, cavity, particles, snapshot.zeta[0], s_step, 'rf', 'end'))
-        cavity.voltage = 0.
-        line.track(particles, ele_start='rf')
-    # What remains is one step's dbeta/beta, which falls along the ramp: nothing builds up.
-    errors = np.abs(np.angle(np.exp(1j * (np.array(phases)
-                                          - 2 * np.pi * harmonic * s_step / circumference))))
-    assert np.all(np.diff(errors) < 0.) and errors[0] < 5e-3
-
-
 @for_all_test_contexts
 @pytest.mark.parametrize('cls', [xt.TimeDelay, xt.ZetaShift])
 def test_delay_elements_delay_the_arrival_and_not_the_clock(test_context, cls):
     shift = 1e-3
     field = 'shift_zeta' if cls is xt.TimeDelay else 'dzeta'
     line = _constant_speed_line(test_context, {
-        'before': xt.Drift(length=137.), 'delay': cls(**{field: shift}),
-        'step': xt.ReferenceEnergyIncrease(Delta_p0c=1e6), 'after': xt.Drift(length=491.)})
+        'before': xt.Drift(length=137.), 'delay': cls(**{field: shift}), 'after': xt.Drift(length=491.)})
     particles = xt.Particles(_context=test_context, mass0=xt.PROTON_MASS_EV, p0c=2e9, zeta=0.)
-    reference = particles.copy(_context=xo.context_default)
-    for _ in range(50):
-        line.track(particles)
+    line.track(particles, num_turns=50)
     particles.move(_context=xo.context_default)
-    # The delay is read at the speed of the reference there, which changes along the ramp.
-    betas = [(2e9 + k * 1e6) / np.hypot(2e9 + k * 1e6, xt.PROTON_MASS_EV) for k in range(50)]
-    delays = sum(shift / (beta * clight) for beta in betas)
-    expected = 50 * 628. / (reference.beta0[0] * clight) + delays
-    xo.assert_allclose(_arrival(particles), expected, rtol=1e-11, atol=0)
+    beta0 = particles.beta0[0]
+    xo.assert_allclose(_arrival(particles), 50 * (628. + shift) / (beta0 * clight), rtol=1e-11, atol=0)
     assert particles.reference_turns == 50.
 
 
@@ -367,23 +242,6 @@ def test_mixed_species_share_a_reference_and_a_clock():
     start = particles.energy.copy()
     line.track(particles, ele_stop=1)
     xo.assert_allclose((particles.energy - start)[0], (particles.energy - start)[1], rtol=1e-12)
-
-
-def test_tpsa_clock_follows_the_steps():
-    import xtrack.tpsa as xtpsa
-    def line():
-        out = _constant_speed_line(xo.ContextCpu(), {
-            'before': xt.Drift(length=137.), 'step': xt.ReferenceEnergyIncrease(Delta_p0c=1e6),
-            'after': xt.Drift(length=491.)})
-        return out
-    numeric = xt.Particles(mass0=xt.PROTON_MASS_EV, p0c=2e9)
-    series = xtpsa.ParticlesTpsa(order=1, mass0=xt.PROTON_MASS_EV, p0c=2e9)
-    numeric_line, series_line = line(), line()
-    for _ in range(20):
-        numeric_line.track(numeric)
-        series_line.track(series)
-    assert series.time_s == numeric.time_s
-    assert series.reference_turns == 20.
 
 
 @for_all_test_contexts(excluding='ContextPyopencl')

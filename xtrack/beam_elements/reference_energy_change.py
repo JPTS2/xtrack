@@ -10,6 +10,10 @@ class ReferenceEnergyChange(BeamElement):
 
     '''Beam element setting the reference momentum to an absolute value.
 
+    Not compatible with cavities in `absolute_time` mode, as for
+    `ReferenceEnergyIncrease`: for a ramp with such cavities, attach an
+    `EnergyProgram` to the line.
+
     Parameters
     ----------
     p0c : float

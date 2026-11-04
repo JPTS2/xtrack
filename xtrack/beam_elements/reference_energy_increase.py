@@ -16,9 +16,10 @@ class ReferenceEnergyIncrease(BeamElement):
     time during an explicit reference-momentum programme. EnergyProgram and
     SyncTime select that convention automatically when needed.
 
-    The clock advances by the reference particle's lap time, with each segment at
-    its own speed. That lap time is found at the start of a tracking call and
-    kept for all its turns: track one turn per call when `time_s` matters.
+    The element is not compatible with cavities in `absolute_time` mode: the clock
+    advances by one lap time per tracking call, which assumes that the reference
+    speed changes little over a turn. For a ramp with such cavities, attach an
+    `EnergyProgram` to the line.
 
     Parameters
     ----------
