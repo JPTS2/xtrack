@@ -3,7 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Further examples: examples/monitor/
+# Further examples: examples/monitors/
 
 ################################################################################
 # Required packages
