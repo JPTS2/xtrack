@@ -127,10 +127,12 @@ class MultiSetter(xo.HybridClass):
         else:
             inner_obj = el
             inner_name = field
-        dd = getattr(inner_obj.copy(_context=xo.context_default)._xobject, inner_name)
-        if index is not None:
-            dd = dd[index]
-        self.dtype = type(dd) if dtype is None else dtype
+        if dtype is None and inner_name in getattr(inner_obj, '_float_or_tpsa_fields', ()):
+            dtype = np.float64
+        if dtype is None:
+            dd = getattr(inner_obj.copy(_context=xo.context_default)._xobject, inner_name)
+            dtype = type(dd if index is None else dd[index])
+        self.dtype = dtype
         self.xodtype = {
             np.float64: xo.Float64,
             np.int64: xo.Int64,
@@ -166,10 +168,32 @@ class MultiSetter(xo.HybridClass):
             np.int32: self._context.kernels.set_values_at_offsets_int32,
         }.get(self.dtype)
 
+        # A promoted field holds a pointer, so raw offsets cannot be used on it. Its flag is
+        # read by the same kernels, so fields that cannot hold a series check nothing.
+        self._targets, self._flags = [], None
+        if index is None and isinstance(context, xo.ContextCpu):
+            path = list(field) if isinstance(field, (list, tuple)) else [field]
+            flagged = []
+            for nn, offset in zip(elements, offsets):
+                owner = line.get(nn)
+                for ff in path[:-1]:
+                    # A slice's `_parent` is a temporary wrapper: use the element that owns the series.
+                    owner = line[owner.parent_name] if ff == '_parent' else getattr(owner, ff)
+                self._targets.append((owner, owner._rename.get(path[-1], path[-1]), offset >= 0))
+                if path[-1] in getattr(owner, '_float_or_tpsa_fields', ()):
+                    flagged.append(nn)
+            if flagged:
+                self._flags = MultiSetter(tracker, flagged, [*path[:-1], '_tpsa_enabled'], dtype=np.int8,
+                                          skip_inconsistent_type_check=True)
+
     def get_values(self):
         """Get the values of the multisetter fields."""
         if self._empty:
             return self._context.zeros(0, dtype=np.float64)
+
+        if self._flags is not None and self._flags.get_values().any():
+            return np.array([getattr(getattr(owner, name), 'const_part', getattr(owner, name)) if valid else 0.
+                             for owner, name, valid in self._targets], dtype=self.dtype)
 
         out = self._context.zeros(len(self.offsets), dtype=self.dtype)
         self._get_kernel.set_n_threads(len(self.offsets))
@@ -189,6 +213,12 @@ class MultiSetter(xo.HybridClass):
         if self.dtype is np.int8:
             raise NotImplementedError("MultiSetter does not support setting int8 fields")
 
+        if self._flags is not None and self._flags.get_values().any():
+            for (owner, name, valid), value in zip(self._targets, np.broadcast_to(values, len(self._targets))):
+                if valid:
+                    setattr(owner, name, value)
+            return
+
         self._set_kernel.set_n_threads(len(self.offsets))
         self._set_kernel(data=self, buffer=self._tracker_buffer.buffer,
                input=xt.BeamElement._arr2ctx(self, values))
@@ -204,6 +234,9 @@ def _extract_offset(obj, field_name, index, dtype, xodtype, skip_inconsistent_ty
     else:
         inner_obj = obj
         inner_name = field_name
+
+    if index is None and dtype is np.float64 and inner_name in getattr(inner_obj, '_float_or_tpsa_fields', ()):
+        return inner_obj._xobject._get_offset(inner_name)
 
     if index is None:
         inconsistent_type = not isinstance(getattr(inner_obj._xobject, inner_name), dtype)
