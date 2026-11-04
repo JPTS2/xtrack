@@ -35,10 +35,10 @@ void ThickSliceRFMultipole_track_local_particle(ThickSliceRFMultipoleData el, Lo
         /*phase_n*/               ThickSliceRFMultipoleData_getp1__parent_phase_n(el, 0),
         /*phase_s*/               ThickSliceRFMultipoleData_getp1__parent_phase_s(el, 0),
         /*num_kicks*/             ThickSliceRFMultipoleData_get__parent_num_kicks(el),
-        /*model*/                 ThickSliceRFMultipoleData_get__parent_length(el) == 0. ? -1 : ThickSliceRFMultipoleData_get__parent_model(el), // kick only when thin
-        /*default_model*/         6, // drift-kick-drift-expanded
+        /*model*/                 ThickSliceRFMultipoleData_get__parent_length(el) == 0. ? MODEL_KICK_ONLY : ThickSliceRFMultipoleData_get__parent_model(el),
+        /*default_model*/         MODEL_DRIFT_KICK_DRIFT_EXPANDED,
         /*integrator*/            ThickSliceRFMultipoleData_get__parent_integrator(el),
-        /*default_integrator*/    3, // Uniform
+        /*default_integrator*/    INTEGRATOR_UNIFORM,
         /*radiation_flag*/        0, // not used here
         /*radiation_flag_parent*/ 0, // not used here
         /*lag_taper*/             0., // not used here

@@ -1,10 +1,7 @@
 import xobjects as xo
 
+from ..base_element import BeamElement
 from ..general import _pkg_root
-from .slice_base import (
-    _SliceBase, COMMON_SLICE_XO_FIELDS, ID_RADIATION_FROM_PARENT,
-    _raise_if_parent_has_transverse_rotation,
-)
 from .bend import Bend
 from .cavity import Cavity
 from .crab_cavity import CrabCavity
@@ -14,7 +11,13 @@ from .quadrupole import Quadrupole
 from .rbend import RBend
 from .rf_multipole import RFMultipole
 from .sextupole import Sextupole
-from ..base_element import BeamElement
+from .slice_base import (
+    COMMON_SLICE_XO_FIELDS,
+    ID_RADIATION_FROM_PARENT,
+    _raise_if_parent_has_transverse_rotation,
+    _SliceBase,
+)
+
 
 class _ThinSliceElementBase(_SliceBase):
 
@@ -26,6 +29,7 @@ class _ThinSliceElementBase(_SliceBase):
 
 class ThinSliceQuadrupole(_ThinSliceElementBase, BeamElement):
 
+    _magnet_plan = True
     _xofields = {'_parent': xo.Ref(Quadrupole), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [
@@ -61,6 +65,7 @@ class ThinSliceQuadrupole(_ThinSliceElementBase, BeamElement):
 
 class ThinSliceSextupole(_ThinSliceElementBase, BeamElement):
 
+    _magnet_plan = True
     _xofields = {'_parent': xo.Ref(Sextupole), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [
@@ -96,6 +101,7 @@ class ThinSliceSextupole(_ThinSliceElementBase, BeamElement):
 
 class ThinSliceOctupole(_ThinSliceElementBase, BeamElement):
 
+    _magnet_plan = True
     _xofields = {'_parent': xo.Ref(Octupole), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [
@@ -209,6 +215,7 @@ class ThinSliceRFMultipole(_ThinSliceElementBase, BeamElement):
 
 class ThinSliceBend(_ThinSliceElementBase, BeamElement):
 
+    _magnet_plan = True
     _xofields = {'_parent': xo.Ref(Bend), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [
@@ -243,6 +250,7 @@ class ThinSliceBend(_ThinSliceElementBase, BeamElement):
 
 class ThinSliceRBend(_ThinSliceElementBase, BeamElement):
 
+    _magnet_plan = True
     _xofields = {'_parent': xo.Ref(RBend), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [
@@ -275,6 +283,7 @@ class ThinSliceRBend(_ThinSliceElementBase, BeamElement):
 
 class ThinSliceMultipole(_ThinSliceElementBase, BeamElement):
 
+    _magnet_plan = True
     _xofields = {'_parent': xo.Ref(Multipole), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [

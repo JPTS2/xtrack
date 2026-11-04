@@ -32,10 +32,10 @@ void RFMultipole_track_local_particle(RFMultipoleData el, LocalParticle* part0){
         /*phase_n*/               RFMultipoleData_getp1_phase_n(el, 0),
         /*phase_s*/               RFMultipoleData_getp1_phase_s(el, 0),
         /*num_kicks*/             RFMultipoleData_get_num_kicks(el),
-        /*model*/                 RFMultipoleData_get_length(el) == 0. ? -1 : RFMultipoleData_get_model(el), // kick only when thin
-        /*default_model*/         6, // drift-kick-drift-expanded
+        /*model*/                 RFMultipoleData_get_length(el) == 0. ? MODEL_KICK_ONLY : RFMultipoleData_get_model(el),
+        /*default_model*/         MODEL_DRIFT_KICK_DRIFT_EXPANDED,
         /*integrator*/            RFMultipoleData_get_integrator(el),
-        /*default_integrator*/    3, // Uniform
+        /*default_integrator*/    INTEGRATOR_UNIFORM,
         /*radiation_flag*/        0, // not used here
         /*radiation_flag_parent*/ 0, // not used here
         /*lag_taper*/             0., // not used here

@@ -36,9 +36,9 @@ void ThinSliceRFMultipole_track_local_particle(ThinSliceRFMultipoleData el, Loca
         /*phase_s*/               ThinSliceRFMultipoleData_getp1__parent_phase_s(el, 0),
         /*num_kicks*/             1, // kick only
         /*model*/                 -1, // kick only
-        /*default_model*/         6, // drift-kick-drift-expanded
+        /*default_model*/         MODEL_DRIFT_KICK_DRIFT_EXPANDED,
         /*integrator*/            3, // uniform
-        /*default_integrator*/    3, // Uniform
+        /*default_integrator*/    INTEGRATOR_UNIFORM,
         /*radiation_flag*/        0, // not used here
         /*radiation_flag_parent*/ 0, // not used here
         /*lag_taper*/             0., // not used here
