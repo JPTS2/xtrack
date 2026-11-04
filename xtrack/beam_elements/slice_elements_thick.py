@@ -8,6 +8,7 @@ from .bend import Bend
 from .bfield_expansion import BFieldExpansion
 from .cavity import Cavity
 from .crab_cavity import CrabCavity
+from .rf_multipole import RFMultipole
 from .device import Device
 from .multipole import Multipole
 from .octupole import Octupole
@@ -178,6 +179,14 @@ class ThickSliceCrabCavity(_ThickSliceElementBase, BeamElement):
 
     _extra_c_sources = [
         '#include "xtrack/beam_elements/elements_src/thick_slice_crab_cavity.h"'
+    ]
+
+class ThickSliceRFMultipole(_ThickSliceElementBase, BeamElement):
+
+    _xofields = {'_parent': xo.Ref(RFMultipole), **COMMON_SLICE_XO_FIELDS}
+
+    _extra_c_sources = [
+        '#include "xtrack/beam_elements/elements_src/thick_slice_rfmultipole.h"'
     ]
 
 class ThickSliceMultipole(_ThickSliceElementBase, BeamElement):

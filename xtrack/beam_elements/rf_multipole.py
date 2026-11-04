@@ -7,17 +7,22 @@ from ..base_element import BeamElement
 from ..general import DEPRECATION_INFO_PREP_1_0
 from warnings import warn
 import xobjects as xo
+import xtrack as xt
 from ._common import (
+    _HasIntegrator,
     _HasKnlKsl,
+    _HasModelRF,
     _docstring_general_notes,
     _for_docstring_alignment,
 )
 
-class RFMultipole(_HasKnlKsl, BeamElement):
+class RFMultipole(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     _docstring_start = \
-    """Beam element modeling a thin modulated multipole, with strengths
-    dependent on the z coordinate.
+    """Beam element modeling a modulated multipole, with strengths dependent
+    on the z coordinate. It is a thin kick with `length` zero (default); with a
+    finite length the integrated strengths and voltage are distributed in kicks
+    between drifts, with no field at the ends.
 
     Parameters
     ----------
@@ -43,12 +48,19 @@ class RFMultipole(_HasKnlKsl, BeamElement):
         Longitudinal phase in radians seen by the reference particle. Default is ``0``.
     lag : float
         Deprecated longitudinal phase in degrees, added to `phase`. Default is ``0``.
+    length : float
+        Length of the element in meters. Default is ``0`` (thin).
     """.strip()
 
-    __doc__ = '\n    '.join([_docstring_start, _for_docstring_alignment, '\n',
-                             _docstring_general_notes, '\n\n'])
+    __doc__ = '\n    '.join([_docstring_start,
+        _HasModelRF._for_docstring,
+        _HasIntegrator._for_docstring.replace(
+            'num_multipole_kicks', 'num_kicks').replace('multipole kicks', 'kicks'),
+        _for_docstring_alignment, '\n',
+        _docstring_general_notes, '\n\n'])
 
     _xofields={
+        'length': xo.Float64,
         'voltage': xo.Float64,
         'frequency': xo.Float64,
         'lag': xo.Float64,
@@ -62,6 +74,9 @@ class RFMultipole(_HasKnlKsl, BeamElement):
         'phase_n': xo.Float64[:],
         'phase_s': xo.Float64[:],
         'absolute_time': xo.Int64,
+        'num_kicks': xo.Int64,
+        'model': xo.Int64,
+        'integrator': xo.Int64,
     }
 
     has_backtrack = True
@@ -74,6 +89,8 @@ class RFMultipole(_HasKnlKsl, BeamElement):
     _skip_in_to_dict = ['_order', 'inv_factorial_order']  # defined by knl, etc.
 
     _rename = {
+        'model': '_model',
+        'integrator': '_integrator',
         'order': '_order',
         'lag': '_lag',
         'pn': '_pn',
@@ -89,6 +106,8 @@ class RFMultipole(_HasKnlKsl, BeamElement):
         pn = kwargs.get('pn')
         ps = kwargs.get('ps')
         lag = kwargs.pop('lag', None)
+        model = kwargs.pop('model', None)
+        integrator = kwargs.pop('integrator', None)
         if pn is not None:
             self._warn_if_deprecated_phase_is_nonzero(pn, 'pn', 'phase_n')
         if ps is not None:
@@ -98,6 +117,28 @@ class RFMultipole(_HasKnlKsl, BeamElement):
 
         if lag is not None:
             self.lag = lag
+
+        if model is not None:
+            self.model = model
+
+        if integrator is not None:
+            self.integrator = integrator
+
+    @property
+    def isthick(self):
+        return self.length != 0
+
+    @property
+    def _thin_slice_class(self):
+        return xt.ThinSliceRFMultipole
+
+    @property
+    def _thick_slice_class(self):
+        return xt.ThickSliceRFMultipole
+
+    @property
+    def _drift_slice_class(self):
+        return xt.DriftSliceRFMultipole
 
     @property
     def lag(self):

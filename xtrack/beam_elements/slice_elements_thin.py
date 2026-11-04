@@ -12,6 +12,7 @@ from .multipole import Multipole
 from .octupole import Octupole
 from .quadrupole import Quadrupole
 from .rbend import RBend
+from .rf_multipole import RFMultipole
 from .sextupole import Sextupole
 from ..base_element import BeamElement
 
@@ -184,6 +185,26 @@ class ThinSliceCrabCavity(_ThinSliceElementBase, BeamElement):
                      _buffer=self._buffer)
 
         return out
+
+
+class ThinSliceRFMultipole(_ThinSliceElementBase, BeamElement):
+
+    _xofields = {'_parent': xo.Ref(RFMultipole), **COMMON_SLICE_XO_FIELDS}
+
+    _extra_c_sources = [
+        '#include "xtrack/beam_elements/elements_src/thin_slice_rfmultipole.h"'
+    ]
+
+    def get_equivalent_element(self):
+        parent = self._parent
+        return RFMultipole(voltage=parent.voltage * self.weight,
+                           frequency=parent.frequency, lag=parent.lag,
+                           phase=parent.phase,
+                           knl=parent.knl * self.weight,
+                           ksl=parent.ksl * self.weight,
+                           phase_n=parent.phase_n, phase_s=parent.phase_s,
+                           pn=parent.pn, ps=parent.ps,
+                           _buffer=self._buffer)
 
 
 class ThinSliceBend(_ThinSliceElementBase, BeamElement):

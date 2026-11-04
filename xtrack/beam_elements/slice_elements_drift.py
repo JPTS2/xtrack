@@ -9,6 +9,7 @@ from .multipole import Multipole
 from .octupole import Octupole
 from .quadrupole import Quadrupole
 from .rbend import RBend
+from .rf_multipole import RFMultipole
 from .sextupole import Sextupole
 from .slice_base import (_SliceBase, COMMON_SLICE_XO_FIELDS,
                          _CavitySliceOffset, cavity_slice_xofields)
@@ -155,6 +156,19 @@ class DriftSliceCrabCavity(_DriftSliceElementBase, BeamElement):
 
     _extra_c_sources = [
         '#include "xtrack/beam_elements/elements_src/drift_slice_crab_cavity.h"'
+    ]
+
+    def get_equivalent_element(self):
+        out = Drift(length=self._parent.length * self.weight,
+                     _buffer=self._buffer)
+        return out
+
+class DriftSliceRFMultipole(_DriftSliceElementBase, BeamElement):
+
+    _xofields = {'_parent': xo.Ref(RFMultipole), **COMMON_SLICE_XO_FIELDS}
+
+    _extra_c_sources = [
+        '#include "xtrack/beam_elements/elements_src/drift_slice_rfmultipole.h"'
     ]
 
     def get_equivalent_element(self):

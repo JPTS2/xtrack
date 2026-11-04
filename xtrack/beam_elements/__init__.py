@@ -88,7 +88,8 @@ from .beam_interaction import BeamInteraction, ParticlesInjectionSample
 from .slice_elements_thin import (ThinSliceQuadrupole, ThinSliceSextupole,
                              ThinSliceOctupole, ThinSliceBend,
                              ThinSliceRBend, ThinSliceCavity,
-                             ThinSliceCrabCavity, ThinSliceMultipole)
+                             ThinSliceCrabCavity, ThinSliceMultipole,
+                             ThinSliceRFMultipole)
 from .slice_elements_edge import (
                              ThinSliceBendEntry, ThinSliceBendExit,
                              ThinSliceRBendEntry, ThinSliceRBendExit,
@@ -102,11 +103,12 @@ from .slice_elements_thick import (ThickSliceDevice, ThickSliceBFieldExpansion,
                                    ThickSliceQuadrupole, ThickSliceSextupole,
                                    ThickSliceOctupole, ThickSliceUniformSolenoid,
                                    ThickSliceCavity, ThickSliceCrabCavity,
-                                   ThickSliceMultipole)
+                                   ThickSliceMultipole, ThickSliceRFMultipole)
 from .slice_elements_drift import (DriftSliceOctupole, DriftSliceSextupole,
                                    DriftSliceQuadrupole, DriftSliceBend,
                                    DriftSliceRBend, DriftSlice, DriftSliceCavity,
                                    DriftSliceCrabCavity, DriftSliceMultipole,
+                                   DriftSliceRFMultipole,
                                    DriftExactSlice)
 
 from .rft_element import RFT_Element

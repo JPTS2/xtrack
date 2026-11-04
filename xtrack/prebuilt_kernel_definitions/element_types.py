@@ -60,6 +60,7 @@ ONLY_XTRACK_ELEMENTS = [
     DriftSliceCavity,
     DriftSliceCrabCavity,
     DriftSliceMultipole,
+    DriftSliceRFMultipole,
     # Thick slices
     ThickSliceBend,
     ThickSliceRBend,
@@ -70,6 +71,7 @@ ONLY_XTRACK_ELEMENTS = [
     ThickSliceCavity,
     ThickSliceCrabCavity,
     ThickSliceMultipole,
+    ThickSliceRFMultipole,
     ThickSliceBFieldExpansion,
     # Thin slices
     ThinSliceBend,
@@ -80,6 +82,7 @@ ONLY_XTRACK_ELEMENTS = [
     ThinSliceCavity,
     ThinSliceCrabCavity,
     ThinSliceMultipole,
+    ThinSliceRFMultipole,
     # Edge slices
     ThinSliceBendEntry,
     ThinSliceBendExit,
