@@ -17,3 +17,6 @@ xtrack/prebuilt_kernels
 checkpoint_restart.dat
 .idea
 .claude/
+
+# Generated example files
+/examples/**/outputs/
