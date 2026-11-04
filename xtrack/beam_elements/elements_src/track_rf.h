@@ -105,19 +105,31 @@ void track_rf_kick_single_particle(
     xt_float_or_tpsa phase0 = 0.;
 
     double const beta0 = LocalParticle_get_beta0(part);
+    xt_float_or_tpsa const set_frequency = frequency;
+    int const harmonic_locked = !xt_float_or_tpsa_is_zero(harmonic);
 
-    if (!xt_float_or_tpsa_is_zero(harmonic)) {
+    if (harmonic_locked) {
         double const line_length = part->line_length;
         double const t_rev0 = line_length / (beta0 * C_LIGHT);
         frequency += (harmonic / t_rev0);
     }
 
-    // The shared laboratory clock is scalar metadata; s and the RF controls
-    // may carry a TPSA dependence. Use the same phase in both tracking modes.
+    // Arrival time t = time_s + (s - zeta) / (beta0 c) and phase
+    // Phi = Phi_clock + 2 pi f (t - time_s); the zeta term is added below.
+    // Phi_clock is the RF phase accumulated at time_s: f time_s cycles for a
+    // set frequency, one revolution's h cycles per reference turn when locked.
+    // The clock is scalar metadata; s and the RF controls may carry a TPSA
+    // dependence. Use the same phase in both tracking modes.
     if (absolute_time == 1) {
         double const time_s = LocalParticle_get_time_s(part);
         xt_float_or_tpsa const s = LocalParticle_get_s(part);
-        phase0 += 2 * PI * frequency * (time_s + s / (beta0 * C_LIGHT));
+        if (harmonic_locked) {
+            phase0 += 2 * PI * (set_frequency * time_s
+                + harmonic * LocalParticle_get_reference_turns(part)
+                + frequency * s / (beta0 * C_LIGHT));
+        } else {
+            phase0 += 2 * PI * frequency * (time_s + s / (beta0 * C_LIGHT));
+        }
     }
 
     xt_float_or_tpsa const zeta  = LocalParticle_get_zeta(part);

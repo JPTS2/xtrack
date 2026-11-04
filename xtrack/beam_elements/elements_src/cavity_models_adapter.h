@@ -471,8 +471,12 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
         if (CavityData_get_absolute_time(el)) {
             const xt_float_or_tpsa parent_s=LocalParticle_get_s(part)
                 -length*start_fraction;
-            clock_base+=source.omega*LocalParticle_get_time_s(part)
-                +source.k*parent_s/beta0;
+            // The RF phase accumulated at time_s, as in track_rf.
+            if (!xt_float_or_tpsa_is_zero(harmonic))
+                clock_base+=2.*PI*(CavityData_get_frequency(el)*LocalParticle_get_time_s(part)
+                    +harmonic*LocalParticle_get_reference_turns(part));
+            else clock_base+=source.omega*LocalParticle_get_time_s(part);
+            clock_base+=source.k*parent_s/beta0;
         }
         q[0]=source.k*LocalParticle_get_x(part);
         q[1]=source.k*LocalParticle_get_y(part);

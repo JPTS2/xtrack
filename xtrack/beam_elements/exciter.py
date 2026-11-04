@@ -53,8 +53,9 @@ class Exciter(BeamElement):
         - samples (float array): Samples of excitation strength to scale knl and ksl as function of time.
         - nsamples (int): Number of samples. Pass this instead of samples to reserve memory for later initialisation.
         - sampling_frequency (float): Sampling frequency in Hz.
-        - frev (float): Revolution frequency in Hz of circulating beam (used to relate turn number to sample index).
+        - frev (float): Revolution frequency in Hz of circulating beam (used to relate turn number to sample index). Required unless absolute_time is set: without it the turn clock has no time.
         - start_turn (int): Turn of the reference particle when to start excitation.
+        - absolute_time (bool): If True, the sample index follows the absolute arrival time, time_s + (s - zeta) / beta0 / c0, from the time start_turn / frev, so the excitation keeps its own clock while the reference energy changes. Default is False.
         - duration (float): Duration of excitation in s (defaults to nsamples/sampling_frequency). Repeats the waveform to fill the duration.
 
     Example:
@@ -88,6 +89,7 @@ class Exciter(BeamElement):
         'sampling_frequency': xo.Float64,
         'frev': xo.Float64,
         'start_turn': xo.Int64,
+        'absolute_time': xo.Int64,
         'nduration': xo.Int64,
         'knl': xo.Float64[:],
         'ksl': xo.Float64[:],
@@ -125,6 +127,11 @@ class Exciter(BeamElement):
                 nksl[:len(ksl)] = np.array(ksl)
             kwargs["order"] = n - 1
 
+            if ((samples is not None or nsamples is not None) and not frev
+                    and not kwargs.get('absolute_time')):
+                raise ValueError('`frev` relates the turn number to the samples: '
+                                 'set it, or use `absolute_time`.')
+
             # determine sample length or create empty samples for later initialisation
             if samples is not None:
                 if nsamples is not None and nsamples != len(samples):
@@ -156,4 +163,5 @@ class Exciter(BeamElement):
                               sampling_frequency=self.sampling_frequency,
                               frev=self.frev,
                               start_turn=self.start_turn,
+                              absolute_time=self.absolute_time,
                               _context=_context, _buffer=_buffer, _offset=_offset)

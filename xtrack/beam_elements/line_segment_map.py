@@ -181,6 +181,10 @@ class LineSegmentMap(BeamElement):
         phase_rf : list of float
             List of phases in radians of the RF kicks in the segment. Only used if
             ``longitudinal_mode`` is ``'nonlinear'`` or ``'linear_fixed_rf'``.
+            The RF phases are synchronized with the reference particle, so a
+            frequency detuned from a harmonic of the revolution has no effect.
+            For a detuned or independently clocked RF system, set `voltage_rf`
+            to zero here and add a ``Cavity(absolute_time=True)`` to the line.
         dqx : float or list of float
             Horizontal linear chromaticity of the segment.
         dqy : float or list of float

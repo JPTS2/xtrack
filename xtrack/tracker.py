@@ -16,6 +16,7 @@ import xtrack as xt
 
 from .base_element import _handle_per_particle_blocks
 from .beam_elements import Drift
+from .beam_elements.cavity import _constant_part
 from .general import DEPRECATION_INFO_PREP_1_0, _pkg_root
 from .internal_record import new_io_buffer
 from .line import Line, _is_collective, _is_thick
@@ -133,6 +134,8 @@ class Tracker:
         self._tracker_data_cache = {}
         self._tracker_data_cache[None] = tracker_data_base
         self._magnet_plans = None  # built at the first track call
+        self._reference_step_elements = None  # found at the first track call
+        self._absolute_time_elements = None
 
         self._get_twiss_mask_markers() # to cache it
 
@@ -390,6 +393,8 @@ class Tracker:
                     'Disable TPSA on the line before tracking on a GPU.'
                 )
 
+        self._check_reference_for_absolute_time(particles, **kwargs)
+
         assert self.iscollective in (True, False)
         if (self.iscollective or self.line.enable_time_dependent_vars
             or 'log' in kwargs and kwargs['log'] is not None):
@@ -575,7 +580,7 @@ class Tracker:
 
         # t_sim is the clock advance (seconds) per completed turn, here equal
         # to the reference revolution period. It also sets the end-turn zeta shift.
-        p.t_sim = tracker_data.line_length / (p.beta0 * clight)
+        p.t_sim = self._reference_lap_time(p.p0c, p.beta0, p.mass0, p.at_element)
         if np.isnan(p.reference_turns):
             p.reference_turns = p.time_s / p.t_sim if p.t_sim else 0.
 
@@ -1851,7 +1856,7 @@ class Tracker:
         if self.line._needs_rng and not particles._has_valid_rng_state():
             particles._init_random_number_generator()
 
-        self._prepare_particle_time_s_and_reference_turns(particles)
+        self._prepare_particle_time_s_and_reference_turns(particles, ele_start)
 
         track_kernel, tracker_data = self.get_track_kernel_and_data_for_present_config()
         track_kernel.description.n_threads = particles._capacity
@@ -2186,7 +2191,7 @@ class Tracker:
             verbose=True
         )
 
-    def _prepare_particle_time_s_and_reference_turns(self, particles):
+    def _prepare_particle_time_s_and_reference_turns(self, particles, ele_start=None):
         if np.isnan(particles.reference_turns):
             particles.reference_turns = self._get_reference_turns(particles)
         if self._sync_time_controller is not None:
@@ -2196,9 +2201,91 @@ class Tracker:
             turn = particles.reference_turns
             particles.t_sim = program.get_t_s_at_turn(turn + 1) - particles.time_s
         else:
-            length = self._tracker_data_base.line_length
-            beta0 = particles._xobject.beta0[0]
-            particles.t_sim = length / (beta0 * clight)
+            p = particles._xobject
+            at_element = p.at_element[0] if ele_start is None else ele_start
+            # A lap keeps the time found at its start: inside it, the reference
+            # has already stepped.
+            if self._reference_steps() and at_element > 0 and p.t_sim > 0.:
+                return
+            particles.t_sim = self._reference_lap_time(
+                p.p0c[0], p.beta0[0], p.mass0, at_element)
+
+    def _reference_steps(self):
+        """(position, element index, element) of each element of the line that
+        changes the reference momentum."""
+        if self._reference_step_elements is None:
+            data = self._tracker_data_base
+            table = data._line_table
+            self._reference_step_elements = []
+            for ii, element in enumerate(data.elements):
+                if isinstance(element, (xt.ReferenceEnergyIncrease, xt.ReferenceEnergyChange)):
+                    self._reference_step_elements.append((table.s[ii], ii, element))
+                elif isinstance(element, xt.LineSegmentMap):
+                    self._reference_step_elements.append((table.s[ii + 1], ii, element))
+        return [step for step in self._reference_step_elements
+                if not isinstance(step[2], xt.LineSegmentMap)
+                or step[2].energy_ref_increment != 0.]
+
+    def _reference_lap_time(self, p0c, beta0, mass0, at_element):
+        """Time of one lap of the reference particle, each segment at its speed."""
+        length = self._tracker_data_base.line_length
+        steps = self._reference_steps()
+        if not steps:
+            return length / (beta0 * clight)
+
+        def after_step(element, momentum):
+            if isinstance(element, xt.ReferenceEnergyIncrease):
+                return momentum + element.Delta_p0c
+            if isinstance(element, xt.ReferenceEnergyChange):
+                return element.p0c
+            energy = np.hypot(momentum, mass0) + element.energy_ref_increment
+            return np.sqrt(energy**2 - mass0**2)
+
+        # Back to the start of the lap, from the particles' present position
+        for _, index, element in reversed(steps):
+            if index < at_element:
+                if isinstance(element, xt.ReferenceEnergyIncrease):
+                    p0c -= element.Delta_p0c
+                elif isinstance(element, xt.LineSegmentMap):
+                    energy = np.hypot(p0c, mass0) - element.energy_ref_increment
+                    p0c = np.sqrt(energy**2 - mass0**2)
+
+        lap_time, position = 0., 0.
+        for s_step, _, element in steps:
+            lap_time += (s_step - position) * np.hypot(p0c, mass0) / p0c / clight
+            position = s_step
+            p0c = after_step(element, p0c)
+        return lap_time + (length - position) * np.hypot(p0c, mass0) / p0c / clight
+
+    def _check_reference_for_absolute_time(self, particles, num_turns=None, ele_stop=None,
+                                           num_elements=None, **kwargs):
+        """The clock is one value per Particles object. Without a completed turn it
+        stays put and each particle's arrival follows its own reference; once it
+        advances, or for a phase locked to its revolutions, it needs one reference."""
+        if self._absolute_time_elements is None:
+            self._absolute_time_elements = []
+            for element in self._tracker_data_base.elements:
+                owner = element
+                if hasattr(element, '_parent') and element._parent is not None:
+                    owner = element._parent
+                if isinstance(owner, (xt.Cavity, xt.CrabCavity, xt.RFMultipole, xt.Exciter)):
+                    self._absolute_time_elements.append(owner)
+        clocked = [element for element in self._absolute_time_elements
+                   if element.absolute_time]
+        if not clocked:
+            return
+        completes_turn = ((num_turns or 1) > 1
+                          or (ele_stop is None and num_elements is None
+                              and not self.skip_end_turn_actions))
+        if not completes_turn and not any(
+                _constant_part(getattr(element, 'harmonic', 0.)) != 0. for element in clocked):
+            return
+        context = particles._context
+        state = context.nparray_from_context_array(particles.state)
+        p0c = context.nparray_from_context_array(particles.p0c)[state > 0]
+        if p0c.size and np.ptp(p0c) > 1e-12 * p0c[0]:
+            raise ValueError('`absolute_time` needs one reference momentum for all '
+                             'active particles: the clock is shared by them.')
 
     def _advance_particle_time_s_and_reference_turns(self, particles, num_turns):
         if num_turns:
