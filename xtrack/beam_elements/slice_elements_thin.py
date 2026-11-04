@@ -210,6 +210,7 @@ class ThinSliceRFMultipole(_ThinSliceElementBase, BeamElement):
                            ksl=parent.ksl * self.weight,
                            phase_n=parent.phase_n, phase_s=parent.phase_s,
                            pn=parent.pn, ps=parent.ps,
+                           absolute_time=parent.absolute_time,
                            _buffer=self._buffer)
 
 

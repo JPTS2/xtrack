@@ -108,6 +108,28 @@ def test_rfmultipole_zero_length_is_the_thin_kick(test_context):
 
 
 @for_all_test_contexts
+def test_rfmultipole_absolute_time_adds_the_clock_phase(test_context):
+    time_s, s0, frequency, p0c = 1.3e-9, .7, 400e6, 6e9
+    beta0 = xt.Particles(p0c=p0c).beta0[0]
+    clock = 2 * np.pi * frequency * (time_s + s0 / (beta0 * c))
+    common = dict(_context=test_context, knl=[1e-4, 2e-2], ksl=[3e-5, 1e-3],
+                  frequency=frequency, voltage=1e5)
+    absolute = xt.RFMultipole(absolute_time=1, phase=.3, phase_n=[.1, -.2],
+                              phase_s=[.4, .5], **common)
+    shifted = xt.RFMultipole(phase=.3 + clock, phase_n=[.1 + clock, -.2 + clock],
+                             phase_s=[.4 + clock, .5 + clock], **common)
+    probes = []
+    for element in (absolute, shifted):
+        probe = xt.Particles(_context=test_context, p0c=p0c, x=1e-3, y=-2e-3,
+                             px=1e-5, py=2e-5, zeta=.02, delta=1e-3, s=s0)
+        probe.time_s = test_context.nparray_to_context_array(np.array([time_s]))
+        element.track(probe)
+        probe.move(_context=xo.ContextCpu())
+        probes.append(np.array([getattr(probe, name)[0] for name in _NAMES]))
+    np.testing.assert_allclose(probes[0], probes[1], rtol=1e-12, atol=1e-15)
+
+
+@for_all_test_contexts
 def test_thick_rfmultipole_static_limit_is_a_thick_quadrupole(test_context):
     """At zero frequency the distributed kicks converge to the exact body."""
     launch = dict(x=2e-3, px=3e-4, y=-1e-3, py=2e-4)

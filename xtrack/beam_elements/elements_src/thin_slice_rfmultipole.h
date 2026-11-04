@@ -26,7 +26,7 @@ void ThinSliceRFMultipole_track_local_particle(ThinSliceRFMultipoleData el, Loca
         /*transverse_voltage*/    0.,
         /*transverse_lag*/        0.,
         /*transverse_phase*/      0.,
-        /*absolute_time*/         0, // not used here
+        /*absolute_time*/         ThinSliceRFMultipoleData_get__parent_absolute_time(el),
         /*order*/                 ThinSliceRFMultipoleData_get__parent_order(el),
         /*knl*/                   ThinSliceRFMultipoleData_getp1__parent_knl(el, 0),
         /*ksl*/                   ThinSliceRFMultipoleData_getp1__parent_ksl(el, 0),
