@@ -4,7 +4,7 @@
 # ######################################### #
 
 # Further examples: examples/particles_and_distributions/
-#                   examples/tracker/
+#                   examples/tracking/
 
 ################################################################################
 # Required packages

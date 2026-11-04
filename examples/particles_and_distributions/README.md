@@ -37,6 +37,7 @@ species normalization. No fragmentation model is involved.
 
 These recipes cover Xtrack particle containers and their preparation for a line.
 For distribution generators and longitudinal matching, see Xpart. Continue with
-[tracking and particle records](../getting_started/06_track_particles.py).
+[tracking](../tracking/) and
+[particle records](../getting_started/06_track_particles.py).
 For a reference controlled by model expressions, see
 [named reference particles](../line_construction/010_reference_particles.py).
