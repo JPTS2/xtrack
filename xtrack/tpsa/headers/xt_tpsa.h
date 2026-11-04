@@ -149,7 +149,11 @@ static inline xt_float_or_tpsa xt_float_or_tpsa_lift(uint64_t bits) {
 // Read a FloatOrTpsa slot as either a TPSA pointer or a lifted scalar.
 static inline xt_float_or_tpsa xt_float_or_tpsa_get(uint64_t* slot, int64_t tpsa_enabled) {
     if (tpsa_enabled) {
-        return xt_float_or_tpsa(mad::tpsa_ref(reinterpret_cast<tpsa_t*>(*slot)));
+        tpsa_t* source = reinterpret_cast<tpsa_t*>(*slot);
+        if (mad_tpsa_desc(source) != mad_tpsa_desc(xt_tpsa::tpsa::default_proto)) {
+            throw xt_tpsa::tracking_error("TPSA field and particle descriptors differ");
+        }
+        return xt_float_or_tpsa(mad::tpsa_ref(source));
     }
     return xt_float_or_tpsa_lift(*slot);
 }

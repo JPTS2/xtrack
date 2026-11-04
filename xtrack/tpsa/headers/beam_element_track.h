@@ -36,9 +36,6 @@ void KERNEL_NAME(
         LocalParticle_set_state(&lpart, 1);
         LocalParticle_set_at_element(&lpart, 0);
         LocalParticle_update_delta(&lpart, LocalParticle_get_delta(&lpart));
-        LocalParticle_set_s(&lpart, 0.0);
-        LocalParticle_set_ax(&lpart, 0.0);
-        LocalParticle_set_ay(&lpart, 0.0);
 
         if (check_is_active(&lpart) > 0) {
             CONCAT(ELEMENT_NAME, _track_local_particle_with_transformations)(

@@ -133,7 +133,7 @@ class ParticlesTpsa:
             name: desc.constant(self._ref(name)) for name in _DERIVED_COORDS
         }
         self._local_series.update({
-            name: madng_tpsa.Tpsa(desc) for name in _LOCAL_COORDS
+            name: desc.constant(self._ref(name)) for name in _LOCAL_COORDS
         })
         self._local_series.update({
             name: desc.constant(self._ref(name)) for name in _SPIN_COORDS
@@ -145,8 +145,8 @@ class ParticlesTpsa:
 
         Coordinate ``tpsa_t*`` addresses are stable for the life of the ``Tpsa`` objects
         and the shared object writes the map in place through them, so they are set once here.
-        The reference (double) variables never change during tracking. The kernel copies
-        this data into an unrolled ``LocalParticle`` and synchronizes tracking state back.
+        The kernel copies this data into an unrolled ``LocalParticle`` and synchronizes
+        tracking state and the reference variables back.
         """
         ffi = madng_tpsa.ffi
         bp = TpsaParticleData()
@@ -189,11 +189,24 @@ class ParticlesTpsa:
     def to_particles(self) -> xt.Particles:
         """A fresh single ``xt.Particles`` at the current const part (validation use)."""
         p = self._ref_particle.copy()
-        p.time_s = self.time_s
-        p.t_sim = self.t_sim
-        p.reference_turns = self.reference_turns
+        if self._xobject is not None:
+            # The storage directly: the reference may have changed, with the coordinates.
+            for name in _REF_VARS:
+                storage = p._rename.get(name, name)
+                value = float(getattr(self._xobject, name))
+                if np.ndim(getattr(p, storage)):
+                    getattr(p, storage)[...] = value
+                else:
+                    setattr(p, storage, value)
+        else:
+            p.time_s = self.time_s
+            p.t_sim = self.t_sim
+            p.reference_turns = self.reference_turns
         for c, v in zip(COORDS, self.const_part):
             setattr(p, c, [v])
+        if self._xobject is not None:
+            for name in ('s',) + _LOCAL_COORDS:
+                setattr(p, name, [float(self._local_series[name].const_part)])
         return p
 
     def __getattr__(self, name: str) -> madng_tpsa.Tpsa | float:
