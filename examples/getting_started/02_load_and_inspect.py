@@ -3,7 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Further examples: examples/lattice_design/
+# Further examples: examples/line_construction/
 
 ################################################################################
 # Required packages
