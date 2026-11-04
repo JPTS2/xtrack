@@ -68,10 +68,13 @@ def calibrated_waves(voltage, frequency, length, phase, eta, envelope,
                        - np.angle(phasor)))
 
 
-def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=None, tolerance=1e-12):
+def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=None, tolerance=1e-12,
+                magnet=None):
     """Coordinates at the exit plane, from those at the entry plane, for a field-free
     outside: Xtrack's x, px, y, py, zeta, delta relative to p0c. With `anomaly`, the
-    launch's spin_x, spin_y, spin_z follow the Thomas-BMT equation in the same fields."""
+    launch's spin_x, spin_y, spin_z follow the Thomas-BMT equation in the same fields.
+    `magnet(z)` adds static fields: c B_z, its derivative, and the quadrupole gradient
+    c dB_y/dx, in eV/m and eV/m^2 per unit charge."""
     k, phase = waves['k'], waves['phase']
     F, B, chi = waves['forward'], waves['backward'], waves['counter_phase']
     beta0 = p0c / np.hypot(p0c, mass0)
@@ -94,6 +97,11 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
         fy = charge * (E_r_over_r - v_z * cB_over_r) * y
         work = charge * (E_r_over_r * (x * px + y * py) + E_z * pz)
         rates = [px / pz, py / pz, energy / pz, fx * energy / pz, fy * energy / pz, work / pz]
+        if magnet is not None:
+            cB_z, dcB_z, gradient = magnet(z)
+            cB_x, cB_y = -x / 2 * dcB_z + gradient * y, -y / 2 * dcB_z + gradient * x
+            rates[3] += charge * (py / pz * cB_z - cB_y)
+            rates[4] += charge * (cB_x - px / pz * cB_z)
         if anomaly is None:
             return rates
         # Thomas-BMT in eV units, per unit z: dS/dz = Omega x S * energy / (pz c)

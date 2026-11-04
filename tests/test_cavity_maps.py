@@ -478,3 +478,27 @@ def test_harmonic_resolves_steps_from_the_frequency(model_context):
         direct, _ = end(model, frequency=frequency)
         np.testing.assert_allclose(locked, direct, rtol=0, atol=1e-13)
 
+
+def _picks_the_same_as(model, half_waves, **controls):
+    frequency, p0c = 1.3e9, 1e9
+    length = half_waves * clight / frequency / 2
+    def end(selector):
+        rf = xt.Cavity(length=length, voltage=2e7 * length, frequency=frequency, phase=np.pi / 2,
+                       model=selector, **controls)
+        probe = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV, x=1e-3, zeta=1e-3)
+        rf.track(probe)
+        return [getattr(probe, name)[0] for name in COORDS]
+    return end('adaptive') == end(model)
+
+
+@pytest.mark.parametrize('half_waves, sigma, expected', [
+    (4.5, None, 'phase-resolved-paraxial'), (5.5, None, 'phase-averaged'),
+    (8., .4, 'phase-resolved-paraxial'), (8., .5, 'phase-averaged')])
+def test_adaptive_leaves_the_average_for_narrow_envelopes(half_waves, sigma, expected):
+    # The limit is 0.44 half wavelengths of envelope width, for P16 and Gaussians alike.
+    controls = dict(eta=0.)
+    if sigma:
+        half_wave = clight / 1.3e9 / 2
+        controls.update(rf_profile='gaussian', rf_profile_sigma=sigma * half_wave)
+    assert _picks_the_same_as(expected, half_waves, **controls)
+
