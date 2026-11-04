@@ -32,7 +32,7 @@ int CavityModel_averaged_drift(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg lengt
 }
 
 
-// The static field of the step body (D15): a uniform solenoid or a normal
+// The static field of the step body: a uniform solenoid or a normal
 // quadrupole replaces the free drift by the exact canonical bodies of the
 // frozen model, in metres and a clock relative to the reference.
 typedef struct {

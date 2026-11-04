@@ -5,7 +5,7 @@
 #ifndef XTRACK_CAVITY_MODELS_SPIN_RULES_H
 #define XTRACK_CAVITY_MODELS_SPIN_RULES_H
 
-// Thomas-BMT rotations of the compact cavity factors (PLAN P4, D15), shared
+// Thomas-BMT rotations of the compact cavity factors, shared
 // by the phase-averaged and frozen models. Momenta and energies are in units
 // of m c and m c^2. CPU scalar only; spin is NULL when not tracked.
 #include <math.h>

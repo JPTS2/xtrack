@@ -6,6 +6,7 @@ snapshot API. New models remain experimental, without release qualification.
 """
 import numpy as np
 import pytest
+import xobjects as xo
 import xtrack as xt
 from scipy.constants import c as clight
 
@@ -1047,3 +1048,70 @@ def test_phase_averaged_spin_with_static_fields_refuses_at_configuration():
     line.particle_ref = _launch(200., x=0., px=0., y=0., py=0., zeta=0., delta=0.)
     with pytest.raises(NotImplementedError, match='static'):
         line.configure_spin(True)
+
+
+def _adaptive_line(model_context, **controls):
+    line = xt.Line(elements={'rf': xt.Cavity(**controls)})
+    line.particle_ref = xt.Particles(p0c=1e9)
+    line.build_tracker(_context=model_context)
+    return line
+
+
+@pytest.mark.parametrize('expected', ['longitudinal-only', 'phase-averaged',
+                                      'phase-resolved-paraxial', 'phase-resolved'])
+def test_each_particle_chooses_from_its_own_reference(model_context, expected):
+    # g/p0 and the squeeze select: these references take each branch in turn.
+    controls = dict(length=1., frequency=1.3e9, voltage=2e7, phase=np.pi / 2, eta=0.)
+    p0c = {'longitudinal-only': 1e13, 'phase-averaged': 1e9,
+           'phase-resolved-paraxial': 1e7, 'phase-resolved': 3e6}[expected]
+    coordinates = dict(x=1e-3, px=1e-4, y=-5e-4, py=2e-4, zeta=1e-3, delta=1e-4)
+    def end(line, *p0cs):
+        probe = xt.Particles(_context=model_context, mass0=xt.ELECTRON_MASS_EV,
+                             p0c=np.array(p0cs), **coordinates)
+        line.track(probe)
+        probe.sort()
+        probe.move(_context=xo.context_default)
+        return probe
+    reference = _adaptive_line(model_context, model=expected, **controls)
+    adaptive = _adaptive_line(model_context, model='adaptive', **controls)
+    alone = end(reference, p0c)
+    # The other particle in the batch comes first and has another reference.
+    other = 1e13 if p0c != 1e13 else 3e6
+    mixed = end(adaptive, other, p0c)
+    for name in COORDS:
+        assert getattr(mixed, name)[1] == getattr(alone, name)[0]
+
+
+def test_harmonic_resolves_steps_from_the_frequency(model_context):
+    # A harmonic-locked cavity is the same cavity at the frequency it locks to.
+    circumference, harmonic, p0c = 100., 300, 1e10
+    def end(model, **rf):
+        line = xt.Line(elements={'rf': xt.Cavity(length=1., voltage=2e7, phase=1.4,
+                                                 model=model, **rf),
+                                 'rest': xt.Drift(length=circumference - 1.)})
+        line.particle_ref = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV)
+        line.build_tracker(_context=model_context)
+        probe = line.build_particles(x=1e-3, px=1e-4, zeta=1e-3, delta=1e-4)
+        line.track(probe, ele_start=0, ele_stop=1)
+        probe.move(_context=xo.context_default)
+        return np.array([getattr(probe, name)[0] for name in COORDS]), probe.beta0[0]
+    for model in ('phase-averaged', 'phase-resolved-paraxial'):
+        locked, beta0 = end(model, harmonic=harmonic)
+        frequency = harmonic * beta0 * clight / circumference
+        direct, _ = end(model, frequency=frequency)
+        np.testing.assert_allclose(locked, direct, rtol=0, atol=1e-13)
+
+
+def test_plan_follows_element_changes_between_track_calls(model_context):
+    line = _adaptive_line(model_context, model='longitudinal-only', length=1.,
+                          frequency=1e9, voltage=1e5, phase=np.pi / 2)
+    def gain():
+        probe = line.build_particles(zeta=0.)
+        energy = probe.energy[0]
+        line.track(probe)
+        return probe.energy[0] - energy
+    first = gain()
+    line['rf'].voltage = 2e5
+    np.testing.assert_allclose(gain(), 2 * first, rtol=1e-12)
+    line['rf'].model = 'phase-resolved'
+    assert gain() != 2 * first

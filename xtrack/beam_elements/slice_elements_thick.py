@@ -173,6 +173,7 @@ class ThickSliceOctupole(_ThickSliceElementBase, BeamElement):
 class ThickSliceCavity(_CavitySliceOffset, _ThickSliceElementBase, BeamElement):
 
 
+    _rf_plan = 'track_cavity_plan'
     _xofields = cavity_slice_xofields(Cavity)
 
     _extra_c_sources = [
@@ -181,6 +182,7 @@ class ThickSliceCavity(_CavitySliceOffset, _ThickSliceElementBase, BeamElement):
 
 class ThickSliceCrabCavity(_ThickSliceElementBase, BeamElement):
 
+    _rf_plan = 'track_rf_plan'
     _xofields = {'_parent': xo.Ref(CrabCavity), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [
@@ -189,6 +191,7 @@ class ThickSliceCrabCavity(_ThickSliceElementBase, BeamElement):
 
 class ThickSliceRFMultipole(_ThickSliceElementBase, BeamElement):
 
+    _rf_plan = 'track_rf_plan'
     _xofields = {'_parent': xo.Ref(RFMultipole), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [

@@ -12,42 +12,26 @@
 #include "xtrack/beam_elements/elements_src/track_rf.h"
 
 GPUFUN
-void ThinSliceCrabCavity_track_local_particle(ThinSliceCrabCavityData el, LocalParticle* part0)
+void ThinSliceCrabCavity_prepare_rf(ThinSliceCrabCavityData el, RFPlan* plan, LocalParticle* part0)
 {
-    track_rf_particles(
-        /*weight*/                ThinSliceCrabCavityData_get_weight(el),
-        /*part0*/                 part0,
-        /*length*/                ThinSliceCrabCavityData_get__parent_length(el),
-        /*voltage*/               0,
-        /*frequency*/             ThinSliceCrabCavityData_get__parent_frequency(el),
-        /*harmonic*/              0.,
-        /*lag*/                   0.,
-        /*phase*/                 0.,
-        /*transverse_voltage*/    ThinSliceCrabCavityData_get__parent_crab_voltage(el),
-        /*transverse_lag*/        ThinSliceCrabCavityData_get__parent_lag(el),
-        /*transverse_phase*/      ThinSliceCrabCavityData_get__parent_phase(el),
-        /*absolute_time*/         ThinSliceCrabCavityData_get__parent_absolute_time(el),
-        /*order*/                 -1, // not used here
-        /*knl*/                   NULL,
-        /*ksl*/                   NULL,
-        /*pn*/                    NULL,
-        /*ps*/                    NULL,
-        /*phase_n*/               NULL,
-        /*phase_s*/               NULL,
-        /*num_kicks*/             1, // kick only
-        /*model*/                 -1, // kick only
-        /*default_model*/         MODEL_DRIFT_KICK_DRIFT_EXPANDED,
-        /*integrator*/            3, // uniform
-        /*default_integrator*/    INTEGRATOR_UNIFORM,
-        /*radiation_flag*/        0, // not used here
-        /*radiation_flag_parent*/ 0, // not used here
-        /*lag_taper*/             ThinSliceCrabCavityData_get__parent_lag_taper(el),
-        /*phase_taper*/           ThinSliceCrabCavityData_get__parent_phase_taper(el),
-        /*body_active*/           1,
-        /*edge_entry_active*/     0, // not used here
-        /*edge_exit_active*/      0  // not used here
-    );
-
+    // Settings aligned by hand: not formatted
+    // clang-format off
+    RFSettings rf;
+    RFSettings_init_default(&rf);
+    rf.weight                 = ThinSliceCrabCavityData_get_weight(el);
+    rf.length                 = ThinSliceCrabCavityData_get__parent_length(el);
+    rf.frequency              = ThinSliceCrabCavityData_get__parent_frequency(el);
+    rf.transverse_voltage     = ThinSliceCrabCavityData_get__parent_crab_voltage(el);
+    rf.transverse_lag         = ThinSliceCrabCavityData_get__parent_lag(el);
+    rf.transverse_phase       = ThinSliceCrabCavityData_get__parent_phase(el);
+    rf.lag_taper              = ThinSliceCrabCavityData_get__parent_lag_taper(el);
+    rf.phase_taper            = ThinSliceCrabCavityData_get__parent_phase_taper(el);
+    rf.absolute_time          = ThinSliceCrabCavityData_get__parent_absolute_time(el);
+    rf.num_kicks              = 1;
+    rf.model                  = MODEL_KICK_ONLY;
+    rf.integrator             = INTEGRATOR_UNIFORM;
+    // clang-format on
+    RFPlan_prepare(plan, &rf, part0);
 }
 
 #endif  // XTRACK_THIN_SLICE_CRABCAVITY_H

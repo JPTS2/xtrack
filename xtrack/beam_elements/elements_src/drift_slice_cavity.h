@@ -36,28 +36,10 @@
             LocalParticle* part0
     ) {
 
-        const int model=CavityModels_effective_model(
-            DriftSliceCavityData_getp__parent(el),part0);
-        if (model>=10) {
-            CavityModels_track_source_interval(
-                DriftSliceCavityData_getp__parent(el),part0,
-                DriftSliceCavityData_get_weight(el),
-                DriftSliceCavityData_get_slice_offset_fraction(el));
-            return;
-        }
-
-        double weight = DriftSliceCavityData_get_weight(el);
-        double length;
-        if (LocalParticle_check_track_flag(part0, XS_FLAG_BACKTRACK)) {
-            length = -weight * DriftSliceCavityData_get__parent_length(el); // m
-        }
-        else {
-            length = weight * DriftSliceCavityData_get__parent_length(el); // m
-        }
-
-        START_PER_PARTICLE_BLOCK(part0, part);
-            Drift_single_particle(part, length);
-        END_PER_PARTICLE_BLOCK;
+        CavityModels_track_drift_slice(
+            DriftSliceCavityData_getp__parent(el),part0,
+            DriftSliceCavityData_get_weight(el),
+            DriftSliceCavityData_get_slice_offset_fraction(el));
     }
 
     #endif

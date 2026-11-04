@@ -12,42 +12,31 @@
 #include "xtrack/beam_elements/elements_src/track_rf.h"
 
 GPUFUN
-void ThinSliceRFMultipole_track_local_particle(ThinSliceRFMultipoleData el, LocalParticle* part0){
-
-    track_rf_particles(
-        /*weight*/                ThinSliceRFMultipoleData_get_weight(el),
-        /*part0*/                 part0,
-        /*length*/                ThinSliceRFMultipoleData_get__parent_length(el),
-        /*voltage*/               ThinSliceRFMultipoleData_get__parent_voltage(el),
-        /*frequency*/             ThinSliceRFMultipoleData_get__parent_frequency(el),
-        /*harmonic*/              0.,
-        /*lag*/                   ThinSliceRFMultipoleData_get__parent_lag(el),
-        /*phase*/                 ThinSliceRFMultipoleData_get__parent_phase(el),
-        /*transverse_voltage*/    0.,
-        /*transverse_lag*/        0.,
-        /*transverse_phase*/      0.,
-        /*absolute_time*/         ThinSliceRFMultipoleData_get__parent_absolute_time(el),
-        /*order*/                 ThinSliceRFMultipoleData_get__parent_order(el),
-        /*knl*/                   ThinSliceRFMultipoleData_getp1__parent_knl(el, 0),
-        /*ksl*/                   ThinSliceRFMultipoleData_getp1__parent_ksl(el, 0),
-        /*pn*/                    ThinSliceRFMultipoleData_getp1__parent_pn(el, 0),
-        /*ps*/                    ThinSliceRFMultipoleData_getp1__parent_ps(el, 0),
-        /*phase_n*/               ThinSliceRFMultipoleData_getp1__parent_phase_n(el, 0),
-        /*phase_s*/               ThinSliceRFMultipoleData_getp1__parent_phase_s(el, 0),
-        /*num_kicks*/             1, // kick only
-        /*model*/                 -1, // kick only
-        /*default_model*/         MODEL_DRIFT_KICK_DRIFT_EXPANDED,
-        /*integrator*/            3, // uniform
-        /*default_integrator*/    INTEGRATOR_UNIFORM,
-        /*radiation_flag*/        0, // not used here
-        /*radiation_flag_parent*/ 0, // not used here
-        /*lag_taper*/             0., // not used here
-        /*phase_taper*/           0., // not used here
-        /*body_active*/           1,
-        /*edge_entry_active*/     0, // not used here
-        /*edge_exit_active*/      0  // not used here
-    );
-
+void ThinSliceRFMultipole_prepare_rf(ThinSliceRFMultipoleData el, RFPlan* plan, LocalParticle* part0)
+{
+    // Settings aligned by hand: not formatted
+    // clang-format off
+    RFSettings rf;
+    RFSettings_init_default(&rf);
+    rf.weight                 = ThinSliceRFMultipoleData_get_weight(el);
+    rf.length                 = ThinSliceRFMultipoleData_get__parent_length(el);
+    rf.voltage                = ThinSliceRFMultipoleData_get__parent_voltage(el);
+    rf.frequency              = ThinSliceRFMultipoleData_get__parent_frequency(el);
+    rf.lag                    = ThinSliceRFMultipoleData_get__parent_lag(el);
+    rf.phase                  = ThinSliceRFMultipoleData_get__parent_phase(el);
+    rf.absolute_time          = ThinSliceRFMultipoleData_get__parent_absolute_time(el);
+    rf.order                  = ThinSliceRFMultipoleData_get__parent_order(el);
+    rf.knl                    = ThinSliceRFMultipoleData_getp1__parent_knl(el, 0);
+    rf.ksl                    = ThinSliceRFMultipoleData_getp1__parent_ksl(el, 0);
+    rf.pn                     = ThinSliceRFMultipoleData_getp1__parent_pn(el, 0);
+    rf.ps                     = ThinSliceRFMultipoleData_getp1__parent_ps(el, 0);
+    rf.phase_n                = ThinSliceRFMultipoleData_getp1__parent_phase_n(el, 0);
+    rf.phase_s                = ThinSliceRFMultipoleData_getp1__parent_phase_s(el, 0);
+    rf.num_kicks              = 1;
+    rf.model                  = MODEL_KICK_ONLY;
+    rf.integrator             = INTEGRATOR_UNIFORM;
+    // clang-format on
+    RFPlan_prepare(plan, &rf, part0);
 }
 
 #endif

@@ -5,7 +5,7 @@
 #ifndef XTRACK_CAVITY_MODELS_PARAXIAL_H
 #define XTRACK_CAVITY_MODELS_PARAXIAL_H
 
-// Phase-resolved paraxial cavity (PLAN P8, D29): both RF waves without
+// Phase-resolved paraxial cavity: both RF waves without
 // averaging, at quadratic transverse order. In the gauge
 // phi = (r^2/4) d_z e, A_perp = 0, A_z = -int e dt - (r^2/4) d_t e, with e the
 // on-axis E_z, the Hamiltonian is linear in the field; per wave (amplitude a,

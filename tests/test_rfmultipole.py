@@ -196,6 +196,19 @@ def test_thick_order_zero_rfmultipole_equals_thick_crab_cavity(test_context):
 
 
 @for_all_test_contexts
+def test_misaligned_thick_rfmultipole_uses_its_length(test_context):
+    misalignment = dict(shift_x=1e-3, shift_s=.01, rot_y_rad=2e-3, rot_x_rad=-1e-3,
+                        rot_s_rad=.1, rot_shift_anchor=.2)
+    common = dict(_context=test_context, length=.5, frequency=4e8, num_kicks=5,
+                  **misalignment)
+    multipole = xt.RFMultipole(knl=[1e-5], phase_n=[np.pi / 2], **common)
+    crab_voltage = 1e-5 * 1e9
+    crab = xt.CrabCavity(crab_voltage=crab_voltage, **common)
+    np.testing.assert_allclose(_end(multipole, test_context), _end(crab, test_context),
+                               rtol=0, atol=1e-14)
+
+
+@for_all_test_contexts
 def test_thick_rfmultipole_is_symplectic_and_reverses(test_context):
     line = xt.Line(elements=[xt.RFMultipole(_context=test_context, num_kicks=7,
         integrator='yoshida-4', model='drift-kick-drift-exact', **_THICK)])

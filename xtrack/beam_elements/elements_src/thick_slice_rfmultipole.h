@@ -12,42 +12,31 @@
 #include "xtrack/beam_elements/elements_src/track_rf.h"
 
 GPUFUN
-void ThickSliceRFMultipole_track_local_particle(ThickSliceRFMultipoleData el, LocalParticle* part0){
-
-    track_rf_particles(
-        /*weight*/                ThickSliceRFMultipoleData_get_weight(el),
-        /*part0*/                 part0,
-        /*length*/                ThickSliceRFMultipoleData_get__parent_length(el),
-        /*voltage*/               ThickSliceRFMultipoleData_get__parent_voltage(el),
-        /*frequency*/             ThickSliceRFMultipoleData_get__parent_frequency(el),
-        /*harmonic*/              0.,
-        /*lag*/                   ThickSliceRFMultipoleData_get__parent_lag(el),
-        /*phase*/                 ThickSliceRFMultipoleData_get__parent_phase(el),
-        /*transverse_voltage*/    0.,
-        /*transverse_lag*/        0.,
-        /*transverse_phase*/      0.,
-        /*absolute_time*/         ThickSliceRFMultipoleData_get__parent_absolute_time(el),
-        /*order*/                 ThickSliceRFMultipoleData_get__parent_order(el),
-        /*knl*/                   ThickSliceRFMultipoleData_getp1__parent_knl(el, 0),
-        /*ksl*/                   ThickSliceRFMultipoleData_getp1__parent_ksl(el, 0),
-        /*pn*/                    ThickSliceRFMultipoleData_getp1__parent_pn(el, 0),
-        /*ps*/                    ThickSliceRFMultipoleData_getp1__parent_ps(el, 0),
-        /*phase_n*/               ThickSliceRFMultipoleData_getp1__parent_phase_n(el, 0),
-        /*phase_s*/               ThickSliceRFMultipoleData_getp1__parent_phase_s(el, 0),
-        /*num_kicks*/             ThickSliceRFMultipoleData_get__parent_num_kicks(el),
-        /*model*/                 ThickSliceRFMultipoleData_get__parent_length(el) == 0. ? MODEL_KICK_ONLY : ThickSliceRFMultipoleData_get__parent_model(el),
-        /*default_model*/         MODEL_DRIFT_KICK_DRIFT_EXPANDED,
-        /*integrator*/            ThickSliceRFMultipoleData_get__parent_integrator(el),
-        /*default_integrator*/    INTEGRATOR_UNIFORM,
-        /*radiation_flag*/        0, // not used here
-        /*radiation_flag_parent*/ 0, // not used here
-        /*lag_taper*/             0., // not used here
-        /*phase_taper*/           0., // not used here
-        /*body_active*/           1,
-        /*edge_entry_active*/     0, // not used here
-        /*edge_exit_active*/      0  // not used here
-    );
-
+void ThickSliceRFMultipole_prepare_rf(ThickSliceRFMultipoleData el, RFPlan* plan, LocalParticle* part0)
+{
+    // Settings aligned by hand: not formatted
+    // clang-format off
+    RFSettings rf;
+    RFSettings_init_default(&rf);
+    rf.weight                 = ThickSliceRFMultipoleData_get_weight(el);
+    rf.length                 = ThickSliceRFMultipoleData_get__parent_length(el);
+    rf.voltage                = ThickSliceRFMultipoleData_get__parent_voltage(el);
+    rf.frequency              = ThickSliceRFMultipoleData_get__parent_frequency(el);
+    rf.lag                    = ThickSliceRFMultipoleData_get__parent_lag(el);
+    rf.phase                  = ThickSliceRFMultipoleData_get__parent_phase(el);
+    rf.absolute_time          = ThickSliceRFMultipoleData_get__parent_absolute_time(el);
+    rf.order                  = ThickSliceRFMultipoleData_get__parent_order(el);
+    rf.knl                    = ThickSliceRFMultipoleData_getp1__parent_knl(el, 0);
+    rf.ksl                    = ThickSliceRFMultipoleData_getp1__parent_ksl(el, 0);
+    rf.pn                     = ThickSliceRFMultipoleData_getp1__parent_pn(el, 0);
+    rf.ps                     = ThickSliceRFMultipoleData_getp1__parent_ps(el, 0);
+    rf.phase_n                = ThickSliceRFMultipoleData_getp1__parent_phase_n(el, 0);
+    rf.phase_s                = ThickSliceRFMultipoleData_getp1__parent_phase_s(el, 0);
+    rf.num_kicks              = ThickSliceRFMultipoleData_get__parent_num_kicks(el);
+    rf.model                  = ThickSliceRFMultipoleData_get__parent_length(el) == 0. ? MODEL_KICK_ONLY : ThickSliceRFMultipoleData_get__parent_model(el);
+    rf.integrator             = ThickSliceRFMultipoleData_get__parent_integrator(el);
+    // clang-format on
+    RFPlan_prepare(plan, &rf, part0);
 }
 
 #endif

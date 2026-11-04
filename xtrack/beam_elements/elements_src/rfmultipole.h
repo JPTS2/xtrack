@@ -9,42 +9,32 @@
 #include "xtrack/beam_elements/elements_src/track_rf.h"
 
 GPUFUN
-void RFMultipole_track_local_particle(RFMultipoleData el, LocalParticle* part0){
-
-    track_rf_particles(
-        /*weight*/                1.,
-        /*part0*/                 part0,
-        /*length*/                RFMultipoleData_get_length(el),
-        /*voltage*/               RFMultipoleData_get_voltage(el),
-        /*frequency*/             RFMultipoleData_get_frequency(el),
-        /*harmonic*/              0.,
-        /*lag*/                   RFMultipoleData_get_lag(el),
-        /*phase*/                 RFMultipoleData_get_phase(el),
-        /*transverse_voltage*/    0.,
-        /*transverse_lag*/        0.,
-        /*transverse_phase*/      0.,
-        /*absolute_time*/         RFMultipoleData_get_absolute_time(el),
-        /*order*/                 RFMultipoleData_get_order(el),
-        /*knl*/                   RFMultipoleData_getp1_knl(el, 0),
-        /*ksl*/                   RFMultipoleData_getp1_ksl(el, 0),
-        /*pn*/                    RFMultipoleData_getp1_pn(el, 0),
-        /*ps*/                    RFMultipoleData_getp1_ps(el, 0),
-        /*phase_n*/               RFMultipoleData_getp1_phase_n(el, 0),
-        /*phase_s*/               RFMultipoleData_getp1_phase_s(el, 0),
-        /*num_kicks*/             RFMultipoleData_get_num_kicks(el),
-        /*model*/                 RFMultipoleData_get_length(el) == 0. ? MODEL_KICK_ONLY : RFMultipoleData_get_model(el),
-        /*default_model*/         MODEL_DRIFT_KICK_DRIFT_EXPANDED,
-        /*integrator*/            RFMultipoleData_get_integrator(el),
-        /*default_integrator*/    INTEGRATOR_UNIFORM,
-        /*radiation_flag*/        0, // not used here
-        /*radiation_flag_parent*/ 0, // not used here
-        /*lag_taper*/             0., // not used here
-        /*phase_taper*/           0., // not used here
-        /*body_active*/           1,
-        /*edge_entry_active*/     0, // not used here
-        /*edge_exit_active*/      0  // not used here
-    );
-
+void RFMultipole_prepare_rf(RFMultipoleData el, RFPlan* plan, LocalParticle* part0)
+{
+    // Settings aligned by hand: not formatted
+    // clang-format off
+    RFSettings rf;
+    RFSettings_init_default(&rf);
+    rf.weight                 = 1.;
+    rf.length                 = RFMultipoleData_get_length(el);
+    rf.voltage                = RFMultipoleData_get_voltage(el);
+    rf.frequency              = RFMultipoleData_get_frequency(el);
+    rf.lag                    = RFMultipoleData_get_lag(el);
+    rf.phase                  = RFMultipoleData_get_phase(el);
+    rf.absolute_time          = RFMultipoleData_get_absolute_time(el);
+    rf.order                  = RFMultipoleData_get_order(el);
+    rf.knl                    = RFMultipoleData_getp1_knl(el, 0);
+    rf.ksl                    = RFMultipoleData_getp1_ksl(el, 0);
+    rf.pn                     = RFMultipoleData_getp1_pn(el, 0);
+    rf.ps                     = RFMultipoleData_getp1_ps(el, 0);
+    rf.phase_n                = RFMultipoleData_getp1_phase_n(el, 0);
+    rf.phase_s                = RFMultipoleData_getp1_phase_s(el, 0);
+    rf.num_kicks              = RFMultipoleData_get_num_kicks(el);
+    rf.model                  = RFMultipoleData_get_length(el) == 0. ? MODEL_KICK_ONLY : RFMultipoleData_get_model(el);
+    rf.integrator             = RFMultipoleData_get_integrator(el);
+    // clang-format on
+    RFPlan_prepare(plan, &rf, part0);
+    plan->is_thick = RFMultipoleData_get_length(el) != 0.;
 }
 
 #endif

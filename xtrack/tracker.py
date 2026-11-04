@@ -862,8 +862,12 @@ class Tracker:
             (ii, cc) for ii, cc in enumerate(kernel_element_classes)
             if vars(cc._DressingClass).get('_magnet_plan', False)]
 
+        rf_classes = [
+            (ii, cc) for ii, cc in enumerate(kernel_element_classes)
+            if vars(cc._DressingClass).get('_rf_plan')]
+
         src_lines = []
-        src_lines.append(_magnet_plan_source(magnet_classes))
+        src_lines.append(_magnet_plan_source(magnet_classes, rf_classes))
         src_lines.append(
             r"""
             /*gpukern*/
@@ -1034,9 +1038,10 @@ class Tracker:
         )
 
         magnet_ids = [ii for ii, _ in magnet_classes]
+        plan_ids = magnet_ids + [ii for ii, _ in rf_classes]
         for ii, cc in enumerate(kernel_element_classes):
             ccnn = cc.__name__.replace("Data", "")
-            if ii in magnet_ids:
+            if ii in plan_ids:
                 src_lines.append("\n#ifdef XTRACK_TPSA_TRACK")
             src_lines.append(
                 f"""
@@ -1066,7 +1071,7 @@ class Tracker:
                 """
                             break;"""
             )
-            if ii in magnet_ids:
+            if ii in plan_ids:
                 src_lines.append("#endif")
 
         if magnet_ids:
@@ -1084,6 +1089,26 @@ class Tracker:
                             else {{
                                 track_magnet_particles(&lpart, plan);
                             }}
+                            #ifdef XTRACK_GLOBAL_XY_LIMIT
+                            if (plan->is_thick) global_aperture_check(&lpart);
+                            #endif
+                            break;
+                        }}
+#endif
+""")
+
+        rf_trackers = {vars(cc._DressingClass)['_rf_plan'] for _, cc in rf_classes}
+        for tracker_name in sorted(rf_trackers):
+            case_labels = "\n".join(
+                f"                        case {ii}:" for ii, cc in rf_classes
+                if vars(cc._DressingClass)['_rf_plan'] == tracker_name)
+            src_lines.append(f"""
+#ifndef XTRACK_TPSA_TRACK
+{case_labels}
+                        {{
+                            /*gpuglmem*/ const RFPlan* plan = (/*gpuglmem*/ const RFPlan*) (
+                                magnet_plans + MAGNET_PLAN_BYTES * magnet_plan_slots[elem_idx]);
+                            {tracker_name}(&lpart, plan);
                             #ifdef XTRACK_GLOBAL_XY_LIMIT
                             if (plan->is_thick) global_aperture_check(&lpart);
                             #endif
@@ -2380,14 +2405,14 @@ def _is_resume_within_turn(tt, tt_resume):
     return tt_resume is not None and tt == tt_resume
 
 
-# Magnet plans (track_magnet.h): every magnet is prepared once per track call
-# into a plan, MAGNET_PLAN_BYTES apart (at least sizeof(MagnetPlan), checked
-# in C), and tracked from it by one function, track_magnet_particles.
+# Plans (track_magnet.h, track_rf.h): every magnet and RF element is prepared
+# once per track call into a plan, MAGNET_PLAN_BYTES apart (at least the size of
+# the plan, checked in C), and tracked from it by one function of its kind.
 MAGNET_PLAN_BYTES = 1536
 
 
-def _magnet_plan_source(magnet_classes):
-    if not magnet_classes:
+def _magnet_plan_source(magnet_classes, rf_classes=()):
+    if not magnet_classes and not rf_classes:
         return """
 #ifndef XTRACK_TPSA_TRACK
 /*gpukern*/
@@ -2409,15 +2434,21 @@ void prepare_magnet_plans(
                 ({cc.__name__}) el, plan, part);
             break;"""
         for ii, cc in magnet_classes)
-    return f"""
-#ifndef XTRACK_TPSA_TRACK
-#define MAGNET_PLAN_BYTES ({MAGNET_PLAN_BYTES})
-#if defined(__cplusplus)
-static_assert(sizeof(MagnetPlan) <= MAGNET_PLAN_BYTES, "MAGNET_PLAN_BYTES too small");
+    rf_cases = "\n".join(
+        f"""            case {ii}:
+                {cc.__name__.replace("Data", "")}_prepare_plan(
+                    ({cc.__name__}) el, (RFPlan*) plan, &lpart);
+                break;"""
+        for ii, cc in rf_classes)
+    plan_asserts = "\n".join(
+        f"""#if defined(__cplusplus)
+static_assert(sizeof({name}) <= MAGNET_PLAN_BYTES, "MAGNET_PLAN_BYTES too small");
 #elif !defined(XO_CONTEXT_CL)  // OpenCL C has no static assertion
-_Static_assert(sizeof(MagnetPlan) <= MAGNET_PLAN_BYTES, "MAGNET_PLAN_BYTES too small");
-#endif
-
+_Static_assert(sizeof({name}) <= MAGNET_PLAN_BYTES, "MAGNET_PLAN_BYTES too small");
+#endif"""
+        for name, classes in (('MagnetPlan', magnet_classes), ('RFPlan', rf_classes))
+        if classes)
+    magnet_functions = f"""
 // The plan of the magnet el, of type elem_type
 GPUFUN
 void prepare_magnet_plan(
@@ -2443,7 +2474,15 @@ void track_magnet_tapered(
     prepare_magnet_plan(el, elem_type, &plan, part);
     track_magnet_particles(part, &plan);
 }}
-
+""" if magnet_classes else ""
+    magnet_default = """            default:
+                prepare_magnet_plan(el, elem_type, plan, &lpart);
+""" if magnet_classes else ""
+    return f"""
+#ifndef XTRACK_TPSA_TRACK
+#define MAGNET_PLAN_BYTES ({MAGNET_PLAN_BYTES})
+{plan_asserts}
+{magnet_functions}
 /*gpukern*/
 void prepare_magnet_plans(
     /*gpuglmem*/ int8_t* buffer,
@@ -2456,7 +2495,8 @@ void prepare_magnet_plans(
                  uint64_t track_flags
 ) {{
     // A plan reads only the track flags of the particle (the direction of
-    // travel); tapering makes its plans at the elements (track_magnet_tapered)
+    // travel); tapering makes the magnets' plans at the elements
+    // (track_magnet_tapered), and RF elements ignore the taper in their plans
     LocalParticle lpart;
     lpart.io_buffer = io_buffer;
     lpart.track_flags = track_flags & ~(((uint64_t) 1) << XS_FLAG_SR_TAPER);
@@ -2466,8 +2506,10 @@ void prepare_magnet_plans(
         const int64_t elem_idx = magnet_plan_elements[slot];
         /*gpuglmem*/ void* el = ElementRefData_member_elements(elem_ref_data, elem_idx);
         MagnetPlan* plan = (MagnetPlan*) (magnet_plans + MAGNET_PLAN_BYTES * slot);
-        prepare_magnet_plan(
-            el, ElementRefData_typeid_elements(elem_ref_data, elem_idx), plan, &lpart);
+        const int64_t elem_type = ElementRefData_typeid_elements(elem_ref_data, elem_idx);
+        switch (elem_type) {{
+{rf_cases}
+{magnet_default}        }}
     END_VECTORIZE;
 }}
 #endif
@@ -2483,12 +2525,12 @@ def _with_prepare_kernel(kernels):
 
 
 class _MagnetPlans:
-    """The plans of the magnets of a line: a buffer of MAGNET_PLAN_BYTES per
-    magnet, the slot of each element (-1: not a magnet) and the element of
-    each slot, in the order of the line."""
+    """The plans of the magnets and RF elements of a line: a buffer of
+    MAGNET_PLAN_BYTES per element, the slot of each element (-1: no plan) and
+    the element of each slot, in the order of the line."""
 
     def __init__(self, tracker_data, context):
-        is_magnet = [getattr(el, '_magnet_plan', False)
+        is_magnet = [bool(getattr(el, '_magnet_plan', False) or getattr(el, '_rf_plan', None))
                      for el in tracker_data.elements]
         self.elements = np.flatnonzero(is_magnet).astype(np.int64)
         slots = np.full(len(is_magnet), -1, dtype=np.int64)

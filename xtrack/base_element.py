@@ -268,6 +268,7 @@ def _generate_track_local_particle_with_transformations(
     xofields,
     is_thin_slice,
     magnet_plan,
+    rf_plan=None,
 ):
     options = {
         'ELEMENT_NAME': element_name,
@@ -275,6 +276,9 @@ def _generate_track_local_particle_with_transformations(
 
     if magnet_plan:
         options['MAGNET_PLAN'] = 1
+
+    if rf_plan:
+        options['RF_PLAN'] = rf_plan
 
     if allow_rot_and_shift:
         options['ALLOW_ROT_AND_SHIFT'] = 1
@@ -505,6 +509,9 @@ class MetaBeamElement(xo.MetaHybridClass):
                     # Magnets: a class with `_magnet_plan = True` is tracked
                     # through a MagnetPlan (track_magnet.h, tracker.py)
                     magnet_plan=data.get('_magnet_plan', False),
+                    # RF elements: `_rf_plan` names the function tracking the
+                    # RFPlan (track_rf.h, cavity_models_adapter.h)
+                    rf_plan=data.get('_rf_plan'),
                 )
             )
 

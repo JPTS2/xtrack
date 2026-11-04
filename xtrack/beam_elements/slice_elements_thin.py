@@ -139,6 +139,7 @@ class ThinSliceCavity(_ThinSliceElementBase, BeamElement):
 
 
 
+    _rf_plan = 'track_cavity_plan'
     _xofields = {'_parent': xo.Ref(Cavity), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [
@@ -173,6 +174,7 @@ class ThinSliceCavity(_ThinSliceElementBase, BeamElement):
 
 class ThinSliceCrabCavity(_ThinSliceElementBase, BeamElement):
 
+    _rf_plan = 'track_rf_plan'
     _xofields = {'_parent': xo.Ref(CrabCavity), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [
@@ -195,6 +197,7 @@ class ThinSliceCrabCavity(_ThinSliceElementBase, BeamElement):
 
 class ThinSliceRFMultipole(_ThinSliceElementBase, BeamElement):
 
+    _rf_plan = 'track_rf_plan'
     _xofields = {'_parent': xo.Ref(RFMultipole), **COMMON_SLICE_XO_FIELDS}
 
     _extra_c_sources = [

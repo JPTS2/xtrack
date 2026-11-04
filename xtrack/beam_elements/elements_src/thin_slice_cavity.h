@@ -13,53 +13,29 @@
 #include "xtrack/beam_elements/elements_src/cavity_models_adapter.h"
 
 GPUFUN
-void ThinSliceCavity_track_local_particle(ThinSliceCavityData el, LocalParticle* part0)
+void ThinSliceCavity_prepare_rf(ThinSliceCavityData el, RFPlan* plan, LocalParticle* part0)
 {
-    // The taper pass (tapering.py) only shares the energy loss among the
-    // cavities at zero frequency: every model uses the longitudinal map there.
-    const int64_t model = CavityModels_effective_model(ThinSliceCavityData_getp__parent(el), part0);
-    if (model >= 10 && !LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER)) {
-        if (ThinSliceCavityData_get__parent_spin_tracking(el)) {
-            START_PER_PARTICLE_BLOCK(part0, part)
-                LocalParticle_set_state(part, -99744);
-            END_PER_PARTICLE_BLOCK;
-        }
-        return;
-    }
-    track_rf_particles(
-        /*weight*/                ThinSliceCavityData_get_weight(el),
-        /*part0*/                 part0,
-        /*length*/                ThinSliceCavityData_get__parent_length(el),
-        /*voltage*/               ThinSliceCavityData_get__parent_voltage(el),
-        /*frequency*/             ThinSliceCavityData_get__parent_frequency(el),
-        /*harmonic*/              ThinSliceCavityData_get__parent_harmonic(el),
-        /*lag*/                   ThinSliceCavityData_get__parent_lag(el),
-        /*phase*/                 ThinSliceCavityData_get__parent_phase(el),
-        /*transverse_voltage*/    0.,
-        /*transverse_lag*/        0.,
-        /*transverse_phase*/      0.,
-        /*absolute_time*/         ThinSliceCavityData_get__parent_absolute_time(el),
-        /*order*/                 -1, // not used here
-        /*knl*/                   NULL,
-        /*ksl*/                   NULL,
-        /*pn*/                    NULL,
-        /*ps*/                    NULL,
-        /*phase_n*/               NULL,
-        /*phase_s*/               NULL,
-        /*num_kicks*/             1, // kick only
-        /*model*/                 model >= 10 ? 0 : -1, // kick only
-        /*default_model*/         MODEL_DRIFT_KICK_DRIFT_EXPANDED,
-        /*integrator*/            3, // uniform
-        /*default_integrator*/    INTEGRATOR_UNIFORM,
-        /*radiation_flag*/        0, // not used here
-        /*radiation_flag_parent*/ 0, // not used here
-        /*lag_taper*/             ThinSliceCavityData_get__parent_lag_taper(el),
-        /*phase_taper*/           ThinSliceCavityData_get__parent_phase_taper(el),
-        /*body_active*/           1,
-        /*edge_entry_active*/     0, // not used here
-        /*edge_exit_active*/      0  // not used here
-    );
-
+    // Settings aligned by hand: not formatted
+    // clang-format off
+    RFSettings rf;
+    RFSettings_init_default(&rf);
+    rf.weight                 = ThinSliceCavityData_get_weight(el);
+    rf.length                 = ThinSliceCavityData_get__parent_length(el);
+    rf.voltage                = ThinSliceCavityData_get__parent_voltage(el);
+    rf.frequency              = ThinSliceCavityData_get__parent_frequency(el);
+    rf.harmonic               = ThinSliceCavityData_get__parent_harmonic(el);
+    rf.lag                    = ThinSliceCavityData_get__parent_lag(el);
+    rf.phase                  = ThinSliceCavityData_get__parent_phase(el);
+    rf.lag_taper              = ThinSliceCavityData_get__parent_lag_taper(el);
+    rf.phase_taper            = ThinSliceCavityData_get__parent_phase_taper(el);
+    rf.absolute_time          = ThinSliceCavityData_get__parent_absolute_time(el);
+    rf.num_kicks              = 1;
+    rf.model                  = MODEL_KICK_ONLY;
+    rf.integrator             = INTEGRATOR_UNIFORM;
+    // clang-format on
+    RFPlan_prepare(plan, &rf, part0);
+    CavityPlan_prepare(ThinSliceCavityData_getp__parent(el), part0, 1., 0., &plan->cavity);
+    plan->cavity.thin_slice = 1;
 }
 
 #endif  // XTRACK_THIN_SLICE_CAVITY_H

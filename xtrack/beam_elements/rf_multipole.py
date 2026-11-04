@@ -63,6 +63,7 @@ class RFMultipole(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         _for_docstring_alignment, '\n',
         _docstring_general_notes, '\n\n'])
 
+    _rf_plan = 'track_rf_plan'
     _xofields={
         'length': xo.Float64,
         'voltage': xo.Float64,

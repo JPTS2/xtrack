@@ -179,6 +179,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     has_backtrack = True
     allow_loss_refinement = True
 
+    _rf_plan = 'track_cavity_plan'
     _xofields = {
         'length': xo.Float64,
         'voltage': FloatOrTpsa,

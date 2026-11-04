@@ -12,6 +12,8 @@
      elements where we disallow some transformations.
    - MAGNET_PLAN: The element is a magnet, prepared as a MagnetPlan by
      ELEMENT_NAME_prepare_magnet and tracked by track_magnet_particles.
+   - RF_PLAN: The element is an RF element, prepared as an RFPlan by
+     ELEMENT_NAME_prepare_rf and tracked by the function named by RF_PLAN.
 */
 
 #ifndef ELEMENT_NAME
@@ -80,19 +82,29 @@
 #endif
 
 
-#ifdef MAGNET_PLAN
+#if defined(MAGNET_PLAN) || defined(RF_PLAN)
 
-/* The plan of a magnet: the magnet (ELEMENT_NAME_prepare_magnet) and its
-   misalignment, applied by track_magnet_particles. Not inlined: the classes
+#ifdef RF_PLAN
+    #define PLAN_TYPE RFPlan
+    #define PREPARE_ELEMENT CONCAT(ELEMENT_NAME, _prepare_rf)
+    #define TRACK_PLAN RF_PLAN
+#else
+    #define PLAN_TYPE MagnetPlan
+    #define PREPARE_ELEMENT CONCAT(ELEMENT_NAME, _prepare_magnet)
+    #define TRACK_PLAN track_magnet_particles
+#endif
+
+/* The plan of an element (ELEMENT_NAME_prepare_magnet or _prepare_rf) and its
+   misalignment, applied when tracking the plan. Not inlined: the classes
    prepared in one switch (prepare_magnet_plan) would add up their frames.
 */
 GPUFUN XT_NOINLINE
 void CONCAT(ELEMENT_NAME, _prepare_plan)(
     ELEMENT_DATA el,
-    MagnetPlan* plan,
+    PLAN_TYPE* plan,
     LocalParticle* part0
 ) {
-    CONCAT(ELEMENT_NAME, _prepare_magnet)(el, plan, part0);
+    PREPARE_ELEMENT(el, plan, part0);
 
     #ifdef IS_THICK
         plan->is_thick = 1;
@@ -117,6 +129,8 @@ void CONCAT(ELEMENT_NAME, _prepare_plan)(
             const double length = GET_PARAM(el, isthick) ? GET_PARAM(el, length) : 0.0;
         #elif defined(IS_THICK)
             const double length = GET_PARAM(el, length);
+        #elif defined(RF_PLAN)
+            const double length = plan->is_thick ? GET_PARAM(el, length) : 0.0;
         #else
             const double length = 0.0;
         #endif
@@ -152,12 +166,16 @@ void CONCAT(ELEMENT_NAME, _track_local_particle_with_transformations)(
     ELEMENT_DATA el,
     LocalParticle* part0
 ) {
-    MagnetPlan plan;
+    PLAN_TYPE plan;
     CONCAT(ELEMENT_NAME, _prepare_plan)(el, &plan, part0);
-    track_magnet_particles(part0, &plan);
+    TRACK_PLAN(part0, &plan);
 }
 
-#else /* MAGNET_PLAN */
+#undef PLAN_TYPE
+#undef PREPARE_ELEMENT
+#undef TRACK_PLAN
+
+#else /* MAGNET_PLAN or RF_PLAN */
 
 /* If transformations are enabled for an element, this applies them on one
    side of it: before the element (at_exit = 0) or after it (at_exit = 1), in
@@ -278,7 +296,7 @@ void CONCAT(ELEMENT_NAME, _track_local_particle_with_transformations)(
 }
 
 
-#endif /* MAGNET_PLAN */
+#endif /* MAGNET_PLAN or RF_PLAN */
 
 
 #undef ELEMENT_DATA

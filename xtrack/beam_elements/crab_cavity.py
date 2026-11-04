@@ -53,6 +53,7 @@ class CrabCavity(_HasModelRF, _HasIntegrator, BeamElement):
     has_backtrack = True
     allow_loss_refinement = True
 
+    _rf_plan = 'track_rf_plan'
     _xofields = {
         'length': xo.Float64,
         'crab_voltage': xo.Float64,

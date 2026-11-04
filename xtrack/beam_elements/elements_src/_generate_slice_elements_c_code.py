@@ -5,14 +5,13 @@ import re
 
 
 def _is_setting(line, name):
-    """Line setting `name`: a labelled argument (/*name*/ value,) or a
-    MagnetSettings field (magnet.name = value;)."""
-    return f"/*{name}*/" in line or f"magnet.{name} " in line
+    """Line setting `name`: a MagnetSettings field (magnet.name = value;)."""
+    return f"magnet.{name} " in line
 
 
 def _end(line):
-    """End of a setting line: ';' for a MagnetSettings field, else ','."""
-    return ';' if 'magnet.' in line else ','
+    """End of a setting line."""
+    return ';'
 
 
 # MagnetSettings (magnets): the struct is filled by MagnetSettings_init_default
@@ -122,6 +121,26 @@ def slice_settings(lines, generated_class, generating):
         _set_field(lines, 'body_active', '0', 'faces only')
 
 
+def _set_rf_field(lines, name, value):
+    for i, line in enumerate(lines):
+        if re.match(rf'\s*rf\.{name}\s*=', line):
+            lines[i] = line[:line.index('=') + 1] + f' {value};'
+            return
+    raise ValueError(f'Did not find rf.{name}')
+
+
+def rf_slice_settings(lines, generated_class, generating):
+    """RFSettings of a slice, from those of its parent: a thick or thin slice
+    tracks its weight of the body, a thin slice one kick. A slice's thickness
+    comes from its class, not from the parent's length."""
+    _set_rf_field(lines, 'weight', f'{generated_class}Data_get_weight(el)')
+    if generating == 'thin_slice':
+        _set_rf_field(lines, 'num_kicks', '1')
+        _set_rf_field(lines, 'model', 'MODEL_KICK_ONLY')
+        _set_rf_field(lines, 'integrator', 'INTEGRATOR_UNIFORM')
+    lines[:] = [ll for ll in lines if 'plan->is_thick' not in ll]
+
+
 current_directory = os.path.dirname(__file__)
 
 # # list all files starting with "thick_slice_" or "thin_slice_"in the current directory
@@ -211,37 +230,19 @@ for td in to_do:
         out_content = out_content.replace(generated_data_class + '_len_', generated_data_class + '_len__parent_')
 
         if parent_class == 'Cavity':
-            old_call = (generated_class
-                        + 'Models_track_local_particle(el, part0, 1., 0.);')
-            if generating == 'thick_slice':
-                replacement = (
-                    'CavityModels_track_local_particle('
-                    + generated_data_class + '_getp__parent(el), part0, '
-                    + generated_data_class + '_get_weight(el), '
-                    + generated_data_class + '_get_slice_offset_fraction(el));')
-            else:
-                # In a thin *layout*, continuous models are transported on
-                # the intervening source-bearing DriftSlice intervals.
-                # These nodes are identity partition markers, not RF kicks.
-                # Other finite words need their own exact decomposition.
-                replacement = (
-                    'if (' + generated_data_class
-                    + '_get__parent_spin_tracking(el)) {\n'
-                    '            START_PER_PARTICLE_BLOCK(part0, part)\n'
-                    '                LocalParticle_set_state(part, -99744);\n'
-                    '            END_PER_PARTICLE_BLOCK;\n'
-                    '        }')
+            data = generated_data_class
+            parent = f'{data}_getp__parent(el)'
+            old_call = f'{generated_class}Plan_prepare(el, part0, 1., 0., &plan->cavity);'
             if old_call not in out_content:
-                raise ValueError('Cavity model dispatch template changed')
-            out_content = out_content.replace(old_call, replacement)
-            choice = generated_class + 'Models_effective_model(el, part0)'
-            if choice not in out_content:
-                raise ValueError('Cavity adaptive dispatch template changed')
-            out_content = out_content.replace(choice,
-                'CavityModels_effective_model('
-                + generated_data_class + '_getp__parent(el), part0)')
-
-
+                raise ValueError('Cavity plan template changed')
+            if generating == 'thick_slice':
+                new_call = (f'CavityPlan_prepare({parent}, part0, {data}_get_weight(el), '
+                            f'{data}_get_slice_offset_fraction(el), &plan->cavity);')
+            else:
+                # In a thin layout the physical models act on the drift slices.
+                new_call = (f'CavityPlan_prepare({parent}, part0, 1., 0., &plan->cavity);\n'
+                            '    plan->cavity.thin_slice = 1;')
+            out_content = out_content.replace(old_call, new_call)
 
         if parent_class not in ['Cavity', 'CrabCavity', 'RFMultipole']:
             assert generated_data_class + '_getp1_' in out_content
@@ -267,139 +268,7 @@ for td in to_do:
             # Magnets: set or reset the fields a slice changes
             slice_settings(out_lines, generated_class, generating)
         else:
-            # Handle "radiation_flag" and "radiation_flag_parent"
-    
-            if parent_class not in ['Cavity', 'CrabCavity', 'RFMultipole']:
-                # Identify the line setting radiation_flag
-                i_radiation_flag_line = None
-                for i, line in enumerate(out_lines):
-                    if _is_setting(line, "radiation_flag"):
-                        i_radiation_flag_line = i
-                        break
-                assert i_radiation_flag_line is not None, "Could not find radiation_flag line"
-                i_parent_line = i_radiation_flag_line + 1
-
-                assert "get__parent_radiation_flag" in out_lines[i_radiation_flag_line]
-                out_lines[i_radiation_flag_line] = out_lines[i_radiation_flag_line].replace(
-                    "get__parent_radiation_flag", "get_radiation_flag")
-
-                ln_parent_radiation_flag = out_lines[i_parent_line]
-                assert "0" in ln_parent_radiation_flag, "Expected '0' in radiation_flag line"
-                ln_parent_radiation_flag = ln_parent_radiation_flag.split('0')[0]
-                out_lines[i_parent_line] = ln_parent_radiation_flag + generated_data_class + "_get__parent_radiation_flag(el)" + _end(ln_parent_radiation_flag)
-
-            # pass weight
-            done_weight = False
-            for i, line in enumerate(out_lines):
-                if _is_setting(line, "weight"):
-                    assert '1' in line, "Expected '1' in weight line"
-                    ll = line
-                    ll = ll.split('1')[0]
-                    if generating == "thick_slice" or generating == "thin_slice":
-                        ll += generated_data_class + "_get_weight(el)" + _end(line)
-                    else:
-                        ll += '0.' + _end(line) + ' // unused'
-                    out_lines[i] = ll
-                    done_weight = True
-            assert done_weight, "Did not find weight line to modify"
-
-            found_integrator = False
-            found_model = False
-            found_num_multipole_kicks = False
-            found_enable_body = False
-            found_radiation_record = False
-            for i, line in enumerate(out_lines):
-                if _is_setting(line, "integrator"):
-                    found_integrator = True
-                    ll = line
-                    assert generated_data_class + '_get_' in ll
-                    ll = ll.split(generated_data_class + '_get_')[0]
-                    if generating == "thick_slice":
-                        continue
-                    elif generating == "thin_slice":
-                        ll += "3" + _end(line) + " // uniform"
-                    elif generating == "entry_slice" or generating == "exit_slice":
-                        ll += "0" + _end(line) + " // unused"
-                    else:
-                        raise ValueError(f"Unknown generating type: {generating}")
-                    out_lines[i] = ll
-                if _is_setting(line, "model"):
-                    found_model = True
-                    ll = line
-                    if generating == "thick_slice":
-                        continue
-                    assert generated_data_class + '_get_' in ll or '-2' in ll # -2 used for solenoid
-                    if '((' in ll: #case of multipole that has some logic there
-                        ll = ll.split('((')[0]
-                    elif generated_data_class + '_get_' in ll:
-                        ll = ll.split(generated_data_class + '_get_')[0]
-                    elif '-2' in ll:
-                        ll = ll.split('-2')[0]
-                    else:
-                        raise ValueError
-                    if generating == "thin_slice":
-                        ll += "-1" + _end(line) + " // kick only"
-                    elif generating == "entry_slice" or generating == "exit_slice":
-                        ll += "0" + _end(line) + " // unused"
-                    else:
-                        raise ValueError(f"Unknown generating type: {generating}")
-                    out_lines[i] = ll
-                if _is_setting(line, "num_multipole_kicks"):
-                    found_num_multipole_kicks = True
-                    ll = line
-                    assert generated_data_class + '_get_' in ll
-                    if generating == "thick_slice":
-                        continue
-                    elif generating == "thin_slice":
-                        ll = ll.split(generated_data_class + '_get_')[0]
-                        ll += "1" + _end(line) + " // kick only"
-                    elif generating == "entry_slice" or generating == "exit_slice":
-                        ll = ll.split(generated_data_class + '_get_')[0]
-                        ll += "0" + _end(line) + " // unused"
-                    else:
-                        raise ValueError(f"Unknown generating type: {generating}")
-                    out_lines[i] = ll
-                if _is_setting(line, "num_kicks"):
-                    found_num_kicks = True
-                    ll = line
-                    assert generated_data_class + '_get_' in ll
-                    if generating == "thick_slice":
-                        continue
-                    elif generating == "thin_slice":
-                        ll = ll.split(generated_data_class + '_get_')[0]
-                        ll += "1" + _end(line) + " // kick only"
-                    elif generating == "entry_slice" or generating == "exit_slice":
-                        ll = ll.split(generated_data_class + '_get_')[0]
-                        ll += "0" + _end(line) + " // unused"
-                    else:
-                        raise ValueError(f"Unknown generating type: {generating}")
-                    out_lines[i] = ll
-                if _is_setting(line, "body_active"):
-                    found_enable_body = True
-                    ll = line
-                    assert '1' in ll
-                    if generating == "thick_slice" or generating == "thin_slice":
-                        continue
-                    elif generating == "entry_slice" or generating == "exit_slice":
-                        ll = ll.split('1')[0]
-                        ll += "0" + _end(line) + " // disabled"
-                    out_lines[i] = ll
-                if _is_setting(line, "radiation_record"):
-                    found_radiation_record = True
-                    ll = line
-                    if '_getp_' in ll:
-                        assert '(SynchrotronRadiationRecordData)' in ll
-                        ll = ll.split('(SynchrotronRadiationRecordData)')[0]
-                        ll += 'NULL' + _end(line) # Not yet supported in slices
-                    out_lines[i] = ll
-            assert found_integrator, "Did not find integrator line to modify"
-            assert found_model, "Did not find model line to modify"
-            if parent_class in ["Cavity", "CrabCavity", "RFMultipole"]:
-                assert found_num_kicks, "Did not find num_kicks line to modify"
-            else:
-                assert found_num_multipole_kicks, "Did not find num_multipole_kicks line to modify"
-                assert found_radiation_record, "Did not find radiation_record line to modify"
-            assert found_enable_body, "Did not find enable_body line to modify"
+            rf_slice_settings(out_lines, generated_class, generating)
 
         # generated_class from camel case to snake case
         generated_class_snake = ''.join(['_' + c.lower() if c.isupper() else c for c in generated_class]).lstrip('_')
@@ -413,7 +282,7 @@ for td in to_do:
         if parent_class == 'Cavity' and generating == 'thick_slice':
             # The usual alignment wrapper consumes a distance. Store the
             # fraction so changing parent.length preserves the source anchor.
-            marker = 'GPUFUN\nvoid ThickSliceCavity_track_local_particle'
+            marker = 'GPUFUN\nvoid ThickSliceCavity_prepare_rf'
             accessor = '''GPUFUN
 double ThickSliceCavityData_get_slice_offset(ThickSliceCavityData el) {
     const double fraction = ThickSliceCavityData_get__slice_offset_fraction(el);
@@ -508,21 +377,14 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
         if marker not in out_drift_slice:
             raise ValueError('Drift Cavity slice template changed')
         out_drift_slice = out_drift_slice.replace(marker,accessor+marker)
-        marker = '        double weight = DriftSliceCavityData_get_weight(el);'
-        branch = '''        const int model=CavityModels_effective_model(
-            DriftSliceCavityData_getp__parent(el),part0);
-        if (model>=10) {
-            CavityModels_track_source_interval(
-                DriftSliceCavityData_getp__parent(el),part0,
-                DriftSliceCavityData_get_weight(el),
-                DriftSliceCavityData_get_slice_offset_fraction(el));
-            return;
-        }
-
-'''
-        if marker not in out_drift_slice:
-            raise ValueError('Drift Cavity weight template changed')
-        out_drift_slice = out_drift_slice.replace(marker,branch+marker)
+        i_body = out_drift_slice.index('        double weight = DriftSliceCavityData_get_weight(el);')
+        i_end = out_drift_slice.index('    }\n\n    #endif', i_body)
+        out_drift_slice = (out_drift_slice[:i_body]
+            + '''        CavityModels_track_drift_slice(
+            DriftSliceCavityData_getp__parent(el),part0,
+            DriftSliceCavityData_get_weight(el),
+            DriftSliceCavityData_get_slice_offset_fraction(el));
+''' + out_drift_slice[i_end:])
 
     if parent_class == "RBend":
 

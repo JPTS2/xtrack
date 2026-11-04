@@ -9,10 +9,74 @@
 #include "xtrack/beam_elements/elements_src/track_magnet_drift.h"
 #include "xtrack/beam_elements/elements_src/track_magnet_configure.h"
 #include "xtrack/beam_elements/elements_src/integrator.h"
+#include "xtrack/beam_elements/elements_src/track_magnet_transform.h"
 
-#ifndef VSWAP
-    #define VSWAP(a, b) { double tmp = a; a = b; b = tmp; }
-#endif
+// What a Cavity, CrabCavity or RFMultipole sets for its plan; the rest keeps
+// RFSettings_init_default.
+typedef struct RFSettings_s {
+    double weight, length;
+    xt_float_or_tpsa voltage, frequency, harmonic, lag, phase;
+    xt_float_or_tpsa lag_taper, phase_taper;
+    double transverse_voltage, transverse_lag, transverse_phase;
+    int64_t absolute_time, order, num_kicks;
+    GPUGLMEM const double* knl;
+    GPUGLMEM const double* ksl;
+    GPUGLMEM const double* pn;
+    GPUGLMEM const double* ps;
+    GPUGLMEM const double* phase_n;
+    GPUGLMEM const double* phase_s;
+    int8_t model, integrator;
+} RFSettings;
+
+// The kick-drift map of one particle, for one direction of travel.
+typedef struct RFBody_s {
+    double length;
+    xt_float_or_tpsa voltage, frequency, harmonic, lag, phase;
+    double transverse_voltage, transverse_lag, transverse_phase;
+    int64_t absolute_time, order, num_kicks;
+    double factor_knl_ksl;
+    GPUGLMEM const double* knl;
+    GPUGLMEM const double* ksl;
+    GPUGLMEM const double* pn;
+    GPUGLMEM const double* ps;
+    GPUGLMEM const double* phase_n;
+    GPUGLMEM const double* phase_s;
+    int8_t drift_model, integrator;
+    uint8_t kill_energy_kick;
+} RFBody;
+
+// One physical model of a cavity: "adaptive" keeps one per model it can pick.
+typedef struct CavityChoice_s {
+    int controls;
+    int64_t cells;
+} CavityChoice;
+
+// The physical models of a Cavity or a slice of it (cavity_models_adapter.h).
+// "adaptive" keeps the parts of its choice that depend on the element only;
+// each particle's reference is compared with them by CavityPlan_choose.
+typedef struct CavityPlan_s {
+    GPUGLMEM void* el;
+    int model, adaptive, thin_slice;
+    double adaptive_length, adaptive_frequency, adaptive_harmonic;
+    double adaptive_voltage, adaptive_gain;
+    int adaptive_needs_beat, adaptive_beat_small;
+    CavityChoice choice[4];
+    int integrator, profile, magnetic_profile, spin_tracking;
+    int64_t requested;
+    double eta, length, weight;
+    double left_fraction, right_fraction;
+    double start_fraction, end_fraction, direction;
+    int reverse, clear_face, physical_outer;
+} CavityPlan;
+
+// An RF element, or a slice of it, prepared once per element for one direction
+// of travel. The pointers in it point into the element.
+typedef struct RFPlan_s {
+    RFBody body;
+    uint8_t is_thick;   // the global aperture is checked after it
+    MagnetTransform transform;
+    CavityPlan cavity;
+} RFPlan;
 
 
 GPUFUN
@@ -180,44 +244,26 @@ void track_rf_kick_single_particle(
 
 
 GPUFUN
-void track_rf_body_single_particle(
-    LocalParticle* part,
-    double length,
-    xt_float_or_tpsa voltage,
-    xt_float_or_tpsa frequency,
-    xt_float_or_tpsa harmonic,
-    xt_float_or_tpsa lag,
-    xt_float_or_tpsa phase,
-    double transverse_voltage,
-    double transverse_lag,
-    double transverse_phase,
-    int64_t absolute_time,
-    int64_t order,
-    double factor_knl_ksl,
-    GPUGLMEM const double* knl,
-    GPUGLMEM const double* ksl,
-    GPUGLMEM const double* pn,
-    GPUGLMEM const double* ps,
-    GPUGLMEM const double* phase_n,
-    GPUGLMEM const double* phase_s,
-    const int64_t num_kicks,
-    const int8_t drift_model,
-    const int8_t integrator,
-    const uint8_t kill_energy_kick
-) {
+void track_rf_body_single_particle(LocalParticle* part, const RFBody* body) {
+
+    const double length = body->length;
+    const int64_t num_kicks = body->num_kicks;
+    const int8_t integrator = body->integrator;
 
     #define RF_KICK(part, kick_weight) \
         track_rf_kick_single_particle(\
-            part, voltage * (kick_weight), frequency, harmonic, lag, phase,\
-            transverse_voltage * (kick_weight), transverse_lag, transverse_phase,\
-            absolute_time, order, \
-            factor_knl_ksl * (kick_weight), knl, ksl, pn, ps, phase_n, phase_s,\
-            kill_energy_kick\
+            part, body->voltage * (kick_weight), body->frequency, body->harmonic,\
+            body->lag, body->phase,\
+            body->transverse_voltage * (kick_weight), body->transverse_lag,\
+            body->transverse_phase, body->absolute_time, body->order, \
+            body->factor_knl_ksl * (kick_weight), body->knl, body->ksl,\
+            body->pn, body->ps, body->phase_n, body->phase_s,\
+            body->kill_energy_kick\
         )
 
     #define RF_DRIFT(part, dlength) \
         track_magnet_drift_single_particle(\
-            part, (dlength), 0., 0., 0., 0., 0., 0., drift_model\
+            part, (dlength), 0., 0., 0., 0., 0., 0., body->drift_model\
         )
 
     // No radiation implemented for RF elements for now
@@ -239,122 +285,108 @@ void track_rf_body_single_particle(
 }
 
 GPUFUN
-void track_rf_particles(
-    double const weight,
-    LocalParticle* part0,
-    double length,
-    xt_float_or_tpsa voltage,
-    xt_float_or_tpsa frequency,
-    xt_float_or_tpsa harmonic,
-    xt_float_or_tpsa lag,
-    xt_float_or_tpsa phase,
-    double transverse_voltage,
-    double transverse_lag,
-    double transverse_phase,
-    int64_t absolute_time,
-    int64_t order,
-    GPUGLMEM const double* knl,
-    GPUGLMEM const double* ksl,
-    GPUGLMEM const double* pn,
-    GPUGLMEM const double* ps,
-    GPUGLMEM const double* phase_n,
-    GPUGLMEM const double* phase_s,
-    int64_t num_kicks,
-    int8_t model,
-    int8_t default_model,
-    int8_t integrator,
-    int8_t default_integrator,
-    int64_t radiation_flag,
-    int64_t radiation_flag_parent,
-    xt_float_or_tpsa lag_taper,
-    xt_float_or_tpsa phase_taper,
-    int64_t body_active,
-    int64_t edge_entry_active,
-    int64_t edge_exit_active
-) {
+void RFSettings_init_default(RFSettings* rf) {
+    rf->weight = 1.;
+    rf->length = 0.;
+    rf->voltage = 0.;
+    rf->frequency = 0.;
+    rf->harmonic = 0.;
+    rf->lag = 0.;
+    rf->phase = 0.;
+    rf->lag_taper = 0.;
+    rf->phase_taper = 0.;
+    rf->transverse_voltage = 0.;
+    rf->transverse_lag = 0.;
+    rf->transverse_phase = 0.;
+    rf->absolute_time = 0;
+    rf->order = -1;
+    rf->num_kicks = 0;
+    rf->knl = NULL;
+    rf->ksl = NULL;
+    rf->pn = NULL;
+    rf->ps = NULL;
+    rf->phase_n = NULL;
+    rf->phase_s = NULL;
+    rf->model = MODEL_ADAPTIVE;
+    rf->integrator = INTEGRATOR_ADAPTIVE;
+}
 
-    double factor_knl_ksl = 1.0;
-    uint8_t kill_energy_kick = LocalParticle_check_track_flag(
-                    part0, XS_FLAG_KILL_CAVITY_KICK);
+// Reads only the track flags of the particle (direction of travel, energy kick).
+GPUFUN
+void RFPlan_prepare(RFPlan* plan, const RFSettings* rf, LocalParticle* part0) {
+    RFBody* body = &plan->body;
+    const int backtrack = LocalParticle_check_track_flag(part0, XS_FLAG_BACKTRACK);
+    const double direction = backtrack ? -1. : 1.;
+    const double weight = rf->weight;
 
-    // Backtracking
-    double body_length;
-    double factor_knl_ksl_body;
-
-    #ifndef XTRACK_MULTIPOLE_NO_SYNRAD
-        lag += lag_taper;
-        phase += phase_taper;
-    #endif
-
-    if (LocalParticle_check_track_flag(part0, XS_FLAG_BACKTRACK)) {
-        body_length = -length;
-        factor_knl_ksl_body = -factor_knl_ksl;
-        VSWAP(edge_entry_active, edge_exit_active);
-        voltage = -voltage;
-        transverse_voltage = -transverse_voltage;
-    } else {
-        body_length = length;
-        factor_knl_ksl_body = factor_knl_ksl;
+    int8_t model = rf->model == MODEL_ADAPTIVE ? MODEL_DRIFT_KICK_DRIFT_EXPANDED : rf->model;
+    int8_t integrator = rf->integrator == INTEGRATOR_ADAPTIVE ? INTEGRATOR_UNIFORM : rf->integrator;
+    int64_t num_kicks = rf->num_kicks;
+    if (model == MODEL_KICK_ONLY) {
+        integrator = INTEGRATOR_UNIFORM;
+        num_kicks = 1;
+    }
+    if (weight != 1.0 && num_kicks > 0) {
+        num_kicks = (int64_t) ceil(num_kicks * weight);
+    }
+    if (num_kicks == 0) { // num_kicks = 0 means auto mode
+        num_kicks = 1;
     }
 
-    if (body_active){
+    xt_float_or_tpsa lag = rf->lag;
+    xt_float_or_tpsa phase = rf->phase;
+    #ifndef XTRACK_MULTIPOLE_NO_SYNRAD
+        lag += rf->lag_taper;
+        phase += rf->phase_taper;
+    #endif
 
-        if (integrator == INTEGRATOR_ADAPTIVE){
-            integrator = default_integrator;
-        }
-        if (model == MODEL_ADAPTIVE){
-            model = default_model;
-        }
-        if (model == MODEL_KICK_ONLY){
-            integrator = INTEGRATOR_UNIFORM;
-            num_kicks = 1;
-        }
+    body->length = direction * rf->length * weight;
+    body->voltage = direction * rf->voltage * weight;
+    body->frequency = rf->frequency;
+    body->harmonic = rf->harmonic;
+    body->lag = lag;
+    body->phase = phase;
+    body->transverse_voltage = direction * rf->transverse_voltage * weight;
+    body->transverse_lag = rf->transverse_lag;
+    body->transverse_phase = rf->transverse_phase;
+    body->absolute_time = rf->absolute_time;
+    body->order = rf->order;
+    body->num_kicks = num_kicks;
+    body->factor_knl_ksl = direction * weight;
+    body->knl = rf->knl;
+    body->ksl = rf->ksl;
+    body->pn = rf->pn;
+    body->ps = rf->ps;
+    body->phase_n = rf->phase_n;
+    body->phase_s = rf->phase_s;
+    // Only the drift model is used: no field
+    body->drift_model = configure_tracking_model(
+        model, /*k0*/ 0., /*k1*/ 0., /*h*/ 0., /*ks*/ 0.
+    ).drift.model;
+    body->integrator = integrator;
+    body->kill_energy_kick = LocalParticle_check_track_flag(part0, XS_FLAG_KILL_CAVITY_KICK);
 
-        // Adjust the number of kicks based on the weight
-        if (weight != 1.0 && num_kicks > 0){
-            num_kicks = (int64_t) ceil(num_kicks * weight);
-        }
+    plan->is_thick = 0;
+    plan->transform.active = 0;
+}
 
-        // Compute the number of kicks for auto mode
-        if (num_kicks == 0) { // num_kicks = 0 means auto mode
-            num_kicks = 1;
-        }
+GPUFUN
+void track_rf_body_particles(LocalParticle* part0, const RFBody* body) {
+    START_PER_PARTICLE_BLOCK(part0, part);
+        track_rf_body_single_particle(part, body);
+    END_PER_PARTICLE_BLOCK;
+}
 
-        // Only the drift model is used: no field
-        const int8_t drift_model = configure_tracking_model(
-            model, /*k0*/ 0., /*k1*/ 0., /*h*/ 0., /*ks*/ 0.
-        ).drift.model;
-
-
-        START_PER_PARTICLE_BLOCK(part0, part);
-            track_rf_body_single_particle(
-                part,
-                body_length * weight,
-                voltage * weight,
-                frequency,
-                harmonic,
-                lag,
-                phase,
-                transverse_voltage * weight,
-                transverse_lag,
-                transverse_phase,
-                absolute_time,
-                order,
-                factor_knl_ksl_body * weight,
-                knl,
-                ksl,
-                pn,
-                ps,
-                phase_n,
-                phase_s,
-                num_kicks,
-                drift_model,
-                integrator,
-                kill_energy_kick
-            );
-        END_PER_PARTICLE_BLOCK;
-
-
+// CrabCavity, RFMultipole and their slices.
+GPUFUN
+void track_rf_plan(LocalParticle* part0, const RFPlan* plan) {
+    const MagnetTransform* transform = &plan->transform;
+    if (transform->active && !magnet_transform(part0, transform, 0)) {
+        return;
+    }
+    track_rf_body_particles(part0, &plan->body);
+    if (transform->active) {
+        magnet_transform(part0, transform, 1);
     }
 }
 
