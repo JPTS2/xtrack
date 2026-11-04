@@ -16,8 +16,8 @@ provide more detailed examples.
 | [03_open_optics.py](03_open_optics.py) | Optics from specified entrance conditions | [Twiss examples](../twiss/) |
 | [04_periodic_optics.py](04_periodic_optics.py) | Periodic optics, tunes and chromaticities | [Twiss examples](../twiss/) |
 | [05_match_tunes.py](05_match_tunes.py) | Tune matching with quadrupole families | [matching](../match/) |
-| [06_track_particles.py](06_track_particles.py) | Normalized launches and turn-by-turn tracking | [particle preparation](../particles_and_distributions/README.md), [tracking](../tracking/) |
-| [07_monitors_at_elements.py](07_monitors_at_elements.py) | Particle monitors at different locations | [monitors](../monitor/) |
+| [06_track_particles.py](06_track_particles.py) | Normalized launches and turn-by-turn tracking | [particle preparation](../particles_and_distributions/README.md), [tracking](../tracking/), [particle records](../monitors/) |
+| [07_monitors_at_elements.py](07_monitors_at_elements.py) | Particle monitors at different locations | [monitors](../monitors/) |
 | [08_save_and_load.py](08_save_and_load.py) | Model persistence and expressions | [JSON persistence](../to_json/) |
 
 Run the files in your Xsuite environment. Parameters to change are collected

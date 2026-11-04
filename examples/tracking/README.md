@@ -28,5 +28,5 @@ Backtracking inverts deterministic maps; it does not undo losses or stochastic
 processes.
 
 For trajectories, beam sizes and recorded observations, continue with
-[monitors](../monitor/). For geometrical acceptance and losses, see
+[monitors](../monitors/). For geometrical acceptance and losses, see
 [apertures](../apertures/) and [loss refinement](../collimation/).
