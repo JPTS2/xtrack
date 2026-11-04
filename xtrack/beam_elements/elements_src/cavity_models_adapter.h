@@ -146,20 +146,47 @@ double CavityModels_envelope_beat(CavityData el, double wave_number) {
 }
 
 
-// Paraxial and averaged steps per half-wavelength: two resolve the
-// stepped profile; the paraxial map takes four once a counter wave turns its
-// phase by 2k along the orbit.
+// The length over which the RF envelope changes, in metres; zero for a uniform
+// envelope, which only changes at its hard edges. P16 is (1-u^2)^16 ~ exp(-16 u^2),
+// a Gaussian of sigma = half-length / sqrt(32).
+GPUFUN
+double CavityPlan_envelope_width(int profile, double length, double sigma) {
+    if (profile==0) return length/(2.*sqrt(32.));
+    return profile==2 ? sigma : 0.;
+}
+
+// The averaged map holds the envelope over a step, so its step must resolve the
+// envelope as well as the wave. Steps per half-wavelength: two for the wave, and
+// no step wider than width/sqrt(2). Against the Lorentz orbit the error of a
+// travelling wave's transverse kick then stays below 3e-4, where two steps alone
+// miss 69 % of it for two P16 cells. For P16 the rule reads ceil(16/half-wavelengths).
+// The paraxial map integrates its generator through each step: two steps are
+// enough for a travelling wave, four once a counter wave turns its phase by 2k.
 GPUFUN
 int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double length,
-                         double eta, double weight, int controls) {
+                         double envelope_width, double eta, double weight, int controls) {
     int64_t parent_cells=requested>0 ? requested : 64;
     if ((model==CAVITY_MODEL_AVERAGED || model==CAVITY_MODEL_PARAXIAL) && requested==0) {
-        const double half_cells=2.*frequency*length/C_LIGHT;
+        const double half_wave=frequency>0. ? .5*C_LIGHT/frequency : 0.;
+        const double half_cells=frequency>0. ? length/half_wave : 0.;
         double per_half=2.;
         if (model==CAVITY_MODEL_PARAXIAL && eta>0.) per_half=4.;
-        parent_cells=half_cells>.5 ? (int64_t)ceil(per_half*half_cells) : 1;
+        const int resolve=model==CAVITY_MODEL_AVERAGED && envelope_width>0. && half_wave>0.;
+        if (resolve) per_half=fmax(per_half,ceil(sqrt(2.)*half_wave/envelope_width));
+        parent_cells=(resolve||half_cells>.5) ? (int64_t)ceil(per_half*half_cells) : 1;
     }
     return controls==CAVITY_MODEL_OK ? (int64_t)ceil(parent_cells*weight) : 1;
+}
+
+// "adaptive" leaves the averaged map where its resolved steps would cost as much as
+// the paraxial map, which is then the better choice: envelopes narrower than 0.44 of
+// a half-wavelength, which for P16 is below five half-wavelengths of cavity length
+// (5 / (2 sqrt(32)) = 0.442). Hard edges have no width.
+#define CAVITY_ADAPTIVE_AVERAGED_MIN_WIDTH .44
+GPUFUN
+int CavityPlan_envelope_long(double envelope_width, double frequency) {
+    return !(envelope_width>0.)
+        || envelope_width*2.*frequency/C_LIGHT>=CAVITY_ADAPTIVE_AVERAGED_MIN_WIDTH;
 }
 
 GPUFUN
@@ -237,7 +264,10 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
     // An adaptive choice uses the chosen model's integrator and resolution.
     const int integrator=model==0 ? 0 : CavityData_get_integrator(el);
     const int64_t requested=model==0 ? 0 : CavityData_get_num_kicks(el);
+    const double envelope_width=CavityPlan_envelope_width(CavityData_get_rf_profile(el),length,
+        xt_float_or_tpsa_const_part(CavityData_get_rf_profile_sigma(el)));
     plan->integrator=integrator; plan->requested=requested; plan->eta=eta;
+    plan->envelope_width=envelope_width;
     plan->profile=CavityData_get_rf_profile(el);
     plan->magnetic_profile=CavityData_get_magnetic_profile(el);
     plan->spin_tracking=CavityData_get_spin_tracking(el);
@@ -245,7 +275,7 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
         for (int chosen=CAVITY_MODEL_FULL; chosen<=CAVITY_MODEL_PARAXIAL; ++chosen) {
             const int controls=CavityPlan_controls(el,part0,chosen,integrator,requested,weight,slice_start);
             plan->choice[chosen-CAVITY_MODEL_FULL].controls=controls;
-            plan->choice[chosen-CAVITY_MODEL_FULL].cells=CavityPlan_cells(chosen,requested,frequency,length,eta,weight,controls);
+            plan->choice[chosen-CAVITY_MODEL_FULL].cells=CavityPlan_cells(chosen,requested,frequency,length,envelope_width,eta,weight,controls);
         }
         const double voltage=fabs(xt_float_or_tpsa_const_part(CavityData_get_voltage(el)));
         double gain=voltage;
@@ -271,7 +301,7 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
     } else {
         const int controls=CavityPlan_controls(el,part0,model,integrator,requested,weight,slice_start);
         plan->choice[0].controls=controls;
-        plan->choice[0].cells=CavityPlan_cells(model,requested,frequency,length,eta,weight,controls);
+        plan->choice[0].cells=CavityPlan_cells(model,requested,frequency,length,envelope_width,eta,weight,controls);
     }
 
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
@@ -291,12 +321,17 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
     plan->physical_outer=reverse ? left_fraction==0. : right_fraction==1.;
 }
 
-// "adaptive" picks the longitudinal map where the particle's reference
-// energy gain gives a squeeze dE/(2E) <= 1e-4 (or the cavity is thin or at zero
-// frequency). Above it, with g/p0 = |q|V/(L k p0c): Sagan's phase-averaged
-// factors where g/p0 <= 0.05 and a travelling wave or an envelope beat
-// D2 <= 1e-4, the phase-resolved paraxial map where g/p0 <= 0.1,
-// phase-resolved otherwise. Other selectors are returned unchanged.
+// "adaptive", from the cheapest map to the most complete, for each particle's own
+// reference. With g/p0 = |q|V/(L k p0c), the size of the RF force on the momentum:
+// 1. Longitudinal map: the energy gain gives a squeeze dE/(2E) <= 1e-4, or the
+//    cavity is thin or at zero frequency, so the transverse RF force is negligible.
+// 2. Phase-averaged: g/p0 <= 0.05 (its truncation in g/p0), an envelope longer than
+//    the steps it would need (above), and no counter wave at the beat that the
+//    average drops: a travelling wave, or envelope beat D2 <= 1e-4 (its error is
+//    about 1.2 D2, independent of energy).
+// 3. Phase-resolved paraxial: g/p0 <= 0.1, its truncation in g/p0.
+// 4. Phase-resolved otherwise.
+// Other selectors are returned unchanged.
 GPUFUN
 int CavityPlan_choose(const CavityPlan* plan, CavityData el, LocalParticle* part) {
     if (!plan->adaptive) return plan->model;
@@ -312,7 +347,7 @@ int CavityPlan_choose(const CavityPlan* plan, CavityData el, LocalParticle* part
     const double wave_number=2.*PI*frequency/C_LIGHT;
     const double strength=charge*plan->adaptive_voltage/(plan->adaptive_length*wave_number*p0c);
     if (strength>.1) return CAVITY_MODEL_FULL;
-    if (strength<=.05) {
+    if (strength<=.05 && CavityPlan_envelope_long(plan->envelope_width,frequency)) {
         int beat_small=plan->adaptive_beat_small;
         if (plan->adaptive_needs_beat && harmonic!=0.)
             beat_small=CavityModels_envelope_beat(el,wave_number)<=1e-4;
@@ -395,7 +430,7 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
         else {
             frequency+=harmonic*beta0*C_LIGHT/part->line_length;
             cells=CavityPlan_cells(model,requested,xt_float_or_tpsa_const_part(frequency),
-                                   length,plan->eta,weight,controls);
+                                   length,plan->envelope_width,plan->eta,weight,controls);
         }
     }
     xt_float_or_tpsa phase=CavityData_get_phase(el)

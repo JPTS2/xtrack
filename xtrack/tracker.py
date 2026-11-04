@@ -16,7 +16,6 @@ import xtrack as xt
 
 from .base_element import _handle_per_particle_blocks
 from .beam_elements import Drift
-from .beam_elements.cavity import _constant_part
 from .general import DEPRECATION_INFO_PREP_1_0, _pkg_root
 from .internal_record import new_io_buffer
 from .line import Line, _is_collective, _is_thick
@@ -135,7 +134,6 @@ class Tracker:
         self._tracker_data_cache[None] = tracker_data_base
         self._magnet_plans = None  # built at the first track call
         self._reference_step_elements = None  # found at the first track call
-        self._absolute_time_elements = None
 
         self._get_twiss_mask_markers() # to cache it
 
@@ -392,8 +390,6 @@ class Tracker:
                     'TPSA-enabled elements are not supported on GPU contexts. '
                     'Disable TPSA on the line before tracking on a GPU.'
                 )
-
-        self._check_reference_for_absolute_time(particles, **kwargs)
 
         assert self.iscollective in (True, False)
         if (self.iscollective or self.line.enable_time_dependent_vars
@@ -2256,36 +2252,6 @@ class Tracker:
             position = s_step
             p0c = after_step(element, p0c)
         return lap_time + (length - position) * np.hypot(p0c, mass0) / p0c / clight
-
-    def _check_reference_for_absolute_time(self, particles, num_turns=None, ele_stop=None,
-                                           num_elements=None, **kwargs):
-        """The clock is one value per Particles object. Without a completed turn it
-        stays put and each particle's arrival follows its own reference; once it
-        advances, or for a phase locked to its revolutions, it needs one reference."""
-        if self._absolute_time_elements is None:
-            self._absolute_time_elements = []
-            for element in self._tracker_data_base.elements:
-                owner = element
-                if hasattr(element, '_parent') and element._parent is not None:
-                    owner = element._parent
-                if isinstance(owner, (xt.Cavity, xt.CrabCavity, xt.RFMultipole, xt.Exciter)):
-                    self._absolute_time_elements.append(owner)
-        clocked = [element for element in self._absolute_time_elements
-                   if element.absolute_time]
-        if not clocked:
-            return
-        completes_turn = ((num_turns or 1) > 1
-                          or (ele_stop is None and num_elements is None
-                              and not self.skip_end_turn_actions))
-        if not completes_turn and not any(
-                _constant_part(getattr(element, 'harmonic', 0.)) != 0. for element in clocked):
-            return
-        context = particles._context
-        state = context.nparray_from_context_array(particles.state)
-        p0c = context.nparray_from_context_array(particles.p0c)[state > 0]
-        if p0c.size and np.ptp(p0c) > 1e-12 * p0c[0]:
-            raise ValueError('`absolute_time` needs one reference momentum for all '
-                             'active particles: the clock is shared by them.')
 
     def _advance_particle_time_s_and_reference_turns(self, particles, num_turns):
         if num_turns:

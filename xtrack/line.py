@@ -7222,7 +7222,7 @@ class Line:
     def reset_s_at_end_turn(self, value):
         self._extra_config['reset_s_at_end_turn'] = value
 
-    @property
+    @property_with_doc_group("Tracking and Analysis")
     def use_time_based_zeta_update(self):
         """Preserve absolute arrival time during reference-momentum changes.
 

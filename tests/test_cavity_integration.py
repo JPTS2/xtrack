@@ -538,7 +538,7 @@ def test_compact_p16_face_has_exactly_zero_potential_readback(cpu_context, model
 
 @pytest.mark.parametrize('profile', ('uniform', 'gaussian'))
 def test_finite_rf_face_is_a_hard_edge(cpu_context, profile):
-    """A whole cavity's end planes are hard edges (PLAN D30): a field that does
+    """A whole cavity's end planes are hard edges: a field that does
     not vanish there ends abruptly and the particle leaves field-free."""
     line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
         model='phase-resolved', rf_profile=profile, rf_profile_sigma=.12,

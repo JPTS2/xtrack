@@ -358,34 +358,6 @@ def test_detuned_ring_reaches_the_analytic_momentum(test_context, layout):
     assert particles.copy(_context=xo.context_default).state[0] == 1
 
 
-@for_all_test_contexts
-def test_a_shared_clock_refuses_more_than_one_reference(test_context):
-    clocked = xt.Line(elements=[xt.Cavity(voltage=1e5, frequency=_FREQUENCY, absolute_time=True),
-                                xt.Drift(length=1.)])
-    clocked.build_tracker(_context=test_context)
-    mixed = dict(_context=test_context, mass0=xt.PROTON_MASS_EV)
-    with pytest.raises(ValueError, match='one reference momentum'):
-        clocked.track(xt.Particles(p0c=[2e9, 3e9], **mixed))
-    clocked.track(xt.Particles(p0c=[2e9, 2e9], **mixed))
-    # Merged bunches can differ by roundoff.
-    clocked.track(xt.Particles(p0c=[2e9, 2e9 * (1 + 1e-15)], **mixed))
-    # A lost particle has no vote.
-    survivors = xt.Particles(p0c=[3e9, 2e9, 2e9], state=[0, 1, 1], **mixed)
-    clocked.track(survivors)
-    # Without a completed turn the clock stays put: each follows its own reference...
-    clocked.track(xt.Particles(p0c=[2e9, 3e9], **mixed), ele_stop=1)
-    # ...but a phase locked to the revolutions counts them once for everyone.
-    locked = xt.Line(elements=[xt.Cavity(voltage=1e5, harmonic=8, absolute_time=True),
-                               xt.Drift(length=1.)])
-    locked.build_tracker(_context=test_context)
-    with pytest.raises(ValueError, match='one reference momentum'):
-        locked.track(xt.Particles(p0c=[2e9, 3e9], **mixed), ele_stop=1)
-    # Without a clock each particle keeps its own reference.
-    relative = xt.Line(elements=[xt.Cavity(voltage=1e5, frequency=_FREQUENCY), xt.Drift(length=1.)])
-    relative.build_tracker(_context=test_context)
-    relative.track(xt.Particles(p0c=[2e9, 3e9], **mixed))
-
-
 def test_mixed_species_share_a_reference_and_a_clock():
     line = xt.Line(elements=[xt.Cavity(voltage=1e5, frequency=_FREQUENCY, absolute_time=True, phase=.3),
                              xt.Drift(length=1.)])

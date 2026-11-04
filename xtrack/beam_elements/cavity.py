@@ -137,17 +137,20 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     '''.strip()
 
     _docstring_models = '''model : str
-        "adaptive" (default) chooses per call from the reference energy gain
-        and the RF strength g/p0 = |q|V/(L k p0c): "longitudinal-only" where
-        the first-order RF squeeze dE/(2E) is at most 1e-4 (or the cavity is
-        thin), "phase-averaged" where g/p0 <= 0.05 and the wave is travelling
-        or the envelope is smooth over the counter-wave beat,
-        "phase-resolved-paraxial" where g/p0 <= 0.1, "phase-resolved"
+        "adaptive" (default) chooses for each particle from its reference
+        energy gain and the RF strength g/p0 = |q|V/(L k p0c), the cheapest
+        map that holds: "longitudinal-only" where the first-order RF squeeze
+        dE/(2E) is at most 1e-4 (or the cavity is thin); "phase-averaged" where
+        g/p0 <= 0.05, the envelope is at least 0.44 of a half-wavelength wide
+        (about five half-wavelengths of P16) and the wave is travelling or the
+        envelope is smooth over the counter-wave beat;
+        "phase-resolved-paraxial" where g/p0 <= 0.1; "phase-resolved"
         otherwise. "longitudinal-only" (expanded drifts) and
         "longitudinal-only-exact" apply RF energy kicks only.
         "phase-averaged" is Sagan's averaged map with finite-beta terms, the
-        fastest transverse model, valid for envelopes that vary slowly over
-        half a wavelength. "phase-resolved-paraxial" keeps both waves at
+        fastest transverse model, valid for envelopes smooth over the
+        counter-wave beat; it takes the steps its envelope needs, at least two
+        per half wavelength. "phase-resolved-paraxial" keeps both waves at
         quadratic transverse order, per step as an exact second-order
         generator along the reference orbit (accurate for any envelope and
         hard edges). "phase-resolved" integrates the full Hamiltonian of the

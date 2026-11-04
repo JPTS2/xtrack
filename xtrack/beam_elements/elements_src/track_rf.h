@@ -63,7 +63,7 @@ typedef struct CavityPlan_s {
     CavityChoice choice[4];
     int integrator, profile, magnetic_profile, spin_tracking;
     int64_t requested;
-    double eta, length, weight;
+    double eta, envelope_width, length, weight;
     double left_fraction, right_fraction;
     double start_fraction, end_fraction, direction;
     int reverse, clear_face, physical_outer;

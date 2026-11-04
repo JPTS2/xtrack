@@ -41,7 +41,7 @@ def particle(context, gamma, charge=1., **changes):
 
 
 def test_public_cavity_independent_vacuum_limits(tmp_path):
-    """H2 keeps its own finite-angle drift, rather than aliasing full drift."""
+    """The map keeps its own finite-angle drift, rather than aliasing the full drift."""
     length = .37
     with kernel_context(tmp_path) as context:
         for model in MODELS:
@@ -427,7 +427,7 @@ def independent_static_point(state,charge,scale,model):
 
 
 def test_source_static_independent_magnetic_laws(scalar_source_library):
-    """Challenge charges, near-rest roots, normal/skew factorials and H2."""
+    """Challenge charges, near-rest roots and normal/skew factorials."""
     for model in (10,):
         for scale in (.7,-1.2):
             for charge in (-1.3,.37,1.8):
