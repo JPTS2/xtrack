@@ -1798,3 +1798,22 @@ def test_extend_knl_rel_ksl_rel():
                        0., 0., 0., 0., 0., 0., 0., 0.], rtol=0, atol=1e-15)
     xo.assert_allclose(line['o1'].ksl_rel, [4., 5., 200., 0.,
                        0., 0., 0., 0., 0., 0., 0., 0.], rtol=0, atol=1e-15)
+
+
+def test_context_preserved_after_edit_and_twiss():
+    # A distinct context makes an unintended fallback to the default detectable.
+    context = xo.ContextCpu()
+    assert context is not xo.context_default
+    line = xt.Line(elements=[xt.LineSegmentMap(qx=0.31, qy=0.32)])
+    line.set_particle_ref('proton', p0c=1e9)
+    line.build_tracker(_context=context)
+    particles = line.build_particles(x=1e-4)
+
+    line.append('end_marker', xt.Marker())
+    assert line.tracker is None
+    tw = line.twiss4d()
+    assert line._context is context
+    assert particles._context is context
+    line.track(particles)
+    np.testing.assert_allclose([tw.qx, tw.qy], [0.31, 0.32], atol=1e-12)
+    np.testing.assert_array_equal(particles.at_turn, 1)
