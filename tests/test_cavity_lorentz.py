@@ -249,9 +249,8 @@ _ADAPTIVE = [(gamma, gradient, half_waves, eta, phase)
 @pytest.mark.parametrize('gamma, gradient, half_waves, eta, phase', _ADAPTIVE)
 def test_adaptive_holds_its_accuracy_against_the_orbit(context, gamma, gradient, half_waves, eta, phase):
     # Whatever it picks, the promise of the choice holds: an error below the squeeze it
-    # neglects for the longitudinal map; otherwise the truncation of the maps in the RF
-    # strength g/p0 leaves an error of the kick growing to about g/p0 / 5, 2 % at the
-    # paraxial map's limit of 0.1.
+    # neglects for the longitudinal map; otherwise an error of the kick that follows g/p0,
+    # the energy change per half wavelength over pi, because the steps hold the energy.
     length = half_waves * _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
     ends = _track(context, dict(model='adaptive', length=length, voltage=gradient * length,
