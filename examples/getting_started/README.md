@@ -11,8 +11,8 @@ provide more detailed examples.
 
 | Example | Topic | Continue with |
 | --- | --- | --- |
-| [01_build_line.py](01_build_line.py) | Elements, line assembly and strength expressions | [lattice design](../lattice_design/) |
-| [02_load_and_inspect.py](02_load_and_inspect.py) | Loading a model and exploring its element table | [lattice design](../lattice_design/) |
+| [01_build_line.py](01_build_line.py) | Elements, line assembly and strength expressions | [line construction](../line_construction/README.md) |
+| [02_load_and_inspect.py](02_load_and_inspect.py) | Loading a model and exploring its element table | [line construction](../line_construction/README.md) |
 | [03_open_optics.py](03_open_optics.py) | Optics from specified entrance conditions | [Twiss examples](../twiss/) |
 | [04_periodic_optics.py](04_periodic_optics.py) | Periodic optics, tunes and chromaticities | [Twiss examples](../twiss/) |
 | [05_match_tunes.py](05_match_tunes.py) | Tune matching with quadrupole families | [matching](../match/) |
