@@ -278,21 +278,11 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
             plan->choice[chosen-CAVITY_MODEL_FULL].cells=CavityPlan_cells(chosen,requested,frequency,length,envelope_width,eta,weight,controls);
         }
         const double voltage=fabs(xt_float_or_tpsa_const_part(CavityData_get_voltage(el)));
-        double gain=voltage;
-        // The absolute-time reference phase moves with time: bound by the crest.
-        if (!CavityData_get_absolute_time(el)) {
-            const double phase=xt_float_or_tpsa_const_part(CavityData_get_phase(el))
-                +DEG2RAD*xt_float_or_tpsa_const_part(CavityData_get_lag(el))
-                +xt_float_or_tpsa_const_part(CavityData_get_phase_taper(el))
-                +DEG2RAD*xt_float_or_tpsa_const_part(CavityData_get_lag_taper(el));
-            gain*=sin(phase);
-        }
         const double harmonic=xt_float_or_tpsa_const_part(CavityData_get_harmonic(el));
         plan->adaptive_length=length;
         plan->adaptive_frequency=frequency;
         plan->adaptive_harmonic=harmonic;
         plan->adaptive_voltage=voltage;
-        plan->adaptive_gain=gain;
         plan->adaptive_needs_beat=eta!=0.;
         plan->adaptive_beat_small=eta==0.;
         // A harmonic frequency follows the particle's reference: beat per particle.
@@ -323,8 +313,10 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
 
 // "adaptive", from the cheapest map to the most complete, for each particle's own
 // reference. With g/p0 = |q|V/(L k p0c), the size of the RF force on the momentum:
-// 1. Longitudinal map: the energy gain gives a squeeze dE/(2E) <= 1e-4, or the
+// 1. Longitudinal map: the crest voltage gives a squeeze qV/(2E) <= 1e-4, or the
 //    cavity is thin or at zero frequency, so the transverse RF force is negligible.
+//    The crest holds at every phase: at the zero crossing the reference gains no
+//    energy, but the transverse force is at its largest.
 // 2. Phase-averaged: g/p0 <= 0.05 (its truncation in g/p0), an envelope longer than
 //    the steps it would need (above), and no counter wave at the beat that the
 //    average drops: a travelling wave, or envelope beat D2 <= 1e-4 (its error is
@@ -342,7 +334,7 @@ int CavityPlan_choose(const CavityPlan* plan, CavityData el, LocalParticle* part
     if (!(plan->adaptive_length>0.) || !(frequency>0.)) return 0;
     const double charge=fabs(LocalParticle_get_q0(part));
     const double p0c=LocalParticle_get_p0c(part), mass0=LocalParticle_get_mass0(part);
-    const double gain=charge*plan->adaptive_gain;
+    const double gain=charge*plan->adaptive_voltage;
     if (gain*gain<=4e-8*(p0c*p0c+mass0*mass0)) return 0;
     const double wave_number=2.*PI*frequency/C_LIGHT;
     const double strength=charge*plan->adaptive_voltage/(plan->adaptive_length*wave_number*p0c);

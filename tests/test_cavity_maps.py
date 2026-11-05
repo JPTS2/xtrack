@@ -357,7 +357,7 @@ _PI_MODE = 9*clight/1.3e9/2
 
 @pytest.mark.parametrize('p0c,mass0,voltage,phase,changes,expected', [
     (7e12, xt.PROTON_MASS_EV, 2e6, np.pi/2, {}, 'longitudinal-only'),
-    (45.6e9, xt.ELECTRON_MASS_EV, 10e6, np.pi, {}, 'longitudinal-only'),
+    (45.6e9, xt.ELECTRON_MASS_EV, 10e6, np.pi, {}, 'phase-resolved-paraxial'),
     (182.5e9, xt.ELECTRON_MASS_EV, 212e6, 2.6, {}, 'phase-resolved-paraxial'),
     (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved-paraxial'),
     (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, dict(eta=0.), 'phase-averaged'),

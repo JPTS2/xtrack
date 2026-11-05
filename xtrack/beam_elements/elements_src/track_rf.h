@@ -58,7 +58,7 @@ typedef struct CavityPlan_s {
     GPUGLMEM void* el;
     int model, adaptive, thin_slice;
     double adaptive_length, adaptive_frequency, adaptive_harmonic;
-    double adaptive_voltage, adaptive_gain;
+    double adaptive_voltage;
     int adaptive_needs_beat, adaptive_beat_small;
     CavityChoice choice[4];
     int integrator, profile, magnetic_profile, spin_tracking;

@@ -238,6 +238,16 @@ def test_low_beta_protons_follow_the_orbit(context, gamma, calibration_beta):
     assert _errors(ends, truth, p0c, gradient * length)[1] < 1e-3
 
 
+def test_adaptive_keeps_the_focusing_kick_at_the_zero_crossing(context):
+    # The reference gains no energy here, but the transverse RF force is at its largest.
+    gamma, half_waves, gradient, phase = 40., 5, 20e6, 0.
+    length = half_waves * _HALF_WAVE
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    ends = _track(context, dict(model='adaptive', length=length, voltage=gradient * length,
+                                phase=phase, eta=0.), p0c)
+    assert _errors(ends, _truth(gamma, half_waves, gradient, 0., phase), p0c, gradient * length)[1] < 1e-3
+
+
 _ADAPTIVE = [(gamma, gradient, half_waves, eta, phase)
              # From g/p0 of 0.2, where only phase-resolved holds, to a negligible squeeze.
              for gamma, gradient in ((3., 5e6), (6., 5e6), (12., 5e6), (20., 5e6), (100., 5e6),
@@ -257,7 +267,7 @@ def test_adaptive_holds_its_accuracy_against_the_orbit(context, gamma, gradient,
                                 phase=phase, eta=eta), p0c)
     truth = _truth(gamma, half_waves, gradient, eta, phase)
     _, kick, energy = _errors(ends, truth, p0c, gradient * length)
-    squeeze = abs(gradient * length * np.sin(phase)) / (2 * np.hypot(p0c, _ELECTRON))
+    squeeze = gradient * length / (2 * np.hypot(p0c, _ELECTRON))
     if squeeze <= 1e-4:
         # The longitudinal map drops the transverse RF force: its angle error is the
         # squeeze's order, r / L times dE / (2 E), for the launches' offsets of 1 mm.
