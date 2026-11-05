@@ -248,6 +248,18 @@ def test_adaptive_keeps_the_focusing_kick_at_the_zero_crossing(context):
     assert _errors(ends, _truth(gamma, half_waves, gradient, 0., phase), p0c, gradient * length)[1] < 1e-3
 
 
+@pytest.mark.parametrize('half_waves', [5, 8])
+def test_adaptive_leaves_the_average_on_a_hard_edge_with_a_counter_wave(context, half_waves):
+    # The sum over the beat vanishes at whole half-wavelengths, but the edges still kick.
+    gamma, gradient, eta, phase = 400., 20e6, 1., 1.2
+    length = half_waves * _HALF_WAVE
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    ends = _track(context, dict(model='adaptive', length=length, voltage=gradient * length,
+                                phase=phase, eta=eta, rf_profile='uniform'), p0c)
+    truth = _truth(gamma, half_waves, gradient, eta, phase, 'uniform')
+    assert _errors(ends, truth, p0c, gradient * length)[1] < 3e-4
+
+
 _ADAPTIVE = [(gamma, gradient, half_waves, eta, phase)
              # From g/p0 of 0.2, where only phase-resolved holds, to a negligible squeeze.
              for gamma, gradient in ((3., 5e6), (6., 5e6), (12., 5e6), (20., 5e6), (100., 5e6),

@@ -362,7 +362,7 @@ _PI_MODE = 9*clight/1.3e9/2
     (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved-paraxial'),
     (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, dict(eta=0.), 'phase-averaged'),
     (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2,
-     dict(rf_profile='uniform', length=_PI_MODE), 'phase-averaged'),
+     dict(rf_profile='uniform', length=_PI_MODE), 'phase-resolved-paraxial'),
     (10e6, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved-paraxial'),
     (3e6, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved')])
 def test_adaptive_selects_by_energy_gain_strength_and_envelope(

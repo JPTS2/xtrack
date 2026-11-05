@@ -117,10 +117,8 @@ double CavityModels_envelope_beat(CavityData el, double wave_number) {
     if (!CavityData_get_wave_number_from_frequency(el))
         nu=xt_float_or_tpsa_const_part(CavityData_get_wave_number(el))/wave_number;
     const int profile=CavityData_get_rf_profile(el);
-    if (profile==1) {
-        const double beat=2.*nu*half;
-        return fabs(sin(beat))/beat;
-    }
+    // Its integral vanishes at whole half-wavelengths, but the edges still kick.
+    if (profile==1) return 1.;
     const double sigma=wave_number*xt_float_or_tpsa_const_part(CavityData_get_rf_profile_sigma(el));
     const double centre=wave_number*xt_float_or_tpsa_const_part(CavityData_get_rf_profile_center(el));
     if (profile==2 && !(sigma>0.)) return 1.;
