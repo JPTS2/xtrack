@@ -269,6 +269,7 @@ def test_adaptive_leaves_the_average_on_a_hard_edge_with_a_counter_wave(context,
     (.05, 8, 'p16', 1., 'phase-resolved-paraxial'),      # Counter wave does not average away.
     (.05, 15, 'p16', 1., 'phase-averaged'),
     (.05, 8, 'uniform', 0., 'phase-averaged'),
+    (.05, 2, 'uniform', 0., 'phase-averaged'),
     (.05, 8, 'uniform', 1., 'phase-resolved-paraxial')])
 def test_adaptive_chooses_from_the_voltage_over_the_total_energy(
         context, voltage_over_energy, half_waves, profile, eta, model):
@@ -359,6 +360,32 @@ def test_phase_resolved_resolves_the_envelope_of_a_short_cavity(context, frequen
         assert particles.state[0] == 1
         ends.append(particles.px[0])
     assert abs(ends[0] - ends[1]) < 1e-3 * abs(ends[1] - 1e-4)
+
+
+def test_paraxial_resolves_the_envelope_of_a_short_cavity(context):
+    # One step misses this kick by 10%, and four have converged. V/E alone asks for one.
+    p0c = np.sqrt((_ELECTRON + 50e6)**2 - _ELECTRON**2)
+    ends = []
+    for model, steps in (('phase-resolved-paraxial', 0), ('phase-resolved', 4096)):
+        rf = xt.Cavity(model=model, num_kicks=steps, frequency=2e8, length=.1, voltage=2e4,
+                       phase=1.2, eta=0.)
+        particles = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, x=1e-3, px=1e-4)
+        rf.track(particles)
+        ends.append(particles.px[0])
+    assert abs(ends[0] - ends[1]) < 1e-3 * abs(ends[1] - 1e-4)
+
+
+def test_adaptive_leaves_the_average_on_a_hard_edge_under_two_half_wavelengths(context):
+    # There is no wave to average over: the average misses 0.9% of this kick, the paraxial map 6e-5.
+    p0c = np.sqrt((_ELECTRON + 2e6)**2 - _ELECTRON**2)
+    ends = {}
+    for model in ('adaptive', 'phase-resolved-paraxial'):
+        rf = xt.Cavity(model=model, frequency=2e8, length=.1, voltage=2e5, phase=1.2, eta=0.,
+                       rf_profile='uniform')
+        particles = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, x=1e-3, px=1e-4)
+        rf.track(particles)
+        ends[model] = particles.px[0]
+    assert ends['adaptive'] == ends['phase-resolved-paraxial']
 
 
 def test_adaptive_keeps_its_accuracy_on_a_long_cavity_that_could_stop_the_particle(context):

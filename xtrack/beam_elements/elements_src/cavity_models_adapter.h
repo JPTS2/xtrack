@@ -161,7 +161,8 @@ double CavityPlan_envelope_width(int profile, double length, double sigma) {
 // The paraxial map integrates its generator through each step: two steps are
 // enough for a travelling wave, four once a counter wave turns its phase by 2k. Its
 // kick error is then about (dE/E per step)^2, so it takes a step for each 2 % of
-// energy change, from V/E, the crest voltage over the total energy.
+// energy change, from V/E, the crest voltage over the total energy, and at least 4
+// to resolve the envelope of a short cavity, where one step misses 10% of the kick.
 // The full map takes 16 steps per half-wavelength, as 8 lose particles an accelerating
 // orbit keeps, and at least 64 to resolve the envelope of a short cavity, where the
 // wave alone would ask for one to three.
@@ -180,7 +181,7 @@ int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double 
             if (resolve) per_half=fmax(per_half,ceil(sqrt(2.)*half_wave/envelope_width));
             parent_cells=(resolve||half_cells>.5) ? (int64_t)ceil(per_half*half_cells) : 1;
             if (model==CAVITY_MODEL_PARAXIAL)
-                parent_cells=(int64_t)fmax((double)parent_cells,ceil(voltage_over_energy/.02));
+                parent_cells=(int64_t)fmax(fmax((double)parent_cells,4.),ceil(voltage_over_energy/.02));
         } else if (model==CAVITY_MODEL_FULL) {
             parent_cells=(int64_t)fmax(64.,ceil(16.*half_cells));
         }
@@ -191,12 +192,15 @@ int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double 
 // "adaptive" leaves the averaged map where its resolved steps would cost as much as
 // the paraxial map, which is then the better choice: envelopes narrower than 0.44 of
 // a half-wavelength, which for P16 is below five half-wavelengths of cavity length
-// (5 / (2 sqrt(32)) = 0.442). Hard edges have no width.
+// (5 / (2 sqrt(32)) = 0.442). A hard edge has no width, and needs two half-wavelengths
+// for there to be a wave to average over.
 #define CAVITY_ADAPTIVE_AVERAGED_MIN_WIDTH .44
+#define CAVITY_ADAPTIVE_AVERAGED_MIN_HARD_EDGE 2.
 GPUFUN
-int CavityPlan_envelope_long(double envelope_width, double frequency) {
-    return !(envelope_width>0.)
-        || envelope_width*2.*frequency/C_LIGHT>=CAVITY_ADAPTIVE_AVERAGED_MIN_WIDTH;
+int CavityPlan_envelope_long(double envelope_width, double length, double frequency) {
+    if (envelope_width>0.)
+        return envelope_width*2.*frequency/C_LIGHT>=CAVITY_ADAPTIVE_AVERAGED_MIN_WIDTH;
+    return length*2.*frequency/C_LIGHT>=CAVITY_ADAPTIVE_AVERAGED_MIN_HARD_EDGE*(1.-1e-12);
 }
 
 GPUFUN
@@ -347,7 +351,7 @@ int CavityPlan_choose(const CavityPlan* plan, CavityData el, LocalParticle* part
     const double energy=sqrt(p0c*p0c+mass0*mass0);
     if (voltage<=2e-4*energy) return 0;
     if (voltage>p0c*p0c/(energy+mass0)) return CAVITY_MODEL_FULL;
-    if (voltage<=.1*energy && CavityPlan_envelope_long(plan->envelope_width,frequency)) {
+    if (voltage<=.1*energy && CavityPlan_envelope_long(plan->envelope_width,plan->adaptive_length,frequency)) {
         int beat_small=plan->adaptive_beat_small;
         if (plan->adaptive_needs_beat && harmonic!=0.)
             beat_small=CavityModels_envelope_beat(el,2.*PI*frequency/C_LIGHT)<=1e-4;

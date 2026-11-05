@@ -145,7 +145,8 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         "phase-averaged" where V/E <= 0.1, the envelope is at least 0.44 of a
         half-wavelength wide (about five half-wavelengths of P16) and the wave
         is travelling or the envelope is smooth over the counter-wave beat, which
-        a hard edge never is; "phase-resolved-paraxial" otherwise.
+        a hard edge never is, and a hard edge is at least two half-wavelengths
+        long; "phase-resolved-paraxial" otherwise.
         "longitudinal-only" (expanded drifts) and
         "longitudinal-only-exact" apply RF energy kicks only.
         "phase-averaged" is Sagan's averaged map with finite-beta terms, the
@@ -172,8 +173,8 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         uses 16 per half RF wavelength and at least 64, phase-averaged
         the steps its envelope needs, at least two per half RF wavelength,
         phase-resolved-paraxial two per half RF wavelength for a travelling wave
-        (eta = 0) and four otherwise, and at least one for each 2% of V/E, and
-        the frozen model its own count.
+        (eta = 0) and four otherwise, at least four in all and at least one for
+        each 2% of V/E, and the frozen model its own count.
     '''.strip()
 
     __doc__ = '\n    '.join([_docstring_start, _docstring_models,
