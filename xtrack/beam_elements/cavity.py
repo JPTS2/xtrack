@@ -137,15 +137,16 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     '''.strip()
 
     _docstring_models = '''model : str
-        "adaptive" (default) chooses for each particle from its reference
-        energy gain and the RF strength g/p0 = |q|V/(L k p0c), the cheapest
-        map that holds: "longitudinal-only" where the first-order RF squeeze
-        dE/(2E) is at most 1e-4 (or the cavity is thin); "phase-averaged" where
-        g/p0 <= 0.05, the envelope is at least 0.44 of a half-wavelength wide
-        (about five half-wavelengths of P16) and the wave is travelling or the
-        envelope is smooth over the counter-wave beat;
-        "phase-resolved-paraxial" where g/p0 <= 0.1; "phase-resolved"
-        otherwise. "longitudinal-only" (expanded drifts) and
+        "adaptive" (default) chooses for each particle, from its reference, the
+        cheapest map that holds, with V/E the crest voltage |q|V over the total
+        energy and V/T over the kinetic energy, whatever the phase:
+        "longitudinal-only" where V/E <= 2e-4 (or the cavity is thin);
+        "phase-resolved" where V/T > 1, so the cavity could stop the particle;
+        "phase-averaged" where V/E <= 0.1, the envelope is at least 0.44 of a
+        half-wavelength wide (about five half-wavelengths of P16) and the wave
+        is travelling or the envelope is smooth over the counter-wave beat, which
+        a hard edge never is; "phase-resolved-paraxial" otherwise.
+        "longitudinal-only" (expanded drifts) and
         "longitudinal-only-exact" apply RF energy kicks only.
         "phase-averaged" is Sagan's averaged map with finite-beta terms, the
         fastest transverse model, valid for envelopes smooth over the
@@ -168,9 +169,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         "geometric-kick-drift" are deprecated aliases.
     num_kicks : int
         Number of integration cells when nonzero. With zero, phase-resolved
-        uses 64, phase-averaged two steps per half RF wavelength,
-        phase-resolved-paraxial two for a travelling wave (eta = 0) and four
-        otherwise, and the frozen model its own count.
+        uses 16 per half RF wavelength and at least 64, phase-averaged
+        the steps its envelope needs, at least two per half RF wavelength,
+        phase-resolved-paraxial two per half RF wavelength for a travelling wave
+        (eta = 0) and four otherwise, and at least one for each 2% of V/E, and
+        the frozen model its own count.
     '''.strip()
 
     __doc__ = '\n    '.join([_docstring_start, _docstring_models,
