@@ -431,6 +431,24 @@ def test_adaptive_chooses_the_same_map_at_any_offset(context):
     np.testing.assert_array_equal(adaptive.px, named.px)
 
 
+@pytest.mark.parametrize('gamma, voltage_over_energy', [(5., .1), (10., .05)])
+def test_phase_averaged_reads_its_radial_kick_at_the_mean_energy_of_the_step(context, gamma, voltage_over_energy):
+    # The error of a radial kick read at one end of the step is (dE/E per step) / 2: here 0.2 to 0.5%.
+    sigma, frequency, offset = .1, 8e8, 1e-3
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    voltage = voltage_over_energy * gamma * _ELECTRON
+    largest = abs(lorentz_end_at_any_radius(dict(x=offset, px=0., y=0., py=0.), frequency, voltage, sigma, 0.,
+                                            p0c, _ELECTRON))
+    for phase in (.6, 1.2, -.6, -1.2):
+        truth = lorentz_end_at_any_radius(dict(x=offset, px=0., y=0., py=0.), frequency, voltage, sigma, phase,
+                                          p0c, _ELECTRON)
+        rf = xt.Cavity(model='phase-averaged', frequency=frequency, length=12 * sigma, voltage=voltage, phase=phase,
+                       eta=0., calibration_beta=1., rf_profile='gaussian', rf_profile_sigma=sigma)
+        particles = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, x=offset, px=0.)
+        rf.track(particles)
+        assert abs(particles.px[0] - truth) < 5e-4 * largest
+
+
 _ADAPTIVE = [(gamma, gradient, half_waves, eta, phase)
              # From g/p0 of 0.2, where only phase-resolved holds, to a negligible squeeze.
              for gamma, gradient in ((3., 5e6), (6., 5e6), (12., 5e6), (20., 5e6), (100., 5e6),

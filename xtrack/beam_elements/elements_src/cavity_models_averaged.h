@@ -200,14 +200,13 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
     int status=CavityModel_averaged_body(q, .5*h, source, field);
     if (status==CAVITY_MODEL_OK)
         status=CavityModel_averaged_ponderomotive(q, coefficient, freeze_zeta, spin);
-    for (int factor=0; factor<2 && status==CAVITY_MODEL_OK; ++factor) {
-        // The inverse word takes the energy kick before the radial term.
-        const int energy_first=xt_float_or_tpsa_const_part(h)<0.;
-        if (factor==energy_first) {
-            const xt_float_or_tpsa r2=q[0]*q[0]+q[1]*q[1];
-            status=CavityModel_averaged_midpoint(q, gradient*h*r2/4.,
-                gradient*h/2., phase, 1, freeze_energy, freeze_zeta);
-        } else if (!freeze_energy) {
+    // The radial kick straddles the energy kick: all of it on one side would be read at
+    // the wrong energy, a first-order error of (dE/E per step) / 2.
+    for (int side=0; side<2 && status==CAVITY_MODEL_OK; ++side) {
+        const xt_float_or_tpsa r2=q[0]*q[0]+q[1]*q[1];
+        status=CavityModel_averaged_midpoint(q, gradient*h*r2/8.,
+            gradient*h/4., phase, 1, freeze_energy, freeze_zeta);
+        if (side==0 && status==CAVITY_MODEL_OK && !freeze_energy) {
             // Carrier precession in the forward wave's radial fields, then
             // the longitudinal-field rotation of the energy kick.
             CavitySpin_carrier(spin, xt_float_or_tpsa_const_part(gradient*h*sin(q[2]-phase)),
