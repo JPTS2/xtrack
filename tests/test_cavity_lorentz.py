@@ -260,6 +260,48 @@ def test_adaptive_leaves_the_average_on_a_hard_edge_with_a_counter_wave(context,
     assert _errors(ends, truth, p0c, gradient * length)[1] < 3e-4
 
 
+@pytest.mark.parametrize('voltage_over_energy, half_waves, profile, eta, model', [
+    (1.9e-4, 8, 'p16', 0., 'longitudinal-only'),
+    (2.1e-4, 8, 'p16', 0., 'phase-averaged'),
+    (.099, 8, 'p16', 0., 'phase-averaged'),
+    (.101, 8, 'p16', 0., 'phase-resolved-paraxial'),
+    (.05, 4, 'p16', 0., 'phase-resolved-paraxial'),      # Envelope too short to average.
+    (.05, 8, 'p16', 1., 'phase-resolved-paraxial'),      # Counter wave does not average away.
+    (.05, 15, 'p16', 1., 'phase-averaged'),
+    (.05, 8, 'uniform', 0., 'phase-averaged'),
+    (.05, 8, 'uniform', 1., 'phase-resolved-paraxial')])
+def test_adaptive_chooses_from_the_voltage_over_the_total_energy(
+        context, voltage_over_energy, half_waves, profile, eta, model):
+    length = half_waves * _HALF_WAVE
+    voltage = 5e6 * length
+    p0c = np.sqrt((voltage / voltage_over_energy)**2 - _ELECTRON**2)
+    common = dict(length=length, voltage=voltage, phase=1.2, eta=eta, rf_profile=profile)
+    assert _track(context, dict(model='adaptive', **common), p0c) == _track(context, dict(model=model, **common), p0c)
+
+
+@pytest.mark.parametrize('voltage_over_kinetic_energy, model', [
+    (.99, 'phase-averaged'), (1.01, 'phase-resolved')])
+def test_adaptive_chooses_phase_resolved_where_the_cavity_could_stop_the_particle(
+        context, voltage_over_kinetic_energy, model):
+    # The voltage over the total energy is about 0.05 either side of this boundary.
+    length = 8 * _HALF_WAVE
+    voltage = 3e4
+    energy = _ELECTRON + voltage / voltage_over_kinetic_energy
+    p0c = np.sqrt(energy**2 - _ELECTRON**2)
+    common = dict(length=length, voltage=voltage, phase=1.2, eta=0.)
+    assert _track(context, dict(model='adaptive', **common), p0c) == _track(context, dict(model=model, **common), p0c)
+
+
+def test_adaptive_leaves_the_average_where_the_energy_changes(context):
+    # g/p0 is 0.03 here, so a limit on it would keep the average: V/E is 0.46.
+    gamma, gradient, half_waves, phase = 4.0096, 1e6, 5, -np.pi / 2
+    length = half_waves * _HALF_WAVE
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    ends = _track(context, dict(model='adaptive', length=length, voltage=gradient * length,
+                                phase=phase, eta=0.), p0c)
+    assert _errors(ends, _truth(gamma, half_waves, gradient, 0., phase), p0c, gradient * length)[1] < 1e-2
+
+
 _ADAPTIVE = [(gamma, gradient, half_waves, eta, phase)
              # From g/p0 of 0.2, where only phase-resolved holds, to a negligible squeeze.
              for gamma, gradient in ((3., 5e6), (6., 5e6), (12., 5e6), (20., 5e6), (100., 5e6),

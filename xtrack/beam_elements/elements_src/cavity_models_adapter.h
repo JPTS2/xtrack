@@ -310,17 +310,16 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
 }
 
 // "adaptive", from the cheapest map to the most complete, for each particle's own
-// reference. With g/p0 = |q|V/(L k p0c), the size of the RF force on the momentum:
-// 1. Longitudinal map: the crest voltage gives a squeeze qV/(2E) <= 1e-4, or the
-//    cavity is thin or at zero frequency, so the transverse RF force is negligible.
-//    The crest holds at every phase: at the zero crossing the reference gains no
-//    energy, but the transverse force is at its largest.
-// 2. Phase-averaged: g/p0 <= 0.05 (its truncation in g/p0), an envelope longer than
-//    the steps it would need (above), and no counter wave at the beat that the
-//    average drops: a travelling wave, or envelope beat D2 <= 1e-4 (its error is
-//    about 1.2 D2, independent of energy).
-// 3. Phase-resolved paraxial: g/p0 <= 0.1, its truncation in g/p0.
-// 4. Phase-resolved otherwise.
+// reference. V/E is the crest voltage over the total energy, V/T over the kinetic:
+// 1. Longitudinal map: V/E <= 2e-4, or the cavity is thin or at zero frequency, so
+//    the transverse RF force is negligible. The crest holds at every phase: at the
+//    zero crossing the reference gains no energy, but that force is at its largest.
+// 2. Phase-resolved: V/T > 1, where the cavity could stop the particle.
+// 3. Phase-averaged: V/E <= 0.1, so the energy barely changes, with an envelope
+//    longer than the steps it would need (above), and no counter wave at the beat
+//    that the average drops: a travelling wave, or envelope beat D2 <= 1e-4 (its
+//    error is about 1.2 D2, independent of energy).
+// 4. Phase-resolved paraxial otherwise.
 // Other selectors are returned unchanged.
 GPUFUN
 int CavityPlan_choose(const CavityPlan* plan, CavityData el, LocalParticle* part) {
@@ -332,15 +331,14 @@ int CavityPlan_choose(const CavityPlan* plan, CavityData el, LocalParticle* part
     if (!(plan->adaptive_length>0.) || !(frequency>0.)) return 0;
     const double charge=fabs(LocalParticle_get_q0(part));
     const double p0c=LocalParticle_get_p0c(part), mass0=LocalParticle_get_mass0(part);
-    const double gain=charge*plan->adaptive_voltage;
-    if (gain*gain<=4e-8*(p0c*p0c+mass0*mass0)) return 0;
-    const double wave_number=2.*PI*frequency/C_LIGHT;
-    const double strength=charge*plan->adaptive_voltage/(plan->adaptive_length*wave_number*p0c);
-    if (strength>.1) return CAVITY_MODEL_FULL;
-    if (strength<=.05 && CavityPlan_envelope_long(plan->envelope_width,frequency)) {
+    const double voltage=charge*plan->adaptive_voltage;
+    const double energy=sqrt(p0c*p0c+mass0*mass0);
+    if (voltage<=2e-4*energy) return 0;
+    if (voltage>p0c*p0c/(energy+mass0)) return CAVITY_MODEL_FULL;
+    if (voltage<=.1*energy && CavityPlan_envelope_long(plan->envelope_width,frequency)) {
         int beat_small=plan->adaptive_beat_small;
         if (plan->adaptive_needs_beat && harmonic!=0.)
-            beat_small=CavityModels_envelope_beat(el,wave_number)<=1e-4;
+            beat_small=CavityModels_envelope_beat(el,2.*PI*frequency/C_LIGHT)<=1e-4;
         if (beat_small) return CAVITY_MODEL_AVERAGED;
     }
     return CAVITY_MODEL_PARAXIAL;

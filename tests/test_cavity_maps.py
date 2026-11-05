@@ -363,14 +363,13 @@ _PI_MODE = 9*clight/1.3e9/2
     (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, dict(eta=0.), 'phase-averaged'),
     (1e9, xt.ELECTRON_MASS_EV, 20e6, np.pi/2,
      dict(rf_profile='uniform', length=_PI_MODE), 'phase-resolved-paraxial'),
-    (10e6, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved-paraxial'),
+    (10e6, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved'),
     (3e6, xt.ELECTRON_MASS_EV, 20e6, np.pi/2, {}, 'phase-resolved')])
-def test_adaptive_selects_by_energy_gain_strength_and_envelope(
+def test_adaptive_selects_by_voltage_over_energy_and_envelope(
         p0c, mass0, voltage, phase, changes, expected):
-    """longitudinal-only where dE/(2E) <= 1e-4 for the
-    reference; phase-averaged where g/p0 <= 0.05 for a travelling wave or an
-    envelope smooth over the counter-wave beat (a pi-mode length); the
-    paraxial map to g/p0 <= 0.1; phase-resolved beyond."""
+    """longitudinal-only where V/E <= 2e-4 at the crest; phase-resolved where
+    V/T > 1; phase-averaged where V/E <= 0.1 for a travelling wave or an envelope
+    smooth over the counter-wave beat; the paraxial map otherwise."""
     ends = {}
     for model in ('adaptive', expected):
         controls = dict(length=1., voltage=voltage, frequency=1.3e9, phase=phase,
@@ -437,10 +436,10 @@ def _adaptive_line(model_context, **controls):
 @pytest.mark.parametrize('expected', ['longitudinal-only', 'phase-averaged',
                                       'phase-resolved-paraxial', 'phase-resolved'])
 def test_each_particle_chooses_from_its_own_reference(model_context, expected):
-    # g/p0 and the squeeze select: these references take each branch in turn.
+    # V/E and V/T select: these references take each branch in turn.
     controls = dict(length=1., frequency=1.3e9, voltage=2e7, phase=np.pi / 2, eta=0.)
     p0c = {'longitudinal-only': 1e13, 'phase-averaged': 1e9,
-           'phase-resolved-paraxial': 1e7, 'phase-resolved': 3e6}[expected]
+           'phase-resolved-paraxial': 5e7, 'phase-resolved': 3e6}[expected]
     coordinates = dict(x=1e-3, px=1e-4, y=-5e-4, py=2e-4, zeta=1e-3, delta=1e-4)
     def end(line, *p0cs):
         probe = xt.Particles(_context=model_context, mass0=xt.ELECTRON_MASS_EV,
