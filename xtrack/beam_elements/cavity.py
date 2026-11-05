@@ -146,7 +146,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         half-wavelength wide (about five half-wavelengths of P16) and the wave
         is travelling or the envelope is smooth over the counter-wave beat, which
         a hard edge never is, and a hard edge is at least two half-wavelengths
-        long; "phase-resolved-paraxial" otherwise.
+        long; "phase-resolved-paraxial" otherwise. It reads the reference, not the
+        particle's coordinates. "phase-averaged" and "phase-resolved-paraxial" drop
+        the force cubic in the offset r, at most 0.56 (r/sigma)^2 of the kick for an
+        envelope of width sigma: 0.1% at r = sigma/24. For larger offsets, or very
+        short cavities, name "phase-resolved".
         "longitudinal-only" (expanded drifts) and
         "longitudinal-only-exact" apply RF energy kicks only.
         "phase-averaged" is Sagan's averaged map with finite-beta terms, the
@@ -173,7 +177,7 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         uses 16 per half RF wavelength and at least 64, phase-averaged
         the steps its envelope needs, at least two per half RF wavelength,
         phase-resolved-paraxial two per half RF wavelength for a travelling wave
-        (eta = 0) and four otherwise, at least four in all and at least one for
+        (eta = 0) and four otherwise, at least eight in all and at least one for
         each 2% of V/E, and the frozen model its own count.
     '''.strip()
 

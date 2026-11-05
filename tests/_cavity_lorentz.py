@@ -1,10 +1,14 @@
 """The Lorentz orbit of a particle in the near-axis RF field of a Cavity.
 
 An independent reference for the cavity maps: the field is written directly from
-the wave equation at quadratic transverse order and integrated with a general
-ODE solver, using none of the maps' generators, gauges or factors.
+the wave equation and integrated with a general ODE solver, using none of the maps'
+generators, gauges or factors. `lorentz_end` keeps a force linear in r, and
+`lorentz_end_at_any_radius` the higher orders, for a Gaussian travelling wave.
 """
+import math
+
 import numpy as np
+from numpy.polynomial import hermite_e, polynomial
 from scipy.constants import c as clight
 from scipy.integrate import quad, solve_ivp
 
@@ -43,6 +47,48 @@ def gaussian(sigma):
 
 def hard_edge(z):
     return 1., 0., 0.
+
+
+def lorentz_end_at_any_radius(launch, frequency, voltage, sigma, phase, p0c, mass0, order=4):
+    """px at the exit of a Gaussian travelling wave, in the field of the wave equation to
+    r^(2 order). `lorentz_end` stops at a force linear in r: this one keeps the cubic force
+    that a quadratic map drops, for a check of the maps' reach in r."""
+    length = 12 * sigma
+    waves = calibrated_waves(voltage, frequency, length, phase, 0., gaussian(sigma))
+    k, field, carrier_phase = waves['k'], waves['forward'], waves['phase']
+    # On h(z) exp(-ikz), d^2/dz^2 + k^2 and d/dz act as polynomials in the derivatives of h.
+    laplacian = np.array([0., -2j * k, 1.])
+    terms = [np.array([1. + 0j])]
+    for _ in range(order):
+        terms.append(polynomial.polymul(terms[-1], laplacian))
+    slopes = [polynomial.polymul(term, np.array([-1j * k, 1.])) for term in terms]
+    highest = len(slopes[-1])
+
+    def rhs(z, state):
+        x, y, ct, px, py, energy = state
+        pz = np.sqrt(energy**2 - mass0**2 - px**2 - py**2)
+        u = z / sigma
+        derivatives = [(-1)**j * hermite_e.hermeval(u, [0] * j + [1]) / sigma**j * np.exp(-u * u / 2)
+                       for j in range(highest)]
+        r2 = x * x + y * y
+        E_z = E_r_over_r = cB_over_r = 0j
+        for n in range(order + 1):
+            weight = (-r2 / 4)**n / math.factorial(n)**2
+            value = np.dot(terms[n], derivatives[:len(terms[n])])
+            E_z += weight * value
+            E_r_over_r -= weight * np.dot(slopes[n], derivatives[:len(slopes[n])]) / (2 * n + 2)
+            cB_over_r += 1j * k * weight * value / (2 * n + 2)
+        carrier = field * np.exp(1j * (k * (ct - z) + carrier_phase))
+        E_z, E_r_over_r, cB_over_r = (E_z * carrier).real, (E_r_over_r * carrier).real, (cB_over_r * carrier).real
+        transverse = E_r_over_r - pz / energy * cB_over_r
+        return [px / pz, py / pz, energy / pz, transverse * x * energy / pz, transverse * y * energy / pz,
+                (E_r_over_r * (x * px + y * py) + E_z * pz) / pz]
+
+    start = [launch['x'], launch['y'], -length / 2, launch['px'] * p0c, launch['py'] * p0c, np.hypot(p0c, mass0)]
+    solution = solve_ivp(rhs, (-length / 2, length / 2), start, method='DOP853', rtol=1e-12, atol=1e-14,
+                         max_step=min(2 * np.pi / k / 32, sigma / 4))
+    assert solution.success, solution.message
+    return solution.y[3, -1] / p0c
 
 
 def calibrated_waves(voltage, frequency, length, phase, eta, envelope,

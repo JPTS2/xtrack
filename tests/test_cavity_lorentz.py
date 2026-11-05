@@ -11,7 +11,7 @@ import pytest
 import xobjects as xo
 import xtrack as xt
 from _cavity_lorentz import (COORDINATES, calibrated_waves, gaussian, hard_edge, lorentz_end,
-                             p16, ramped)
+                             lorentz_end_at_any_radius, p16, ramped)
 from scipy.constants import c as clight
 
 _FREQUENCY = 801.58e6
@@ -363,7 +363,7 @@ def test_phase_resolved_resolves_the_envelope_of_a_short_cavity(context, frequen
 
 
 def test_paraxial_resolves_the_envelope_of_a_short_cavity(context):
-    # One step misses this kick by 10%, and four have converged. V/E alone asks for one.
+    # One step misses this kick by 10%. V/E alone asks for one.
     p0c = np.sqrt((_ELECTRON + 50e6)**2 - _ELECTRON**2)
     ends = []
     for model, steps in (('phase-resolved-paraxial', 0), ('phase-resolved', 4096)):
@@ -395,6 +395,40 @@ def test_adaptive_keeps_its_accuracy_on_a_long_cavity_that_could_stop_the_partic
     ends = _track(context, dict(model='adaptive', length=length, voltage=gradient * length,
                                 phase=phase, eta=eta), p0c)
     assert _errors(ends, _truth(gamma, half_waves, gradient, eta, phase), p0c, gradient * length)[1] < 1e-2
+
+
+@pytest.mark.parametrize('model, sigma, offset, limit', [
+    ('phase-resolved', 5e-3, 1e-3, 1e-4), ('phase-resolved', 10e-3, 1e-3, 2e-4),
+    ('phase-resolved', 10e-3, 3e-3, 5e-4), ('phase-resolved', 100e-3, 10e-3, 1e-4),
+    # This map drops the cubic force, at most 0.1% of the kick at an offset of sigma / 24.
+    ('phase-resolved-paraxial', 24e-3, 1e-3, 1e-3), ('phase-resolved-paraxial', 50e-3, 1e-3, 1e-3),
+    ('phase-resolved-paraxial', 100e-3, 1e-3, 1e-3)])
+def test_the_kick_against_the_orbit_with_the_cubic_force(context, model, sigma, offset, limit):
+    # At the zero crossing the kick is at its largest, so this is the error over the phases' largest kick.
+    gamma, frequency, phase = 10., 8e8, 0.
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    voltage = .05 * gamma * _ELECTRON
+    truth = lorentz_end_at_any_radius(dict(x=offset, px=.1 * offset, y=0., py=0.), frequency, voltage,
+                                      sigma, phase, p0c, _ELECTRON)
+    rf = xt.Cavity(model=model, frequency=frequency, length=12 * sigma, voltage=voltage, phase=phase, eta=0.,
+                   calibration_beta=1., rf_profile='gaussian', rf_profile_sigma=sigma)
+    particles = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, x=offset, px=.1 * offset)
+    rf.track(particles)
+    assert abs(particles.px[0] - truth) < limit * abs(truth - .1 * offset)
+
+
+def test_adaptive_chooses_the_same_map_at_any_offset(context):
+    # The choice reads the reference, not the coordinates, so a bunch shares one map.
+    sigma = 24e-3
+    p0c = _ELECTRON * 100.
+    controls = dict(frequency=8e8, length=12 * sigma, voltage=.05 * 100 * _ELECTRON, phase=1.2, eta=0.,
+                    rf_profile='gaussian', rf_profile_sigma=sigma)
+    offsets = np.array([1e-4, 1e-3, 1e-2])
+    adaptive = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, x=offsets)
+    xt.Cavity(model='adaptive', **controls).track(adaptive)
+    named = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, x=offsets)
+    xt.Cavity(model='phase-resolved-paraxial', **controls).track(named)
+    np.testing.assert_array_equal(adaptive.px, named.px)
 
 
 _ADAPTIVE = [(gamma, gradient, half_waves, eta, phase)

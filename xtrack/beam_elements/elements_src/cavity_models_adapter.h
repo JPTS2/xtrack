@@ -161,8 +161,9 @@ double CavityPlan_envelope_width(int profile, double length, double sigma) {
 // The paraxial map integrates its generator through each step: two steps are
 // enough for a travelling wave, four once a counter wave turns its phase by 2k. Its
 // kick error is then about (dE/E per step)^2, so it takes a step for each 2 % of
-// energy change, from V/E, the crest voltage over the total energy, and at least 4
-// to resolve the envelope of a short cavity, where one step misses 10% of the kick.
+// energy change, from V/E, the crest voltage over the total energy, and at least 8 to
+// resolve the envelope of a short cavity: the step error of the kick is then below
+// 1e-4, at any frequency, where 4 steps give about 1e-3 and one step 10%.
 // The full map takes 16 steps per half-wavelength, as 8 lose particles an accelerating
 // orbit keeps, and at least 64 to resolve the envelope of a short cavity, where the
 // wave alone would ask for one to three.
@@ -181,7 +182,7 @@ int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double 
             if (resolve) per_half=fmax(per_half,ceil(sqrt(2.)*half_wave/envelope_width));
             parent_cells=(resolve||half_cells>.5) ? (int64_t)ceil(per_half*half_cells) : 1;
             if (model==CAVITY_MODEL_PARAXIAL)
-                parent_cells=(int64_t)fmax(fmax((double)parent_cells,4.),ceil(voltage_over_energy/.02));
+                parent_cells=(int64_t)fmax(fmax((double)parent_cells,8.),ceil(voltage_over_energy/.02));
         } else if (model==CAVITY_MODEL_FULL) {
             parent_cells=(int64_t)fmax(64.,ceil(16.*half_cells));
         }
@@ -336,6 +337,9 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
 //    that the average drops: a travelling wave, or envelope beat D2 <= 1e-4 (its
 //    error is about 1.2 D2, independent of energy).
 // 4. Phase-resolved paraxial otherwise.
+// It reads no coordinates, so particles of one reference share a map. The averaged and
+// paraxial maps drop the force cubic in the offset, at most 0.56 (r/width)^2 of the kick:
+// a limit of those maps that a large offset needs "phase-resolved" by name to avoid.
 // Other selectors are returned unchanged.
 GPUFUN
 int CavityPlan_choose(const CavityPlan* plan, CavityData el, LocalParticle* part) {
