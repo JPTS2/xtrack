@@ -302,6 +302,74 @@ def test_adaptive_leaves_the_average_where_the_energy_changes(context):
     assert _errors(ends, _truth(gamma, half_waves, gradient, 0., phase), p0c, gradient * length)[1] < 1e-2
 
 
+def test_paraxial_takes_a_step_for_each_two_percent_of_energy_change(context):
+    # V/E is 0.62, so 31 steps where the wave alone asks for 4.
+    gamma, gradient, half_waves, phase = 5.9095, 5e6, 2, -np.pi / 2
+    length = half_waves * _HALF_WAVE
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    common = dict(model='phase-resolved-paraxial', length=length, voltage=gradient * length,
+                  phase=phase, eta=0.)
+    assert _track(context, dict(common), p0c) == _track(context, dict(num_kicks=31, **common), p0c)
+
+
+def test_paraxial_steps_follow_each_particles_own_reference(context):
+    # The plan is prepared once per call, and this reference differs from the line's.
+    gamma, gradient, half_waves, phase = 5.9095, 5e6, 2, -np.pi / 2
+    length = half_waves * _HALF_WAVE
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    line = xt.Line(elements={'rf': xt.Cavity(model='phase-resolved-paraxial', frequency=_FREQUENCY,
+                                             calibration_beta=1., length=length,
+                                             voltage=gradient * length, phase=phase, eta=0.)})
+    line.particle_ref = xt.Particles(p0c=100 * p0c, mass0=_ELECTRON)
+    line.build_tracker(_context=context)
+    particles = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, **_LAUNCHES[0])
+    line.track(particles)
+    ends = _track(context, dict(model='phase-resolved-paraxial', num_kicks=31, length=length,
+                                voltage=gradient * length, phase=phase, eta=0.), p0c)
+    assert particles.px[0] == ends[0]['px']
+
+
+def test_adaptive_keeps_its_accuracy_where_the_paraxial_map_needs_more_steps(context):
+    gamma, gradient, half_waves, phase = 5.9095, 5e6, 2, -np.pi / 2
+    length = half_waves * _HALF_WAVE
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    ends = _track(context, dict(model='adaptive', length=length, voltage=gradient * length,
+                                phase=phase, eta=0.), p0c)
+    assert _errors(ends, _truth(gamma, half_waves, gradient, 0., phase), p0c, gradient * length)[1] < 1e-2
+
+
+def test_phase_resolved_takes_sixteen_steps_per_half_wavelength(context):
+    length = 30 * _HALF_WAVE
+    p0c = _ELECTRON * 10.
+    common = dict(model='phase-resolved', length=length, voltage=1e6, phase=.6, eta=0.)
+    assert _track(context, dict(common), p0c) == _track(context, dict(num_kicks=480, **common), p0c)
+
+
+@pytest.mark.parametrize('frequency, length, kinetic_energy', [
+    (2e8, .1, .5e6), (2e8, .1, 2e6), (5e7, .3, .5e6), (1e6, 1., 5e4)])
+def test_phase_resolved_resolves_the_envelope_of_a_short_cavity(context, frequency, length, kinetic_energy):
+    # Far under a half wavelength the wave asks for one to three steps, but the envelope does not.
+    p0c = np.sqrt((_ELECTRON + kinetic_energy)**2 - _ELECTRON**2)
+    ends = []
+    for steps in (dict(), dict(num_kicks=2048)):
+        rf = xt.Cavity(model='phase-resolved', frequency=frequency, length=length, voltage=1e5,
+                       phase=1.2, eta=0., **steps)
+        particles = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, x=1e-3, px=1e-4)
+        rf.track(particles)
+        assert particles.state[0] == 1
+        ends.append(particles.px[0])
+    assert abs(ends[0] - ends[1]) < 1e-3 * abs(ends[1] - 1e-4)
+
+
+def test_adaptive_keeps_its_accuracy_on_a_long_cavity_that_could_stop_the_particle(context):
+    gamma, gradient, half_waves, eta, phase = 17.5015, 30e6, 30, 1., .6
+    length = half_waves * _HALF_WAVE
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    ends = _track(context, dict(model='adaptive', length=length, voltage=gradient * length,
+                                phase=phase, eta=eta), p0c)
+    assert _errors(ends, _truth(gamma, half_waves, gradient, eta, phase), p0c, gradient * length)[1] < 1e-2
+
+
 _ADAPTIVE = [(gamma, gradient, half_waves, eta, phase)
              # From g/p0 of 0.2, where only phase-resolved holds, to a negligible squeeze.
              for gamma, gradient in ((3., 5e6), (6., 5e6), (12., 5e6), (20., 5e6), (100., 5e6),

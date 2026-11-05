@@ -159,19 +159,31 @@ double CavityPlan_envelope_width(int profile, double length, double sigma) {
 // travelling wave's transverse kick then stays below 3e-4, where two steps alone
 // miss 69 % of it for two P16 cells. For P16 the rule reads ceil(16/half-wavelengths).
 // The paraxial map integrates its generator through each step: two steps are
-// enough for a travelling wave, four once a counter wave turns its phase by 2k.
+// enough for a travelling wave, four once a counter wave turns its phase by 2k. Its
+// kick error is then about (dE/E per step)^2, so it takes a step for each 2 % of
+// energy change, from V/E, the crest voltage over the total energy.
+// The full map takes 16 steps per half-wavelength, as 8 lose particles an accelerating
+// orbit keeps, and at least 64 to resolve the envelope of a short cavity, where the
+// wave alone would ask for one to three.
 GPUFUN
 int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double length,
-                         double envelope_width, double eta, double weight, int controls) {
+                         double envelope_width, double eta, double weight, int controls,
+                         double voltage_over_energy) {
     int64_t parent_cells=requested>0 ? requested : 64;
-    if ((model==CAVITY_MODEL_AVERAGED || model==CAVITY_MODEL_PARAXIAL) && requested==0) {
+    if (requested==0) {
         const double half_wave=frequency>0. ? .5*C_LIGHT/frequency : 0.;
         const double half_cells=frequency>0. ? length/half_wave : 0.;
-        double per_half=2.;
-        if (model==CAVITY_MODEL_PARAXIAL && eta>0.) per_half=4.;
-        const int resolve=model==CAVITY_MODEL_AVERAGED && envelope_width>0. && half_wave>0.;
-        if (resolve) per_half=fmax(per_half,ceil(sqrt(2.)*half_wave/envelope_width));
-        parent_cells=(resolve||half_cells>.5) ? (int64_t)ceil(per_half*half_cells) : 1;
+        if (model==CAVITY_MODEL_AVERAGED || model==CAVITY_MODEL_PARAXIAL) {
+            double per_half=2.;
+            if (model==CAVITY_MODEL_PARAXIAL && eta>0.) per_half=4.;
+            const int resolve=model==CAVITY_MODEL_AVERAGED && envelope_width>0. && half_wave>0.;
+            if (resolve) per_half=fmax(per_half,ceil(sqrt(2.)*half_wave/envelope_width));
+            parent_cells=(resolve||half_cells>.5) ? (int64_t)ceil(per_half*half_cells) : 1;
+            if (model==CAVITY_MODEL_PARAXIAL)
+                parent_cells=(int64_t)fmax((double)parent_cells,ceil(voltage_over_energy/.02));
+        } else if (model==CAVITY_MODEL_FULL) {
+            parent_cells=(int64_t)fmax(64.,ceil(16.*half_cells));
+        }
     }
     return controls==CAVITY_MODEL_OK ? (int64_t)ceil(parent_cells*weight) : 1;
 }
@@ -273,7 +285,7 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
         for (int chosen=CAVITY_MODEL_FULL; chosen<=CAVITY_MODEL_PARAXIAL; ++chosen) {
             const int controls=CavityPlan_controls(el,part0,chosen,integrator,requested,weight,slice_start);
             plan->choice[chosen-CAVITY_MODEL_FULL].controls=controls;
-            plan->choice[chosen-CAVITY_MODEL_FULL].cells=CavityPlan_cells(chosen,requested,frequency,length,envelope_width,eta,weight,controls);
+            plan->choice[chosen-CAVITY_MODEL_FULL].cells=CavityPlan_cells(chosen,requested,frequency,length,envelope_width,eta,weight,controls,0.);
         }
         const double voltage=fabs(xt_float_or_tpsa_const_part(CavityData_get_voltage(el)));
         const double harmonic=xt_float_or_tpsa_const_part(CavityData_get_harmonic(el));
@@ -289,7 +301,7 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
     } else {
         const int controls=CavityPlan_controls(el,part0,model,integrator,requested,weight,slice_start);
         plan->choice[0].controls=controls;
-        plan->choice[0].cells=CavityPlan_cells(model,requested,frequency,length,envelope_width,eta,weight,controls);
+        plan->choice[0].cells=CavityPlan_cells(model,requested,frequency,length,envelope_width,eta,weight,controls,0.);
     }
 
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
@@ -415,12 +427,14 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
     const xt_float_or_tpsa harmonic=CavityData_get_harmonic(el);
     if (!xt_float_or_tpsa_is_zero(harmonic)) {
         if (!(part->line_length>0.)) status=CAVITY_MODEL_ARGUMENT;
-        else {
-            frequency+=harmonic*beta0*C_LIGHT/part->line_length;
-            cells=CavityPlan_cells(model,requested,xt_float_or_tpsa_const_part(frequency),
-                                   length,plan->envelope_width,plan->eta,weight,controls);
-        }
+        else frequency+=harmonic*beta0*C_LIGHT/part->line_length;
     }
+    // A harmonic frequency and the energy change follow this particle's reference.
+    if (!xt_float_or_tpsa_is_zero(harmonic) || (model==CAVITY_MODEL_PARAXIAL && requested==0))
+        cells=CavityPlan_cells(model,requested,xt_float_or_tpsa_const_part(frequency),
+            length,plan->envelope_width,plan->eta,weight,controls,
+            fabs(q0*xt_float_or_tpsa_const_part(CavityData_get_voltage(el)))
+                /sqrt(mass0*mass0+LocalParticle_get_p0c(part)*LocalParticle_get_p0c(part)));
     xt_float_or_tpsa phase=CavityData_get_phase(el)
         +DEG2RAD*CavityData_get_lag(el)
         +CavityData_get_phase_taper(el)
