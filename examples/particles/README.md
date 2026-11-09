@@ -3,7 +3,7 @@ This file is part of the Xtrack Package.
 Copyright (c) CERN, 2026.
 -->
 
-# Particles and distributions
+# Particles
 
 A numbered introduction to reference quantities, coordinates and particle
 preparation. Each script runs independently in your Xsuite environment.
@@ -13,8 +13,8 @@ preparation. Each script runs independently in your Xsuite environment.
 | [001_reference_quantities.py](001_reference_quantities.py) | Species, reference momentum, total/kinetic energy and signed rigidity |
 | [002_coordinates.py](002_coordinates.py) | Linked energy coordinates, automatic updates, slopes and arrival time |
 | [003_normalized_coordinates.py](003_normalized_coordinates.py) | Courant-Snyder coordinates, emittance-scaled launches and round trips |
-| [004_gaussian_bunch.py](004_gaussian_bunch.py) | Build a weighted Gaussian bunch and check its physical beam sizes |
-| [005_select_and_merge_particles.py](005_select_and_merge_particles.py) | Follow particle IDs while sorting, selecting and combining subsets |
+| [004_gaussian_transverse_bunch.py](004_gaussian_transverse_bunch.py) | Build a weighted Gaussian bunch and check its physical beam sizes |
+| [005_select_and_merge.py](005_select_and_merge.py) | Follow particle IDs while sorting, selecting and combining subsets |
 | [006_multispecies_kicks.py](006_multispecies_kicks.py) | Compare proton, deuteron and helium deflections at equal velocity or momentum |
 
 The reference and coordinate examples use a 1 GeV/c proton reference. The two

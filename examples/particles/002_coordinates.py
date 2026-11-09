@@ -56,7 +56,7 @@ energy_table = xt.Table(
     },
     index   = 'particle_id',
 )
-energy_table.show()
+energy_table.show(maxwidth = 'full')
 
 ################################################################################
 # Use another energy coordinate or update delta
@@ -80,7 +80,7 @@ comparison = xt.Table(
     },
     index   = 'particle_id',
 )
-comparison.show()
+comparison.show(maxwidth = 'full')
 
 ########################################
 # Update a coordinate through its public setter
@@ -100,7 +100,7 @@ updated = xt.Table(
     },
     index   = 'particle_id',
 )
-updated.show()
+updated.show(maxwidth = 'full')
 
 ################################################################################
 # Interpret transverse momentum and longitudinal position
@@ -122,7 +122,7 @@ transverse = xt.Table(
     },
     index   = 'particle_id',
 )
-transverse.show()
+transverse.show(maxwidth = 'full')
 
 ########################################
 # Convert zeta to an arrival-time offset
@@ -138,4 +138,4 @@ arrival             = xt.Table(
     },
     index   = 'particle_id',
 )
-arrival.show()
+arrival.show(maxwidth = 'full')

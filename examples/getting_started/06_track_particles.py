@@ -3,7 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Further examples: examples/particles_and_distributions/
+# Further examples: examples/particles/
 #                   examples/tracking/ and examples/monitors/
 
 ################################################################################
