@@ -208,6 +208,8 @@ Follow the [longitudinal optics lessons](optics/longitudinal/README.md).
 Chromatic optics, from first-order derivatives to higher-order momentum
 dependence, followed by amplitude-dependent and other nonlinear studies.
 
+Begin with the [chromatic optics lessons](optics/nonlinear/README.md).
+
 - `001_chromatic_optics.py`
 - `002_higher_order_chromaticity.py`
 - `003_amplitude_detuning.py`
