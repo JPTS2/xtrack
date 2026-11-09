@@ -143,6 +143,8 @@ advanced branch rather than an introduction to element usage.
 Reference geometry, ring closure, selected survey origins and actual element
 frames.
 
+Follow the [geometry and survey lessons](geometry_and_survey/README.md).
+
 - `001_survey_a_line.py`
 - `002_ring_closure.py`
 - `003_survey_from_a_selected_point.py`
