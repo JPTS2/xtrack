@@ -15,6 +15,13 @@ For assembling these elements into a model, use
 | [Cavities](cavities/README.md) | Energy and transverse RF kicks, finite-length transport and numerical map choices |
 | [Maps](maps/README.md) | Taylor approximations and assigned segment optics |
 | [Spatial transformations](transformations/README.md) | Coordinate frames, ordered rotations and element misalignment attributes |
-| [Custom elements](custom/README.md) | Tracking kernels, particle random streams and internal event records |
+| [Electron cooler](electron_cooler.py) | Apply one native friction kick and compare powered and zero-current particles |
+| [Custom elements](custom/README.md) | Tracking kernels, particle random streams, event records and Python interaction processes |
 
 Machine-level RF dynamics belongs with RF; apertures have their own subject.
+
+The electron-cooler lesson uses a homogeneous positive-ion reference. It compares
+one passage with zero and nonzero electron current; the configured length
+integrates the friction force without adding drift transport. The guiding
+magnetic field enters that friction model rather than a solenoid optics map.
+This single-element comparison does not determine a cooling time or equilibrium.
