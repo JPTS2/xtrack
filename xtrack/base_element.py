@@ -631,7 +631,7 @@ class BeamElement(xo.HybridClass, metaclass=MetaBeamElement):
         handles = {}
         for name in self._float_or_tpsa_fields:
             # Read the storage descriptor, not a public projection such as
-            # Cavity.wave_number=None for a frequency-derived carrier.
+            # Cavity.nominal_energy_gain=None for a derived programme.
             storage_name = self._rename.get(name, name)
             if self._xobject._tpsa_enabled:
                 value = getattr(self, storage_name)

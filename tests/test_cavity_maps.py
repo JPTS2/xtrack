@@ -22,10 +22,10 @@ def model_context(tmp_path_factory):
 
 def cavity(model='_phase-resolved', **kwargs):
     controls = dict(length=.05, voltage=20e3, frequency=400e6, phase=.7,
-                    eta=.25, counter_phase=.3, calibration_beta=1.,
+                    counter_wave_amplitude=.5, counter_wave_phase=.3,
                     model=model, integrator='uniform', num_kicks=16)
     if model == '_phase-resolved-frozen':
-        controls.update(eta=0., integrator='_geometric')
+        controls.update(counter_wave_amplitude=0., integrator='_geometric')
     controls.update(kwargs)
     return xt.MagnetOverlappedCavity(**controls)
 
@@ -91,7 +91,7 @@ def test_frozen_model_is_symplectic_with_canonical_faces(model_context, faces):
 
 
 def _resolved_endpoint(integrator, cells):
-    rf = xt.Cavity(length=.5, voltage=5e6, frequency=1.3e9, phase=.6, eta=.3,
+    rf = xt.Cavity(length=.5, voltage=5e6, frequency=1.3e9, phase=.6, counter_wave_amplitude=.55,
                    model='_phase-resolved', integrator=integrator, num_kicks=cells)
     probe = xt.Particles(p0c=xt.ELECTRON_MASS_EV*np.sqrt(20.**2 - 1),
         mass0=xt.ELECTRON_MASS_EV, x=1e-3, px=2e-3, y=-5e-4, zeta=1e-3,
@@ -146,10 +146,10 @@ def _launch(gamma, **changes):
 
 
 @pytest.mark.parametrize('model', ['_phase-averaged', '_phase-resolved-paraxial'])
-@pytest.mark.parametrize('eta', [0., 1.])
-def test_phase_averaged_is_symplectic(model, eta):
+@pytest.mark.parametrize('amplitude', [0., 1.])
+def test_phase_averaged_is_symplectic(model, amplitude):
     names = ('x', 'px', 'y', 'py', 'zeta', 'pzeta')
-    rf = _averaged_cavity(model, eta=eta)
+    rf = _averaged_cavity(model, counter_wave_amplitude=amplitude)
     step = 1e-6
     matrix = np.zeros((6, 6))
     for column, name in enumerate(names):
@@ -224,7 +224,7 @@ def test_phase_averaged_geometric_and_uniform_converge_together():
     def endpoint(integrator, cells):
         probe = _launch(20.)
         _averaged_cavity(integrator=integrator, num_kicks=cells,
-                         rf_profile='uniform', eta=0.).track(probe)
+                         rf_profile='uniform', counter_wave_amplitude=0.).track(probe)
         return np.array([probe.x[0], probe.px[0], probe.zeta[0], probe.delta[0]])
     gaps = [np.abs(endpoint('_geometric', n) - endpoint('uniform', n)).max()
             for n in (16, 64)]
@@ -270,15 +270,16 @@ def test_phase_averaged_spin_follows_phase_resolved(phase, model):
     assert gap < .03*np.linalg.norm(turned['_phase-resolved'])
 
 
-@pytest.mark.parametrize('eta,counter_phase', [(1., 0.), (.25, .7)])
+@pytest.mark.parametrize('amplitude,counter_phase', [(1., 0.), (.5, .7)])
 @pytest.mark.parametrize('model', ['_phase-averaged', '_phase-resolved-paraxial'])
-def test_phase_averaged_energy_gain_includes_the_counter_wave(eta, counter_phase, model):
+def test_phase_averaged_energy_gain_includes_the_counter_wave(amplitude, counter_phase, model):
     """The shared calibration includes the counter wave's direct gain, which
     does not average away in a short cavity (2.7 RF wavelengths here)."""
     gains = []
     for chosen in (model, '_phase-resolved'):
         rf = xt.Cavity(length=1., voltage=350e6, frequency=801.58e6, phase=2.6,
-                       model=chosen, eta=eta, counter_phase=counter_phase)
+                       model=chosen, counter_wave_amplitude=amplitude,
+                       counter_wave_phase=counter_phase)
         probe = xt.Particles(p0c=182.5e9, mass0=xt.ELECTRON_MASS_EV)
         rf.track(probe)
         gains.append(probe.delta[0])
@@ -310,9 +311,9 @@ def test_phase_resolved_truncates_end_fields_as_hard_edges(profile, extra):
     """A whole cavity's end planes are hard edges of both waves: the
     particle leaves field-free, as in the paraxial map, and slices compose."""
     cells = 5.3
-    resolved = _short_cavity('_phase-resolved', cells, eta=.6, rf_profile=profile,
+    resolved = _short_cavity('_phase-resolved', cells, counter_wave_amplitude=.8, rf_profile=profile,
                              num_kicks=530, **extra)
-    paraxial = _short_cavity('_phase-resolved-paraxial', cells, eta=.6, rf_profile=profile,
+    paraxial = _short_cavity('_phase-resolved-paraxial', cells, counter_wave_amplitude=.8, rf_profile=profile,
                              num_kicks=170, **extra)
     np.testing.assert_allclose(_focusing(resolved), _focusing(paraxial), rtol=1e-5)
     p0c = xt.ELECTRON_MASS_EV*np.sqrt(400.**2 - 1)
@@ -358,13 +359,13 @@ _PI_MODE = 9*clight/1.3e9/2
 
 @pytest.mark.parametrize('phase', [np.pi/2, 1.])
 def test_frozen_spin_uses_the_shared_factor_rules(phase):
-    """The frozen factors are the compact eta = 0 factors."""
+    """The frozen factors are the compact travelling-wave factors."""
     gamma, anomaly = 200., 0.00115965218
     p0c = xt.ELECTRON_MASS_EV*np.sqrt(gamma**2 - 1)
     turned = {}
     for model in ('_phase-resolved-frozen', '_phase-averaged'):
         line = xt.Line(elements={'rf': _averaged_cavity(model, phase=phase,
-            num_kicks=64, rf_profile='uniform', eta=0.)})
+            num_kicks=64, rf_profile='uniform', counter_wave_amplitude=0.)})
         line.particle_ref = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV)
         line.build_tracker()
         line.configure_spin(True)

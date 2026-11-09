@@ -22,7 +22,7 @@ LENGTH_M          = 0.1
 FREQUENCY_HZ      = 3E9
 VOLTAGE_V         = 20E6
 PHASE_RAD         = 0.7
-ETA               = 0.25
+COUNTER_AMPLITUDE = 0.5
 COUNTER_PHASE_RAD = 0.3
 GAMMA0            = 1000.
 NUM_GAUSS_CELLS   = 128
@@ -46,8 +46,7 @@ kappa = np.sqrt(GAMMA0**2 - 1.)
 line = xt.Line(elements={
     'rf': xt.MagnetOverlappedCavity(model='_phase-resolved', rf_profile='p16',
         length=LENGTH_M, frequency=FREQUENCY_HZ, voltage=VOLTAGE_V,
-        phase=PHASE_RAD, eta=ETA, counter_phase=COUNTER_PHASE_RAD,
-        calibration_beta=1., num_kicks=NUM_GAUSS_CELLS, absolute_time=True,
+        phase=PHASE_RAD, counter_wave_amplitude=COUNTER_AMPLITUDE, counter_wave_phase=COUNTER_PHASE_RAD, num_kicks=NUM_GAUSS_CELLS, absolute_time=True,
         ks=KS, knl=[0., KNL1], ksl=[0., KSL1],
         edge_entry_active=0, edge_exit_active=0),
     'exit': xt.Marker()})

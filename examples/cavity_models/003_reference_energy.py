@@ -20,7 +20,7 @@ LENGTH_M        = 0.05
 FREQUENCY_HZ    = 400E6
 VOLTAGE_V       = 20E3
 PHASE_RAD       = 0.7
-ETA             = 0.25
+COUNTER_AMPLITUDE = 0.5
 P0C_EV          = 2E6
 NUM_GAUSS_CELLS = 16
 
@@ -30,7 +30,7 @@ NUM_GAUSS_CELLS = 16
 line = xt.Line(elements={
     'rf': xt.Cavity(model='_phase-resolved', length=LENGTH_M,
         frequency=FREQUENCY_HZ, voltage=VOLTAGE_V, phase=PHASE_RAD,
-        eta=ETA, num_kicks=NUM_GAUSS_CELLS, absolute_time=True),
+        counter_wave_amplitude=COUNTER_AMPLITUDE, num_kicks=NUM_GAUSS_CELLS, absolute_time=True),
     'reference_update': xt.ReferenceEnergyIncrease(Delta_p0c=0.),
     'exit': xt.Marker()})
 line.particle_ref = xt.Particles(mass0=xt.ELECTRON_MASS_EV, q0=1., p0c=P0C_EV)

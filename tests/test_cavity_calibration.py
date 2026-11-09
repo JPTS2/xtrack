@@ -25,7 +25,7 @@ class _CalibrationProbe(xt.BeamElement):
     """Read the real source factory through scalar and actual TPSA kernels."""
     allow_rot_and_shift = False
     _xofields = {name: FloatOrTpsa for name in (
-        'frequency', 'voltage', 'length', 'phase', 'eta', 'counter_phase',
+        'frequency', 'voltage', 'length', 'phase', 'counter_amplitude', 'counter_phase',
         'calibration_beta', 'wave_number', 'sigma', 'center')}
     _xofields.update(profile=xo.Int64, reference_charge=xo.Float64)
     _extra_c_sources = [r'''
@@ -39,7 +39,7 @@ class _CalibrationProbe(xt.BeamElement):
                 _CalibrationProbeData_get_voltage(el),
                 _CalibrationProbeData_get_length(el),
                 _CalibrationProbeData_get_phase(el),
-                _CalibrationProbeData_get_eta(el),
+                _CalibrationProbeData_get_counter_amplitude(el),
                 _CalibrationProbeData_get_counter_phase(el),
                 _CalibrationProbeData_get_calibration_beta(el),
                 _CalibrationProbeData_get_wave_number(el),
@@ -61,7 +61,7 @@ class _CalibrationProbe(xt.BeamElement):
 
 def hardware(profile=0, **overrides):
     result = dict(frequency=400e6, voltage=2000., length=.05, phase=.4,
-        eta=.25, counter_phase=.3, calibration_beta=.9, sigma=.0125,
+        counter_amplitude=.5, counter_phase=.3, calibration_beta=.9, sigma=.0125,
         center=.003, profile=profile, reference_charge=1.)
     result.update(overrides)
     result.setdefault('wave_number', 2*np.pi*result['frequency']/LIGHT_SPEED)
@@ -95,7 +95,7 @@ def analytic_source(settings):
     k = 2*np.pi*s['frequency']/LIGHT_SPEED
     half = k*s['length']/2
     nu = s['wave_number']/k
-    ratio = np.sqrt(s['eta'])
+    ratio = s['counter_amplitude']
     forward = 0. if np.isinf(ratio) else 1/(1+ratio)
     backward = 1. if np.isinf(ratio) else ratio/(1+ratio)
     slow = analytic_integral(half, 1/s['calibration_beta']-nu,
@@ -127,18 +127,18 @@ def native_source(context, settings):
 @pytest.mark.parametrize('settings', [
     hardware(),
     hardware(reference_charge=-1., voltage=-2000.),
-    hardware(frequency=2.856e9, length=3.05, eta=1., calibration_beta=1.),
-    hardware(frequency=2.856e9, length=5., eta=1., calibration_beta=1.),
-    hardware(frequency=2.856e9, length=3.05, eta=.7, calibration_beta=.9),
-    hardware(profile=2, length=1., sigma=.005, center=0., eta=0., calibration_beta=1.),
-    hardware(profile=2, length=1., sigma=.01, center=0., eta=0., calibration_beta=1.),
-    hardware(profile=2, length=1., sigma=.005, center=.023, eta=.25),
-    hardware(profile=2, length=.2, sigma=.025, center=-.013, eta=1.),
-    hardware(profile=2, length=.2, sigma=.025, center=.11, eta=.4),
-    hardware(profile=2, length=1., sigma=.005, center=.55, eta=.25),
-    hardware(profile=1, length=5., eta=.3),
+    hardware(frequency=2.856e9, length=3.05, counter_amplitude=1., calibration_beta=1.),
+    hardware(frequency=2.856e9, length=5., counter_amplitude=1., calibration_beta=1.),
+    hardware(frequency=2.856e9, length=3.05, counter_amplitude=.84, calibration_beta=.9),
+    hardware(profile=2, length=1., sigma=.005, center=0., counter_amplitude=0., calibration_beta=1.),
+    hardware(profile=2, length=1., sigma=.01, center=0., counter_amplitude=0., calibration_beta=1.),
+    hardware(profile=2, length=1., sigma=.005, center=.023, counter_amplitude=.5),
+    hardware(profile=2, length=.2, sigma=.025, center=-.013, counter_amplitude=1.),
+    hardware(profile=2, length=.2, sigma=.025, center=.11, counter_amplitude=.63),
+    hardware(profile=2, length=1., sigma=.005, center=.55, counter_amplitude=.5),
+    hardware(profile=1, length=5., counter_amplitude=.55),
     # Pure counter-wave makes the Bessel/0F1 switch visible in normalisation.
-    *[hardware(length=x*LIGHT_SPEED/(2*np.pi*400e6),eta=np.inf,
+    *[hardware(length=x*LIGHT_SPEED/(2*np.pi*400e6),counter_amplitude=np.inf,
                calibration_beta=1.) for x in (15.999,16.,16.001)],
 ])
 def test_finite_profile_crest_and_clock_against_analytic_integral(
@@ -155,7 +155,7 @@ def test_nearly_cancelling_phasor_retains_relative_normalisation(calibration_con
     half=k*settings['length']/2
     slow=analytic_integral(half,0.,0,0.,0.).real
     fast=analytic_integral(half,2.,0,0.,0.).real
-    settings.update(eta=(slow/fast)**2,counter_phase=np.pi-1e-3)
+    settings.update(counter_amplitude=slow/fast,counter_phase=np.pi-1e-3)
     np.testing.assert_allclose(native_source(calibration_context,settings),
                                analytic_source(settings),rtol=2e-11,atol=2e-11)
 
@@ -165,7 +165,7 @@ def test_source_hardware_tpsa_derivatives_against_analytic_integral(
         calibration_context, profile, calibration_beta):
     settings = hardware(profile=profile, length=.2, sigma=.008, center=.017,
                         calibration_beta=calibration_beta)
-    names = ('frequency','voltage','length','phase','eta','counter_phase',
+    names = ('frequency','voltage','length','phase','counter_amplitude','counter_phase',
              'calibration_beta','wave_number','sigma','center')
     for name in names:
         if profile == 0 and name in ('sigma','center'):
@@ -210,7 +210,7 @@ def test_gaussian_width_center_mixed_tpsa_derivative(calibration_context):
 
 def test_seeded_synchronous_gaussian_detuning_keeps_derivatives(calibration_context):
     settings=hardware(profile=2,length=1.,sigma=.005,center=.023,
-                      eta=0.,calibration_beta=1.)
+                      counter_amplitude=0.,calibration_beta=1.)
     element=_CalibrationProbe(_context=calibration_context,**settings)
     desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=2)
     scale=settings['wave_number']
@@ -230,7 +230,7 @@ def test_seeded_synchronous_gaussian_detuning_keeps_derivatives(calibration_cont
 
 
 def test_seeded_zero_p16_detuning_retains_fourth_order(calibration_context):
-    settings=hardware(length=.2,eta=0.,calibration_beta=1.)
+    settings=hardware(length=.2,counter_amplitude=0.,calibration_beta=1.)
     element=_CalibrationProbe(_context=calibration_context,**settings)
     desc=madng_tpsa.Descriptor(6,4,num_params=1,param_order=4)
     element.wave_number=settings['wave_number']*(1.+desc.param(1,0.))
@@ -251,7 +251,7 @@ def test_seeded_zero_p16_detuning_retains_fourth_order(calibration_context):
 @pytest.mark.parametrize('argument',[15.999,16.,16.001])
 def test_p16_switch_actual_tpsa_derivatives(calibration_context,argument):
     settings=hardware(length=argument*LIGHT_SPEED/(2*np.pi*400e6),
-                      eta=np.inf,calibration_beta=1.)
+                      counter_amplitude=np.inf,calibration_beta=1.)
     element=_CalibrationProbe(_context=calibration_context,**settings)
     desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=2)
     scale=settings['wave_number']
@@ -274,7 +274,7 @@ def test_p16_switch_actual_tpsa_derivatives(calibration_context,argument):
 
 def test_broad_offset_gaussian_uses_well_conditioned_normalisation(calibration_context):
     settings=hardware(profile=2,length=1.,sigma=1e6,center=1e6,
-                      eta=0.,calibration_beta=1.)
+                      counter_amplitude=0.,calibration_beta=1.)
     observed=native_source(calibration_context,settings)
     k=2*np.pi*settings['frequency']/LIGHT_SPEED
     half=k*settings['length']/2

@@ -120,30 +120,30 @@ def test_field_getter_preserves_orders_and_rejects_incompatible_handles(tmp_path
         assert particles._xobject.state == -50
 
 
-@pytest.mark.parametrize('carrier', [None, 0.])
-def test_cavity_tpsa_renamed_carrier_storage(carrier):
+@pytest.mark.parametrize('programme', [None, 0.])
+def test_cavity_tpsa_renamed_programme_storage(programme):
     """Promoting backing slots must preserve a derived/explicit public input."""
-    line = xt.Line(elements=[xt.Cavity(wave_number=carrier)],
+    line = xt.Line(elements=[xt.Cavity(nominal_energy_gain=programme)],
                    element_names=['c'])
     line['phase_knob'] = .4
     line['c'].phase = line.ref['phase_knob']
     desc = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=1)
     knobs = KnobParameters(line, ['phase_knob'], desc)
     knobs.apply()
-    assert line['c'].wave_number_from_frequency == (carrier is None)
-    if carrier is None:
-        assert line['c'].wave_number is None
+    assert line['c'].nominal_energy_gain_from_rf == (programme is None)
+    if programme is None:
+        assert line['c'].nominal_energy_gain is None
     else:
-        assert line['c'].wave_number.const_part == 0.
+        assert line['c'].nominal_energy_gain.const_part == 0.
     with pytest.raises(ValueError, match='one value'):
         knobs.refresh([.8, .9])
     assert line['c'].phase.const_part == .4
     knobs.refresh([.8])
     knobs.teardown()
-    if carrier is None:
-        assert line['c'].wave_number is None
+    if programme is None:
+        assert line['c'].nominal_energy_gain is None
     else:
-        assert line['c'].wave_number == 0.
+        assert line['c'].nominal_energy_gain == 0.
     assert line['c'].phase == .8
 
 
@@ -283,7 +283,7 @@ def test_tpsa_field_metadata_survives_continuation(tmp_path,monkeypatch,default_
 
 def test_multisetter_preserves_active_cavity_parameters(tmp_path):
     with kernel_context(tmp_path) as context:
-        line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,eta=.25),
+        line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,counter_wave_amplitude=.5),
                               'd':xt.Drift(length=.2)})
         line.build_tracker(_context=context)
         before=xt.MultiSetter(line,['c'],'phase',dtype=None)
@@ -293,7 +293,7 @@ def test_multisetter_preserves_active_cavity_parameters(tmp_path):
         np.testing.assert_array_equal(alignment.get_values(),[.001])
         desc=madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
         line['c'].phase=desc.param(1,.4)
-        line['c'].eta=desc.param(2,.25)
+        line['c'].counter_wave_amplitude=desc.param(2,.5)
         after=xt.MultiSetter(line,['c'],'phase',dtype=None)
         after_length=xt.MultiSetter(line,['c','d'],'length',dtype=None)
         np.testing.assert_array_equal(before.get_values(),[.4])
@@ -303,7 +303,7 @@ def test_multisetter_preserves_active_cavity_parameters(tmp_path):
         before.set_values(np.array([.7]))
         np.testing.assert_array_equal(after.get_values(),[.7])
         np.testing.assert_array_equal(line['c'].phase.param_grad(),[0.,0.])
-        np.testing.assert_array_equal(line['c'].eta.param_grad(),[0.,1.])
+        np.testing.assert_array_equal(line['c'].counter_wave_amplitude.param_grad(),[0.,1.])
         assert line['c']._tpsa_enabled
         np.testing.assert_array_equal(alignment.get_values(),[.001])
         np.testing.assert_array_equal(line.attr['_tpsa_enabled'],[1.,0.])
@@ -316,7 +316,7 @@ def test_multisetter_preserves_active_cavity_parameters(tmp_path):
 
 def test_multisetter_resolves_canonical_slice_parent(tmp_path):
     with kernel_context(tmp_path) as context:
-        line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,eta=.25)})
+        line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,counter_wave_amplitude=.5)})
         line.slice_thick_elements([xt.Strategy(
             slicing=xt.Teapot(2,mode='thick'),element_type=xt.Cavity)])
         line.build_tracker(_context=context)
@@ -324,11 +324,11 @@ def test_multisetter_resolves_canonical_slice_parent(tmp_path):
                 if isinstance(line._element_dict[name],xt.ThickSliceCavity)]
         setter=xt.MultiSetter(line,slices,('_parent','phase'),dtype=None)
         desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
-        line['c'].eta=desc.param(1,.25)
+        line['c'].counter_wave_amplitude=desc.param(1,.5)
         np.testing.assert_array_equal(setter.get_values(),[.4,.4])
         setter.set_values(np.array([.7,.7]))
         assert line['c'].phase.const_part==.7
-        np.testing.assert_array_equal(line['c'].eta.param_grad(),[1.])
+        np.testing.assert_array_equal(line['c'].counter_wave_amplitude.param_grad(),[1.])
         np.testing.assert_array_equal(line.attr['length'],[0.,.025,.025,0.])
         line.disable_tpsa_elements()
         assert not setter._needs_tpsa_access()

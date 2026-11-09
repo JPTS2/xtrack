@@ -57,15 +57,15 @@ typedef struct CavityChoice_s {
 typedef struct RFModelFields_s {
     double length;
     xt_float_or_tpsa voltage, frequency, lag, phase, harmonic, lag_taper, phase_taper;
-    xt_float_or_tpsa eta, counter_phase, calibration_beta, wave_number;
-    int64_t wave_number_from_frequency;
+    xt_float_or_tpsa counter_wave_amplitude, counter_wave_phase;
+    int64_t n_cells;
     xt_float_or_tpsa nominal_energy_gain;
     int64_t nominal_energy_gain_from_rf;
     int64_t rf_profile;
     xt_float_or_tpsa rf_profile_sigma, rf_profile_center;
     int64_t magnetic_profile;
     xt_float_or_tpsa magnetic_profile_sigma;
-    int64_t rf_field_order, spin_tracking, edge_entry_active, edge_exit_active;
+    int64_t spin_tracking, edge_entry_active, edge_exit_active;
     xt_float_or_tpsa ks;
     int64_t order, knl_len, ksl_len;
     GPUGLMEM const double *knl, *ksl;
@@ -81,16 +81,14 @@ typedef struct RFModelFields_s {
     (f)->lag=DATA##_get_lag(el); (f)->phase=DATA##_get_phase(el); \
     (f)->harmonic=DATA##_get_harmonic(el); \
     (f)->lag_taper=DATA##_get_lag_taper(el); (f)->phase_taper=DATA##_get_phase_taper(el); \
-    (f)->eta=DATA##_get_eta(el); (f)->counter_phase=DATA##_get_counter_phase(el); \
-    (f)->calibration_beta=DATA##_get_calibration_beta(el); \
-    (f)->wave_number=DATA##_get_wave_number(el); \
-    (f)->wave_number_from_frequency=DATA##_get_wave_number_from_frequency(el); \
+    (f)->counter_wave_amplitude=DATA##_get_counter_wave_amplitude(el); \
+    (f)->counter_wave_phase=DATA##_get_counter_wave_phase(el); \
+    (f)->n_cells=DATA##_get_n_cells(el); \
     (f)->nominal_energy_gain=DATA##_get_nominal_energy_gain(el); \
     (f)->nominal_energy_gain_from_rf=DATA##_get_nominal_energy_gain_from_rf(el); \
     (f)->rf_profile=DATA##_get_rf_profile(el); \
     (f)->rf_profile_sigma=DATA##_get_rf_profile_sigma(el); \
     (f)->rf_profile_center=DATA##_get_rf_profile_center(el); \
-    (f)->rf_field_order=DATA##_get_rf_field_order(el); \
     (f)->spin_tracking=DATA##_get_spin_tracking(el); \
     (f)->edge_entry_active=DATA##_get_edge_entry_active(el); \
     (f)->edge_exit_active=DATA##_get_edge_exit_active(el); \
@@ -128,7 +126,7 @@ typedef struct CavityPlan_s {
     CavityChoice choice;
     int integrator, profile, magnetic_profile, spin_tracking;
     int64_t requested;
-    double eta, envelope_width, length, weight;
+    double counter_wave_amplitude, envelope_width, length, weight;
     double left_fraction, right_fraction;
     double start_fraction, end_fraction, direction;
     int reverse, clear_face, physical_outer;

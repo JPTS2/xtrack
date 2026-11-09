@@ -4,6 +4,7 @@ and test_cavity_maps.py.
 """
 import numpy as np
 import pytest
+from scipy.constants import c as clight
 import xobjects as xo
 import xtrack as xt
 from _cavity_context import kernel_context
@@ -24,10 +25,10 @@ def model_context(tmp_path_factory):
 
 def cavity(model='_phase-resolved', **kwargs):
     controls = dict(length=.05, voltage=20e3, frequency=400e6, phase=.7,
-                    eta=.25, counter_phase=.3, calibration_beta=1.,
+                    counter_wave_amplitude=.5, counter_wave_phase=.3,
                     model=model, integrator='uniform', num_kicks=16)
     if model == '_phase-resolved-frozen':
-        controls.update(eta=0., integrator='_geometric')
+        controls.update(counter_wave_amplitude=0., integrator='_geometric')
     controls.update(kwargs)
     return xt.MagnetOverlappedCavity(**controls)
 
@@ -170,10 +171,9 @@ def test_serialization_writes_only_non_default_fields():
     legacy = xt.Cavity(voltage=1e6, frequency=4e8, phase=.3).to_dict()
     assert set(legacy) == {'__class__', 'voltage', 'frequency', 'phase'}
     # Explicit zeros of nonzero defaults, and explicit zero carriers, survive.
-    explicit = dict(model='_phase-resolved', eta=0., calibration_beta=.9,
+    explicit = dict(model='_phase-resolved', counter_wave_amplitude=0., n_cells=3,
         edge_entry_active=0, edge_exit_active=0, order=2,
-        knl=[0., .1, 0.], wave_number=0., nominal_energy_gain=0.,
-        rf_profile='uniform')
+        knl=[0., .1, 0.], nominal_energy_gain=0., rf_profile='uniform')
     data = xt.MagnetOverlappedCavity(**explicit).to_dict()
     assert set(data) == {'__class__', *explicit}
     restored = xt.MagnetOverlappedCavity.from_dict(data)
@@ -182,22 +182,36 @@ def test_serialization_writes_only_non_default_fields():
     assert restored.to_dict() == data
 
 
-def test_physical_controls_round_trip_and_carrier_origin():
-    original = cavity(wave_number=None, knl=[0., .012], ksl=[0., -.003], ks=.2)
-    assert original.wave_number is None
-    assert original.eta == .25
+def test_physical_controls_round_trip():
+    original = cavity(knl=[0., .012], ksl=[0., -.003], ks=.2)
+    assert original.n_cells is None
+    assert original.counter_wave_amplitude == .5
     copy = xt.MagnetOverlappedCavity.from_dict(original.to_dict())
-    assert copy.wave_number is None
+    assert copy.n_cells is None
     assert copy.model == original.model
     np.testing.assert_array_equal(copy.knl, original.knl)
     np.testing.assert_array_equal(copy.ksl, original.ksl)
-    copy.wave_number = 0.
-    assert copy.wave_number == 0.
-    assert not copy.wave_number_from_frequency
-    copy = xt.MagnetOverlappedCavity.from_dict(copy.to_dict())
-    assert copy.wave_number == 0.
-    copy.wave_number = None
-    assert copy.wave_number_from_frequency
+    copy.n_cells = 2
+    assert xt.MagnetOverlappedCavity.from_dict(copy.to_dict()).n_cells == 2
+    copy.n_cells = None
+    assert 'n_cells' not in copy.to_dict()
+
+
+def test_cells_fix_the_wave_number_whatever_the_frequency():
+    rf = xt.Cavity(length=1.2, frequency=704.4e6, n_cells=6)
+    np.testing.assert_allclose(rf.cell_length, .2, rtol=1e-15)
+    np.testing.assert_allclose(rf.wave_number, np.pi/.2, rtol=1e-15)
+    np.testing.assert_allclose(rf.synchronous_beta, 2*704.4e6*.2/clight, rtol=1e-15)
+    rf.frequency = 650e6
+    np.testing.assert_allclose(rf.cell_length, .2, rtol=1e-15)
+    np.testing.assert_allclose(rf.wave_number, np.pi/.2, rtol=1e-15)
+
+
+def test_without_cells_the_waves_travel_at_c():
+    rf = xt.Cavity(length=1.2, frequency=704.4e6)
+    assert rf.cell_length is None
+    assert rf.synchronous_beta == 1.
+    np.testing.assert_allclose(rf.wave_number, 2*np.pi*704.4e6/clight, rtol=1e-15)
 
 
 def test_serialization_preserves_tiny_coefficients_and_active_order():
@@ -282,9 +296,9 @@ def test_source_interval_alignment_readback_is_live():
 def test_line_variables_update_actual_source(model_context, model):
     line = xt.Line(elements={'rf': cavity(model, _context=model_context)})
     line.particle_ref = particle(model_context)
-    line.vars['rf_eta'] = .25
+    line.vars['rf_amplitude'] = .5
     line.vars['rf_phase'] = .7
-    line.element_refs['rf'].eta = line.vars['rf_eta']
+    line.element_refs['rf'].counter_wave_amplitude = line.vars['rf_amplitude']
     line.element_refs['rf'].phase = line.vars['rf_phase']
     line.build_tracker(_context=model_context)
     line.reset_s_at_end_turn = False
@@ -292,21 +306,21 @@ def test_line_variables_update_actual_source(model_context, model):
     initial = original.copy()
     line.track(original)
     assert original.state[0] == 1
-    line.vars['rf_eta'] = .6
+    line.vars['rf_amplitude'] = .8
     line.vars['rf_phase'] = 1.1
     line.set('rf', voltage=35e3)
     changed = initial.copy()
     line.track(changed)
     assert changed.state[0] == 1
     assert not np.array_equal(coordinates(original), coordinates(changed))
-    fresh = cavity(model, eta=.6, phase=1.1, voltage=35e3,
+    fresh = cavity(model, counter_wave_amplitude=.8, phase=1.1, voltage=35e3,
                    _context=model_context)
     expected = initial.copy()
     fresh.track(expected)
     np.testing.assert_allclose(physical_coordinates(changed),
                                physical_coordinates(expected),
                                rtol=0, atol=3e-13)
-    line.vars['rf_eta'] = .25
+    line.vars['rf_amplitude'] = .5
     line.vars['rf_phase'] = .7
     line.set('rf', voltage=20e3)
     restored = initial.copy()
@@ -522,7 +536,7 @@ def test_legacy_models_ignore_physical_model_fields(model_context):
                       phase=.7)
     dressed = xt.MagnetOverlappedCavity(_context=model_context, voltage=20e3, frequency=400e6,
         phase=.7, ks=.1, knl=[0., .01], ksl=[0., .02], rf_profile='gaussian',
-        rf_profile_sigma=.02, eta=.3)
+        rf_profile_sigma=.02, counter_wave_amplitude=.55)
     expected = particle(model_context)
     actual = expected.copy()
     plain.track(expected)

@@ -10,7 +10,7 @@ def eligible_line(**changes):
                   voltage=2e4,phase=.4,num_kicks=8)
     controls.update(changes)
     if controls['model']=='_phase-resolved':
-        controls.setdefault('eta',.25)
+        controls.setdefault('counter_wave_amplitude',.5)
     line=xt.Line(elements={'rf':xt.MagnetOverlappedCavity(**controls)})
     line.particle_ref=xt.Particles(p0c=14e6,mass0=xt.ELECTRON_MASS_EV)
     return line
@@ -77,7 +77,7 @@ def test_later_unsupported_mutation_refuses_before_tracking(tmp_path):
 
 
 @pytest.mark.parametrize('changes',[dict(integrator='teapot'),
-                                    dict(rf_field_order=1),dict(eta=.3)])
+                                    dict(n_cells=2),dict(counter_wave_amplitude=.55)])
 def test_later_invalid_configuration_raises_before_tracking(tmp_path,changes):
     with kernel_context(tmp_path) as context:
         line=eligible_line(model='_phase-resolved-frozen')

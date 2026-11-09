@@ -50,7 +50,9 @@ def test_frozen_energy_drift_uses_input_delta_series(tmp_path):
     (3,'_phase-resolved',True)])
 def test_calibration_order_one_handle_on_higher_order_map(
         cavity_magnetic_context, order, model, static_fields):
-    """Descriptor.param's direct order-one handle must not alter source constants."""
+    """Descriptor.param's direct order-one handle must not alter source constants.
+    One cell holds the wave number, so the frequency also moves the synchronous
+    speed at which the voltage is calibrated."""
     # A weak straight-static case also checks the retained generic static RHS.
     context = cavity_magnetic_context
     launch = dict(LAUNCH, p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1))
@@ -58,18 +60,18 @@ def test_calibration_order_one_handle_on_higher_order_map(
     line = xt.Line(elements={'c':xt.MagnetOverlappedCavity(
         length=.05 if static_fields else .167,
         voltage=2e3 if static_fields else 2e4,
-        frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
-        calibration_beta=.9, model=model,
-        num_kicks=8, **fields)})
+        frequency=400e6, phase=.4, counter_wave_amplitude=.5, counter_wave_phase=.3,
+        n_cells=1, model=model, num_kicks=8, **fields)})
     line.particle_ref = xt.Particles(p0c=launch['p0c'], mass0=launch['mass0'], q0=1.)
     line.reset_s_at_end_turn = False
     _build_shared_cavity_tracker(line, context)
     scalar = xt.Particles(_context=context, **launch)
     line.track(scalar)
     desc = madng_tpsa.Descriptor(6, order, num_params=1, param_order=1)
-    source = desc.param(1, .9)
+    source = desc.param(1, 0.)
     assert madng_tpsa.lib.mad_tpsa_ord(source.ptr, 0) == 1
-    line['c'].calibration_beta = source
+    assert line['c'].synchronous_beta < 1.
+    line['c'].frequency = 400e6*(1. + source)
     series = xtpsa.ParticlesTpsa(order=order, descriptor=desc, **launch)
     try:
         line.track(series)
@@ -89,7 +91,7 @@ def test_calibration_order_one_handle_on_higher_order_map(
     finite_mixed = 0.
     weights = {-2:1., -1:-8., 1:8., 2:-1.}
     for ib, wb in weights.items():
-        line['c'].calibration_beta = .9 + ib*1e-4
+        line['c'].frequency = 400e6*(1. + ib*1e-4)
         particle = xt.Particles(_context=context, **launch)
         line.track(particle)
         finite += wb*_values(particle)/(12e-4)
@@ -103,7 +105,7 @@ def test_calibration_order_one_handle_on_higher_order_map(
         # Differentiate independently tracked ORDER-TWO coefficient maps.
         # d/dpx [x]_(y^2) = [x]_(px*y^2), whereas d/dpx [x]_(px^2)
         # is three times [x]_(px^3), in the divided-coefficient convention.
-        line['c'].calibration_beta = .9
+        line['c'].frequency = 400e6
         lower = madng_tpsa.Descriptor(6, 2)
         finite_cubic = np.zeros(2)
         for offset, weight in weights.items():
@@ -124,8 +126,7 @@ def test_zero_primal_static_controls_keep_derivatives(cavity_magnetic_context):
     mass = xt.ELECTRON_MASS_EV
     launch = dict(LAUNCH, p0c=mass*np.sqrt(2.4**2-1), x=4e-4, y=-3e-4)
     line = xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05, voltage=2e3,
-        frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
-        calibration_beta=1., model='_phase-resolved', num_kicks=4)})
+        frequency=400e6, phase=.4, counter_wave_amplitude=.5, counter_wave_phase=.3, model='_phase-resolved', num_kicks=4)})
     controls = ('solenoid', 'normal', 'skew')
     for name in controls:
         line.vars[name] = 0.
@@ -179,7 +180,7 @@ def test_frozen_fixed_nominal_gain_with_absolute_clock(cavity_magnetic_context):
     context=cavity_magnetic_context
     launch=dict(LAUNCH,p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1),s=.17)
     line=xt.Line(elements={'c':xt.Cavity(
-        length=.167, voltage=2e4,frequency=400e6,phase=.4,eta=0.,
+        length=.167, voltage=2e4,frequency=400e6,phase=.4,counter_wave_amplitude=0.,
         model='_phase-resolved-frozen',absolute_time=True,num_kicks=4,
         nominal_energy_gain=8e3)})
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
@@ -291,8 +292,8 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
                   py=-.004/np.sqrt(2.4**2-1))
     context=cavity_magnetic_context
     line = xt.Line(elements=[xt.Cavity(length=.05, voltage=2e4,
-        frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
-        calibration_beta=.9, model=model, integrator='uniform',
+        frequency=400e6, phase=.4, counter_wave_amplitude=.5, counter_wave_phase=.3,
+        n_cells=1, model=model, integrator='uniform',
         num_kicks=8)], element_names=['c'])
     line.particle_ref = xt.Particles(p0c=launch['p0c'], mass0=mass, q0=1.)
     line.reset_s_at_end_turn=False
@@ -301,7 +302,7 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
     line.track(scalar)
     assert scalar.state[0] == 1
     desc = madng_tpsa.Descriptor(6, order, num_params=2, param_order=1)
-    line['c'].eta = desc.param(1, .25)
+    line['c'].counter_wave_amplitude = desc.param(1, .5)
     line['c'].phase = desc.param(2, .4)
     series = xtpsa.ParticlesTpsa(order=order, descriptor=desc, **launch)
     line.track(series)
@@ -313,7 +314,7 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
     mixed = series.coefficient('x',(0,1,0,0,0,0,1,0))
     line.disable_tpsa_elements()
     for index,(name,value,step) in enumerate([
-            ('eta',.25,1e-5), ('phase',.4,1e-5)]):
+            ('counter_wave_amplitude',.5,1e-5), ('phase',.4,1e-5)]):
         endpoints=[]
         for sign in (-1,1):
             setattr(line['c'],name,value+sign*step)
@@ -341,32 +342,30 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
     np.testing.assert_allclose(state_jacobian,fd_matrix,
                                rtol=2e-6,atol=2e-8)
     # Actual cavity mixed coefficient, not the generic polynomial above.
-    # A tensor product of fourth-order scalar differences checks dR12/deta.
+    # A tensor product of fourth-order scalar differences checks dR12/damplitude.
     fd_mixed=0.
     for ip,wp in weights.items():
         shifted=dict(launch,px=launch['px']+ip*1e-4)
         for ie,we in weights.items():
-            line['c'].eta=.25+ie*.005
+            line['c'].counter_wave_amplitude=.5+ie*.005
             particle=xt.Particles(_context=context,**shifted)
             line.track(particle)
             assert particle.state[0] == 1
             fd_mixed+=wp*we*float(particle.x[0])/(144*1e-4*.005)
-    line['c'].eta=.25
+    line['c'].counter_wave_amplitude=.5
     np.testing.assert_allclose(mixed,fd_mixed,rtol=2e-4,atol=3e-8)
 
 
 @pytest.mark.parametrize('model',['_phase-resolved'])
-@pytest.mark.parametrize('explicit_carrier',[False,True])
-def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,explicit_carrier):
+@pytest.mark.parametrize('n_cells',[None,1])
+def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,n_cells):
     mass=xt.ELECTRON_MASS_EV
     launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
-    values=dict(voltage=2e4,frequency=400e6,counter_phase=.3,
-        calibration_beta=.9,ks=.03,phase_taper=.07,lag_taper=1.2)
-    if explicit_carrier:
-        values['wave_number']=1.1*2*np.pi*400e6/299792458.
+    values=dict(voltage=2e4,frequency=400e6,counter_wave_phase=.3,
+        ks=.03,phase_taper=.07,lag_taper=1.2)
     context=cavity_magnetic_context
-    line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,phase=.4,eta=.25,
-        model=model,num_kicks=8,absolute_time=True,**values)})
+    line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,phase=.4,counter_wave_amplitude=.5,
+        n_cells=n_cells,model=model,num_kicks=8,absolute_time=True,**values)})
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
     _build_shared_cavity_tracker(line,context)
     scalar=xt.Particles(_context=context,**launch)
@@ -402,7 +401,7 @@ def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,ex
 def test_frozen_cavity_tpsa_phase_and_clock(tmp_path,absolute_time):
     with kernel_context(tmp_path) as context:
         line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
-            voltage=2e4,frequency=400e6,phase=.4,eta=0.,
+            voltage=2e4,frequency=400e6,phase=.4,counter_wave_amplitude=0.,
             model='_phase-resolved-frozen',num_kicks=8,
             absolute_time=absolute_time)],element_names=['d','c'])
         line.particle_ref=xt.Particles(p0c=LAUNCH['p0c'],
@@ -436,7 +435,7 @@ def test_frozen_solenoid_zero_strength_parameter_tpsa(tmp_path):
     launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
     with kernel_context(tmp_path) as context:
         line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,frequency=400e6,
-            voltage=0.,eta=0.,ks=0.,edge_entry_active=False,
+            voltage=0.,counter_wave_amplitude=0.,ks=0.,edge_entry_active=False,
             edge_exit_active=False,model='_phase-resolved-frozen',num_kicks=4)})
         line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
         line.reset_s_at_end_turn=False
@@ -470,7 +469,7 @@ def test_frozen_cavity_tpsa_voltage_and_frequency(tmp_path):
     values=dict(voltage=2e4,frequency=400e6,phase_taper=.07,lag_taper=1.2)
     with kernel_context(tmp_path) as context:
         line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
-            phase=.4,eta=0.,model='_phase-resolved-frozen',num_kicks=8,
+            phase=.4,counter_wave_amplitude=0.,model='_phase-resolved-frozen',num_kicks=8,
             absolute_time=True,**values)],element_names=['d','c'])
         line.particle_ref=xt.Particles(p0c=LAUNCH['p0c'],
             mass0=LAUNCH['mass0'],q0=1.)
@@ -531,7 +530,7 @@ def test_native_indexed_magnetic_parameter_tpsa(cavity_magnetic_context,model):
     if not frozen: values['skew']=.005
     context=cavity_magnetic_context
     line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,voltage=2e4,
-        frequency=400e6,phase=.4,eta=0. if frozen else .25,
+        frequency=400e6,phase=.4,counter_wave_amplitude=0. if frozen else .25,
         model=model,num_kicks=8)})
     for name,value in values.items():line.vars[name]=value
     line.element_refs['c'].knl[1]=line.vars['normal']
@@ -580,10 +579,9 @@ def test_gaussian_magnetic_profile_tpsa(cavity_magnetic_context):
     """Differentiate the native Gaussian M1 lift, including source calibration."""
     context=cavity_magnetic_context
     launch=dict(LAUNCH,p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1))
-    values=dict(phase=.4,eta=.25,counter_phase=.3,voltage=2e4,
-        frequency=400e6,calibration_beta=.9,rf_profile_sigma=.035,
-        rf_profile_center=.012)
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,
+    values=dict(phase=.4,counter_wave_amplitude=.5,counter_wave_phase=.3,voltage=2e4,
+        frequency=400e6,rf_profile_sigma=.035,rf_profile_center=.012)
+    line=xt.Line(elements={'c':xt.Cavity(length=.167,n_cells=1,
         model='_phase-resolved',rf_profile='gaussian',
         num_kicks=8,**values)})
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
@@ -599,7 +597,7 @@ def test_gaussian_magnetic_profile_tpsa(cavity_magnetic_context):
     np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-12)
     gradients=series.param_jacobian().copy()
     jacobian=series.jacobian().copy()
-    mixed=series.coefficient('x',(0,1,0,0,0,0,0,0,0,0,0,0,1,0))
+    mixed=series.coefficient('x',(0,1,0,0,0,0,0,0,0,0,0,1,0))
     line.disable_tpsa_elements()
     weights={-2:1.,-1:-8.,1:8.,2:-1.}
     for column,(name,value) in enumerate(values.items()):

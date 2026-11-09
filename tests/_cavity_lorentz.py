@@ -91,24 +91,28 @@ def lorentz_end_at_any_radius(launch, frequency, voltage, sigma, phase, p0c, mas
     return solution.y[3, -1] / p0c
 
 
-def calibrated_waves(voltage, frequency, length, phase, eta, envelope,
-                     counter_phase=0., calibration_beta=1., q0=1.):
-    """Peak field [V/m] of the two waves and the phase of the forward one at T = Z = 0,
-    such that a particle at calibration_beta gains voltage * sin(phase)."""
+def calibrated_waves(voltage, frequency, length, phase, ratio, envelope,
+                     counter_phase=0., n_cells=None, q0=1.):
+    """Peak field [V/m] of the two waves, of amplitude ratio `ratio`, and the phase of the
+    forward one at T = Z = 0. Without cells the waves travel at c; `n_cells` pi-mode cells
+    fix the spatial wave number to pi n_cells / length. A particle at the waves' speed, or
+    at c if they are faster, gains voltage * sin(phase)."""
     k = 2 * np.pi * frequency / clight
+    wave_number = k if n_cells is None else np.pi * n_cells / length
+    calibration_beta = min(1., k / wave_number)
+    nu = wave_number / k
     half = k * length / 2
-    ratio = np.sqrt(eta)
     forward, backward = 1 / (1 + ratio), ratio / (1 + ratio)
 
     def integrand(Z):
-        return envelope(Z / k)[0] * (forward * np.exp(1j * (1 / calibration_beta - 1) * Z)
-            + backward * np.exp(1j * (counter_phase + (1 / calibration_beta + 1) * Z)))
+        return envelope(Z / k)[0] * (forward * np.exp(1j * (1 / calibration_beta - nu) * Z)
+            + backward * np.exp(1j * (counter_phase + (1 / calibration_beta + nu) * Z)))
     limit = 64 + int(8 * half)
     real, _ = quad(lambda Z: integrand(Z).real, -half, half, epsabs=1e-13, epsrel=1e-13, limit=limit)
     imag, _ = quad(lambda Z: integrand(Z).imag, -half, half, epsabs=1e-13, epsrel=1e-13, limit=limit)
     phasor = real + 1j * imag
     amplitude = k * voltage / abs(phasor)
-    return dict(k=k, forward=amplitude * forward, backward=amplitude * backward,
+    return dict(k=k, wave_number=wave_number, forward=amplitude * forward, backward=amplitude * backward,
                 counter_phase=counter_phase,
                 phase=(half * (1 - 1 / calibration_beta) + phase - np.copysign(np.pi / 2, q0)
                        - np.angle(phasor)))
@@ -121,7 +125,7 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
     launch's spin_x, spin_y, spin_z follow the Thomas-BMT equation in the same fields.
     `magnet(z)` adds static fields: c B_z, its derivative, and the quadrupole gradient
     c dB_y/dx, in eV/m and eV/m^2 per unit charge."""
-    k, phase = waves['k'], waves['phase']
+    k, kz, phase = waves['k'], waves['wave_number'], waves['phase']
     F, B, chi = waves['forward'], waves['backward'], waves['counter_phase']
     beta0 = p0c / np.hypot(p0c, mass0)
     momentum = p0c * (1 + launch['delta'])
@@ -130,12 +134,13 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
         x, y, ct, px, py, energy = state[:6]
         pz = np.sqrt(energy**2 - mass0**2 - px**2 - py**2)
         h, dh, d2h = envelope(z)
-        u, w = k * (ct - z) + phase, k * (ct + z) + phase + chi
+        u, w = k * ct - kz * z + phase, k * ct + kz * z + phase + chi
         W = F * np.cos(u) + B * np.cos(w)
-        W_z = k * (F * np.sin(u) - B * np.sin(w))
+        W_z = kz * (F * np.sin(u) - B * np.sin(w))
         W_ct = -k * (F * np.sin(u) + B * np.sin(w))
         r2 = x * x + y * y
-        E_z = h * W - r2 / 4 * (d2h * W + 2 * dh * W_z)
+        # A wave slower than c is not linear in r even on a uniform envelope.
+        E_z = h * W - r2 / 4 * (d2h * W + 2 * dh * W_z + (k * k - kz * kz) * h * W)
         E_r_over_r = -(dh * W + h * W_z) / 2
         cB_over_r = h * W_ct / 2
         v_z = pz / energy
@@ -167,7 +172,7 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
     if anomaly is not None:
         start += [launch['spin_x'], launch['spin_y'], launch['spin_z']]
     solution = solve_ivp(rhs, (-length / 2, length / 2), start, method='DOP853', rtol=tolerance,
-                         atol=1e-14, max_step=2 * np.pi / k / 64)
+                         atol=1e-14, max_step=2 * np.pi / max(k, kz) / 64)
     assert solution.success, solution.message
     x, y, ct, px, py, energy = solution.y[:6, -1]
     end = dict(x=x, px=px / p0c, y=y, py=py / p0c, zeta=length - beta0 * (ct + length / 2),

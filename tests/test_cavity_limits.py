@@ -46,7 +46,7 @@ def test_public_cavity_independent_vacuum_limits(tmp_path):
     with kernel_context(tmp_path) as context:
         for model in MODELS:
             element = xt.Cavity(_context=context, length=length, voltage=0.,
-                frequency=0., eta=.3, model=model, integrator='uniform',
+                frequency=0., counter_wave_amplitude=.55, model=model, integrator='uniform',
                 num_kicks=7, absolute_time=True)
             line = xt.Line(elements=[element,xt.Marker(_context=context)],
                            element_names=['cavity','physical_exit'])
@@ -88,7 +88,7 @@ def test_public_cavity_independent_quadrupole_limit(tmp_path):
     with kernel_context(tmp_path) as context:
         for model in MODELS:
             element = xt.MagnetOverlappedCavity(_context=context, length=length, voltage=0.,
-                frequency=0., eta=0., knl=[0., k1*length], ks=0.,
+                frequency=0., counter_wave_amplitude=0., knl=[0., k1*length], ks=0.,
                 model=model, integrator='uniform', num_kicks=64)
             for charge in (-1., 1.):
                 incoming = particle(context, 2.4, charge,
@@ -114,8 +114,7 @@ def test_public_cavity_physical_clock_frame_invariance(tmp_path):
     with kernel_context(tmp_path) as context:
         for model in MODELS:
             element = xt.Cavity(_context=context, length=.05, voltage=20e3,
-                frequency=400e6, phase=.23, eta=.25, counter_phase=.3,
-                calibration_beta=1., model=model, integrator='uniform',
+                frequency=400e6, phase=.23, counter_wave_amplitude=.5, counter_wave_phase=.3, model=model, integrator='uniform',
                 num_kicks=16, absolute_time=True)
             first = particle(context, gamma, px=.005, py=-.004,
                              zeta=.001, time_s=0.)
@@ -137,7 +136,7 @@ def test_public_cavity_rejects_nonpositive_native_momentum(tmp_path):
     with kernel_context(tmp_path) as context:
         for model in MODELS:
             element=xt.Cavity(_context=context,length=.05,voltage=0.,
-                frequency=0.,eta=.3,model=model,integrator='uniform',
+                frequency=0.,counter_wave_amplitude=.55,model=model,integrator='uniform',
                 num_kicks=4)
             for delta in (-1.1,-1.):
                 try:
@@ -176,7 +175,7 @@ def test_public_cavity_mixed_species_reference_equivalence(tmp_path):
         name: np.asarray(value)*(-.5) for name, value in base_static.items()
     }
     controls = dict(length=.05, voltage=20e3, frequency=400e6, phase=.23,
-                    eta=.25, counter_phase=.3, calibration_beta=1.,
+                    counter_wave_amplitude=.5, counter_wave_phase=.3,
                     integrator='uniform', num_kicks=16, absolute_time=True)
     metadata = ('ptau', 'pzeta', 'rpp', 'rvv', 'ax', 'ay', 's')
     with kernel_context(tmp_path) as context:
@@ -302,8 +301,8 @@ def test_builtin_gaussian_source_and_crest_calibration(scalar_source_library):
     so its Fourier integral has an essential imaginary part. Its tails
     remain present beyond the finite observation interval.
     """
-    # f, V, L, phase, eta, counterphase, beta_cal, nu, sigma_m, center_m, q0.
-    base = np.array([400e6, 20e3, .23, .37, .25, .43,
+    # f, V, L, phase, ratio, counterphase, beta_cal, nu, sigma_m, center_m, q0.
+    base = np.array([400e6, 20e3, .23, .37, .5, .43,
                      .83, 1.17, .035, .012, 1.])
     cases = [base.copy()]
     for index, value in ((3, -.61), (4, 0.), (4, np.inf), (4, 1.3),
@@ -313,15 +312,14 @@ def test_builtin_gaussian_source_and_crest_calibration(scalar_source_library):
         changed[index] = value
         cases.append(changed)
     for settings in cases:
-        frequency, voltage, length, phase, eta, counterphase, beta, nu, \
+        frequency, voltage, length, phase, ratio, counterphase, beta, nu, \
             sigma_m, center_m, charge = settings
         k = 2*np.pi*frequency/C_LIGHT
         half_span, sigma, center = k*length/2, k*sigma_m, k*center_m
-        if np.isinf(eta):
+        if np.isinf(ratio):
             forward, backward = 0., 1.
         else:
-            forward = 1/(1+np.sqrt(eta))
-            backward = np.sqrt(eta)/(1+np.sqrt(eta))
+            forward, backward = 1/(1+ratio), ratio/(1+ratio)
         slow_integral = gaussian_fourier_integral(
             half_span, sigma, center, 1/beta-nu)
         fast_integral = gaussian_fourier_integral(

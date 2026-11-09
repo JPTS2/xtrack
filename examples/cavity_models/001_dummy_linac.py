@@ -51,8 +51,8 @@ PX_LIMIT          = .03
 # Explicit source/transport assumptions
 ########################################
 COHORTS = [
-    ('p16', .25, .3, .9, ['_phase-resolved', '_phase-averaged']),
-    ('uniform', 0., 0., 1., ['_phase-resolved', '_phase-averaged', '_phase-resolved-frozen']),
+    ('p16', .5, .3, 1, ['_phase-resolved', '_phase-averaged']),
+    ('uniform', 0., 0., None, ['_phase-resolved', '_phase-averaged', '_phase-resolved-frozen']),
 ]
 INTEGRATORS = {
     '_phase-resolved': 'uniform',
@@ -80,7 +80,7 @@ for cell in range(2):
     elements.append(xt.Cavity(model='_phase-resolved', rf_profile='p16',
         length=LENGTH_M, voltage=VOLTAGE_V, frequency=FREQUENCY_HZ,
         phase=PHASE_RAD-2*np.pi*FREQUENCY_HZ*nominal_time,
-        absolute_time=True, eta=.25, counter_phase=.3, calibration_beta=.9,
+        absolute_time=True, counter_wave_amplitude=.5, counter_wave_phase=.3, n_cells=1,
         num_kicks=SOURCE_CELLS))
     names.append(rf_name)
     rf_names.append(rf_name)
@@ -130,7 +130,7 @@ timings = []
 ################################################################################
 # Tracking-derived Twiss and the two transported grids
 ################################################################################
-for profile, eta, counter_phase, beta_cal, models in COHORTS:
+for profile, amplitude, counter_phase, n_cells, models in COHORTS:
     figure, axes = plt.subplots(2, 2, figsize=(12, 8), layout='constrained')
     # Uniform sources have nonzero RF potentials at their observation planes.
     # Compare this interval without pretending it has field-free interfaces
@@ -144,9 +144,9 @@ for profile, eta, counter_phase, beta_cal, models in COHORTS:
             cavity = line[name]
             cavity.model = model
             cavity.rf_profile = profile
-            cavity.eta = eta
-            cavity.counter_phase = counter_phase
-            cavity.calibration_beta = beta_cal
+            cavity.counter_wave_amplitude = amplitude
+            cavity.counter_wave_phase = counter_phase
+            cavity.n_cells = n_cells
             cavity.integrator = INTEGRATORS[model]
             cavity.num_kicks = (FROZEN_CELLS if model == '_phase-resolved-frozen'
                                 else SOURCE_CELLS)
@@ -193,8 +193,8 @@ for profile, eta, counter_phase, beta_cal, models in COHORTS:
         axis.legend(fontsize=8)
     geometry = ('Two-cell linac' if linac_case else
                 'Single RF interval; native canonical observation planes')
-    figure.suptitle(geometry+f'\n{profile} source; eta={eta:g}, '
-                    f'calibration beta={beta_cal:g}')
+    figure.suptitle(geometry+f'\n{profile} source; counter-wave amplitude={amplitude:g}, '
+                    f'cells={n_cells}')
 
 print('Cold build [s]:', build_seconds)
 print('Twiss and tracking timings [s]:', timings)

@@ -8,6 +8,7 @@ from ..general import DEPRECATION_INFO_PREP_1_0
 from warnings import warn
 from math import isfinite
 import numpy as np
+from scipy.constants import c as clight
 import xobjects as xo
 import xtrack as xt
 from ._common import (
@@ -43,13 +44,10 @@ def _constant_part(value):
     return getattr(value, 'const_part', value)
 
 
-_NONZERO_DEFAULTS = {
-    'eta': 1., 'calibration_beta': 1., 'rf_field_order': 2,
-    'edge_entry_active': 1, 'edge_exit_active': 1,
-}
+_NONZERO_DEFAULTS = {'edge_entry_active': 1, 'edge_exit_active': 1}
 
 
-def _default_eta(model):
+def _default_counter_wave_amplitude(model):
     return 0. if model == '_phase-resolved-frozen' else 1.
 
 
@@ -94,18 +92,21 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
     edges: an RF field that does not vanish there ("uniform", a truncated
     "gaussian") ends abruptly, and the particle leaves field-free.
 
-    eta : float
-        Squared amplitude ratio of the counter- to the co-propagating RF wave.
-        Default is 1 (standing wave), or 0 when constructed with the frozen
-        model. Like `rf_profile`, it is not re-inferred when `model` changes.
-    counter_phase : float
+    counter_wave_amplitude : float
+        Amplitude of the counter-propagating RF wave over that of the
+        co-propagating one: 0 is a travelling wave, 1 a standing wave, and the
+        values between are partly reflected waves. Default is 1, or 0 when
+        constructed with the frozen model. Like `rf_profile`, it is not
+        re-inferred when `model` changes.
+    counter_wave_phase : float
         Phase of the counter-propagating wave in radians. Default is 0.
-    calibration_beta : float
-        Fixed speed, 0 < beta <= 1, at which `voltage` is the crest energy
-        gain. Default is 1.
-    wave_number : float or None
-        Longitudinal RF wave number in rad/m. None (default) follows
-        2*pi*frequency/c.
+    n_cells : int or None
+        Number of pi-mode cells, each of length `length / n_cells`: they fix
+        the spatial wave number to pi n_cells / length whatever the frequency,
+        and `voltage` is the crest energy gain at their synchronous speed, or
+        at c if that exceeds it. None (default) has no cells: the waves travel
+        at c and `voltage` is the crest gain at c. `cell_length`,
+        `wave_number` and `synchronous_beta` read the result.
     nominal_energy_gain : float or None
         Reference energy programme of the frozen model, in eV. None (default)
         derives it from the RF settings.
@@ -135,8 +136,9 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         the RF and static fields in Gauss collocation cells.
         "_phase-resolved-frozen" is the frozen-coefficient voltage-action model
         with canonical faces. "_phase-averaged" and "_phase-resolved-paraxial"
-        drop the force cubic in the offset r, at most 0.56 (r/sigma)^2 of the
-        kick for an envelope of width sigma: 0.1% at r = sigma/24.
+        drop the force cubic in the offset r, which comes only from the
+        variation of the envelope: none on a uniform one, and at most
+        0.56 (r/sigma)^2 of the kick for an envelope of width sigma.
     integrator : str
         How the model's base step is placed. Longitudinal models: "teapot",
         "uniform", "yoshida-4/6/8". "_phase-resolved": "uniform" (Gauss cells),
@@ -149,7 +151,7 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         uses 16 per half RF wavelength and at least 64, "_phase-averaged" the
         steps its envelope needs, at least two per half RF wavelength,
         "_phase-resolved-paraxial" two per half RF wavelength for a travelling
-        wave (eta = 0) and four otherwise, at least eight in all and at least
+        wave (counter_wave_amplitude = 0) and four otherwise, at least eight in all and at least
         one for each 2% of V/E, and the frozen model its own count.
     '''.strip()
 
@@ -171,17 +173,14 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         'harmonic': FloatOrTpsa,
         'lag_taper': FloatOrTpsa,
         'phase_taper': FloatOrTpsa,
-        'eta': FloatOrTpsa,
-        'counter_phase': FloatOrTpsa,
-        'calibration_beta': FloatOrTpsa,
-        'wave_number': FloatOrTpsa,
-        'wave_number_from_frequency': xo.Int64,
+        'counter_wave_amplitude': FloatOrTpsa,
+        'counter_wave_phase': FloatOrTpsa,
+        'n_cells': xo.Int64,
         'nominal_energy_gain': FloatOrTpsa,
         'nominal_energy_gain_from_rf': xo.Int64,
         'rf_profile': xo.Int64,
         'rf_profile_sigma': FloatOrTpsa,
         'rf_profile_center': FloatOrTpsa,
-        'rf_field_order': xo.Int64,
         'spin_tracking': xo.Int64,
         'edge_entry_active': xo.Int64,
         'edge_exit_active': xo.Int64,
@@ -202,7 +201,7 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         'frequency': '_frequency',
         'harmonic': '_harmonic',
         'lag': '_lag',
-        'wave_number': '_wave_number',
+        'n_cells': '_n_cells',
         'nominal_energy_gain': '_nominal_energy_gain',
         'rf_profile': '_rf_profile',
     }
@@ -223,9 +222,7 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         frequency = kwargs.pop('frequency', None)
         harmonic = kwargs.pop('harmonic', None)
         lag = kwargs.pop('lag', None)
-        wave_number = kwargs.pop('wave_number', None)
-        from_frequency = kwargs.pop('wave_number_from_frequency',
-                                    wave_number is None)
+        n_cells = kwargs.pop('n_cells', None)
         nominal_energy_gain = kwargs.pop('nominal_energy_gain', None)
         nominal_from_rf = kwargs.pop('nominal_energy_gain_from_rf',
                                      nominal_energy_gain is None)
@@ -239,14 +236,11 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         sigma = kwargs.pop('rf_profile_sigma', None)
         kwargs['rf_profile_sigma'] = 0. if sigma is None else sigma
         kwargs.setdefault('rf_profile_center', 0.)
-        kwargs.setdefault('eta', _default_eta(model))
-        kwargs.setdefault('counter_phase', 0.)
-        kwargs.setdefault('calibration_beta', 1.)
-        kwargs.setdefault('rf_field_order', 2)
+        kwargs.setdefault('counter_wave_amplitude',
+                          _default_counter_wave_amplitude(model))
+        kwargs.setdefault('counter_wave_phase', 0.)
         kwargs.setdefault('edge_entry_active', 1)
         kwargs.setdefault('edge_exit_active', 1)
-        kwargs['wave_number'] = 0. if wave_number is None else wave_number
-        kwargs['wave_number_from_frequency'] = int(from_frequency)
         kwargs['nominal_energy_gain'] = (
             0. if nominal_energy_gain is None else nominal_energy_gain)
         kwargs['nominal_energy_gain_from_rf'] = int(nominal_from_rf)
@@ -269,6 +263,8 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         if lag is not None:
             self.lag = lag
 
+        self.n_cells = n_cells
+
         self._check_physical_model()
 
     def _check_physical_model(self, tracking=False):
@@ -290,17 +286,14 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
             raise ValueError(f'{self.model} requires a positive finite length')
         if self.num_kicks < 0:
             raise ValueError('num_kicks must be non-negative')
-        if self.rf_field_order != 2:
-            raise ValueError(f'{self.model} supports only rf_field_order=2')
         if self._model == 13:
             if self.integrator not in ('adaptive', '_geometric', 'uniform'):
                 raise ValueError('_phase-resolved-frozen supports the "_geometric" '
                                  'and "uniform" integrators')
-            if (_constant_part(self.eta) != 0.
-                    or _constant_part(self.calibration_beta) != 1.
-                    or not self.wave_number_from_frequency):
-                raise ValueError('_phase-resolved-frozen requires eta=0, '
-                                 'calibration_beta=1 and the carrier from frequency')
+            if (_constant_part(self.counter_wave_amplitude) != 0.
+                    or self.n_cells is not None):
+                raise ValueError('_phase-resolved-frozen requires a travelling '
+                                 'wave: counter_wave_amplitude=0 and no n_cells')
         elif self._model in (11, 12):
             if self.integrator not in ('adaptive', 'uniform', '_geometric'):
                 raise ValueError(f'{self.model} supports the "uniform" and '
@@ -318,7 +311,7 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         if self._model in (11, 12, 13):
             return
         if (self._model != 10 or self._rf_profile != 0
-                or self.rf_field_order != 2 or self.integrator == 'teapot'):
+                or self.integrator == 'teapot'):
             raise NotImplementedError('Cavity spin transport requires the _phase-resolved '
                                       'model with the P16 profile')
 
@@ -372,13 +365,30 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         return list(_CAVITY_RF_PROFILE_IDS)
 
     @property
-    def wave_number(self):
-        return None if self.wave_number_from_frequency else self._wave_number
+    def n_cells(self):
+        return int(self._n_cells) or None
 
-    @wave_number.setter
-    def wave_number(self, value):
-        self.wave_number_from_frequency = int(value is None)
-        self._wave_number = 0. if value is None else value
+    @n_cells.setter
+    def n_cells(self, value):
+        if value is not None and (int(value) != value or value <= 0):
+            raise ValueError('n_cells must be a positive integer or None')
+        self._n_cells = 0 if value is None else int(value)
+
+    @property
+    def cell_length(self):
+        return None if self.n_cells is None else self.length / self.n_cells
+
+    @property
+    def wave_number(self):
+        if self.n_cells is not None:
+            return np.pi * self.n_cells / self.length
+        return 2 * np.pi * _constant_part(self.frequency) / clight
+
+    @property
+    def synchronous_beta(self):
+        if self.n_cells is None:
+            return 1.
+        return 2 * _constant_part(self.frequency) * self.cell_length / clight
 
     @property
     def nominal_energy_gain(self):
@@ -394,7 +404,8 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         result = super().to_dict(**kwargs)
         # The base class omits zeros; these defaults are nonzero, so an
         # explicit zero must be written and the default itself omitted.
-        defaults = dict(_NONZERO_DEFAULTS, eta=_default_eta(self.model))
+        defaults = dict(_NONZERO_DEFAULTS, counter_wave_amplitude=
+                        _default_counter_wave_amplitude(self.model))
         for name, default in defaults.items():
             value = getattr(self, name)
             if value == default:
@@ -402,13 +413,14 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
             else:
                 result[name] = value
         # An explicit zero carrier differs physically from the derived default.
-        for name, derived in (('wave_number', 'wave_number_from_frequency'),
-                              ('nominal_energy_gain', 'nominal_energy_gain_from_rf')):
-            result.pop(derived, None)
-            if getattr(self, derived):
-                result.pop(name, None)
-            else:
-                result[name] = getattr(self, name)
+        result.pop('nominal_energy_gain_from_rf', None)
+        if self.nominal_energy_gain_from_rf:
+            result.pop('nominal_energy_gain', None)
+        else:
+            result['nominal_energy_gain'] = self.nominal_energy_gain
+        result.pop('n_cells', None)
+        if self.n_cells is not None:
+            result['n_cells'] = self.n_cells
         if self.rf_profile == _default_rf_profile(self.model):
             result.pop('rf_profile', None)
         else:

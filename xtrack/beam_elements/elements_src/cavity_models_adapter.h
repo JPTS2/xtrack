@@ -130,16 +130,17 @@ double CavityPlan_envelope_width(int profile, double length, double sigma) {
 // orbit keeps, and at least 64 to resolve the envelope of a short cavity, where the
 // wave alone would ask for one to three.
 GPUFUN
-int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double length,
-                         double envelope_width, double eta, double weight, int controls,
+int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double length, int64_t n_cells,
+                         double envelope_width, double counter_wave_amplitude, double weight, int controls,
                          double voltage_over_energy) {
     int64_t parent_cells=requested>0 ? requested : 64;
     if (requested==0) {
         const double half_wave=frequency>0. ? .5*C_LIGHT/frequency : 0.;
-        const double half_cells=frequency>0. ? length/half_wave : 0.;
+        // Cells shorter than the light-line half wave turn the phase faster.
+        const double half_cells=fmax(frequency>0. ? length/half_wave : 0.,(double)n_cells);
         if (model==CAVITY_MODEL_AVERAGED || model==CAVITY_MODEL_PARAXIAL) {
             double per_half=2.;
-            if (model==CAVITY_MODEL_PARAXIAL && eta>0.) per_half=4.;
+            if (model==CAVITY_MODEL_PARAXIAL && counter_wave_amplitude>0.) per_half=4.;
             const int resolve=model==CAVITY_MODEL_AVERAGED && envelope_width>0. && half_wave>0.;
             if (resolve) per_half=fmax(per_half,ceil(sqrt(2.)*half_wave/envelope_width));
             parent_cells=(resolve||half_cells>.5) ? (int64_t)ceil(per_half*half_cells) : 1;
@@ -163,7 +164,7 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
     if (!(isfinite(length) && length>0. && isfinite(weight) && weight>0.
           && isfinite(slice_start) && slice_start>=0.
           && weight<=1. && slice_start+weight<=1.+8e-15)
-        || el->rf_field_order!=2
+        || el->n_cells<0
         || spin_tracking<0||spin_tracking>1
         ||(spin_tracking&&(el->tpsa_enabled!=0
             ||(model==CAVITY_MODEL_FULL&&(profile!=0||magnetic_profile!=0))))
@@ -190,9 +191,8 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
     }
     if (model==CAVITY_MODEL_FROZEN) {
         if ((integrator!=0 && integrator!=7 && integrator!=3)
-            || !xt_float_or_tpsa_is_zero(el->eta)
-            || !xt_float_or_tpsa_is_zero(el->calibration_beta-1.)
-            || !el->wave_number_from_frequency)
+            || !xt_float_or_tpsa_is_zero(el->counter_wave_amplitude)
+            || el->n_cells!=0)
             controls=CAVITY_MODEL_ARGUMENT;
     } else if (model==CAVITY_MODEL_AVERAGED || model==CAVITY_MODEL_PARAXIAL) {
         if ((integrator!=0 && integrator!=3 && integrator!=7) || magnetic_profile!=0)
@@ -220,19 +220,20 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
 
     const double length=el->length;
     const double frequency=xt_float_or_tpsa_const_part(el->frequency);
-    const double eta=xt_float_or_tpsa_const_part(el->eta);
+    const double counter_wave_amplitude=xt_float_or_tpsa_const_part(el->counter_wave_amplitude);
     const int integrator=el->integrator;
     const int64_t requested=el->num_kicks;
     const double envelope_width=CavityPlan_envelope_width(el->rf_profile,length,
         xt_float_or_tpsa_const_part(el->rf_profile_sigma));
-    plan->integrator=integrator; plan->requested=requested; plan->eta=eta;
+    plan->integrator=integrator; plan->requested=requested; plan->counter_wave_amplitude=counter_wave_amplitude;
     plan->envelope_width=envelope_width;
     plan->profile=el->rf_profile;
     plan->magnetic_profile=el->magnetic_profile;
     plan->spin_tracking=el->spin_tracking;
     const int controls=CavityPlan_controls(el,part0,model,integrator,requested,weight,slice_start);
     plan->choice.controls=controls;
-    plan->choice.cells=CavityPlan_cells(model,requested,frequency,length,envelope_width,eta,weight,controls,0.);
+    plan->choice.cells=CavityPlan_cells(model,requested,frequency,length,el->n_cells,envelope_width,
+        counter_wave_amplitude,weight,controls,0.);
 
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
     // Slicing sums can differ from a parent boundary by a few ulps. Use
@@ -328,7 +329,7 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     // A harmonic frequency and the energy change follow this particle's reference.
     if (!xt_float_or_tpsa_is_zero(harmonic) || (model==CAVITY_MODEL_PARAXIAL && requested==0))
         cells=CavityPlan_cells(model,requested,xt_float_or_tpsa_const_part(frequency),
-            length,plan->envelope_width,plan->eta,weight,controls,
+            length,el->n_cells,plan->envelope_width,plan->counter_wave_amplitude,weight,controls,
             fabs(q0*xt_float_or_tpsa_const_part(el->voltage))
                 /sqrt(mass0*mass0+LocalParticle_get_p0c(part)*LocalParticle_get_p0c(part)));
     xt_float_or_tpsa phase=el->phase
@@ -343,15 +344,21 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
         && !xt_float_or_tpsa_is_zero(voltage)
         && xt_float_or_tpsa_const_part(frequency)<=0.)
         status=CAVITY_MODEL_ARGUMENT;
-    xt_float_or_tpsa wave_number=el->wave_number;
-    if (el->wave_number_from_frequency)
-        wave_number=(2.*PI/C_LIGHT)*frequency;
+    // Cells are pi-mode cells of fixed length: they set the spatial wave number,
+    // and voltage is the crest gain at their synchronous speed, at most c.
+    xt_float_or_tpsa wave_number=(2.*PI/C_LIGHT)*frequency;
+    xt_float_or_tpsa calibration_beta=1.;
+    if (el->n_cells>0) {
+        wave_number=PI*(double)el->n_cells/length;
+        const xt_float_or_tpsa synchronous=frequency*(2.*length/(C_LIGHT*(double)el->n_cells));
+        if (xt_float_or_tpsa_const_part(synchronous)<1.) calibration_beta=synchronous;
+    }
     CavityModelSource source;
     if (status==CAVITY_MODEL_OK) {
         status=CavityModel_prepare_profile(frequency,
                 model==CAVITY_MODEL_FROZEN?0.:voltage,
-                length,phase,el->eta,el->counter_phase,
-                el->calibration_beta,wave_number,mass0,q0,profile,
+                length,phase,el->counter_wave_amplitude,el->counter_wave_phase,
+                calibration_beta,wave_number,mass0,q0,profile,
                 el->rf_profile_sigma,el->rf_profile_center,&source);
     }
     xt_float_or_tpsa q[6], clock_base=0.;

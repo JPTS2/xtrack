@@ -30,8 +30,8 @@ def cpu_context(tmp_path_factory):
 def hardware(model):
     """Small declared hardware, with nonzero counter-wave where retained."""
     return dict(model=model, length=.05, voltage=2e4, frequency=400e6,
-        phase=.35, eta=0. if model == '_phase-resolved-frozen' else .25,
-        counter_phase=.3, calibration_beta=1., num_kicks=16,
+        phase=.35, counter_wave_amplitude=0. if model == '_phase-resolved-frozen' else .25,
+        counter_wave_phase=.3, num_kicks=16,
         absolute_time=True)
 
 
@@ -70,14 +70,15 @@ def test_live_expression_updates_equal_fresh_construction(cpu_context, model):
     controls = hardware(model)
     line = line_for(cpu_context, controls)
     line.set('rf_phase', controls['phase'])
-    line.set('rf_eta', controls['eta'])
-    line.set('rf', phase='rf_phase', eta='rf_eta')
+    line.set('rf_amplitude', controls['counter_wave_amplitude'])
+    line.set('rf', phase='rf_phase', counter_wave_amplitude='rf_amplitude')
     first = endpoint(line, cpu_context)
-    for phase, eta in ((.75, .49), (-.2, .09)):
+    for phase, amplitude in ((.75, .7), (-.2, .3)):
         line.set('rf_phase', phase)
-        line.set('rf_eta', eta)
+        line.set('rf_amplitude', amplitude)
         actual = endpoint(line, cpu_context)
-        fresh = line_for(cpu_context, dict(controls, phase=phase, eta=eta))
+        fresh = line_for(cpu_context, dict(controls, phase=phase,
+                                           counter_wave_amplitude=amplitude))
         np.testing.assert_allclose(actual, endpoint(fresh, cpu_context),
                                    rtol=0., atol=2e-13)
         assert np.linalg.norm(actual-first) > 1e-6
@@ -142,7 +143,7 @@ def test_normal_match_uses_selected_tracking_map(cpu_context, model):
     assert abs(float(matched.delta[0])-target_delta) < 1e-11
 
 
-@pytest.mark.parametrize('model,field', [('_phase-resolved', 'eta'),
+@pytest.mark.parametrize('model,field', [('_phase-resolved', 'counter_wave_amplitude'),
     ('_phase-resolved', 'edge_entry_active'), ('_phase-resolved', 'edge_exit_active'),
     ('_phase-resolved', 'order'), ('_phase-resolved-frozen', 'order')])
 def test_zero_controls_survive_json_roundtrip(model, field):
@@ -153,10 +154,10 @@ def test_zero_controls_survive_json_roundtrip(model, field):
     assert restored.model == original.model
 
 
-@pytest.mark.parametrize('field', ('calibration_beta', 'rf_field_order'))
-def test_inadmissible_zero_controls_refuse_at_construction(field):
+@pytest.mark.parametrize('n_cells', (0, -1, 1.5))
+def test_cells_must_be_a_positive_count(n_cells):
     with pytest.raises(ValueError):
-        xt.Cavity(**dict(hardware('_phase-resolved-frozen'), **{field: 0}))
+        xt.Cavity(**dict(hardware('_phase-resolved'), n_cells=n_cells))
 
 
 def test_failed_knob_apply_restores_original_series_and_new_promotions():
@@ -520,7 +521,7 @@ def test_compact_p16_face_has_exactly_zero_potential_readback(cpu_context, model
     """
     line = xt.Line(elements=[xt.Cavity(_context=cpu_context, model=model,
         rf_profile='p16', length=.56, frequency=712e6, voltage=2000.,
-        phase=.4, eta=.25, counter_phase=.3, calibration_beta=.9,
+        phase=.4, counter_wave_amplitude=.5, counter_wave_phase=.3, n_cells=3,
         num_kicks=cells, absolute_time=True), xt.Marker(_context=cpu_context)],
         element_names=['rf', 'end'])
     line.particle_ref = xt.Particles(_context=cpu_context, mass0=MASS_EV,
@@ -543,7 +544,7 @@ def test_finite_rf_face_is_a_hard_edge(cpu_context, profile):
     line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
         model='_phase-resolved', rf_profile=profile, rf_profile_sigma=.12,
         rf_profile_center=.02, length=.56, frequency=712e6, voltage=2000.,
-        phase=.4, eta=.25, counter_phase=.3, calibration_beta=.9,
+        phase=.4, counter_wave_amplitude=.5, counter_wave_phase=.3, n_cells=3,
         num_kicks=64, absolute_time=True), xt.Marker(_context=cpu_context)],
         element_names=['rf', 'end'])
     line.particle_ref = xt.Particles(_context=cpu_context, mass0=MASS_EV,
@@ -570,8 +571,8 @@ def test_p16_face_frequency_tpsa_has_zero_cache_coefficients(cpu_context):
     frequency = 712e6
     line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
         model='_phase-resolved', rf_profile='p16', length=.56,
-        frequency=frequency, voltage=2000., phase=.4, eta=.25,
-        counter_phase=.3, calibration_beta=.9, num_kicks=3,
+        frequency=frequency, voltage=2000., phase=.4, counter_wave_amplitude=.5,
+        counter_wave_phase=.3, n_cells=3, num_kicks=3,
         absolute_time=True), xt.Marker(_context=cpu_context)],
         element_names=['rf', 'end'])
     line.particle_ref = xt.Particles(_context=cpu_context, mass0=MASS_EV,

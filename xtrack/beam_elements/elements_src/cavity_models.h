@@ -142,14 +142,14 @@ GPUFUN
 int CavityModel_prepare(
         xt_float_or_tpsa_arg frequency, xt_float_or_tpsa_arg voltage,
         xt_float_or_tpsa_arg length, xt_float_or_tpsa_arg phase,
-        xt_float_or_tpsa_arg eta, xt_float_or_tpsa_arg counter_phase,
+        xt_float_or_tpsa_arg counter_amplitude, xt_float_or_tpsa_arg counter_phase,
         xt_float_or_tpsa_arg calibration_beta,
         xt_float_or_tpsa_arg wave_number,
         double source_mass_eV, double q0, CavityModelSource *source) {
     const double f=xt_float_or_tpsa_const_part(frequency);
     const double L=xt_float_or_tpsa_const_part(length);
     const double beta=xt_float_or_tpsa_const_part(calibration_beta);
-    const double mixture=xt_float_or_tpsa_const_part(eta);
+    const double mixture=xt_float_or_tpsa_const_part(counter_amplitude);
     if (!isfinite(f) || f<0. || !isfinite(L) || L<=0.
         || !isfinite(source_mass_eV) || source_mass_eV<=0.
         || !isfinite(q0) || q0==0.
@@ -160,10 +160,8 @@ int CavityModel_prepare(
         || !isfinite(beta) || beta<=0. || beta>1.
         || isnan(mixture) || mixture<0.)
         return CAVITY_MODEL_ARGUMENT;
-    // The eta endpoints are distinct charts. Even at zero RF voltage a
-    // seeded endpoint would have nonanalytic mixed voltage/eta derivatives.
-    if ((mixture==0. && !xt_float_or_tpsa_is_zero(eta))
-        || (isinf(mixture) && !CavityModel_scalar_constant(eta)))
+    // A pure counter wave is a distinct chart: its weights have no derivative.
+    if (isinf(mixture) && !CavityModel_scalar_constant(counter_amplitude))
         return CAVITY_MODEL_ARGUMENT;
     const double c=299792458.;
     const double pi=3.141592653589793238462643383279502884;
@@ -193,10 +191,8 @@ int CavityModel_prepare(
     if (f<=0.) return CAVITY_MODEL_ARGUMENT;
     xt_float_or_tpsa forward_weight=0., backward_weight=1.;
     if (isfinite(mixture)) {
-        xt_float_or_tpsa ratio=0.;
-        if (!xt_float_or_tpsa_is_zero(eta)) ratio=sqrt(eta);
-        forward_weight=1./(1.+ratio);
-        backward_weight=ratio/(1.+ratio);
+        forward_weight=1./(1.+counter_amplitude);
+        backward_weight=counter_amplitude/(1.+counter_amplitude);
     }
     xt_float_or_tpsa slow=0.,fast=0.;
     if(!xt_float_or_tpsa_is_zero(forward_weight))
@@ -752,18 +748,18 @@ int CavityModel_profile_integral(xt_float_or_tpsa_arg H,
 GPUFUN
 int CavityModel_prepare_profile(xt_float_or_tpsa_arg frequency,
         xt_float_or_tpsa_arg voltage,xt_float_or_tpsa_arg length,
-        xt_float_or_tpsa_arg phase,xt_float_or_tpsa_arg eta,
+        xt_float_or_tpsa_arg phase,xt_float_or_tpsa_arg counter_amplitude,
         xt_float_or_tpsa_arg counter_phase,xt_float_or_tpsa_arg calibration_beta,
         xt_float_or_tpsa_arg wave_number,double mass0,double q0,int profile,
         xt_float_or_tpsa_arg sigma_m,xt_float_or_tpsa_arg center_m,
         CavityModelSource *source) {
     if(profile==0) return CavityModel_prepare(frequency,voltage,length,phase,
-        eta,counter_phase,calibration_beta,wave_number,mass0,q0,source);
+        counter_amplitude,counter_phase,calibration_beta,wave_number,mass0,q0,source);
     if(profile<0||profile>2||!CavityModel_scalar_finite(sigma_m)
         ||!CavityModel_scalar_finite(center_m)
         ||(profile==2&&xt_float_or_tpsa_const_part(sigma_m)<=0.))
         return CAVITY_MODEL_ARGUMENT;
-    int status=CavityModel_prepare(frequency,0.,length,phase,eta,counter_phase,
+    int status=CavityModel_prepare(frequency,0.,length,phase,counter_amplitude,counter_phase,
         calibration_beta,wave_number,mass0,q0,source);
     if(status!=CAVITY_MODEL_OK)return status;
     source->rf_profile=profile;
@@ -773,9 +769,8 @@ int CavityModel_prepare_profile(xt_float_or_tpsa_arg frequency,
     if(xt_float_or_tpsa_is_zero(voltage))return CAVITY_MODEL_OK;
     if(xt_float_or_tpsa_const_part(frequency)<=0.)return CAVITY_MODEL_ARGUMENT;
     xt_float_or_tpsa forward=0.,backward=1.;
-    if(isfinite(xt_float_or_tpsa_const_part(eta))) {
-        xt_float_or_tpsa ratio=0.;if(!xt_float_or_tpsa_is_zero(eta))ratio=sqrt(eta);
-        forward=1./(1.+ratio);backward=ratio/(1.+ratio);
+    if(isfinite(xt_float_or_tpsa_const_part(counter_amplitude))) {
+        forward=1./(1.+counter_amplitude);backward=counter_amplitude/(1.+counter_amplitude);
     }
     xt_float_or_tpsa slow[2]={0.,0.},fast[2]={0.,0.};
     xt_float_or_tpsa real=0.,imag=0.,square=0.;
