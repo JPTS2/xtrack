@@ -11,7 +11,7 @@ For assembling these elements into a model, use
 
 | Topic | Lessons |
 | --- | --- |
-| [Magnets](magnets/README.md) | Physical fields, normalized strengths, model/integrator choices, slicing and bend geometry |
+| [Magnets](magnets/README.md) | Fields and strengths, models/integrators, slicing, bends, fringes, solenoids and field-based tracking |
 
 The [collection structure](../README.md#elements) also describes the planned
 cavity, map, spatial-transformation and advanced custom-element branches.
