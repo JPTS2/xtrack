@@ -10,7 +10,7 @@
 #define XTRACK_THIN_SLICE_CAVITY_H
 
 #include "xtrack/beam_elements/elements_src/track_rf.h"
-#include "xtrack/beam_elements/elements_src/cavity_models_adapter.h"
+#include "xtrack/beam_elements/elements_src/cavity_plan.h"
 
 GPUFUN
 void ThinSliceCavity_prepare_rf(ThinSliceCavityData el, RFPlan* plan, LocalParticle* part0)
@@ -34,7 +34,7 @@ void ThinSliceCavity_prepare_rf(ThinSliceCavityData el, RFPlan* plan, LocalParti
     rf.integrator             = INTEGRATOR_UNIFORM;
     // clang-format on
     RFPlan_prepare(plan, &rf, part0);
-    CavityPlan_prepare(ThinSliceCavityData_getp__parent(el), part0, 1., 0., &plan->cavity);
+    Cavity_prepare_cavity_plan(ThinSliceCavityData_getp__parent(el), part0, 1., 0., &plan->cavity);
     plan->cavity.thin_slice = 1;
 }
 

@@ -13,12 +13,12 @@
 // the particles on the longitudinal map drift in the same transformed frame,
 // as they do in a thick slice.
 GPUFUN
-void CavityModels_track_drift_slice(CavityData parent, LocalParticle* part0,
+void CavityModels_track_drift_slice(const CavityPlan* prepared, LocalParticle* part0,
         double weight, double start_fraction) {
-    CavityPlan plan;
-    CavityPlan_prepare(parent,part0,weight,start_fraction,&plan);
+    const CavityPlan plan=*prepared;
+    const RFModelFields* parent=&plan.fields;
     const int8_t reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
-    const double drift_length=(reverse ? -weight : weight)*CavityData_get_length(parent);
+    const double drift_length=(reverse ? -weight : weight)*parent->length;
     if (!plan.adaptive && plan.model<10) {
         START_PER_PARTICLE_BLOCK(part0,part);
             Drift_single_particle(part,drift_length);
@@ -27,18 +27,18 @@ void CavityModels_track_drift_slice(CavityData parent, LocalParticle* part0,
     }
     int any_physical=0;
     START_PER_PARTICLE_BLOCK(part0,part);
-        if (CavityPlan_choose(&plan,parent,part)>=10) any_physical=1;
+        if (CavityPlan_choose(&plan,part)>=10) any_physical=1;
     END_PER_PARTICLE_BLOCK;
-    const double length=CavityData_get_length(parent)*weight;
-    const double anchor=CavityData_get_rot_shift_anchor(parent)
-        -CavityData_get_length(parent)*start_fraction;
-    const double dx=CavityData_get_shift_x(parent);
-    const double dy=CavityData_get_shift_y(parent);
-    const double ds=CavityData_get_shift_s(parent);
-    const double rx=CavityData_get_rot_x_rad(parent);
-    const double ry=CavityData_get_rot_y_rad(parent);
-    const double rz=CavityData_get_rot_s_rad(parent);
-    const double rz0=CavityData_get_rot_s_rad_no_frame(parent);
+    const double length=parent->length*weight;
+    const double anchor=parent->rot_shift_anchor
+        -parent->length*start_fraction;
+    const double dx=parent->shift_x;
+    const double dy=parent->shift_y;
+    const double ds=parent->shift_s;
+    const double rx=parent->rot_x_rad;
+    const double ry=parent->rot_y_rad;
+    const double rz=parent->rot_s_rad;
+    const double rz0=parent->rot_s_rad_no_frame;
     const int transformed=any_physical && (dx!=0. || dy!=0. || ds!=0. || rx!=0. || ry!=0.
         || rz!=0. || rz0!=0.);
     if (transformed) {
@@ -52,9 +52,9 @@ void CavityModels_track_drift_slice(CavityData parent, LocalParticle* part0,
     CavityMagnusCache magnus_cache;
     magnus_cache.valid=0;
     START_PER_PARTICLE_BLOCK(part0,part);
-        const int model=CavityPlan_choose(&plan,parent,part);
+        const int model=CavityPlan_choose(&plan,part);
         if (model<10) Drift_single_particle(part,drift_length);
-        else track_cavity_single_particle(parent,&plan,model,part,&magnus_cache);
+        else track_cavity_single_particle(&plan,model,part,&magnus_cache);
     END_PER_PARTICLE_BLOCK;
     if (transformed) {
         if (!reverse)

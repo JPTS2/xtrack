@@ -232,15 +232,15 @@ for td in to_do:
         if parent_class == 'Cavity':
             data = generated_data_class
             parent = f'{data}_getp__parent(el)'
-            old_call = f'{generated_class}Plan_prepare(el, part0, 1., 0., &plan->cavity);'
+            old_call = f'{generated_class}_prepare_cavity_plan(el, part0, 1., 0., &plan->cavity);'
             if old_call not in out_content:
                 raise ValueError('Cavity plan template changed')
             if generating == 'thick_slice':
-                new_call = (f'CavityPlan_prepare({parent}, part0, {data}_get_weight(el), '
+                new_call = (f'{parent_class}_prepare_cavity_plan({parent}, part0, {data}_get_weight(el), '
                             f'{data}_get_slice_offset_fraction(el), &plan->cavity);')
             else:
                 # In a thin layout the physical models act on the drift slices.
-                new_call = (f'CavityPlan_prepare({parent}, part0, 1., 0., &plan->cavity);\n'
+                new_call = (f'{parent_class}_prepare_cavity_plan({parent}, part0, 1., 0., &plan->cavity);\n'
                             '    plan->cavity.thin_slice = 1;')
             out_content = out_content.replace(old_call, new_call)
 
@@ -356,7 +356,8 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
         out_drift_slice = out_drift_slice.replace(
             '#include "xtrack/beam_elements/elements_src/track_drift.h"',
             '#include "xtrack/beam_elements/elements_src/track_drift.h"\n'
-            '    #include "xtrack/beam_elements/elements_src/cavity_models_slice.h"')
+            '    #include "xtrack/beam_elements/elements_src/cavity_models_slice.h"\n'
+            '    #include "xtrack/beam_elements/elements_src/cavity_plan.h"')
         marker = 'GPUFUN\n    void DriftSliceCavity_track_local_particle('
         accessor = '''GPUFUN
     double DriftSliceCavityData_get_slice_offset(DriftSliceCavityData el) {
@@ -380,8 +381,11 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
         i_body = out_drift_slice.index('        double weight = DriftSliceCavityData_get_weight(el);')
         i_end = out_drift_slice.index('    }\n\n    #endif', i_body)
         out_drift_slice = (out_drift_slice[:i_body]
-            + '''        CavityModels_track_drift_slice(
-            DriftSliceCavityData_getp__parent(el),part0,
+            + '''        CavityPlan plan;
+        Cavity_prepare_cavity_plan(DriftSliceCavityData_getp__parent(el),part0,
+            DriftSliceCavityData_get_weight(el),
+            DriftSliceCavityData_get_slice_offset_fraction(el),&plan);
+        CavityModels_track_drift_slice(&plan,part0,
             DriftSliceCavityData_get_weight(el),
             DriftSliceCavityData_get_slice_offset_fraction(el));
 ''' + out_drift_slice[i_end:])

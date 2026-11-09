@@ -7,7 +7,7 @@
 #define XTRACK_CAVITY_H
 
 #include "xtrack/beam_elements/elements_src/track_rf.h"
-#include "xtrack/beam_elements/elements_src/cavity_models_adapter.h"
+#include "xtrack/beam_elements/elements_src/cavity_plan.h"
 
 GPUFUN
 void Cavity_prepare_rf(CavityData el, RFPlan* plan, LocalParticle* part0)
@@ -31,7 +31,7 @@ void Cavity_prepare_rf(CavityData el, RFPlan* plan, LocalParticle* part0)
     rf.integrator             = CavityData_get_integrator(el);
     // clang-format on
     RFPlan_prepare(plan, &rf, part0);
-    CavityPlan_prepare(el, part0, 1., 0., &plan->cavity);
+    Cavity_prepare_cavity_plan(el, part0, 1., 0., &plan->cavity);
 }
 
 #endif  // XTRACK_CAVITY_H

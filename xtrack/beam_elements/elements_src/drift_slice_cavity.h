@@ -13,6 +13,7 @@
     #include "xtrack/headers/track.h"
     #include "xtrack/beam_elements/elements_src/track_drift.h"
     #include "xtrack/beam_elements/elements_src/cavity_models_slice.h"
+    #include "xtrack/beam_elements/elements_src/cavity_plan.h"
 
 
     GPUFUN
@@ -36,8 +37,11 @@
             LocalParticle* part0
     ) {
 
-        CavityModels_track_drift_slice(
-            DriftSliceCavityData_getp__parent(el),part0,
+        CavityPlan plan;
+        Cavity_prepare_cavity_plan(DriftSliceCavityData_getp__parent(el),part0,
+            DriftSliceCavityData_get_weight(el),
+            DriftSliceCavityData_get_slice_offset_fraction(el),&plan);
+        CavityModels_track_drift_slice(&plan,part0,
             DriftSliceCavityData_get_weight(el),
             DriftSliceCavityData_get_slice_offset_fraction(el));
     }

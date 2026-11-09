@@ -10,7 +10,7 @@
 #define XTRACK_THICK_SLICE_CAVITY_H
 
 #include "xtrack/beam_elements/elements_src/track_rf.h"
-#include "xtrack/beam_elements/elements_src/cavity_models_adapter.h"
+#include "xtrack/beam_elements/elements_src/cavity_plan.h"
 
 GPUFUN
 double ThickSliceCavityData_get_slice_offset(ThickSliceCavityData el) {
@@ -52,7 +52,7 @@ void ThickSliceCavity_prepare_rf(ThickSliceCavityData el, RFPlan* plan, LocalPar
     rf.integrator             = ThickSliceCavityData_get__parent_integrator(el);
     // clang-format on
     RFPlan_prepare(plan, &rf, part0);
-    CavityPlan_prepare(ThickSliceCavityData_getp__parent(el), part0, ThickSliceCavityData_get_weight(el), ThickSliceCavityData_get_slice_offset_fraction(el), &plan->cavity);
+    Cavity_prepare_cavity_plan(ThickSliceCavityData_getp__parent(el), part0, ThickSliceCavityData_get_weight(el), ThickSliceCavityData_get_slice_offset_fraction(el), &plan->cavity);
 }
 
 #endif  // XTRACK_THICK_SLICE_CAVITY_H

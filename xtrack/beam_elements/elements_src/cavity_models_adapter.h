@@ -51,30 +51,30 @@ int64_t CavityModels_freeze_mask(const CavityModelSource *source) {
 // Inspect every represented hardware entry, including entries above order.
 // First effects admit a uniform solenoid and normal/skew quadrupole only.
 GPUFUN
-int CavityModels_effects_static_present(CavityData el) {
-    if(!xt_float_or_tpsa_is_zero(CavityData_get_ks(el)))return 1;
-    for(int64_t i=0;i<CavityData_len_knl(el);++i)
-        if(CavityData_get_knl(el,i)!=0.)return 1;
-    for(int64_t i=0;i<CavityData_len_ksl(el);++i)
-        if(CavityData_get_ksl(el,i)!=0.)return 1;
+int CavityModels_effects_static_present(const RFModelFields* el) {
+    if(!xt_float_or_tpsa_is_zero(el->ks))return 1;
+    for(int64_t i=0;i<el->knl_len;++i)
+        if(el->knl[i]!=0.)return 1;
+    for(int64_t i=0;i<el->ksl_len;++i)
+        if(el->ksl[i]!=0.)return 1;
     return 0;
 }
 
 GPUFUN
-int CavityModels_effects_static_unsupported(CavityData el) {
-    for(int64_t i=0;i<CavityData_len_knl(el);++i)
-        if((i!=1||CavityData_get_order(el)<1)&&CavityData_get_knl(el,i)!=0.)return 1;
-    for(int64_t i=0;i<CavityData_len_ksl(el);++i)
-        if((i!=1||CavityData_get_order(el)<1)&&CavityData_get_ksl(el,i)!=0.)return 1;
+int CavityModels_effects_static_unsupported(const RFModelFields* el) {
+    for(int64_t i=0;i<el->knl_len;++i)
+        if((i!=1||el->order<1)&&el->knl[i]!=0.)return 1;
+    for(int64_t i=0;i<el->ksl_len;++i)
+        if((i!=1||el->order<1)&&el->ksl[i]!=0.)return 1;
     return 0;
 }
 
 GPUFUN
-int CavityModels_transformations_active(CavityData el) {
-    return CavityData_get_shift_x(el)!=0.||CavityData_get_shift_y(el)!=0.
-        ||CavityData_get_shift_s(el)!=0.||CavityData_get_rot_x_rad(el)!=0.
-        ||CavityData_get_rot_y_rad(el)!=0.||CavityData_get_rot_s_rad(el)!=0.
-        ||CavityData_get_rot_s_rad_no_frame(el)!=0.;
+int CavityModels_transformations_active(const RFModelFields* el) {
+    return el->shift_x!=0.||el->shift_y!=0.
+        ||el->shift_s!=0.||el->rot_x_rad!=0.
+        ||el->rot_y_rad!=0.||el->rot_s_rad!=0.
+        ||el->rot_s_rad_no_frame!=0.;
 }
 
 // Physical kinetic lift follows each model's retained source projection.
@@ -111,16 +111,16 @@ static const double CAVITY_COMPOSITION_ORDER8[9]={
 // averaged factors miss about 1.2 D2 of the RF focusing, independent of energy
 //. Eight Gauss nodes per beat period; quadrature error only rejects.
 GPUFUN
-double CavityModels_envelope_beat(CavityData el, double wave_number) {
-    const double half=.5*wave_number*CavityData_get_length(el);
+double CavityModels_envelope_beat(const RFModelFields* el, double wave_number) {
+    const double half=.5*wave_number*el->length;
     double nu=1.;
-    if (!CavityData_get_wave_number_from_frequency(el))
-        nu=xt_float_or_tpsa_const_part(CavityData_get_wave_number(el))/wave_number;
-    const int profile=CavityData_get_rf_profile(el);
+    if (!el->wave_number_from_frequency)
+        nu=xt_float_or_tpsa_const_part(el->wave_number)/wave_number;
+    const int profile=el->rf_profile;
     // Its integral vanishes at whole half-wavelengths, but the edges still kick.
     if (profile==1) return 1.;
-    const double sigma=wave_number*xt_float_or_tpsa_const_part(CavityData_get_rf_profile_sigma(el));
-    const double centre=wave_number*xt_float_or_tpsa_const_part(CavityData_get_rf_profile_center(el));
+    const double sigma=wave_number*xt_float_or_tpsa_const_part(el->rf_profile_sigma);
+    const double centre=wave_number*xt_float_or_tpsa_const_part(el->rf_profile_center);
     if (profile==2 && !(sigma>0.)) return 1.;
     const int64_t segments=(int64_t)ceil(2.*fabs(nu)*half/PI)+1;
     const double width=2.*half/segments;
@@ -205,19 +205,19 @@ int CavityPlan_envelope_long(double envelope_width, double length, double freque
 }
 
 GPUFUN
-int CavityPlan_controls(CavityData el, LocalParticle* part0, int model, int integrator,
+int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model, int integrator,
                         int64_t requested, double weight, double slice_start) {
-    const double length=CavityData_get_length(el);
-    const int profile=CavityData_get_rf_profile(el);
-    const int magnetic_profile=CavityData_get_magnetic_profile(el);
-    const int spin_tracking=CavityData_get_spin_tracking(el);
+    const double length=el->length;
+    const int profile=el->rf_profile;
+    const int magnetic_profile=el->magnetic_profile;
+    const int spin_tracking=el->spin_tracking;
     int controls=CAVITY_MODEL_OK;
     if (!(isfinite(length) && length>0. && isfinite(weight) && weight>0.
           && isfinite(slice_start) && slice_start>=0.
           && weight<=1. && slice_start+weight<=1.+8e-15)
-        || CavityData_get_rf_field_order(el)!=2
+        || el->rf_field_order!=2
         || spin_tracking<0||spin_tracking>1
-        ||(spin_tracking&&(CavityData_get__tpsa_enabled(el)!=0
+        ||(spin_tracking&&(el->tpsa_enabled!=0
             ||(model==CAVITY_MODEL_FULL&&(profile!=0||magnetic_profile!=0))))
         || requested<0
         || (model!=CAVITY_MODEL_FULL && model!=CAVITY_MODEL_FROZEN
@@ -225,11 +225,11 @@ int CavityPlan_controls(CavityData el, LocalParticle* part0, int model, int inte
         || profile<0 || profile>2
         || magnetic_profile<0||magnetic_profile>1
         ||(magnetic_profile==1&&(model!=CAVITY_MODEL_FULL
-            ||CavityData_get_edge_entry_active(el)||CavityData_get_edge_exit_active(el)))
+            ||el->edge_entry_active||el->edge_exit_active))
         || (model==CAVITY_MODEL_FROZEN&&profile!=1)
-        || CavityData_get_order(el)<0
-        || CavityData_len_knl(el)<=CavityData_get_order(el)
-        || CavityData_len_ksl(el)<=CavityData_get_order(el))
+        || el->order<0
+        || el->knl_len<=el->order
+        || el->ksl_len<=el->order)
         controls=CAVITY_MODEL_ARGUMENT;
     // Spin is integrated on the scalar CPU full model only.
 #if defined(XTRACK_TPSA_TRACK) || (!defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)) || defined(XTRACK_MULTIPOLE_NO_SYNRAD)
@@ -238,14 +238,14 @@ int CavityPlan_controls(CavityData el, LocalParticle* part0, int model, int inte
     if(spin_tracking&&controls==CAVITY_MODEL_OK) {
         if(CavityModels_effects_static_unsupported(el))controls=CAVITY_MODEL_ARGUMENT;
         else if(CavityModels_effects_static_present(el)
-            &&(CavityData_get_edge_entry_active(el)||CavityData_get_edge_exit_active(el)
+            &&(el->edge_entry_active||el->edge_exit_active
                ||CavityModels_transformations_active(el)))controls=CAVITY_MODEL_ARGUMENT;
     }
     if (model==CAVITY_MODEL_FROZEN) {
         if ((integrator!=0 && integrator!=7 && integrator!=3)
-            || !xt_float_or_tpsa_is_zero(CavityData_get_eta(el))
-            || !xt_float_or_tpsa_is_zero(CavityData_get_calibration_beta(el)-1.)
-            || !CavityData_get_wave_number_from_frequency(el))
+            || !xt_float_or_tpsa_is_zero(el->eta)
+            || !xt_float_or_tpsa_is_zero(el->calibration_beta-1.)
+            || !el->wave_number_from_frequency)
             controls=CAVITY_MODEL_ARGUMENT;
     } else if (model==CAVITY_MODEL_AVERAGED || model==CAVITY_MODEL_PARAXIAL) {
         if ((integrator!=0 && integrator!=3 && integrator!=7) || magnetic_profile!=0)
@@ -264,36 +264,35 @@ int CavityPlan_controls(CavityData el, LocalParticle* part0, int model, int inte
 
 // Reads only the track flags of the particle, as RFPlan_prepare does.
 GPUFUN
-void CavityPlan_prepare(CavityData el, LocalParticle* part0,
-                        double weight, double slice_start, CavityPlan* plan) {
-    const int model=CavityData_get_model(el);
-    plan->el=el;
+void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start, CavityPlan* plan) {
+    const RFModelFields* el=&plan->fields;
+    const int model=el->model;
     plan->model=model;
     plan->adaptive=model==0;
     plan->thin_slice=0;
     if (model>0 && model<10) return;
 
-    const double length=CavityData_get_length(el);
-    const double frequency=xt_float_or_tpsa_const_part(CavityData_get_frequency(el));
-    const double eta=xt_float_or_tpsa_const_part(CavityData_get_eta(el));
+    const double length=el->length;
+    const double frequency=xt_float_or_tpsa_const_part(el->frequency);
+    const double eta=xt_float_or_tpsa_const_part(el->eta);
     // An adaptive choice uses the chosen model's integrator and resolution.
-    const int integrator=model==0 ? 0 : CavityData_get_integrator(el);
-    const int64_t requested=model==0 ? 0 : CavityData_get_num_kicks(el);
-    const double envelope_width=CavityPlan_envelope_width(CavityData_get_rf_profile(el),length,
-        xt_float_or_tpsa_const_part(CavityData_get_rf_profile_sigma(el)));
+    const int integrator=model==0 ? 0 : el->integrator;
+    const int64_t requested=model==0 ? 0 : el->num_kicks;
+    const double envelope_width=CavityPlan_envelope_width(el->rf_profile,length,
+        xt_float_or_tpsa_const_part(el->rf_profile_sigma));
     plan->integrator=integrator; plan->requested=requested; plan->eta=eta;
     plan->envelope_width=envelope_width;
-    plan->profile=CavityData_get_rf_profile(el);
-    plan->magnetic_profile=CavityData_get_magnetic_profile(el);
-    plan->spin_tracking=CavityData_get_spin_tracking(el);
+    plan->profile=el->rf_profile;
+    plan->magnetic_profile=el->magnetic_profile;
+    plan->spin_tracking=el->spin_tracking;
     if (model==0) {
         for (int chosen=CAVITY_MODEL_FULL; chosen<=CAVITY_MODEL_PARAXIAL; ++chosen) {
             const int controls=CavityPlan_controls(el,part0,chosen,integrator,requested,weight,slice_start);
             plan->choice[chosen-CAVITY_MODEL_FULL].controls=controls;
             plan->choice[chosen-CAVITY_MODEL_FULL].cells=CavityPlan_cells(chosen,requested,frequency,length,envelope_width,eta,weight,controls,0.);
         }
-        const double voltage=fabs(xt_float_or_tpsa_const_part(CavityData_get_voltage(el)));
-        const double harmonic=xt_float_or_tpsa_const_part(CavityData_get_harmonic(el));
+        const double voltage=fabs(xt_float_or_tpsa_const_part(el->voltage));
+        const double harmonic=xt_float_or_tpsa_const_part(el->harmonic);
         plan->adaptive_length=length;
         plan->adaptive_frequency=frequency;
         plan->adaptive_harmonic=harmonic;
@@ -321,8 +320,8 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
     plan->end_fraction=reverse ? left_fraction : right_fraction;
     plan->direction=reverse ? -1. : 1.;
     plan->reverse=reverse;
-    plan->clear_face=reverse ? CavityData_get_edge_entry_active(el)
-                             : CavityData_get_edge_exit_active(el);
+    plan->clear_face=reverse ? el->edge_entry_active
+                             : el->edge_exit_active;
     plan->physical_outer=reverse ? left_fraction==0. : right_fraction==1.;
 }
 
@@ -342,7 +341,8 @@ void CavityPlan_prepare(CavityData el, LocalParticle* part0,
 // a limit of those maps that a large offset needs "phase-resolved" by name to avoid.
 // Other selectors are returned unchanged.
 GPUFUN
-int CavityPlan_choose(const CavityPlan* plan, CavityData el, LocalParticle* part) {
+int CavityPlan_choose(const CavityPlan* plan, LocalParticle* part) {
+    const RFModelFields* el=&plan->fields;
     if (!plan->adaptive) return plan->model;
     double frequency=plan->adaptive_frequency;
     const double harmonic=plan->adaptive_harmonic;
@@ -389,8 +389,9 @@ void CavityModels_rf_gauge(xt_float_or_tpsa q[6], const CavityModelSource *sourc
 
 // The physical models for one particle, shared by the Cavity and its slices.
 GPUFUN
-void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int model,
+void track_cavity_single_particle(const CavityPlan* plan, int model,
                                   LocalParticle* part, CavityMagnusCache* magnus_cache) {
+    const RFModelFields* el=&plan->fields;
     const int slot=plan->adaptive ? model-CAVITY_MODEL_FULL : 0;
     const int controls=plan->choice[slot].controls;
     int64_t cells=plan->choice[slot].cells;
@@ -431,8 +432,8 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
     if (status==CAVITY_MODEL_OK
         && xt_float_or_tpsa_const_part(sigma)<=0.)
         status=CAVITY_MODEL_DOMAIN;
-    xt_float_or_tpsa frequency=CavityData_get_frequency(el);
-    const xt_float_or_tpsa harmonic=CavityData_get_harmonic(el);
+    xt_float_or_tpsa frequency=el->frequency;
+    const xt_float_or_tpsa harmonic=el->harmonic;
     if (!xt_float_or_tpsa_is_zero(harmonic)) {
         if (!(part->line_length>0.)) status=CAVITY_MODEL_ARGUMENT;
         else frequency+=harmonic*beta0*C_LIGHT/part->line_length;
@@ -441,45 +442,45 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
     if (!xt_float_or_tpsa_is_zero(harmonic) || (model==CAVITY_MODEL_PARAXIAL && requested==0))
         cells=CavityPlan_cells(model,requested,xt_float_or_tpsa_const_part(frequency),
             length,plan->envelope_width,plan->eta,weight,controls,
-            fabs(q0*xt_float_or_tpsa_const_part(CavityData_get_voltage(el)))
+            fabs(q0*xt_float_or_tpsa_const_part(el->voltage))
                 /sqrt(mass0*mass0+LocalParticle_get_p0c(part)*LocalParticle_get_p0c(part)));
-    xt_float_or_tpsa phase=CavityData_get_phase(el)
-        +DEG2RAD*CavityData_get_lag(el)
-        +CavityData_get_phase_taper(el)
-        +DEG2RAD*CavityData_get_lag_taper(el);
+    xt_float_or_tpsa phase=el->phase
+        +DEG2RAD*el->lag
+        +el->phase_taper
+        +DEG2RAD*el->lag_taper;
     // New physical sources treat taper offsets as deterministic hardware
     // phase inputs, independent of whether radiation is compiled. The
     // legacy track_rf path retains its historical compile-flag policy.
-    const xt_float_or_tpsa voltage=CavityData_get_voltage(el);
+    const xt_float_or_tpsa voltage=el->voltage;
     if (model==CAVITY_MODEL_FROZEN
         && !xt_float_or_tpsa_is_zero(voltage)
         && xt_float_or_tpsa_const_part(frequency)<=0.)
         status=CAVITY_MODEL_ARGUMENT;
-    xt_float_or_tpsa wave_number=CavityData_get_wave_number(el);
-    if (CavityData_get_wave_number_from_frequency(el))
+    xt_float_or_tpsa wave_number=el->wave_number;
+    if (el->wave_number_from_frequency)
         wave_number=(2.*PI/C_LIGHT)*frequency;
     CavityModelSource source;
     if (status==CAVITY_MODEL_OK) {
         status=CavityModel_prepare_profile(frequency,
                 model==CAVITY_MODEL_FROZEN?0.:voltage,
-                length,phase,CavityData_get_eta(el),CavityData_get_counter_phase(el),
-                CavityData_get_calibration_beta(el),wave_number,mass0,q0,profile,
-                CavityData_get_rf_profile_sigma(el),CavityData_get_rf_profile_center(el),&source);
+                length,phase,el->eta,el->counter_phase,
+                el->calibration_beta,wave_number,mass0,q0,profile,
+                el->rf_profile_sigma,el->rf_profile_center,&source);
     }
     xt_float_or_tpsa q[6], clock_base=0.;
     xt_float_or_tpsa z=0., h=0.;
     if (status==CAVITY_MODEL_OK) {
-        source.ks=CavityData_get_ks(el);
+        source.ks=el->ks;
         source.magnetic_profile=magnetic_profile;
-        source.magnetic_sigma=source.k*CavityData_get_magnetic_profile_sigma(el);
+        source.magnetic_sigma=source.k*el->magnetic_profile_sigma;
         if (model==CAVITY_MODEL_FROZEN)
             source.voltage_norm=voltage/mass0;
         source.magnetic_scale=LocalParticle_get_p0c(part)/(q0*mass0);
-        source.order=CavityData_get_order(el);
-        source.knl=CavityData_getp1_knl(el,0);
-        source.ksl=CavityData_getp1_ksl(el,0);
-        source.knl_tpsa=CavityData_getp1_knl_tpsa(el,0);
-        source.ksl_tpsa=CavityData_getp1_ksl_tpsa(el,0);
+        source.order=el->order;
+        source.knl=el->knl;
+        source.ksl=el->ksl;
+        source.knl_tpsa=el->knl_tpsa;
+        source.ksl_tpsa=el->ksl_tpsa;
         source.reference_beta=beta0;
         source.uniform_mesh=integrator==3;
         status=CavityModel_static_validate(&source);
@@ -513,12 +514,12 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
         z=source.k*length*(start_fraction-.5);
         h=direction*source.k*length*weight/cells;
         clock_base=source.clock_origin;
-        if (CavityData_get_absolute_time(el)) {
+        if (el->absolute_time) {
             const xt_float_or_tpsa parent_s=LocalParticle_get_s(part)
                 -length*start_fraction;
             // The RF phase accumulated at time_s, as in track_rf.
             if (!xt_float_or_tpsa_is_zero(harmonic))
-                clock_base+=2.*PI*(CavityData_get_frequency(el)*LocalParticle_get_time_s(part)
+                clock_base+=2.*PI*(el->frequency*LocalParticle_get_time_s(part)
                     +harmonic*LocalParticle_get_reference_turns(part));
             else clock_base+=source.omega*LocalParticle_get_time_s(part);
             clock_base+=source.k*parent_s/beta0;
@@ -540,18 +541,18 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
         else
         {
             CavitySpin step_spin={spin_tracking ? spin : NULL, anomaly};
-            const xt_float_or_tpsa gain=fabs(q0*xt_float_or_tpsa_const_part(CavityData_get_voltage(el)))*weight/mass0;
+            const xt_float_or_tpsa gain=fabs(q0*xt_float_or_tpsa_const_part(el->voltage))*weight/mass0;
             const xt_float_or_tpsa entry=sqrt(1.+kappa0*kappa0);
             const xt_float_or_tpsa grading=gain*(1./entry+1./(entry+gain));
             if (model==CAVITY_MODEL_AVERAGED)
                 status=CavityModel_averaged_interval(q,Q,&source,cells,
                     left_fraction,right_fraction,reverse,
-                    CavityData_get_edge_entry_active(el),CavityData_get_edge_exit_active(el),
+                    el->edge_entry_active,el->edge_exit_active,
                     kappa0,integrator,grading,&step_spin,next);
             else
                 status=CavityModel_paraxial_interval(q,Q,&source,cells,
                     left_fraction,right_fraction,reverse,
-                    CavityData_get_edge_entry_active(el),CavityData_get_edge_exit_active(el),
+                    el->edge_entry_active,el->edge_exit_active,
                     kappa0,integrator,grading,&step_spin,magnus_cache,next);
         }
         if (status==CAVITY_MODEL_OK) {
@@ -564,10 +565,10 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
         // The nominal programme sees the parent-reference arrival phase,
         // including the laboratory anchor, never the particle's zeta or
         // evolving delta. Actual species charge enters the word via Q.
-        const xt_float_or_tpsa nominal_gain=CavityData_get_nominal_energy_gain_from_rf(el)
+        const xt_float_or_tpsa nominal_gain=el->nominal_energy_gain_from_rf
             ? fabs(q0)*source.voltage_norm
                 *sin(source.phase+clock_base-source.clock_origin)
-            : CavityData_get_nominal_energy_gain(el)/mass0;
+            : el->nominal_energy_gain/mass0;
         // Explicit eV/reference-particle programme already includes the
         // reference charge. Actual-species chi never retunes this input.
         CavitySpin frozen_spin={spin_tracking ? spin : NULL, anomaly};
@@ -575,8 +576,8 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
             status=CAVITY_MODEL_NONFINITE;
         else
             status=CavityModel_frozen_interval(q,Q,&source,kappa0,nominal_gain,requested,
-                CavityData_get_edge_entry_active(el),
-                CavityData_get_edge_exit_active(el),left_fraction,right_fraction,
+                el->edge_entry_active,
+                el->edge_exit_active,left_fraction,right_fraction,
                 reverse,&frozen_spin,next);
         if (status==CAVITY_MODEL_OK) {
             for (int j=0;j<6;++j) q[j]=next[j];
@@ -601,7 +602,7 @@ void track_cavity_single_particle(CavityData el, const CavityPlan* plan, int mod
     xt_float_or_tpsa grading=0.,grading_log=0.;
     if (model==CAVITY_MODEL_FULL && integrator==7 && status==CAVITY_MODEL_OK) {
         const xt_float_or_tpsa entry=sqrt(1.+kappa0*kappa0);
-        const xt_float_or_tpsa gain=fabs(q0*xt_float_or_tpsa_const_part(CavityData_get_voltage(el)))*weight/mass0;
+        const xt_float_or_tpsa gain=fabs(q0*xt_float_or_tpsa_const_part(el->voltage))*weight/mass0;
         grading=gain*(1./entry+1./(entry+gain));
         grading_log=CavityModel_log1p(grading);
     }
@@ -720,15 +721,14 @@ void track_cavity_plan(LocalParticle* part0, const RFPlan* plan) {
         || (!cavity->adaptive && cavity->model<10)) {
         track_rf_body_particles(part0,&plan->body);
     } else {
-        CavityData el=(CavityData) cavity->el;
         // Reference-only paraxial step generators, reused across the call.
         CavityMagnusCache magnus_cache;
         magnus_cache.valid=0;
         START_PER_PARTICLE_BLOCK(part0,part);
-            const int model=CavityPlan_choose(cavity,el,part);
+            const int model=CavityPlan_choose(cavity,part);
             if (model<10) track_rf_body_single_particle(part,&plan->body);
             else if (!cavity->thin_slice)
-                track_cavity_single_particle(el,cavity,model,part,&magnus_cache);
+                track_cavity_single_particle(cavity,model,part,&magnus_cache);
             else if (cavity->spin_tracking) LocalParticle_set_state(part,-99744);
         END_PER_PARTICLE_BLOCK;
     }

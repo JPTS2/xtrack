@@ -51,11 +51,74 @@ typedef struct CavityChoice_s {
     int64_t cells;
 } CavityChoice;
 
+// The element's fields as the physical models read them. Each element type
+// fills them at prepare, so the models never read the element while tracking.
+// An element without static fields leaves knl_len and ksl_len at zero.
+typedef struct RFModelFields_s {
+    double length;
+    xt_float_or_tpsa voltage, frequency, lag, phase, harmonic, lag_taper, phase_taper;
+    xt_float_or_tpsa eta, counter_phase, calibration_beta, wave_number;
+    int64_t wave_number_from_frequency;
+    xt_float_or_tpsa nominal_energy_gain;
+    int64_t nominal_energy_gain_from_rf;
+    int64_t rf_profile;
+    xt_float_or_tpsa rf_profile_sigma, rf_profile_center;
+    int64_t magnetic_profile;
+    xt_float_or_tpsa magnetic_profile_sigma;
+    int64_t rf_field_order, spin_tracking, edge_entry_active, edge_exit_active;
+    xt_float_or_tpsa ks;
+    int64_t order, knl_len, ksl_len;
+    GPUGLMEM const double *knl, *ksl;
+    GPUGLMEM const uint64_t *knl_tpsa, *ksl_tpsa;
+    int64_t absolute_time, num_kicks, model, integrator, tpsa_enabled;
+    double shift_x, shift_y, shift_s, rot_x_rad, rot_y_rad, rot_s_rad;
+    double rot_s_rad_no_frame, rot_shift_anchor;
+} RFModelFields;
+
+#define RF_MODEL_FIELDS_FILL_RF(DATA, el, f) do { \
+    (f)->length=DATA##_get_length(el); \
+    (f)->voltage=DATA##_get_voltage(el); (f)->frequency=DATA##_get_frequency(el); \
+    (f)->lag=DATA##_get_lag(el); (f)->phase=DATA##_get_phase(el); \
+    (f)->harmonic=DATA##_get_harmonic(el); \
+    (f)->lag_taper=DATA##_get_lag_taper(el); (f)->phase_taper=DATA##_get_phase_taper(el); \
+    (f)->eta=DATA##_get_eta(el); (f)->counter_phase=DATA##_get_counter_phase(el); \
+    (f)->calibration_beta=DATA##_get_calibration_beta(el); \
+    (f)->wave_number=DATA##_get_wave_number(el); \
+    (f)->wave_number_from_frequency=DATA##_get_wave_number_from_frequency(el); \
+    (f)->nominal_energy_gain=DATA##_get_nominal_energy_gain(el); \
+    (f)->nominal_energy_gain_from_rf=DATA##_get_nominal_energy_gain_from_rf(el); \
+    (f)->rf_profile=DATA##_get_rf_profile(el); \
+    (f)->rf_profile_sigma=DATA##_get_rf_profile_sigma(el); \
+    (f)->rf_profile_center=DATA##_get_rf_profile_center(el); \
+    (f)->rf_field_order=DATA##_get_rf_field_order(el); \
+    (f)->spin_tracking=DATA##_get_spin_tracking(el); \
+    (f)->edge_entry_active=DATA##_get_edge_entry_active(el); \
+    (f)->edge_exit_active=DATA##_get_edge_exit_active(el); \
+    (f)->absolute_time=DATA##_get_absolute_time(el); (f)->num_kicks=DATA##_get_num_kicks(el); \
+    (f)->model=DATA##_get_model(el); (f)->integrator=DATA##_get_integrator(el); \
+    (f)->tpsa_enabled=DATA##_get__tpsa_enabled(el); \
+    (f)->shift_x=DATA##_get_shift_x(el); (f)->shift_y=DATA##_get_shift_y(el); \
+    (f)->shift_s=DATA##_get_shift_s(el); \
+    (f)->rot_x_rad=DATA##_get_rot_x_rad(el); (f)->rot_y_rad=DATA##_get_rot_y_rad(el); \
+    (f)->rot_s_rad=DATA##_get_rot_s_rad(el); \
+    (f)->rot_s_rad_no_frame=DATA##_get_rot_s_rad_no_frame(el); \
+    (f)->rot_shift_anchor=DATA##_get_rot_shift_anchor(el); \
+} while (0)
+
+#define RF_MODEL_FIELDS_FILL_STATIC(DATA, el, f) do { \
+    (f)->magnetic_profile=DATA##_get_magnetic_profile(el); \
+    (f)->magnetic_profile_sigma=DATA##_get_magnetic_profile_sigma(el); \
+    (f)->ks=DATA##_get_ks(el); (f)->order=DATA##_get_order(el); \
+    (f)->knl_len=DATA##_len_knl(el); (f)->ksl_len=DATA##_len_ksl(el); \
+    (f)->knl=DATA##_getp1_knl(el,0); (f)->ksl=DATA##_getp1_ksl(el,0); \
+    (f)->knl_tpsa=DATA##_getp1_knl_tpsa(el,0); (f)->ksl_tpsa=DATA##_getp1_ksl_tpsa(el,0); \
+} while (0)
+
 // The physical models of a Cavity or a slice of it (cavity_models_adapter.h).
 // "adaptive" keeps the parts of its choice that depend on the element only;
 // each particle's reference is compared with them by CavityPlan_choose.
 typedef struct CavityPlan_s {
-    GPUGLMEM void* el;
+    RFModelFields fields;
     int model, adaptive, thin_slice;
     double adaptive_length, adaptive_frequency, adaptive_harmonic;
     double adaptive_voltage;
