@@ -266,6 +266,8 @@ Start with the [tracking lessons](tracking/README.md).
 
 ### time_dependent
 
+See [time-dependent tracking](tracking/time_dependent/README.md).
+
 - `001_time_dependent_knobs.py`
 - `002_excitation.py`
 
