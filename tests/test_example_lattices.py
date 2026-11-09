@@ -66,3 +66,35 @@ def test_teaching_model_load_and_json_independence(tmp_path):
         np.testing.assert_allclose(
             independent['ring'][name].k1, baseline * 0.99,
         )
+
+
+def test_teaching_rf_ring_synchronous_orbit_and_modes():
+    from scipy.constants import c
+
+    env = xt.load(model_root / 'rf_ring/lattice.py')
+    line = env['rf_ring']
+    np.testing.assert_allclose(line.get_length(), 40., atol = 1e-12)
+    assert 'rf' not in env['ring'].element_names
+    np.testing.assert_allclose(
+        env['rf'].frequency,
+        20 * line.particle_ref.beta0[0] * c / line.get_length(),
+        rtol = 1e-14)
+    np.testing.assert_allclose(env['rf'].phase, np.pi, atol = 1e-14)
+
+    tw = line.twiss6d()
+    assert tw.slip_factor > 0
+    assert tw.muzeta[-1] < tw.muzeta[0]
+    np.testing.assert_allclose(tw.qs, 0.011393221247, atol = 1e-8)
+    np.testing.assert_allclose(
+        np.abs(np.linalg.eigvals(tw.R_matrix)), 1., atol = 1e-7)
+    tracked = tw.particle_on_co.copy()
+    line.track(tracked, num_turns = 1)
+    assert tracked.state[0] == 1
+    for coordinate in ['x', 'px', 'y', 'py', 'zeta', 'pzeta']:
+        np.testing.assert_allclose(
+            getattr(tracked, coordinate),
+            getattr(tw.particle_on_co, coordinate),
+            rtol = 0, atol = 1e-9)
+
+    bare = env['ring'].twiss4d()
+    np.testing.assert_allclose([bare.qx, bare.qy], [1.62, 1.58], atol = 1e-8)
