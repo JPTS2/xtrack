@@ -835,9 +835,12 @@ GPUFUN
 int CavityModel_effects_profile(double T,double z,const CavityModelSource *source,
                                double S[6],double C[6]) {
     const double H=xt_float_or_tpsa_const_part(source->half_span);
-    if(source->rf_profile!=0 || !(H>0.) || !isfinite(H))return CAVITY_MODEL_ARGUMENT;
+    if((source->rf_profile!=0&&source->rf_profile!=1) || !(H>0.) || !isfinite(H))
+        return CAVITY_MODEL_ARGUMENT;
     double f[6]={0.,0.,0.,0.,0.,0.};
-    if(fabs(z)<H) {
+    if(source->rf_profile==1) {
+        if(fabs(z)<=H)f[0]=1.;
+    } else if(fabs(z)<H) {
         const double u=z/H,a=1.-u,b=1.+u;
         // Leibniz derivatives of (1-u)^16(1+u)^16 through true D5.
         for(int n=0;n<=5;++n) {

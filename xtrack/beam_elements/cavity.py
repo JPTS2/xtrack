@@ -310,10 +310,10 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         """Raise if spin transport is not implemented for these settings."""
         if self._model in (11, 12, 13):
             return
-        if (self._model != 10 or self._rf_profile != 0
+        if (self._model != 10 or self.rf_profile == 'gaussian'
                 or self.integrator == 'teapot'):
             raise NotImplementedError('Cavity spin transport requires the _phase-resolved '
-                                      'model with the P16 profile')
+                                      'model with the P16 or uniform profile')
 
     @property
     def model(self):

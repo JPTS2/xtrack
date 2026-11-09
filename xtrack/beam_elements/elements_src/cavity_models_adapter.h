@@ -167,7 +167,7 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
         || el->n_cells<0
         || spin_tracking<0||spin_tracking>1
         ||(spin_tracking&&(el->tpsa_enabled!=0
-            ||(model==CAVITY_MODEL_FULL&&(profile!=0||magnetic_profile!=0))))
+            ||(model==CAVITY_MODEL_FULL&&(profile==2||magnetic_profile!=0))))
         || requested<0
         || (model!=CAVITY_MODEL_FULL && model!=CAVITY_MODEL_FROZEN
             && model!=CAVITY_MODEL_AVERAGED && model!=CAVITY_MODEL_PARAXIAL)
@@ -484,7 +484,8 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     if (status==CAVITY_MODEL_OK && model==CAVITY_MODEL_FULL && physical_start) {
         xt_float_or_tpsa envelope[5];
         CavityModel_source_envelope(z, &source, envelope);
-        status=CavityMagnus_edge(q, &source, Q, z, direction*envelope[0], direction, NULL);
+        CavitySpin edge_spin={spin_tracking ? spin : NULL, anomaly};
+        status=CavityMagnus_edge(q, &source, Q, z, direction*envelope[0], direction, &edge_spin);
         if (status==CAVITY_MODEL_OK) CavityModels_rf_gauge(q, &source, Q, z, 1);
     }
     // Composition of the fourth-order Gauss cell: yoshida-6 is one
@@ -539,7 +540,8 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
             xt_float_or_tpsa envelope[5];
             CavityModel_source_envelope(z, &source, envelope);
             CavityModels_rf_gauge(q, &source, Q, z, 0);
-            status=CavityMagnus_edge(q, &source, Q, z, -direction*envelope[0], direction, NULL);
+            CavitySpin edge_spin={spin_tracking ? spin : NULL, anomaly};
+            status=CavityMagnus_edge(q, &source, Q, z, -direction*envelope[0], direction, &edge_spin);
             field_source.forward=0.; field_source.backward=0.;
         }
         // The longitudinal-projected generator still samples its full

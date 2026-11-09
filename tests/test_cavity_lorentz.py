@@ -359,6 +359,26 @@ def _spin_end(context, model, gamma, half_waves, gradient, amplitude, phase, ano
     return np.array([particles.spin_x[0], particles.spin_y[0], particles.spin_z[0]])
 
 
+@pytest.mark.parametrize('gamma, gradient', [(40., 5e6), (400., 20e6)])
+@pytest.mark.parametrize('amplitude', [0., .5, 1.])
+def test_spin_through_hard_edges_follows_thomas_bmt(context, gamma, gradient, amplitude):
+    """A uniform field ends at its faces: the spin turns there too. The reference
+    resolves each edge as a 0.3 mm ramp, the physical limit of a hard edge."""
+    half_waves, phase, anomaly = 15, 1.2, 0.00115965218
+    n_cells = half_waves if amplitude > 0. else None
+    spin = np.array([.6, 0., .8])
+    length = half_waves * _HALF_WAVE
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    end = _spin_end(context, '_phase-resolved', gamma, half_waves, gradient, amplitude, phase, anomaly,
+                    spin, num_kicks=16 * half_waves, rf_profile='uniform', n_cells=n_cells)
+    waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, hard_edge,
+                             n_cells=n_cells)
+    launch = dict(_LAUNCHES[0], spin_x=spin[0], spin_y=spin[1], spin_z=spin[2])
+    truth = lorentz_end(launch, waves, length, ramped(length, 3e-4), p0c, _ELECTRON, anomaly=anomaly)
+    truth = np.array([truth['spin_x'], truth['spin_y'], truth['spin_z']])
+    assert np.linalg.norm(end - truth) < 1e-3 * np.linalg.norm(truth - spin)
+
+
 @pytest.mark.parametrize('model, gamma, gradient, tolerance', [
     ('_phase-resolved', 40., 5e6, 2e-3), ('_phase-resolved', 400., 20e6, 2e-3),
     # Sagan's edge and energy-kick spin rules, shared with Bmad, have this known error.
