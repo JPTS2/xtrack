@@ -256,11 +256,13 @@ Propagation controls, time-dependent and nonlinear studies, and Xtrack collectiv
 and beam-interaction contracts. Nonlinear tracking and nonlinear optics link to
 one another rather than duplicate the same recipe.
 
+Start with the [tracking lessons](tracking/README.md).
+
 - `001_track_line.py`
 - `002_partial_tracking.py`
 - `003_backtrack.py`
 - `004_freeze_longitudinal.py`
-- `005_optimize_snapshot.py`
+- `005_optimize_for_tracking.py`
 
 ### time_dependent
 
