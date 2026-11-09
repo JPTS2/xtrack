@@ -12,7 +12,8 @@ For assembling these elements into a model, use
 | Topic | Lessons |
 | --- | --- |
 | [Magnets](magnets/README.md) | Fields and strengths, models/integrators, slicing, bends, fringes, solenoids and field-based tracking |
+| [Cavities](cavities/README.md) | Energy and transverse RF kicks, finite-length transport and numerical map choices |
 
 The [collection structure](../README.md#elements) also describes the planned
-cavity, map, spatial-transformation and advanced custom-element branches.
+map, spatial-transformation and advanced custom-element branches.
 Machine-level RF dynamics belongs with RF; apertures have their own subject.
