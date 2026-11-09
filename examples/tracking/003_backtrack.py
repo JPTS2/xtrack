@@ -19,8 +19,8 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Launch and tracking
@@ -32,7 +32,7 @@ Y               = 2.0e-4                # [m]
 PY              = 3.0e-6                # Normalized canonical momentum
 ZETA            = 1.0e-2                # [m]
 DELTA           = 1.0e-4
-STOP_ELEMENT    = 'obs.4'
+STOP_ELEMENT    = 'ip.1'                 # IP entrance, after the incoming half
 
 ################################################################################
 # Load the model
@@ -62,7 +62,7 @@ coordinates = np.array(['x', 'px', 'y', 'py', 'zeta', 'delta'])
 ########################################
 # Track forward
 ########################################
-# This static magnetic ring has no radiation, stochastic kicks or losses.
+# RF voltage is zero; radiation and stochastic kicks are off.
 # Backtracking applies inverse element maps; it is not a model of a beam whose
 # velocity has been reversed in the same magnetic field.
 line.track(particles, num_turns = N_TURNS)
@@ -93,7 +93,7 @@ print('Restored turn and element:', particles.at_turn, particles.at_element)
 ################################################################################
 
 ########################################
-# Track to the second observation point
+# Track to the interaction-point entrance
 ########################################
 partial = initial.copy()
 line.track(partial, ele_stop = STOP_ELEMENT)

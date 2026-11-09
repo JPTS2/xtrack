@@ -19,8 +19,8 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Launch and propagation
@@ -46,7 +46,7 @@ particles.get_table().cols[
 ################################################################################
 # Track complete turns
 ################################################################################
-# This magnetic ring has no RF or radiation. delta is conserved; zeta evolves.
+# RF voltage is zero and radiation is off. delta is conserved; zeta evolves.
 # The tracker is built automatically on the default CPU context.
 line.track(particles, num_turns = N_TURNS)
 

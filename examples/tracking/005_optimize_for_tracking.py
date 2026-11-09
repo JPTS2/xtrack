@@ -18,7 +18,7 @@ import xtrack as xt
 ########################################
 # Model and later knob change
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 KQF_FACTOR      = 1.01                   # Applied AFTER tracking comparison
 
 ########################################
@@ -40,14 +40,14 @@ DELTA           = 1.0e-4                 # (p - p0) / p0
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-source      = env['ring']
+source      = env['demo']
 
 # Default line.copy() deep-copies elements and variables into a NEW environment.
 # A shallow copy shares its environment and is unsuitable for this operation.
 optimized = source.copy()
 print('Independent environments:', source.env is not optimized.env)
-# The model supplies a 40 m electron ring at reference p0*c = 1 GeV.
-# There is no RF or radiation. Both copies start with the same strengths.
+# The model supplies a 1500 m electron ring at reference p0*c = 1 GeV.
+# RF voltage and radiation are off. Both copies start with the same strengths.
 
 ########################################
 # Optimize the copied configuration for tracking
@@ -61,14 +61,28 @@ print('Expression managers active (source/optimized):',
       source.ref_manager is not None, optimized.ref_manager is not None)
 print('Element counts before/after:',
       len(source.element_names), len(optimized.element_names))
-print('Source markers:', source.get_table().rows[r'obs\..*'].name)
-print('Optimized markers:', optimized.get_table().rows[r'obs\..*'].name)
-print('qf.1 index before/after:', source.element_names.index('qf.1'),
-      optimized.element_names.index('qf.1'))
+print('IP marker in source/optimized element sequence:',
+      'ip.1' in source.element_names, 'ip.1' in optimized.element_names)
+print('Source BPM Device planes:')
+source.get_table().rows['bpm[.].*'].cols['name element_type'].show(
+    maxwidth = 'full')
+print('Remaining optimized BPM names:',
+      optimized.get_table().rows['bpm[.].*'].name)
+print('Multipole counts before/after:',
+      len(source.get_table().rows.match(element_type = 'Multipole')),
+      len(optimized.get_table().rows.match(element_type = 'Multipole')))
+print('First arc quadrupole index before/after:',
+      source.element_names.index('arc.s1.c1.qf.in'),
+      optimized.element_names.index('arc.s1.c1.qf.in'))
 print('Circumferences [m]:', source.get_length(), optimized.get_length())
 
-# Default marker removal changes names and indices used for observation and
-# partial tracking. Coordinate agreement below does not preserve those indices.
+# Default optimization removes markers and inactive multipoles; it replaces
+# passive Devices with drifts, which may merge. Named BPM observation planes
+# and element indices need not survive.
+
+# Device survey misalignments are discarded; this uses the nominal aligned
+# model. Removed zero multipoles cannot subsequently be powered through their
+# original circuits.
 
 ################################################################################
 # Track identical particles through both configurations
@@ -115,12 +129,13 @@ for coordinate in ['x', 'px', 'y', 'py', 'zeta', 'delta']:
 ########################################
 # Change only the original live strength knob
 ########################################
-snapshot_k1     = optimized['qf.1'].k1
+snapshot_k1     = optimized['arc.s1.c1.qf.in'].k1
 original_kqf    = env['kqf']
 env['kqf']      = KQF_FACTOR * original_kqf
-print('Source qf.1 k1 after changing source kqf [m^-2]:', source['qf.1'].k1)
-print('Optimized qf.1 k1 before/after source knob change [m^-2]:',
-      snapshot_k1, optimized['qf.1'].k1)
+print('Source first arc quadrupole k1 after source knob change [m^-2]:',
+      source['arc.s1.c1.qf.in'].k1)
+print('Optimized first arc quadrupole k1 before/after [m^-2]:',
+      snapshot_k1, optimized['arc.s1.c1.qf.in'].k1)
 
 # The original expressions still respond; the optimized environment contains a
 # numeric snapshot. Its element fields remain editable; expression links are
