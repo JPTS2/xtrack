@@ -42,14 +42,14 @@ initial = line.build_particles(x = X, px = PX)
 # ele_start is inclusive; ele_stop is exclusive. No end-of-line crossing yet.
 partial = initial.copy()
 line.track(partial, ele_stop = 'drift.5')
-partial.get_table().cols['x s at_turn at_element'].show()
+partial.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ########################################
 # Continue from the stored boundary
 ########################################
 # Keep ele_start consistent with the particle's at_element and s.
 line.track(partial, ele_start = 'drift.5')
-partial.get_table().cols['x s at_turn at_element'].show()
+partial.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ################################################################################
 # Cross the end of the line
@@ -66,7 +66,7 @@ line.track(wrapped, ele_stop = 'drift.7')
 ########################################
 # Traverses 7, 8, 9, 0, 1, 2: one boundary crossing increments at_turn.
 line.track(wrapped, ele_start = 'drift.7', ele_stop = 'drift.3')
-wrapped.get_table().cols['x s at_turn at_element'].show()
+wrapped.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ################################################################################
 # Count elements or extend a partial path over turns
@@ -77,7 +77,7 @@ wrapped.get_table().cols['x s at_turn at_element'].show()
 ########################################
 counted = initial.copy()
 line.track(counted, num_elements = N_ELEMENTS + 3)
-counted.get_table().cols['x s at_turn at_element'].show()
+counted.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ########################################
 # Use num_turns with a stop inside the line
@@ -86,7 +86,7 @@ counted.get_table().cols['x s at_turn at_element'].show()
 # followed by the final partial turn. at_turn counts line-end crossings.
 multiple = initial.copy()
 line.track(multiple, ele_stop = 'drift.3', num_turns = 3)
-multiple.get_table().cols['x s at_turn at_element'].show()
+multiple.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ########################################
 # Extend a path that wraps around the line end
@@ -101,4 +101,5 @@ line.track(
     ele_stop    = 'drift.3',
     num_turns   = 3,
 )
-wrapped_multiple.get_table().cols['x s at_turn at_element'].show()
+wrapped_multiple.get_table().cols[
+    'x s at_turn at_element'].show(maxwidth = 'full')

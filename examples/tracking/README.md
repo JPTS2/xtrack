@@ -13,13 +13,29 @@ Start with complete turns, then select partial paths and reverse them.
 | [001_track_line.py](001_track_line.py) | Propagate particles and interpret the final element, turn and position |
 | [002_partial_tracking.py](002_partial_tracking.py) | Stop, resume, cross the line end and count elements or turns |
 | [003_backtrack.py](003_backtrack.py) | Invert full turns and partial paths; inspect coordinate residuals |
+| [004_freeze_longitudinal.py](004_freeze_longitudinal.py) | Temporarily freeze longitudinal coordinates, then resume their evolution |
+| [005_optimize_for_tracking.py](005_optimize_for_tracking.py) | Use optimize_for_tracking on an independent copy and inspect the resulting changes |
 
-[004_execution_context.py](004_execution_context.py) is a separate execution
-recipe: select a CPU context, edit the line and retain that context when optics
-rebuilds the tracker. It defaults to serial CPU; positive `N_THREADS` selects
-OpenMP and requires a compatible compiler/runtime. Xobjects also provides
-`ContextCupy` for CUDA and `ContextPyopencl` for OpenCL. These examples do not
-qualify those optional backends or measure tracking throughput.
+`001` inspects the final particle state, rather than recording its history.
+Complete turns reset `s` to zero. `002` deliberately keeps `s` cumulative so
+the traversed distance remains visible across line-end crossings. Its turn
+counter still counts those crossings, not the number of tracking calls.
+
+`003` applies inverse element maps to the same forward intervals. This does
+not model a beam travelling in the opposite direction through the fields.
+
+`004` enables compilation only on its own CPU context because the frozen
+configuration may need a new kernel. It requires a working C compiler.
+Freezing is a numerical constraint, not longitudinal confinement. In this
+static magnetic ring delta is conserved even without freezing; zeta evolves
+again after the frozen call. Equal transverse endpoints are specific to this
+model, whose transverse maps depend on delta but not on zeta.
+
+`005` compares a fixed configuration on an independent deep copy. Optimization
+disables expressions for the copy's entire environment and can remove markers
+and change indices. The original environment remains live; numeric fields in
+the snapshot remain editable. Coordinate agreement is checked for this model
+and launch, without a tracking-throughput claim.
 
 Except for the transparent proton drift line in `002`, the examples use the
 [native magnetic ring](../../test_data/example_lattices/README.md) with its
@@ -28,5 +44,9 @@ Backtracking inverts deterministic maps; it does not undo losses or stochastic
 processes.
 
 For trajectories, beam sizes and recorded observations, continue with
-[monitors](../monitors/). For geometrical acceptance and losses, see
-[apertures](../apertures/) and [loss refinement](../collimation/).
+[monitors](../monitors/). For geometrical cuts and loss positions, see
+[the apertures plan](../README.md#apertures).
+
+The [examples index](../README.md#tracking) also lays out time-dependent,
+nonlinear, collective and beam-interaction tracking. CPU/GPU contexts and
+memory ownership belong to [contexts and memory](../README.md#contexts_and_memory).

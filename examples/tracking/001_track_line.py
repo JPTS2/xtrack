@@ -31,16 +31,17 @@ X               = np.array([0.1, 0.2, 0.3]) * 1e-3  # [m]
 ################################################################################
 # Load the model
 ################################################################################
-repo_root = Path(__file__).resolve().parents[2]
-env       = xt.load(repo_root / LATTICE_FILE)
-line      = env[LINE_NAME]
+repo_root   = Path(__file__).resolve().parents[2]
+env         = xt.load(repo_root / LATTICE_FILE)
+line        = env[LINE_NAME]
 
 ################################################################################
 # Build particles at the ring entrance
 ################################################################################
 particles = line.build_particles(x = X, delta = 0.0)
 print('Initial particles:')
-particles.get_table().cols['particle_id x px s at_turn at_element'].show()
+particles.get_table().cols[
+    'particle_id x px s at_turn at_element'].show(maxwidth = 'full')
 
 ################################################################################
 # Track complete turns
@@ -54,5 +55,6 @@ line.track(particles, num_turns = N_TURNS)
 ################################################################################
 # Full turns return to element 0 and reset s to zero. at_turn counts the turns.
 # These are final coordinates, not a history of the intervening motion.
-particles.get_table().cols['particle_id x px s at_turn at_element state'].show()
+particles.get_table().cols[
+    'particle_id x px s at_turn at_element state'].show(maxwidth = 'full')
 print('Final delta:', particles.delta)
