@@ -20,6 +20,7 @@ preparation. Each script runs independently in your Xsuite environment.
 | [008_save_and_load_particles.py](008_save_and_load_particles.py) | Save coordinates, reference quantities, IDs and weights as a dictionary or JSON |
 | [009_distribution_generators.py](009_distribution_generators.py) | Generate Gaussian, uniform-area, grid and pencil coordinates with Xpart, then build a physical launch |
 | [010_matched_rf_bunch.py](010_matched_rf_bunch.py) | Prepare a Gaussian bunch matched to a linear RF map and compare it after tracking |
+| [011_capacity_and_insertion.py](011_capacity_and_insertion.py) | Reserve particle storage, append a population and distinguish lost histories from unused slots |
 
 The reference and coordinate examples use a 1 GeV/c proton reference.
 `003`, `004` and `009` use the
@@ -56,6 +57,9 @@ No acceleration, radiation or collective force is included. Finite random sample
 have fluctuating moments even when drawn from a matched distribution.
 
 These recipes cover Xtrack particle containers and Xpart preparation for a line.
+`011` concerns container storage and insertion, without an interaction model.
+For creating particles from a Python tracking callback, see
+[custom interaction processes](../elements/custom/004_python_interaction_process.py).
 Continue with [tracking](../tracking/) and [particle records](../monitors/).
 For a reference controlled by model expressions, see
 [named reference particles](../line_construction/013_reference_particles.py).

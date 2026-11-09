@@ -12,6 +12,15 @@ more detailed examples. Subject folders also provide independent starting points
 For installation, reference APIs and the physics guide, see the
 [Xsuite documentation](https://xsuite.readthedocs.io/en/latest/index.html).
 
+For detailed companion-package physics examples, see:
+
+- [Xfields](https://github.com/xsuite/xfields/tree/main/examples): space charge
+  and beam–beam interactions.
+- [Xcoll](https://github.com/xsuite/xcoll/tree/main/examples): collimators,
+  material interactions and collimation studies.
+- [Xwakes](https://github.com/xsuite/xwakes/tree/main/examples): wakefields and
+  impedance-driven beam dynamics.
+
 ## Folder overview
 
 This is the working structure for the collection and the reference for its
@@ -34,7 +43,7 @@ below give the proposed files. Each folder and subfolder has its own `README.md`
 | [particles/](#particles) | Coordinates, distributions, identity and storage |
 | [optics/](#optics) | transverse/, longitudinal/, nonlinear/, collective/ |
 | [matching/](#matching) | Transverse matching and knobs; longitudinal/ |
-| [tracking/](#tracking) | Propagation; time_dependent/, nonlinear/, collective/, beam_interactions/ |
+| [tracking/](#tracking) | Propagation; time_dependent/, nonlinear/, collective/ |
 | [monitors/](#monitors) | particle_records/, beam_statistics/, storage/ |
 | [rf/](#rf) | dynamics/, timing/, acceleration/ |
 | [radiation/](#radiation) | Losses, compensation, equilibrium and photons |
@@ -106,6 +115,9 @@ Single-element behaviour, grouped by physical role. Apertures belong with
 apertures; machine-level RF behaviour belongs with RF. Custom elements form an
 advanced branch rather than an introduction to element usage.
 
+- [electron_cooler.py](elements/electron_cooler.py): one-pass friction kicks,
+  compared with zero current.
+
 ### magnets
 
 - `001_fields_and_strengths.py`
@@ -138,6 +150,7 @@ advanced branch rather than an introduction to element usage.
 - `001_custom_element.py`
 - `002_random_kicks.py`
 - `003_internal_records.py`
+- `004_python_interaction_process.py`
 
 ## geometry_and_survey
 
@@ -169,6 +182,7 @@ Start with the [particle lessons](particles/README.md).
 - `008_save_and_load_particles.py`
 - `009_distribution_generators.py`
 - `010_matched_rf_bunch.py`
+- `011_capacity_and_insertion.py`
 
 ## optics
 
@@ -255,7 +269,7 @@ See [longitudinal matching](matching/longitudinal/README.md).
 ## tracking
 
 Propagation controls, time-dependent and nonlinear studies, and Xtrack collective
-and beam-interaction contracts. Nonlinear tracking and nonlinear optics link to
+tracking contracts. Nonlinear tracking and nonlinear optics link to
 one another rather than duplicate the same recipe.
 
 Start with the [tracking lessons](tracking/README.md).
@@ -286,12 +300,6 @@ See [collective tracking](tracking/collective/README.md).
 
 - `001_track_collective_elements.py`
 - `002_pipeline_scheduling.py`
-
-### beam_interactions
-
-- `001_electron_cooling.py`
-- `002_secondary_particles.py`
-- `003_track_with_collimators.py`
 
 ## monitors
 

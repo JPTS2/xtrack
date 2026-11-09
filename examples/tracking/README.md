@@ -55,7 +55,7 @@ For trajectories, beam sizes and recorded observations, continue with
 [the apertures plan](../README.md#apertures).
 
 The [examples index](../README.md#tracking) also lays out time-dependent,
-nonlinear, collective and beam-interaction tracking. CPU/GPU contexts and
+nonlinear and collective tracking. CPU/GPU contexts and
 memory ownership belong to [contexts and memory](../README.md#contexts_and_memory).
 
 For clock-driven machine settings and sampled transverse drives, continue with
@@ -66,3 +66,8 @@ For amplitude-dependent tunes and finite-turn survival, see
 
 For bunch-dependent fields and coordinated interacting populations, see
 [collective tracking](collective/README.md).
+
+For a Python process that inserts particles during tracking, see
+[custom interaction processes](../elements/custom/004_python_interaction_process.py).
+For material interactions and collimation studies, use the
+[Xcoll examples](https://github.com/xsuite/xcoll/tree/main/examples).
