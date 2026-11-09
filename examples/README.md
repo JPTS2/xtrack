@@ -156,6 +156,8 @@ Reference quantities, coordinate conventions, normalized launches, distributions
 particle identity and persistence. Matched RF preparation requires a qualified
 longitudinal configuration.
 
+Start with the [particle lessons](particles/README.md).
+
 - `001_reference_quantities.py`
 - `002_coordinates.py`
 - `003_normalized_coordinates.py`

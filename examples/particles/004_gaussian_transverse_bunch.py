@@ -115,7 +115,7 @@ moments = xt.Table(
     },
     index   = 'quantity',
 )
-moments.show()
+moments.show(maxwidth = 'full')
 
 ################################################################################
 # Inspect the horizontal distribution

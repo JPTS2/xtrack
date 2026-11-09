@@ -59,7 +59,8 @@ particles = line.build_particles(
     nemitt_x    = NEMITT_X,
     nemitt_y    = NEMITT_Y,
 )
-particles.get_table().cols['particle_id x px y py delta'].show()
+particles.get_table().cols[
+    'particle_id x px y py delta'].show(maxwidth = 'full')
 
 ########################################
 # Recover the normalized coordinates
@@ -73,7 +74,8 @@ normalized  = tw.get_normalized_coordinates(
 print('Requested x_norm:', X_NORM)
 print('Requested px_norm:', PX_NORM)
 print('Requested y_norm:', Y_NORM)
-normalized.cols['particle_id x_norm px_norm y_norm py_norm'].show()
+normalized.cols[
+    'particle_id x_norm px_norm y_norm py_norm'].show(maxwidth = 'full')
 
 ################################################################################
 # Use equivalent geometric emittances
@@ -102,7 +104,8 @@ particles_geometric = line.build_particles(
 ########################################
 # Compare the physical coordinates
 ########################################
-particles_geometric.get_table().cols['particle_id x px y py delta'].show()
+particles_geometric.get_table().cols[
+    'particle_id x px y py delta'].show(maxwidth = 'full')
 print('Largest x difference [m]:',
       np.max(np.abs(particles_geometric.x - particles.x)))
 print('Largest px difference:',
@@ -137,7 +140,7 @@ cs_table = xt.Table(
     index   = 'particle_id',
 )
 print('Unscaled Courant-Snyder coordinates [sqrt(m)]:')
-cs_table.show()
+cs_table.show(maxwidth = 'full')
 
 ########################################
 # Build particles without nemitt or gemitt
@@ -176,4 +179,4 @@ unit_comparison = xt.Table(
     },
     index   = 'particle_id',
 )
-unit_comparison.show()
+unit_comparison.show(maxwidth = 'full')

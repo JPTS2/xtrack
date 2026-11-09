@@ -61,7 +61,7 @@ velocity_table  = xt.Table(
     index   = 'species',
 )
 print('Same velocity; different physical momenta:')
-velocity_table.show()
+velocity_table.show(maxwidth = 'full')
 
 ################################################################################
 # Compare species at the same physical momentum
@@ -97,7 +97,7 @@ momentum_table  = xt.Table(
     index   = 'species',
 )
 print('Same physical momentum; different velocities:')
-momentum_table.show()
+momentum_table.show(maxwidth = 'full')
 
 # At equal momentum, the equally charged proton and deuteron have equal
 # deflections; the doubly charged helium nucleus has about twice their angle.
