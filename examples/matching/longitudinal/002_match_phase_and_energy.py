@@ -19,8 +19,9 @@ import xtrack as xt
 ########################################
 # Static synchronous state at the ring entrance
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/rf_ring/lattice.py'
-DELTA_TARGET    = 1e-3                  # (p-p0)/p0, not relative total energy
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+RF_VOLTAGE      = 1e5                   # Initial cavity voltage [V]
+DELTA_TARGET    = 1e-4                  # (p-p0)/p0, not relative total energy
 ZETA_TARGET     = 3e-3                  # zeta=s-beta0*c*t at entrance [m]
 
 ########################################
@@ -41,25 +42,28 @@ SEARCH_TURNS    = 4
 ########################################
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['rf_ring']
+line        = env['demo']
 p0c         = float(line.particle_ref.p0c[0])
 beta0       = float(line.particle_ref.beta0[0])
 period0     = line.get_length() / (beta0 * c)
-frequency0  = float(line['rf'].frequency)
+frequency0  = float(line['rf.1'].frequency)
 harmonic    = round(frequency0 * period0)
+cavity_s    = float(line.get_table()['s', 'rf.1'])
+cavity_time = cavity_s / (beta0 * c)
+env['voltage_rf'] = RF_VOLTAGE
 env['rf_relative_frequency'] = 0.0
 env['rf_phase_trim'] = 0.0
-# The native 40 m ring has a 1 GeV/c electron reference and no radiation.
+# The native 1500 m ring has a 1 GeV/c electron reference and no radiation.
 # Relative-time RF alone would not select an off-reference revolution period.
-# absolute_time uses phase at lab t=0. The cavity is at s=C: subtract omega*T0
-# so phase_trim=0 preserves the native stable pi phase at reference arrival.
+# absolute_time uses phase at lab t=0. Subtract omega*s_rf/(beta0*c)
+# at the actual cavity location s_rf=250 m to retain reference phase pi.
 env.set(
-    'rf',
+    'rf.1',
     absolute_time   = True,
     frequency       = f'{frequency0}*(1+rf_relative_frequency)',
     phase           = (
         f'{np.pi}-2*{np.pi}*{frequency0}*(1+rf_relative_frequency)'
-        f'*{period0}+rf_phase_trim'
+        f'*{cavity_time}+rf_phase_trim'
     ),
 )
 
@@ -82,12 +86,15 @@ reference = line.twiss(
 ########################################
 # Start from the linear slip-factor estimate
 ########################################
-# Delta f/f approximately equals -eta*delta for small offsets. Include the
-# reference-frame zeta slip when estimating the phase seen at the cavity.
+# Delta f/f approximately equals -eta*delta for small offsets. Use a uniform-slip
+# estimate to seed the phase; the matched orbit supplies the final value.
 env['rf_relative_frequency'] = -reference.slip_factor * DELTA_TARGET
 frequency_guess         = frequency0 * (1 + env['rf_relative_frequency'])
 period_guess            = harmonic / frequency_guess
-zeta_at_cavity_guess    = ZETA_TARGET + beta0 * c * (period0 - period_guess)
+zeta_at_cavity_guess    = (
+    ZETA_TARGET + beta0 * c * (period0 - period_guess)
+    * cavity_s / line.get_length()
+)
 env['rf_phase_trim'] = 2 * np.pi * frequency_guess * zeta_at_cavity_guess / (
     beta0 * c)
 
@@ -105,13 +112,13 @@ opt = line.match(
     targets                     = [
         xt.Target(
             'delta',
-            at      = 'obs.0',
+            at      = xt.START,
             value   = DELTA_TARGET,
             tol     = DELTA_TOL,
         ),
         xt.Target(
             'zeta',
-            at      = 'obs.0',
+            at      = xt.START,
             value   = ZETA_TARGET,
             tol     = ZETA_TOL,
         ),
@@ -126,9 +133,9 @@ print('Requested/matched entrance delta:', DELTA_TARGET, matched.delta[0])
 print('Requested/matched entrance zeta [m]:', ZETA_TARGET, matched.zeta[0])
 print('Reference p0*c remains [eV]:', line.particle_ref.p0c[0])
 print('RF frequency [Hz], phase trim [rad]:',
-      line['rf'].frequency, env['rf_phase_trim'])
+      line['rf.1'].frequency, env['rf_phase_trim'])
 print('RF cycles per synchronous turn; harmonic:',
-      line['rf'].frequency * matched.t_rev, harmonic)
+      line['rf.1'].frequency * matched.t_rev, harmonic)
 print('Matched/linearized relative frequency offsets:',
       env['rf_relative_frequency'], -reference.slip_factor * DELTA_TARGET)
 
@@ -149,7 +156,7 @@ particle = line.build_particles(
 )
 initial = particle.copy()
 line.track(particle)
-expected_zeta_slip = beta0 * c * (period0 - harmonic / line['rf'].frequency)
+expected_zeta_slip = beta0 * c * (period0 - harmonic / line['rf.1'].frequency)
 print('One-turn coordinate changes; zeta includes reference-clock slip:')
 for coordinate in ['x', 'px', 'y', 'py', 'zeta', 'delta']:
     actual      = float(
@@ -167,7 +174,7 @@ energy_after    = float(particle.energy0[0] + particle.ptau[0] * p0c)
 energy_target   = np.sqrt(
     (p0c * (1 + DELTA_TARGET))**2 + float(initial.mass0)**2)
 print('Tracked/Twiss/RF revolution periods [s]:',
-      tracked_period, matched.t_rev, harmonic / line['rf'].frequency)
+      tracked_period, matched.t_rev, harmonic / line['rf.1'].frequency)
 print('Target/matched total energy [eV]:', energy_target, energy_before)
 print('One-turn energy change [eV]:', energy_after - energy_before)
 print('Final particle state:', particle.state)

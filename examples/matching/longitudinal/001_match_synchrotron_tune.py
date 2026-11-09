@@ -17,8 +17,9 @@ import xtrack as xt
 ########################################
 # Native RF model and target oscillation tune
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/rf_ring/lattice.py'
-QS_TARGET       = 0.015                 # Positive synchrotron tune [turn^-1]
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+RF_VOLTAGE      = 1e5                   # Initial cavity voltage [V]
+QS_TARGET       = 0.010                 # Positive synchrotron tune [turn^-1]
 QS_TOL          = 1.0e-8
 
 ########################################
@@ -36,16 +37,16 @@ VOLTAGE_LIMITS  = [1.0e4, 3.0e5]         # Numerical search bounds [V]
 ########################################
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['rf_ring']
-# This is the 40 m, 1 GeV/c electron ring with one thin cavity at harmonic 20.
+line        = env['demo']
+# This is the 1500 m demo ring with a 1 GeV/c electron reference and h=200.
 # The public Cavity kick uses abs(q0). With positive slip factor, phase pi
 # focuses in this convention despite the electron's q0=-1. Only voltage varies.
-env['rf_voltage'] = float(line['rf'].voltage)
-env.set('rf', voltage = 'rf_voltage')
+env['voltage_rf'] = RF_VOLTAGE
+env.set('rf.1', voltage = 'voltage_rf')
 before = line.twiss6d(chrom = False)
-print('Initial voltage [V] and positive qs:', env['rf_voltage'], before.qs)
+print('Initial voltage [V] and positive qs:', env['voltage_rf'], before.qs)
 print('Cavity phase [rad], frequency [Hz]:',
-      line['rf'].phase, line['rf'].frequency)
+      line['rf.1'].phase, line['rf.1'].frequency)
 
 ########################################
 # Match a positive synchrotron tune by changing voltage only
@@ -56,7 +57,7 @@ opt = line.match(
     method  = '6d',
     chrom   = False,
     vary    = xt.Vary(
-        'rf_voltage',
+        'voltage_rf',
         step    = VOLTAGE_STEP,
         limits  = VOLTAGE_LIMITS,
     ),
@@ -72,7 +73,7 @@ opt = line.match(
 ########################################
 after = line.twiss6d(chrom = False)
 opt.target_status()
-print(f'Matched voltage: {env["rf_voltage"]:.6f} V')
+print(f'Matched voltage: {env["voltage_rf"]:.6f} V')
 print(f'Recomputed qs: {after.qs:.10f}; residual: {after.qs - QS_TARGET:+.3e}')
 
 # qs is positive, while the signed longitudinal phase muzeta decreases around

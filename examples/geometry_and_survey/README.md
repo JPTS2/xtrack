@@ -19,7 +19,7 @@ plot to `xplt.FloorPlot`.
 | [004_element_frames.py](004_element_frames.py) | Compare reference and actual element frames and transform local coordinates |
 
 `001` uses the native transport line; `002` and `003` use the
-[native magnetic ring](../../test_data/example_lattices/README.md).
+[shared demo ring](../../test_data/example_lattices/demo_ring/README.md).
 Default survey axes are global `(X, Y, Z)`, initially horizontal, vertical and
 forward. Positions are in metres and angles are in radians. `s` is accumulated
 reference-path length. It is distinct from global `Z`. Orientation closure
@@ -28,7 +28,7 @@ consistent with the same final orientation. The polylines in `002` and `003`
 join element boundaries with straight chords; they do not resolve curved bend
 bodies.
 
-`003` supplies a pose at `obs.4` using `element0`. All rows, including those
+`003` supplies a pose at `bpm.s4.f` using `element0`. All rows, including those
 upstream of that entrance, remain in their original line order. The example's
 horizontal plot is a projection if you change the elevation or roll.
 Its orientation angles are unwrapped along the original line, so the selected

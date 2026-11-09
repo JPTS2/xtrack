@@ -8,13 +8,12 @@ Copyright (c) CERN, 2026.
 | Model | Line name | Geometry |
 | --- | --- | --- |
 | [demo_ring/lattice.py](demo_ring/README.md) | `demo` | Instrumented 1.5 km ring with a low-beta IP and separate geometry/strength inputs |
-| [ring/lattice.py](ring/lattice.py) | `ring` | 40 m ring with eight FODO cells and observation markers at 0 and 20 m |
 | [transport/lattice.py](transport/lattice.py) | `transport` | 7.1 m line with three quadrupoles and two bends |
-| [rf_ring/lattice.py](rf_ring/lattice.py) | `rf_ring` | Native 40 m magnetic ring followed by one zero-length sinusoidal RF cavity |
 
-Load a definition with `env = xt.load(path)` and select `env['ring']` or
+Load a definition with `env = xt.load(path)` and select `env['demo']` or
 `env['transport']`. Each model supplies its reference particle and strengths.
-The RF definition supplies both `env['ring']` (RF-free) and `env['rf_ring']`.
+The demonstration ring uses one geometry for magnetic, powered-RF, skew and
+nonlinear studies. Each example explicitly selects the setting it needs.
 
 ## Reference and modelling
 
@@ -22,31 +21,15 @@ All models use a 1 GeV/c electron reference (`p0c = 1e9` eV). Lengths are in
 metres, bend angles in radians and quadrupole `k1` in m^-2. The variables `kqf`
 and `kqd` drive the corresponding quadrupole families through expressions.
 
-The compact ring and transport magnetic bodies use the adaptive model with
-linear bend edges, zero edge angles and zero fringe integrals. The demonstration
-ring uses `bend-kick-bend` bends; its configuration is documented in
-[demo_ring/README.md](demo_ring/README.md).
-The compact magnetic ring and transport line have no RF;
-use 4D optics, supplying entrance conditions for the transport line. There is no
-radiation, spin tracking, collective force, error or aperture model.
+The demonstration ring uses `bend-kick-bend` bends and defaults to zero RF
+voltage, skew fields, nonlinear strengths, errors and operating trims. Its
+[model README](demo_ring/README.md) specifies the optics, device names,
+strengths and qualified RF configuration. Radiation and collective fields are
+not enabled by the model loader.
 
-The ring baseline has `kqf = 1.194864989644536` and
-`kqd = -1.4872100226207832` m^-2, giving `Qx = 1.62` and `Qy = 1.58`.
-The transport baseline has `kqf = 0.35` and `kqd = -0.30` m^-2.
-
-## RF-ring qualification
-
-The RF ring retains those magnetic strengths and adds a 100 kV cavity at
-`s = 40` m, just before the next turn's entrance. Its frequency is harmonic 20
-of `beta0*c/40`, approximately 149.896 MHz. Phase is pi radians: the current
-public `Cavity` reference-species kick uses `abs(q0)*V*sin(phase - omega*zeta /
-(beta0*c))`. Together with the positive slip factor, this gives stable focusing.
-
-The synchronous solution has synchrotron tune approximately 0.01139322. Use 6D
-Twiss to solve all three modes. Tracking uses sinusoidal RF, while Twiss and
-covariance describe the local linearization around the synchronous orbit.
-There is no acceleration or radiation-loss compensation. The RF-free companion
-remains available for fixed-momentum orbit and revolution-period studies.
+The transport uses adaptive magnetic bodies with linear bend edges, zero edge
+angles and zero fringe integrals. Its family settings are `kqf=0.35` and
+`kqd=-0.30` m^-2. It has no RF and needs entrance conditions for 4D Twiss.
 
 ## Coordinates
 

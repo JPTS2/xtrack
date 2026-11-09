@@ -15,13 +15,13 @@ import xtrack as xt
 ################################################################################
 
 ########################################
-# Two ring configurations with one shared family variable
+# Two ring configurations with one shared varied family
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 LINE_NAMES      = ['a', 'b']
-QX_A_TARGET     = 1.70                  # Full tunes, including integer part
-QY_A_TARGET     = 1.65
-QX_B_TARGET     = 1.72
+QX_A_TARGET     = 8.760                  # Full tunes, including integer part
+QY_A_TARGET     = 10.020
+QX_B_TARGET     = 8.765
 
 ########################################
 # Matching precision
@@ -40,10 +40,10 @@ repo_root   = Path(__file__).resolve().parents[2]
 sources     = {}
 for label in LINE_NAMES:
     source  = xt.load(repo_root / LATTICE_FILE)
-    line    = source['ring']
+    line    = source['demo']
     knob    = 'kqd_' + label
     source[knob] = source['kqd']
-    for name in line.get_table().rows['qd[.].*'].name:
+    for name in line.get_table().rows['arc[.]s[1-6][.]c[1-4][.]qd'].name:
         source.set(name, k1 = knob)
     sources[label] = line
 
@@ -54,8 +54,8 @@ for label in LINE_NAMES:
 # import. Equal variable names remain shared: both focusing families use kqf.
 # The defocusing families instead depend on kqd_a and kqd_b, independently.
 
-# Both lines have the native 40 m geometry and 1 GeV/c electron reference;
-# they are two configurations, not counter-rotating beams; no RF/radiation.
+# Both lines have the native 1500 m geometry and 1 GeV/c electron reference;
+# they are two configurations, with RF voltage zero and radiation off.
 env         = xt.Environment(lines = sources)
 before      = {name: env[name].twiss4d() for name in LINE_NAMES}
 

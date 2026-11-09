@@ -19,8 +19,8 @@ import xtrack as xt
 # Model and integration choices by class
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE        = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME           = 'ring'
+LATTICE_FILE        = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME           = 'demo'
 BEND_MODEL          = 'rot-kick-rot'
 BEND_INTEGRATOR     = 'teapot'
 BEND_KICKS          = 4
@@ -34,7 +34,7 @@ QUAD_KICKS          = 7
 FAMILY_MODEL        = 'drift-kick-drift-exact'
 FAMILY_INTEGRATOR   = 'yoshida-6'
 FAMILY_KICKS        = 21
-SINGLE_ELEMENT      = 'qf.1'
+SINGLE_ELEMENT      = 'arc.s1.c1.qf.in'
 SINGLE_MODEL        = 'mat-kick-mat'
 SINGLE_INTEGRATOR   = 'teapot'
 SINGLE_KICKS        = 10
@@ -96,8 +96,8 @@ line.set(
 ########################################
 # Override the focusing quadrupole family
 ########################################
-# A name regex selects the qf occurrences in this lattice.
-focusing = quadrupoles.rows['qf[.].*']
+# A name regex selects only arc QF halves, excluding insertion quadrupoles.
+focusing = quadrupoles.rows[r'arc[.]s[1-6][.]c[1-4][.]qf[.].*']
 line.set(
     focusing,
     model               = FAMILY_MODEL,
@@ -112,7 +112,7 @@ line[SINGLE_ELEMENT].model               = SINGLE_MODEL
 line[SINGLE_ELEMENT].integrator          = SINGLE_INTEGRATOR
 line[SINGLE_ELEMENT].num_multipole_kicks = SINGLE_KICKS
 print('Configured body-map fields (name, model, integrator, kick count):')
-for name in ['bf.1', 'qd.1', 'qf.2', SINGLE_ELEMENT]:
+for name in ['arc.s1.c1.b1', 'arc.s1.c1.qd', 'arc.s1.c2.qf.in', SINGLE_ELEMENT]:
     element = line[name]
     print(name, element.model, element.integrator, element.num_multipole_kicks)
 

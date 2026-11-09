@@ -21,9 +21,14 @@ higher-order chromaticity together gives the subject one learning sequence.
 | [004_multiturn_optics.py](004_multiturn_optics.py) | Find a nonzero four-turn island orbit, compute its local optics and compare it with tracking |
 | [005_stability_diagram.py](005_stability_diagram.py) | Build a tracked action footprint and evaluate the Gaussian dispersion integral |
 
-`001` and `002` use the [native magnetic ring](../../../test_data/example_lattices/README.md)
+`001` and `002` use the [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
 with a 1 GeV/c electron reference. Reference momentum and magnet strengths stay
-fixed while `delta` varies. There is no RF, radiation or collective force.
+fixed while `delta` varies. RF voltage is zero; radiation and collective forces
+are absent. The bare vertical tune is near an integer, with large chromaticity.
+The first-order lesson scans only `+/-5e-5`; the higher-order fit uses `+/-2e-5`
+and a separate `1e-5` local derivative step. These are qualified optical samples,
+not a momentum-acceptance measurement. Curvature is already visible at this
+scale; carrying a wider scan over from another lattice is unsafe.
 
 Linear chromaticities are `dQ/d(delta)`. In each uncoupled plane, the local
 functions are `b = (d beta/d delta)/beta`,
@@ -41,7 +46,9 @@ The lesson repeats the fit with a narrower range and a higher degree, then
 compares predictions over their shared window. Numerical precision, the scan
 range and fit degree all matter. The qualified scan stays on a stable optical
 branch; this helper does not unwrap tune branches or determine momentum
-acceptance. Higher-order estimates need their own convergence check.
+acceptance. Higher-order estimates need their own convergence check; here the
+small horizontal second derivative is more sensitive to local differencing
+than the fitted tune predictions.
 
 `003` and `005` use explicit integrable detuning maps, with symmetric cross
 coefficients compatible with a common action Hamiltonian. Geometric actions
@@ -70,3 +77,6 @@ model for a stability assessment.
 For closed-orbit momentum shifts and dispersion, see
 [transverse optics](../transverse/README.md). Chromaticity correction belongs
 with matching.
+
+For a footprint from nonlinear magnetic fields and finite-turn survival scans,
+see [nonlinear tracking](../../tracking/nonlinear/README.md).

@@ -19,13 +19,13 @@ import xtrack as xt
 ########################################
 # Model
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Floor plot
 ########################################
-PLOT_LABELS     = ['obs.0', 'obs.4']
+PLOT_LABELS     = ['bpm.s1.f', 'bpm.s4.f']
 FIGURE_SIZE     = (7.0, 6.0)            # [inch]
 
 ################################################################################
@@ -49,7 +49,8 @@ survey      = line.survey()
 # geometric bend angle [rad], rather than its global orientation.
 table = line.get_table(attr = True)
 print('First cell bends: longitudinal positions [m] and bend angles [rad]:')
-table.rows[['bf.1', 'bd.1']].cols['name s_start s_end angle'].show()
+table.rows[['arc.s1.c1.b1', 'arc.s1.c1.b2']].cols[
+    'name s_start s_end angle'].show()
 
 ########################################
 # Inspect reference frames around the ring
@@ -58,7 +59,7 @@ table.rows[['bf.1', 'bd.1']].cols['name s_start s_end angle'].show()
 # X, Y, Z are global coordinates [m]; theta, phi, psi are orientation angles
 # [rad]. With the default initial frame, the entrance tangent points along +Z.
 print('Reference geometry: coordinates [m], orientation angles [rad]:')
-survey.rows[['obs.0', 'obs.4', '_end_point']].cols[
+survey.rows[['bpm.s1.f', 'bpm.s4.f', '_end_point']].cols[
     'name s X Y Z theta phi psi'
 ].show(maxwidth = 'full')
 

@@ -25,11 +25,17 @@ or use the [examples index](../README.md) to choose another subject.
 Run the files in your Xsuite environment. Parameters to change are collected
 near the top of each file.
 
-The [native models](../../test_data/example_lattices/README.md) are a transport
-line and a magnetic ring, both with a 1 GeV/c electron reference. There is no RF
-or radiation. Open optics use specified entrance conditions; ring optics use a
-4D periodic solution. During tracking, momentum offset is constant and the
-longitudinal coordinate can evolve.
+`03` retains the small native transport line for specified entrance conditions.
+The other model-loading lessons use the shared
+[demo ring](../../test_data/example_lattices/demo_ring/README.md): a 1500 m ring
+with a 1 GeV/c electron reference and a low-beta insertion. RF voltage is zero
+and radiation is off. Ring optics use a 4D periodic solution. During tracking,
+momentum offset is constant and the longitudinal coordinate can evolve.
 
-`08_save_and_load.py` writes `outputs/getting_started_ring.json` beside the
+`05` changes the two arc-family trims to request tune shifts near +0.002 in
+each plane. It does not preserve all insertion optics. `07` installs actual
+particle monitors at the ideal BPM planes `bpm.s1.f` and `bpm.s4.f`, at 1 m
+and 751 m. The model's passive BPM devices do not themselves record particles.
+
+`08_save_and_load.py` writes `outputs/getting_started_demo.json` beside the
 script. It never overwrites the input lattice.

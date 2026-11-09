@@ -18,7 +18,7 @@ import xtrack as xt
 ########################################
 # Native ring and bounded focusing-family ramp
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 KQF_FACTOR      = 1.005                 # Final strength / initial strength
 RAMP_TURNS      = 6                     # Used to define the duration in seconds
 N_TURNS         = 10
@@ -29,7 +29,7 @@ N_TURNS         = 10
 START_TIME      = 2.0e-6                # Initial reference clock time [s]
 START_TURN      = 20                    # Independent integer turn label
 X_START         = 1.0e-3                # [m]
-DELTA_START     = 1.0e-3                # (p-p0)/p0
+DELTA_START     = 1.0e-5                # Small (p-p0)/p0 for this ramp
 
 ################################################################################
 # Define a machine function of time in seconds
@@ -40,8 +40,9 @@ DELTA_START     = 1.0e-3                # (p-p0)/p0
 ########################################
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
-# The model supplies a 1 GeV/c electron reference, without RF or radiation.
+line        = env['demo']
+# The model supplies a 1 GeV/c electron reference; RF voltage is zero and
+# radiation is off. The small momentum offset is qualified for this ramp only.
 # There is no EnergyProgram: p0 and the nominal clock increment stay fixed.
 beta0       = float(line.particle_ref.beta0[0])
 period      = line.get_length() / (beta0 * c)
@@ -89,7 +90,7 @@ for _ in range(N_TURNS):
     entrance_clock  = float(particles.time_s)
     line.track(particles, num_turns = 1)
     samples.append((turn, entrance_clock, env['t_turn_s'], env['kqf'],
-                    line['qf.1'].k1))
+                    line['arc.s1.c1.qf.in'].k1))
 
 ################################################################################
 # Distinguish turn labels, the reference clock and the last applied setting
@@ -101,7 +102,7 @@ for _ in range(N_TURNS):
 print(f'Reference revolution period: {period:.12e} s')
 print('Entrance clocks [s] and strengths [m^-2]:')
 print(f'{"turn":>5} {"particle time_s":>18} {"applied t_turn_s":>18}'
-      f' {"kqf":>14} {"qf.1 k1":>14}')
+      f' {"kqf":>14} {"arc QF k1":>14}')
 for turn, clock, applied, knob, strength in samples:
     print(f'{turn:5d} {clock:18.10e} {applied:18.10e}'
           f' {knob:14.10f} {strength:14.10f}')

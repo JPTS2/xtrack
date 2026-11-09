@@ -14,8 +14,9 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-LATTICE_FILE    = 'test_data/example_lattices/rf_ring/lattice.py'
-LINE_NAME       = 'rf_ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+RF_VOLTAGE      = 1e5                    # Thin-cavity voltage [V]
 
 ################################################################################
 # Load a ring with stable longitudinal focusing
@@ -23,6 +24,7 @@ LINE_NAME       = 'rf_ring'
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
+env['voltage_rf'] = RF_VOLTAGE
 
 ################################################################################
 # Solve periodic 6D optics and inspect the synchronous orbit
@@ -45,7 +47,7 @@ print('Longitudinal beta at the entrance [m]:', tw.bets0)
 # Positive zeta means earlier arrival at a fixed s and reference clock time.
 # ptau = beta0*pzeta. muzeta is signed phase in turns: it decreases around this
 # above-transition ring, while qs reports the positive oscillation tune.
-tw.rows[['obs.0', 'rf', '_end_point']].cols[
+tw.rows[['arc.s1.c1.qf.in', 'rf.1', '_end_point']].cols[
     'name s zeta delta ptau muzeta'].show(maxwidth = 'full')
 
 ################################################################################

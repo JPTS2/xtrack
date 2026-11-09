@@ -19,15 +19,17 @@ import xtrack as xt
 ########################################
 # Native ring at fixed reference momentum and magnet strengths
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-OBSERVATION     = 'obs.0'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+OBSERVATION     = 'arc.s1.c1.qf.in'
 
 ########################################
 # Momentum offsets for derivatives and a small tune scan
 ########################################
-CHROM_STEP      = 1e-4                    # Symmetric delta increment
-DELTA_SCAN      = np.linspace(-5e-4, 5e-4, 9)
+CHROM_STEP      = 1e-5                    # Symmetric delta increment
+DELTA_SCAN      = np.linspace(-5e-5, 5e-5, 9)
+# The bare vertical tune is near an integer: this is a local optical sample,
+# not a momentum-acceptance scan. Curvature is visible even in this window.
 
 ################################################################################
 # Calculate first-order chromatic optics
@@ -89,7 +91,7 @@ print('Largest x-plane derivative differences (b, a):',
 # Recompute the periodic optics for each offset
 ########################################
 # delta changes particle momentum, not the reference p0 or magnet strengths.
-# No RF or radiation is active; each 4D calculation fixes its own delta.
+# RF voltage is zero; radiation is off. Each 4D solution fixes its delta.
 qx_scan = np.zeros(len(DELTA_SCAN))
 qy_scan = np.zeros(len(DELTA_SCAN))
 for i, delta in enumerate(DELTA_SCAN):

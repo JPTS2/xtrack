@@ -19,8 +19,8 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Launch and recording
@@ -32,9 +32,9 @@ HALF_APERTURE   = 2.0e-3                # Horizontal half-aperture [m]
 ################################################################################
 # Load the model
 ################################################################################
-repo_root = Path(__file__).resolve().parents[2]
-env       = xt.load(repo_root / LATTICE_FILE)
-line      = env[LINE_NAME]
+repo_root   = Path(__file__).resolve().parents[2]
+env         = xt.load(repo_root / LATTICE_FILE)
+line        = env[LINE_NAME]
 
 ################################################################################
 # Create a loss to illustrate incomplete records
@@ -46,7 +46,7 @@ env.new(
     min_x   = -HALF_APERTURE,
     max_x   = HALF_APERTURE,
 )
-line.insert('aperture', at = 'obs.4@start')
+line.insert('aperture', at = 'bpm.s1.f@start')
 
 ################################################################################
 # Track particles and record the ring entrance
@@ -68,7 +68,8 @@ record = line.record_last_track
 ########################################
 # Live particles can be moved to the front of the container. Follow particle_id,
 # not the array row. Lost particles retain their loss turn and element index.
-particles.get_table().cols['particle_id x at_turn at_element state'].show()
+particles.get_table().cols[
+    'particle_id x at_turn at_element state'].show(maxwidth = 'full')
 lost = particles.state <= 0
 print('Lost particle IDs:', particles.particle_id[lost])
 print('Loss element names:',
@@ -77,7 +78,7 @@ print('Loss element names:',
 ########################################
 # Inspect the record by particle-ID slot
 ########################################
-# The particle lost at half ring was sampled at the entrance on turn 0.
+# The particle lost near the ring entrance was sampled before the cut on turn 0.
 # Later entrance slots for that ID are unfilled: state == 0, not a measurement
 # at x == 0. The other two particle IDs still have all N_TURNS entrance samples.
 print('Record state (particle-ID slot, turn):')

@@ -14,10 +14,10 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-K1S_QF1         = 0.05                    # Skew k1 at qf.1 [m^-2]
-K1S_QD5         = -0.04                   # Skew k1 at qd.5 [m^-2]
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+K1S_S2          = 1.0e-3                 # Sector-2 cell-2 skew k1 [m^-2]
+K1S_S5          = -0.8e-3                # Sector-5 cell-2 skew k1 [m^-2]
 
 ################################################################################
 # Compute Edwards-Teng optics for the coupled ring
@@ -29,8 +29,8 @@ K1S_QD5         = -0.04                   # Skew k1 at qd.5 [m^-2]
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
-env['qf.1'].k1s = K1S_QF1
-env['qd.5'].k1s = K1S_QD5
+env['ks_s2'] = K1S_S2
+env['ks_s5'] = K1S_S5
 
 ########################################
 # Request the Edwards-Teng coupling matrix
@@ -47,7 +47,7 @@ tw = line.twiss4d(coupling_edw_teng = True)
 ########################################
 # betx1/bety2 are principal Mais-Ripken projections into physical x/y.
 # beta_edw_teng describes the decoupled coordinate pair for each mode.
-tw.rows[['obs.0', 'obs.4']].cols[
+tw.rows[['ip.1', 'bpm.s4.d']].cols[
     'name betx1 betx_edw_teng bety2 bety_edw_teng g_edw_teng'].show(
         maxwidth = 'full')
 

@@ -19,19 +19,19 @@ import xtrack as xt
 ########################################
 # Ring and fixed normal-quadrupole errors
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 SEED            = 73
-K1_ERROR_RMS    = 2e-3                  # Additive k1-error RMS [m^-2]
+K1_ERROR_RMS    = 1e-5                  # Additive k1-error RMS [m^-2]
 
 ########################################
 # Independent correction trims and optics targets
 ########################################
-K1_STEP         = 1e-5                  # Strength finite-difference step [m^-2]
+K1_STEP         = 1e-7                  # Strength finite-difference step [m^-2]
 BETA_TOL        = 1e-6                  # Sampled beta-function tolerance [m]
 TUNE_TOL        = 1e-8
 
 ################################################################################
-# Set up fixed errors and separate trim controls at every quadrupole
+# Set up fixed errors and separate trim controls at eight arc quadrupoles
 ################################################################################
 
 ########################################
@@ -39,21 +39,18 @@ TUNE_TOL        = 1e-8
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
-quad_names  = list(line.get_table().rows['q[fd][.].*'].name)
+line        = env['demo']
+quad_names  = []
 trim_names  = []
 error_names = []
-for index, name in enumerate(quad_names):
-    error   = f'quad_error_{index}'
-    trim    = f'quad_trim_{index}'
-    family  = 'kqf' if name.startswith('qf') else 'kqd'
-    env[error] = 0.0
-    env[trim] = 0.0
-    env.set(name, k1 = family + '+' + error + '+' + trim)
-    error_names.append(error)
-    trim_names.append(trim)
+for sector in range(1, 5):
+    for cell in [1, 2]:
+        quad_names.append(f'arc.s{sector}.c{cell}.qd')
+        trim_names.append(f'dq_s{sector}_c{cell}')
+        error_names.append(f'eq_s{sector}_c{cell}')
 
-# The 40 m ring has a 1 GeV/c electron reference, without RF or radiation.
+# The 1500 m ring has a 1 GeV/c electron reference, with RF voltage zero and
+# radiation off.
 reference = line.twiss4d()
 
 ########################################
@@ -71,7 +68,8 @@ perturbed = line.twiss4d()
 ########################################
 # Define reference beta and tune targets
 ########################################
-# This ideal noiseless example has an independent trim at every error location.
+# This ideal noiseless example has an independent trim at each selected
+# error location.
 # Errors stay fixed and are NOT varied by the optimizer. The matching targets
 # use reference optics, not the known random error values. Real sparse-actuator
 # or noisy reconstructions need a separate response/rank/regularization study.

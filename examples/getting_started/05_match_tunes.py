@@ -21,14 +21,14 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Target tunes
 ########################################
-QX_TARGET       = 1.70
-QY_TARGET       = 1.65
+QX_TARGET       = 8.75683249
+QY_TARGET       = 10.01945242
 
 ########################################
 # Matching settings
@@ -52,12 +52,12 @@ print(f'Before: Qx = {tw0.qx:.6f}, Qy = {tw0.qy:.6f}')
 ################################################################################
 # Match the tunes
 ################################################################################
-# Both variables control whole families through the lattice's expressions.
+# Both additive trims control arc families through the lattice's expressions.
 # solve = False separates the problem definition from its execution.
 opt = line.match(
     method  = '4d',
     solve   = False,
-    vary    = xt.VaryList(['kqf', 'kqd'], step = K1_STEP),
+    vary    = xt.VaryList(['dkqf', 'dkqd'], step = K1_STEP),
     targets = xt.TargetSet(qx = QX_TARGET, qy = QY_TARGET, tol = TUNE_TOL),
 )
 opt.solve()
@@ -68,8 +68,8 @@ opt.target_status()
 ################################################################################
 tw = line.twiss(method = '4d')
 print(f'After:  Qx = {tw.qx:.6f}, Qy = {tw.qy:.6f}')
-print(f'Matched kqf = {env["kqf"]:.9f} m^-2')
-print(f'Matched kqd = {env["kqd"]:.9f} m^-2')
+print(f'Matched dkqf = {env["dkqf"]:.9f} m^-2')
+print(f'Matched dkqd = {env["dkqd"]:.9f} m^-2')
 
 fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
 axes[0].plot(tw0.s, tw0.betx, label = 'Before')

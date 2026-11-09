@@ -17,17 +17,17 @@ import xtrack as xt
 ########################################
 # Reference optics and deliberate perturbation
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-OBSERVATION     = 'obs.0'               # Named entrance at s=0 m
-KQF_FACTOR      = 1.03                  # Perturb only the focusing family
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+OBSERVATION     = 'bpm.s1.f'            # Passive read plane at s=1 m
+KQF_FACTOR      = 1.0002                  # Perturb only the focusing family
 QX_HALF_WIDTH   = 0.01                  # Allowed interval around reference Qx
 
 ########################################
 # Numerical matching settings
 ########################################
 K1_STEP         = 1.0e-5                # Finite-difference step [m^-2]
-KQF_LIMITS      = [0.8, 1.7]             # Numerical bounds [m^-2]
-KQD_LIMITS      = [-2.0, -0.8]           # Numerical bounds [m^-2]
+KQF_LIMITS      = [0.06, 0.08]             # Numerical bounds [m^-2]
+KQD_LIMITS      = [-0.08, -0.06]           # Numerical bounds [m^-2]
 TUNE_TOL        = 1.0e-8
 RATIO_TOL       = 1.0e-8                # Dimensionless
 
@@ -40,9 +40,9 @@ RATIO_TOL       = 1.0e-8                # Dimensionless
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
-# A 40 m electron ring at p0*c=1 GeV, with no RF or radiation. All optics here
-# are periodic 4D solutions at delta=0 and fixed reference momentum.
+line        = env['demo']
+# A 1500 m electron ring at p0*c=1 GeV, with RF voltage zero and radiation off.
+# Optics here is periodic 4D at delta=0 and fixed reference momentum.
 reference   = line.twiss4d()
 ratio_ref   = (reference['betx', OBSERVATION]
                / reference['bety', OBSERVATION])

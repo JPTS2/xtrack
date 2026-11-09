@@ -19,21 +19,22 @@ import xtrack as xt
 ########################################
 # Local betatron-coupling bump boundaries
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-START           = 'bump.start'          # Zero-length marker at s=0 m
-MIDDLE          = 'bump.middle'         # Zero-length marker at s=10 m
-END             = 'bump.end'            # Zero-length marker at s=20 m
-START_S         = 0.0                   # [m]
-MIDDLE_S        = 10.0                  # [m]
-END_S           = 20.0                  # [m]
-SKEW_CELLS      = [1, 2, 3, 4]
-R13_MIDDLE      = 0.01                  # dx_at_middle / dy_at_start [1]
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+START           = 'bump.start'          # Zero-length marker at s=160 m
+MIDDLE          = 'bump.middle'         # Zero-length marker at s=205 m
+END             = 'bump.end'            # Zero-length marker at s=250 m
+START_S         = 160.0                   # [m]
+MIDDLE_S        = 205.0                  # [m]
+END_S           = 250.0                  # [m]
+SKEW_SITES      = [f'straight.s1.{side}.q{i}'
+                   for side in ['l', 'r'] for i in [1, 3, 5, 7]]
+R13_MIDDLE      = 0.001                  # dx_at_middle / dy_at_start [1]
 
 ########################################
 # Skew-gradient controls and map-term tolerances
 ########################################
 K1S_STEP        = 1.0e-5                # Skew k1 finite-difference step [m^-2]
-K1S_LIMITS      = [-0.5, 0.5]            # Numerical search bounds [m^-2]
+K1S_LIMITS      = [-0.05, 0.05]            # Numerical search bounds [m^-2]
 R13_TOL         = 1.0e-9                # x/y [1]
 R14_TOL         = 1.0e-9                # x/py [m]
 R23_TOL         = 1.0e-9                # px/y [m^-1]
@@ -48,17 +49,16 @@ R24_TOL         = 1.0e-9                # px/py [1]
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
-# The 40 m ring supplies a 1 GeV/c electron reference, without RF or radiation.
-# k1s is a skew gradient [m^-2] in a 0.3 m quadrupole, not an integrated kick.
+line        = env['demo']
+# The 1500 m ring supplies a 1 GeV/c electron reference, with RF voltage
+# zero and radiation off.
+# k1s is a skew gradient [m^-2]; the actual thick-magnet lengths are retained.
 knobs = []
-for cell in SKEW_CELLS:
-    for prefix in ['qf', 'qd']:
-        name    = f'{prefix}.{cell}'
-        knob    = f'bump_k1s_{prefix}_{cell}'
-        env[knob] = 0.0
-        env.set(name, k1s = knob)
-        knobs.append(knob)
+for index, name in enumerate(SKEW_SITES):
+    knob    = f'bump_k1s_{index}'
+    env[knob] = 0.0
+    env.set(name, k1s = knob)
+    knobs.append(knob)
 
 ########################################
 # Fix the clean upstream normal-mode state

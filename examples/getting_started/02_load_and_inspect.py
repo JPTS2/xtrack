@@ -20,8 +20,8 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ################################################################################
 # Load the model
@@ -59,5 +59,5 @@ env.vars.get_table().rows['kqf|kqd'].show(maxrows = 12)
 print(f'Circumference: {line.get_length():.3f} m')
 print(f'Reference p0*c: {line.particle_ref.p0c[0] * 1e-9:.3f} GeV')
 
-print(f'qf.1 k1: {line["qf.1"].k1:.9f} m^-2')
-print(f'qf.2 k1: {line["qf.2"].k1:.9f} m^-2')
+print(f'arc.s1.c1.qf.in k1: {line["arc.s1.c1.qf.in"].k1:.9f} m^-2')
+print(f'arc.s1.c2.qf.in k1: {line["arc.s1.c2.qf.in"].k1:.9f} m^-2')

@@ -19,16 +19,16 @@ import xtrack as xt
 ########################################
 # Native uncoupled ring
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-OBSERVATION     = 'obs.0'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+OBSERVATION     = 'bpm.s1.d'
 
 ########################################
 # Beam emittances and independent momentum spread
 ########################################
 NEMITT_X        = 1e-6                    # Normalized rms emittance [m rad]
 NEMITT_Y        = 2e-6                    # [m rad]
-SIGMA_DELTA     = 1e-4                    # Relative momentum rms, same species
+SIGMA_DELTA     = 1e-5                    # Relative momentum rms, same species
 
 ################################################################################
 # Calculate the periodic 4D optics
@@ -98,7 +98,7 @@ sizes = xt.Table(
         'sigma_y_full': sigma_y},
     index   = 'name')
 print('Beam sizes [m]:')
-sizes.rows[['obs.0', 'obs.4']].show(maxwidth = 'full')
+sizes.rows[['ip.1', OBSERVATION]].show(maxwidth = 'full')
 
 ################################################################################
 # Plot the rms beam envelopes

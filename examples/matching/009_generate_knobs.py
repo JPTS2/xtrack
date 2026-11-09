@@ -19,9 +19,9 @@ import xtrack as xt
 ########################################
 # Ring and requested horizontal tune-offset knob
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 KNOB_NAME       = 'horizontal_tune_offset'
-KNOB_END        = 0.01                  # Matched endpoint Qx offset
+KNOB_END        = 0.002                  # Matched endpoint Qx offset
 N_SAMPLES       = 5
 
 ########################################
@@ -39,8 +39,9 @@ TUNE_TOL        = 1e-8
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
-# The 40 m ring has a 1 GeV/c electron reference, without RF or radiation.
+line        = env['demo']
+# The 1500 m ring has a 1 GeV/c electron reference, with RF voltage zero and
+# radiation off.
 # All calculations are periodic 4D optics at fixed reference momentum, delta=0.
 reference   = line.twiss4d()
 k1_start    = {name: env[name] for name in ['kqf', 'kqd']}

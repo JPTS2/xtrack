@@ -275,10 +275,14 @@ See [time-dependent tracking](tracking/time_dependent/README.md).
 
 ### nonlinear
 
+See [nonlinear tracking](tracking/nonlinear/README.md).
+
 - `001_tune_footprint.py`
 - `002_dynamic_aperture.py`
 
 ### collective
+
+See [collective tracking](tracking/collective/README.md).
 
 - `001_track_collective_elements.py`
 - `002_pipeline_scheduling.py`
