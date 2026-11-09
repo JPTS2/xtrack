@@ -5034,7 +5034,8 @@ class Line:
 
     def _used_cavity_owners(self):
         """Visit Cavity owners used directly, by replica or slice."""
-        return (ee for ee in self._used_owners() if isinstance(ee, xt.Cavity))
+        return (ee for ee in self._used_owners()
+                if isinstance(ee, (xt.Cavity, xt.FieldExpansionCavity)))
 
     def _slices_physical_cavity(self):
         """Whether a physical-model cavity is used through its slices."""
@@ -5045,7 +5046,8 @@ class Line:
             owner = self._element_dict[parent]
             if isinstance(owner, xt.Replica):
                 owner = owner.resolve(self)
-            if isinstance(owner, xt.Cavity) and owner._model >= 10:
+            if (isinstance(owner, (xt.Cavity, xt.FieldExpansionCavity))
+                    and owner._model >= 10):
                 return True
         return False
 

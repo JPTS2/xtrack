@@ -55,7 +55,94 @@ def _default_rf_profile(model):
     return 'uniform' if model == '_phase-resolved-frozen' else 'p16'
 
 
-class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
+class _CavityControls:
+    """Model, integrator and RF clock controls shared by the cavity elements."""
+
+    @property
+    def model(self):
+        return _CAVITY_MODELS[self._model]
+
+    @model.setter
+    def model(self, value):
+        try:
+            self._model = _CAVITY_MODEL_IDS[value]
+        except KeyError:
+            raise ValueError(f'Invalid Cavity model: {value}') from None
+
+    @staticmethod
+    def get_available_models():
+        return list(_CAVITY_MODEL_IDS)
+
+    @property
+    def integrator(self):
+        return _CAVITY_INTEGRATORS[self._integrator]
+
+    @integrator.setter
+    def integrator(self, value):
+        if value == 'yoshida4':
+            # Preserve the shared mixin's deprecated historical spelling.
+            _HasIntegrator.integrator.fset(self, value)
+            return
+        try:
+            self._integrator = _CAVITY_INTEGRATOR_IDS[value]
+        except KeyError:
+            raise ValueError(f'Invalid Cavity integrator: {value}') from None
+
+    @staticmethod
+    def get_available_integrators():
+        return list(_CAVITY_INTEGRATOR_IDS)
+
+    def track(self, particles, *args, **kwargs):
+
+        self._check_physical_model(tracking=True)
+        if _constant_part(self.harmonic) != 0:
+            raise RuntimeError("Cavity cannot be used in standalone tracking "
+                               "when harmonic is not zero. Please use the "
+                               "cavity within a Line or set frequency instead"
+                               " of harmonic.")
+        return super().track(particles, *args, **kwargs)
+
+    @property
+    def frequency(self):
+        return self._frequency
+
+    @frequency.setter
+    def frequency(self, value):
+        if (_constant_part(self._harmonic) != 0
+                and _constant_part(value) != 0):
+            raise ValueError("Cannot set non-zero frequency when harmonic is not zero.")
+        self._frequency = value
+
+    @property
+    def lag(self):
+        return self._lag
+
+    @lag.setter
+    def lag(self, value):
+        if _constant_part(value) != 0:
+            warn("`lag` (in degrees) is deprecated and will be removed in a future version. "
+                 "Please use `phase` (in radians) instead. If you see this warning "
+                 "while loading a saved line from a previous version of Xsuite, please "
+                 "regenerate the line with the current version to use phase instead of lag. "
+                 "Note that if both `lag` and `phase` are set, the effect is the sum of the two, "
+                 "with `lag` converted to radians. "
+                 + DEPRECATION_INFO_PREP_1_0,
+                 FutureWarning, stacklevel=2)
+        self._lag = value
+
+    @property
+    def harmonic(self):
+        return self._harmonic
+
+    @harmonic.setter
+    def harmonic(self, value):
+        if (_constant_part(self._frequency) != 0
+                and _constant_part(value) != 0):
+            raise ValueError("Cannot set non-zero harmonic when frequency is not zero.")
+        self._harmonic = value
+
+
+class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
 
     _docstring_start = \
     '''RF cavity element.
@@ -316,40 +403,6 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
                                       'model with the P16 or uniform profile')
 
     @property
-    def model(self):
-        return _CAVITY_MODELS[self._model]
-
-    @model.setter
-    def model(self, value):
-        try:
-            self._model = _CAVITY_MODEL_IDS[value]
-        except KeyError:
-            raise ValueError(f'Invalid Cavity model: {value}') from None
-
-    @staticmethod
-    def get_available_models():
-        return list(_CAVITY_MODEL_IDS)
-
-    @property
-    def integrator(self):
-        return _CAVITY_INTEGRATORS[self._integrator]
-
-    @integrator.setter
-    def integrator(self, value):
-        if value == 'yoshida4':
-            # Preserve the shared mixin's deprecated historical spelling.
-            _HasIntegrator.integrator.fset(self, value)
-            return
-        try:
-            self._integrator = _CAVITY_INTEGRATOR_IDS[value]
-        except KeyError:
-            raise ValueError(f'Invalid Cavity integrator: {value}') from None
-
-    @staticmethod
-    def get_available_integrators():
-        return list(_CAVITY_INTEGRATOR_IDS)
-
-    @property
     def rf_profile(self):
         return _CAVITY_RF_PROFILES[self._rf_profile]
 
@@ -426,55 +479,6 @@ class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
         else:
             result['rf_profile'] = self.rf_profile
         return result
-
-    def track(self, particles, *args, **kwargs):
-
-        self._check_physical_model(tracking=True)
-        if _constant_part(self.harmonic) != 0:
-            raise RuntimeError("Cavity cannot be used in standalone tracking "
-                               "when harmonic is not zero. Please use the "
-                               "cavity within a Line or set frequency instead"
-                               " of harmonic.")
-        return super().track(particles, *args, **kwargs)
-
-    @property
-    def frequency(self):
-        return self._frequency
-
-    @frequency.setter
-    def frequency(self, value):
-        if (_constant_part(self._harmonic) != 0
-                and _constant_part(value) != 0):
-            raise ValueError("Cannot set non-zero frequency when harmonic is not zero.")
-        self._frequency = value
-
-    @property
-    def lag(self):
-        return self._lag
-
-    @lag.setter
-    def lag(self, value):
-        if _constant_part(value) != 0:
-            warn("`lag` (in degrees) is deprecated and will be removed in a future version. "
-                 "Please use `phase` (in radians) instead. If you see this warning "
-                 "while loading a saved line from a previous version of Xsuite, please "
-                 "regenerate the line with the current version to use phase instead of lag. "
-                 "Note that if both `lag` and `phase` are set, the effect is the sum of the two, "
-                 "with `lag` converted to radians. "
-                 + DEPRECATION_INFO_PREP_1_0,
-                 FutureWarning, stacklevel=2)
-        self._lag = value
-
-    @property
-    def harmonic(self):
-        return self._harmonic
-
-    @harmonic.setter
-    def harmonic(self, value):
-        if (_constant_part(self._frequency) != 0
-                and _constant_part(value) != 0):
-            raise ValueError("Cannot set non-zero harmonic when frequency is not zero.")
-        self._harmonic = value
 
     @property
     def _thin_slice_class(self):
@@ -694,3 +698,207 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
     @property
     def _drift_slice_class(self):
         return xt.DriftSliceMagnetOverlappedCavity
+
+
+class FieldExpansionCavity(_CavityControls, BeamElement):
+
+    __doc__ = '''RF cavity whose on-axis field is a sum of space harmonics.
+
+    Over the element, the on-axis longitudinal field is
+    E_z(z, t) = Re[G(z) exp(-i omega t)], G(z) = sum_m c_m exp(i k_m z), with z
+    from the centre. The near-axis field follows from Maxwell's equations, and
+    the element ends in hard edges. A Cavity of `n_cells` and counter-wave
+    amplitude r is the case k = [k_z, -k_z], c = [1, r exp(-i counter_wave_phase)],
+    k_z = pi n_cells / length. It is tracked by the experimental
+    "_phase-resolved" model.
+
+    Parameters
+    ----------
+    length, voltage, frequency, harmonic, phase, lag, absolute_time
+        As for Cavity: `voltage` is the crest energy gain at `calibration_beta`
+        and `phase` the phase of that gain, so the scale of the amplitudes is free.
+    calibration_beta : float
+        Fixed speed, 0 < beta <= 1, at which `voltage` is the crest energy gain:
+        a field map's design speed. Default is 1. A Cavity's is the synchronous
+        speed of its cells.
+    wave_numbers : array of float
+        Wave numbers k_m of the space harmonics, in rad/m; positive ones
+        travel with the beam.
+    amplitudes : array of complex
+        Their relative amplitudes c_m, as many as there are wave numbers.
+    integrator, num_kicks
+        As for Cavity's "_phase-resolved" model.
+    '''
+
+    isthick = True
+    has_backtrack = True
+    allow_loss_refinement = True
+
+    _rf_plan = 'track_cavity_plan'
+    _xofields = {
+        'length': xo.Float64,
+        'voltage': FloatOrTpsa,
+        'frequency': FloatOrTpsa,
+        'lag': FloatOrTpsa,
+        'phase': FloatOrTpsa,
+        'harmonic': FloatOrTpsa,
+        'lag_taper': FloatOrTpsa,
+        'phase_taper': FloatOrTpsa,
+        'calibration_beta': FloatOrTpsa,
+        'wave_numbers': xo.Float64[:],
+        'amplitudes_re': xo.Float64[:],
+        'amplitudes_im': xo.Float64[:],
+        'spin_tracking': xo.Int64,
+        'absolute_time': xo.Int64,
+        'num_kicks': xo.Int64,
+        'model': xo.Int64,
+        'integrator': xo.Int64,
+    }
+
+    _extra_c_sources = [
+        '#include "xtrack/beam_elements/elements_src/field_expansion_cavity.h"',
+    ]
+
+    _rename = {
+        'model': '_model',
+        'integrator': '_integrator',
+        'frequency': '_frequency',
+        'harmonic': '_harmonic',
+        'lag': '_lag',
+    }
+
+    _default_frequency = 0.0
+    _default_harmonic = 0.0
+
+    _noexpr_fields = _NOEXPR_FIELDS
+
+    def __init__(self, **kwargs):
+        if '_xobject' in kwargs and kwargs['_xobject'] is not None:
+            self.xoinitialize(**kwargs)
+            return
+        model = kwargs.pop('model', '_phase-resolved')
+        integrator = kwargs.pop('integrator', None)
+        frequency = kwargs.pop('frequency', None)
+        harmonic = kwargs.pop('harmonic', None)
+        lag = kwargs.pop('lag', None)
+        wave_numbers = np.atleast_1d(np.asarray(kwargs.pop('wave_numbers'), dtype=float))
+        amplitudes = kwargs.pop('amplitudes', None)
+        if amplitudes is None:
+            amplitudes = (np.asarray(kwargs.pop('amplitudes_re'), dtype=float)
+                          + 1j * np.asarray(kwargs.pop('amplitudes_im'), dtype=float))
+        amplitudes = np.atleast_1d(np.asarray(amplitudes, dtype=complex))
+        if wave_numbers.ndim != 1 or amplitudes.shape != wave_numbers.shape or not len(wave_numbers):
+            raise ValueError('wave_numbers and amplitudes must be equal-length, '
+                             'non-empty one-dimensional arrays')
+        kwargs.setdefault('calibration_beta', 1.)
+        kwargs['wave_numbers'] = wave_numbers
+        kwargs['amplitudes_re'] = amplitudes.real.copy()
+        kwargs['amplitudes_im'] = amplitudes.imag.copy()
+        self.xoinitialize(**kwargs)
+        self.model = model
+        if integrator is not None:
+            self.integrator = integrator
+        if frequency is not None:
+            self.frequency = frequency
+        if harmonic is not None:
+            self.harmonic = harmonic
+        if lag is not None:
+            self.lag = lag
+        self._check_physical_model()
+
+    @classmethod
+    def from_fourier_series(cls, cos_coefficients, sin_coefficients=None, period=None,
+                            **kwargs):
+        """A standing wave whose on-axis profile is the Fourier series
+        a_0/2 + sum_n (a_n cos(2 pi n z / P) + b_n sin(2 pi n z / P)), z from the
+        centre, of period P, by default the element's `length`."""
+        a = np.asarray(cos_coefficients, dtype=float)
+        b = np.zeros_like(a)
+        if sin_coefficients is not None:
+            b[:len(sin_coefficients)] = sin_coefficients
+        k = 2 * np.pi * np.arange(1, len(a)) / (kwargs['length'] if period is None else period)
+        return cls(wave_numbers=np.concatenate([[0.], k, -k]),
+                   amplitudes=np.concatenate([[a[0] / 2], (a[1:] - 1j * b[1:]) / 2,
+                                              (a[1:] + 1j * b[1:]) / 2]), **kwargs)
+
+    @classmethod
+    def from_samples(cls, values, num_harmonics=None, **kwargs):
+        """The space harmonics of a field sampled at equal steps over the element,
+        both ends included: real values are a standing wave's profile, complex
+        ones the phasor G. The field is read as periodic over the element, so it
+        should vanish, or match, at both ends."""
+        values = np.asarray(values)
+        if values.ndim != 1 or len(values) < 3:
+            raise ValueError('values must be at least three samples')
+        if num_harmonics is None:
+            num_harmonics = (len(values) - 1) // 2
+        length = kwargs['length']
+        z = np.linspace(-length / 2, length / 2, len(values))
+        m = np.arange(-num_harmonics, num_harmonics + 1)
+        k = 2 * np.pi * m / length
+        amplitudes = np.trapezoid(values[None, :] * np.exp(-1j * k[:, None] * z[None, :]),
+                                  z, axis=1) / length
+        return cls(wave_numbers=k, amplitudes=amplitudes, **kwargs)
+
+    def _check_physical_model(self, tracking=False):
+        """Raise for settings the phase-resolved model cannot track."""
+        if self._model != 10:
+            raise ValueError('FieldExpansionCavity is tracked by "_phase-resolved" only')
+        if self.integrator == 'teapot':
+            raise ValueError('_phase-resolved has no kicks to place: "teapot" '
+                             'does not apply')
+        if self.num_kicks < 0:
+            raise ValueError('num_kicks must be non-negative')
+        beta = _constant_part(self.calibration_beta)
+        if not (isfinite(beta) and 0. < beta <= 1.):
+            raise ValueError('calibration_beta must be in (0, 1]')
+        if tracking and not (isfinite(_constant_part(self.length))
+                             and _constant_part(self.length) > 0.):
+            raise ValueError(f'{self.model} requires a positive finite length')
+        if not (np.all(np.isfinite(self.wave_numbers))
+                and np.all(np.isfinite(self.amplitudes))
+                and np.any(self.amplitudes != 0.)):
+            raise ValueError('The space harmonics must be finite and not all zero')
+        if self.spin_tracking:
+            self._check_spin_support()
+
+    def _check_spin_support(self):
+        if self.integrator == 'teapot':
+            raise NotImplementedError('Cavity spin transport does not take "teapot"')
+
+    @property
+    def amplitudes(self):
+        context = self._context
+        return (context.nparray_from_context_array(self.amplitudes_re)
+                + 1j * context.nparray_from_context_array(self.amplitudes_im))
+
+    @amplitudes.setter
+    def amplitudes(self, value):
+        value = np.asarray(value, dtype=complex)
+        if value.shape != (len(self.wave_numbers),):
+            raise ValueError('amplitudes must have one value per wave number')
+        self.amplitudes_re[:] = value.real
+        self.amplitudes_im[:] = value.imag
+
+    def to_dict(self, **kwargs):
+        result = super().to_dict(**kwargs)
+        if self.calibration_beta == 1.:
+            result.pop('calibration_beta', None)
+        else:
+            result['calibration_beta'] = self.calibration_beta
+        for name in ('wave_numbers', 'amplitudes_re', 'amplitudes_im'):
+            result[name] = self._context.nparray_from_context_array(
+                getattr(self, name)).tolist()
+        return result
+
+    @property
+    def _thin_slice_class(self):
+        return xt.ThinSliceFieldExpansionCavity
+
+    @property
+    def _thick_slice_class(self):
+        return xt.ThickSliceFieldExpansionCavity
+
+    @property
+    def _drift_slice_class(self):
+        return xt.DriftSliceFieldExpansionCavity

@@ -13,6 +13,7 @@ GPUFUN
 void Cavity_prepare_cavity_plan(CavityData el, LocalParticle* part0,
                                 double weight, double slice_start, CavityPlan* plan) {
     RF_MODEL_FIELDS_FILL_RF(CavityData, el, &plan->fields);
+    RF_MODEL_FIELDS_FILL_WAVES(CavityData, el, &plan->fields);
     RF_MODEL_FIELDS_CLEAR_STATIC(&plan->fields);
     CavityPlan_prepare(part0, weight, slice_start, plan);
 }

@@ -57,12 +57,14 @@ typedef struct CavityChoice_s {
 typedef struct RFModelFields_s {
     double length;
     xt_float_or_tpsa voltage, frequency, lag, phase, harmonic, lag_taper, phase_taper;
-    xt_float_or_tpsa counter_wave_amplitude, counter_wave_phase;
+    xt_float_or_tpsa counter_wave_amplitude, counter_wave_phase, calibration_beta;
     int64_t n_cells;
     xt_float_or_tpsa nominal_energy_gain;
     int64_t nominal_energy_gain_from_rf;
     int64_t rf_profile;
     xt_float_or_tpsa rf_profile_sigma, rf_profile_center;
+    int64_t num_harmonics;
+    GPUGLMEM const double *harmonic_wave_number, *harmonic_re, *harmonic_im;
     int64_t magnetic_profile;
     xt_float_or_tpsa magnetic_profile_sigma;
     int64_t spin_tracking, edge_entry_active, edge_exit_active;
@@ -75,23 +77,14 @@ typedef struct RFModelFields_s {
     double rot_s_rad_no_frame, rot_shift_anchor;
 } RFModelFields;
 
+// The RF controls every cavity element has.
 #define RF_MODEL_FIELDS_FILL_RF(DATA, el, f) do { \
     (f)->length=DATA##_get_length(el); \
     (f)->voltage=DATA##_get_voltage(el); (f)->frequency=DATA##_get_frequency(el); \
     (f)->lag=DATA##_get_lag(el); (f)->phase=DATA##_get_phase(el); \
     (f)->harmonic=DATA##_get_harmonic(el); \
     (f)->lag_taper=DATA##_get_lag_taper(el); (f)->phase_taper=DATA##_get_phase_taper(el); \
-    (f)->counter_wave_amplitude=DATA##_get_counter_wave_amplitude(el); \
-    (f)->counter_wave_phase=DATA##_get_counter_wave_phase(el); \
-    (f)->n_cells=DATA##_get_n_cells(el); \
-    (f)->nominal_energy_gain=DATA##_get_nominal_energy_gain(el); \
-    (f)->nominal_energy_gain_from_rf=DATA##_get_nominal_energy_gain_from_rf(el); \
-    (f)->rf_profile=DATA##_get_rf_profile(el); \
-    (f)->rf_profile_sigma=DATA##_get_rf_profile_sigma(el); \
-    (f)->rf_profile_center=DATA##_get_rf_profile_center(el); \
     (f)->spin_tracking=DATA##_get_spin_tracking(el); \
-    (f)->edge_entry_active=DATA##_get_edge_entry_active(el); \
-    (f)->edge_exit_active=DATA##_get_edge_exit_active(el); \
     (f)->absolute_time=DATA##_get_absolute_time(el); (f)->num_kicks=DATA##_get_num_kicks(el); \
     (f)->model=DATA##_get_model(el); (f)->integrator=DATA##_get_integrator(el); \
     (f)->tpsa_enabled=DATA##_get__tpsa_enabled(el); \
@@ -101,6 +94,35 @@ typedef struct RFModelFields_s {
     (f)->rot_s_rad=DATA##_get_rot_s_rad(el); \
     (f)->rot_s_rad_no_frame=DATA##_get_rot_s_rad_no_frame(el); \
     (f)->rot_shift_anchor=DATA##_get_rot_shift_anchor(el); \
+} while (0)
+
+// The two waves of a Cavity over its cells.
+#define RF_MODEL_FIELDS_FILL_WAVES(DATA, el, f) do { \
+    (f)->counter_wave_amplitude=DATA##_get_counter_wave_amplitude(el); \
+    (f)->counter_wave_phase=DATA##_get_counter_wave_phase(el); \
+    (f)->n_cells=DATA##_get_n_cells(el); (f)->calibration_beta=1.; \
+    (f)->nominal_energy_gain=DATA##_get_nominal_energy_gain(el); \
+    (f)->nominal_energy_gain_from_rf=DATA##_get_nominal_energy_gain_from_rf(el); \
+    (f)->rf_profile=DATA##_get_rf_profile(el); \
+    (f)->rf_profile_sigma=DATA##_get_rf_profile_sigma(el); \
+    (f)->rf_profile_center=DATA##_get_rf_profile_center(el); \
+    (f)->edge_entry_active=DATA##_get_edge_entry_active(el); \
+    (f)->edge_exit_active=DATA##_get_edge_exit_active(el); \
+    (f)->num_harmonics=0; (f)->harmonic_wave_number=NULL; \
+    (f)->harmonic_re=NULL; (f)->harmonic_im=NULL; \
+} while (0)
+
+// The space harmonics of a FieldExpansionCavity.
+#define RF_MODEL_FIELDS_FILL_HARMONICS(DATA, el, f) do { \
+    (f)->counter_wave_amplitude=0.; (f)->counter_wave_phase=0.; (f)->n_cells=0; \
+    (f)->calibration_beta=DATA##_get_calibration_beta(el); \
+    (f)->nominal_energy_gain=0.; (f)->nominal_energy_gain_from_rf=1; \
+    (f)->rf_profile=3; (f)->rf_profile_sigma=0.; (f)->rf_profile_center=0.; \
+    (f)->edge_entry_active=1; (f)->edge_exit_active=1; \
+    (f)->num_harmonics=DATA##_len_wave_numbers(el); \
+    (f)->harmonic_wave_number=DATA##_getp1_wave_numbers(el,0); \
+    (f)->harmonic_re=DATA##_getp1_amplitudes_re(el,0); \
+    (f)->harmonic_im=DATA##_getp1_amplitudes_im(el,0); \
 } while (0)
 
 // An element without static fields: a Cavity.

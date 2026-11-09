@@ -39,9 +39,14 @@ typedef struct {
     xt_float_or_tpsa k, omega, half_span, length;
     xt_float_or_tpsa forward, backward, carrier, counter_phase, clock_origin;
     xt_float_or_tpsa voltage_norm, phase, dc_gradient;
-    // Built-in profile: 0 P16, 1 uniform, 2 Gaussian. Width/centre in Z=k*z.
+    // Built-in profile: 0 P16, 1 uniform, 2 Gaussian, 3 space harmonics.
+    // Width/centre in Z=k*z.
     int rf_profile;
     xt_float_or_tpsa profile_sigma, profile_center;
+    // Space harmonics: P(Z) = sum_m (re_m + i im_m) exp(i kz_m Z/k), times forward,
+    // on the element; kz_m in rad/m.
+    int64_t num_harmonics;
+    GPUGLMEM const double *harmonic_wave_number, *harmonic_re, *harmonic_im;
     // 0: uniform longitudinal gauge; 1: Gaussian original fringe donor.
     int magnetic_profile;
     xt_float_or_tpsa magnetic_sigma; // normalized k*sigma_m, centred at Z=0
@@ -178,6 +183,8 @@ int CavityModel_prepare(
     source->reference_charge=q0;
     source->reference_beta=1.;
     source->rf_profile=0;source->profile_sigma=0.;source->profile_center=0.;
+    source->num_harmonics=0;source->harmonic_wave_number=NULL;
+    source->harmonic_re=NULL;source->harmonic_im=NULL;
     source->magnetic_profile=0;source->magnetic_sigma=0.;
     source->freeze_energy=0; source->freeze_zeta=0;
     source->freeze_x=0; source->freeze_px=0;
@@ -253,7 +260,7 @@ void CavityModel_source_envelope(xt_float_or_tpsa_arg z,
         const CavityModelSource *source,xt_float_or_tpsa p[5]) {
     if (source->rf_profile==0) {
         CavityModel_envelope(z,source->half_span,p);
-    } else if (source->rf_profile==1) {
+    } else if (source->rf_profile==1 || source->rf_profile==3) {
         p[0]=1.;for(int i=1;i<5;++i)p[i]=0.;
     } else if (source->rf_profile==2
             && xt_float_or_tpsa_const_part(source->profile_sigma)>0.) {
@@ -272,6 +279,23 @@ GPUFUN
 void CavityModel_profile(xt_float_or_tpsa_arg z,
         const CavityModelSource *source, xt_float_or_tpsa real[5],
         xt_float_or_tpsa imag[5]) {
+    if (source->rf_profile==3) {
+        for (int j=0;j<5;++j) { real[j]=0.;imag[j]=0.; }
+        for (int64_t m=0;m<source->num_harmonics;++m) {
+            const xt_float_or_tpsa kappa=source->harmonic_wave_number[m]/source->k;
+            const xt_float_or_tpsa c=cos(kappa*z), s=sin(kappa*z);
+            const double re=source->harmonic_re[m], im=source->harmonic_im[m];
+            // (i kappa)^j a e^{i kappa Z}: each derivative turns the phasor by i.
+            xt_float_or_tpsa term_re=source->forward*(re*c-im*s);
+            xt_float_or_tpsa term_im=source->forward*(re*s+im*c);
+            for (int j=0;j<5;++j) {
+                real[j]+=term_re; imag[j]+=term_im;
+                const xt_float_or_tpsa turned=term_re;
+                term_re=-kappa*term_im; term_im=kappa*turned;
+            }
+        }
+        return;
+    }
     xt_float_or_tpsa envelope[5];
     CavityModel_source_envelope(z,source,envelope);
     const int binomial[5][5]={{1,0,0,0,0},{1,1,0,0,0},{1,2,1,0,0},
@@ -817,6 +841,52 @@ int CavityModel_prepare_profile(xt_float_or_tpsa_arg frequency,
 }
 
 
+// Space harmonics over the element, with the same fixed-beta crest calibration:
+// the crest phasor is sum_m conj(a_m) 2H sinc((1/beta - kappa_m) H).
+GPUFUN
+int CavityModel_prepare_harmonics(xt_float_or_tpsa_arg frequency,
+        xt_float_or_tpsa_arg voltage,xt_float_or_tpsa_arg length,
+        xt_float_or_tpsa_arg phase,xt_float_or_tpsa_arg calibration_beta,
+        double mass0,double q0,int64_t num_harmonics,
+        GPUGLMEM const double *wave_number,GPUGLMEM const double *re,
+        GPUGLMEM const double *im,CavityModelSource *source) {
+    int status=CavityModel_prepare(frequency,0.,length,phase,0.,0.,calibration_beta,
+        (2.*PI/C_LIGHT)*frequency,mass0,q0,source);
+    if(status!=CAVITY_MODEL_OK)return status;
+    if(num_harmonics<=0||!wave_number||!re||!im)return CAVITY_MODEL_ARGUMENT;
+    double scale=0.;
+    for(int64_t m=0;m<num_harmonics;++m) {
+        if(!isfinite(wave_number[m])||!isfinite(re[m])||!isfinite(im[m]))
+            return CAVITY_MODEL_ARGUMENT;
+        scale+=hypot(re[m],im[m]);
+    }
+    source->rf_profile=3;
+    source->num_harmonics=num_harmonics;
+    source->harmonic_wave_number=wave_number;
+    source->harmonic_re=re;source->harmonic_im=im;
+    source->voltage_norm=voltage/mass0;
+    if(xt_float_or_tpsa_is_zero(voltage))return CAVITY_MODEL_OK;
+    if(xt_float_or_tpsa_const_part(frequency)<=0.||!(scale>0.))return CAVITY_MODEL_ARGUMENT;
+    const xt_float_or_tpsa H=source->half_span;
+    xt_float_or_tpsa real=0.,imag=0.;
+    for(int64_t m=0;m<num_harmonics;++m) {
+        const xt_float_or_tpsa kappa=wave_number[m]/source->k;
+        const xt_float_or_tpsa integral=2.*H*CavityModel_static_sinc((1./calibration_beta-kappa)*H);
+        real+=re[m]*integral;imag-=im[m]*integral;
+    }
+    const xt_float_or_tpsa square=real*real+imag*imag;
+    const double floor=64.*2.2204460492503131e-16*2.*xt_float_or_tpsa_const_part(H)*scale;
+    if(!CavityModel_scalar_finite(square)||xt_float_or_tpsa_const_part(square)<=floor*floor)
+        return CAVITY_MODEL_ARGUMENT;
+    source->forward=voltage/(mass0*sqrt(square));source->backward=0.;
+    const xt_float_or_tpsa angle=H/calibration_beta;
+    const xt_float_or_tpsa rotated_re=real*cos(angle)-imag*sin(angle);
+    const xt_float_or_tpsa rotated_im=real*sin(angle)+imag*cos(angle);
+    source->clock_origin-=atan2(rotated_im,rotated_re);
+    return (CavityModel_scalar_finite(source->forward)&&CavityModel_scalar_finite(source->clock_origin))
+        ?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
+}
+
 #ifndef XTRACK_TPSA_TRACK
 // Applied-effects local laws: full-root P16/M2 plus uniform SOL/QUAD overlap.
 // Static overlap is a body law between in-field observation planes. It does
@@ -835,8 +905,29 @@ GPUFUN
 int CavityModel_effects_profile(double T,double z,const CavityModelSource *source,
                                double S[6],double C[6]) {
     const double H=xt_float_or_tpsa_const_part(source->half_span);
-    if((source->rf_profile!=0&&source->rf_profile!=1) || !(H>0.) || !isfinite(H))
+    if(source->rf_profile<0||source->rf_profile==2||source->rf_profile>3
+        || !(H>0.) || !isfinite(H))
         return CAVITY_MODEL_ARGUMENT;
+    if(source->rf_profile==3) {
+        // C + iS is e^{iT} conj(P^(n)), as for the two waves below.
+        const double forward=xt_float_or_tpsa_const_part(source->forward);
+        const double k=xt_float_or_tpsa_const_part(source->k);
+        for(int n=0;n<6;++n){S[n]=0.;C[n]=0.;}
+        if(fabs(z)>H)return CAVITY_MODEL_OK;
+        for(int64_t m=0;m<source->num_harmonics;++m) {
+            const double kappa=source->harmonic_wave_number[m]/k;
+            const double c=cos(kappa*z),s=sin(kappa*z);
+            double p_re=forward*(source->harmonic_re[m]*c-source->harmonic_im[m]*s);
+            double p_im=forward*(source->harmonic_re[m]*s+source->harmonic_im[m]*c);
+            for(int n=0;n<6;++n) {
+                C[n]+=cos(T)*p_re+sin(T)*p_im;
+                S[n]+=sin(T)*p_re-cos(T)*p_im;
+                const double turned=p_re;p_re=-kappa*p_im;p_im=kappa*turned;
+            }
+        }
+        for(int n=0;n<6;++n)if(!isfinite(S[n])||!isfinite(C[n]))return CAVITY_MODEL_NONFINITE;
+        return CAVITY_MODEL_OK;
+    }
     double f[6]={0.,0.,0.,0.,0.,0.};
     if(source->rf_profile==1) {
         if(fabs(z)<=H)f[0]=1.;

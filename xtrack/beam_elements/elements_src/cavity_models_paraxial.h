@@ -249,6 +249,11 @@ void CavityMagnus_prepare_step(const CavityModelSource *source, xt_float_or_tpsa
 GPUFUN
 CavityComplex CavityMagnus_edge_amplitude(const CavityModelSource *source,
         xt_float_or_tpsa_arg z, xt_float_or_tpsa_arg jump) {
+    if (source->rf_profile==3) {
+        xt_float_or_tpsa real[5], imag[5];
+        CavityModel_profile(z, source, real, imag);
+        return CavityComplex_make(jump*real[0], -jump*imag[0]);
+    }
     const xt_float_or_tpsa forward=-source->carrier*z;
     const xt_float_or_tpsa backward=source->carrier*z+source->counter_phase;
     return CavityComplex_make(jump*(source->forward*cos(forward)+source->backward*cos(backward)),

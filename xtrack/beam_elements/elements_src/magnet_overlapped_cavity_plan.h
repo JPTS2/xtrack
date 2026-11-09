@@ -13,6 +13,7 @@ GPUFUN
 void MagnetOverlappedCavity_prepare_cavity_plan(MagnetOverlappedCavityData el, LocalParticle* part0,
                                 double weight, double slice_start, CavityPlan* plan) {
     RF_MODEL_FIELDS_FILL_RF(MagnetOverlappedCavityData, el, &plan->fields);
+    RF_MODEL_FIELDS_FILL_WAVES(MagnetOverlappedCavityData, el, &plan->fields);
     RF_MODEL_FIELDS_FILL_STATIC(MagnetOverlappedCavityData, el, &plan->fields);
     CavityPlan_prepare(part0, weight, slice_start, plan);
 }

@@ -130,14 +130,15 @@ double CavityPlan_envelope_width(int profile, double length, double sigma) {
 // orbit keeps, and at least 64 to resolve the envelope of a short cavity, where the
 // wave alone would ask for one to three.
 GPUFUN
-int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double length, int64_t n_cells,
+int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double length,
+                         double spatial_half_waves,
                          double envelope_width, double counter_wave_amplitude, double weight, int controls,
                          double voltage_over_energy) {
     int64_t parent_cells=requested>0 ? requested : 64;
     if (requested==0) {
         const double half_wave=frequency>0. ? .5*C_LIGHT/frequency : 0.;
         // Cells shorter than the light-line half wave turn the phase faster.
-        const double half_cells=fmax(frequency>0. ? length/half_wave : 0.,(double)n_cells);
+        const double half_cells=fmax(frequency>0. ? length/half_wave : 0.,spatial_half_waves);
         if (model==CAVITY_MODEL_AVERAGED || model==CAVITY_MODEL_PARAXIAL) {
             double per_half=2.;
             if (model==CAVITY_MODEL_PARAXIAL && counter_wave_amplitude>0.) per_half=4.;
@@ -171,7 +172,8 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
         || requested<0
         || (model!=CAVITY_MODEL_FULL && model!=CAVITY_MODEL_FROZEN
             && model!=CAVITY_MODEL_AVERAGED && model!=CAVITY_MODEL_PARAXIAL)
-        || profile<0 || profile>2
+        || profile<0 || profile>3
+        || (profile==3 && (model!=CAVITY_MODEL_FULL || el->num_harmonics<=0))
         || magnetic_profile<0||magnetic_profile>1
         ||(magnetic_profile==1&&(model!=CAVITY_MODEL_FULL
             ||el->edge_entry_active||el->edge_exit_active))
@@ -209,6 +211,15 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
     return controls;
 }
 
+// The half wavelengths of the field's fastest spatial variation along the element.
+GPUFUN
+double CavityPlan_spatial_half_waves(const RFModelFields* el) {
+    double half_waves=(double)el->n_cells;
+    for (int64_t m=0;m<el->num_harmonics;++m)
+        half_waves=fmax(half_waves,fabs(el->harmonic_wave_number[m])*el->length/PI);
+    return half_waves;
+}
+
 // Reads only the track flags of the particle, as RFPlan_prepare does.
 GPUFUN
 void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start, CavityPlan* plan) {
@@ -232,7 +243,7 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
     plan->spin_tracking=el->spin_tracking;
     const int controls=CavityPlan_controls(el,part0,model,integrator,requested,weight,slice_start);
     plan->choice.controls=controls;
-    plan->choice.cells=CavityPlan_cells(model,requested,frequency,length,el->n_cells,envelope_width,
+    plan->choice.cells=CavityPlan_cells(model,requested,frequency,length,CavityPlan_spatial_half_waves(el),envelope_width,
         counter_wave_amplitude,weight,controls,0.);
 
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
@@ -329,7 +340,8 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     // A harmonic frequency and the energy change follow this particle's reference.
     if (!xt_float_or_tpsa_is_zero(harmonic) || (model==CAVITY_MODEL_PARAXIAL && requested==0))
         cells=CavityPlan_cells(model,requested,xt_float_or_tpsa_const_part(frequency),
-            length,el->n_cells,plan->envelope_width,plan->counter_wave_amplitude,weight,controls,
+            length,CavityPlan_spatial_half_waves(el),plan->envelope_width,
+            plan->counter_wave_amplitude,weight,controls,
             fabs(q0*xt_float_or_tpsa_const_part(el->voltage))
                 /sqrt(mass0*mass0+LocalParticle_get_p0c(part)*LocalParticle_get_p0c(part)));
     xt_float_or_tpsa phase=el->phase
@@ -347,14 +359,18 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     // Cells are pi-mode cells of fixed length: they set the spatial wave number,
     // and voltage is the crest gain at their synchronous speed, at most c.
     xt_float_or_tpsa wave_number=(2.*PI/C_LIGHT)*frequency;
-    xt_float_or_tpsa calibration_beta=1.;
+    xt_float_or_tpsa calibration_beta=el->calibration_beta;
     if (el->n_cells>0) {
         wave_number=PI*(double)el->n_cells/length;
         const xt_float_or_tpsa synchronous=frequency*(2.*length/(C_LIGHT*(double)el->n_cells));
         if (xt_float_or_tpsa_const_part(synchronous)<1.) calibration_beta=synchronous;
     }
     CavityModelSource source;
-    if (status==CAVITY_MODEL_OK) {
+    if (status==CAVITY_MODEL_OK && profile==3) {
+        status=CavityModel_prepare_harmonics(frequency,voltage,length,phase,calibration_beta,
+                mass0,q0,el->num_harmonics,el->harmonic_wave_number,
+                el->harmonic_re,el->harmonic_im,&source);
+    } else if (status==CAVITY_MODEL_OK) {
         status=CavityModel_prepare_profile(frequency,
                 model==CAVITY_MODEL_FROZEN?0.:voltage,
                 length,phase,el->counter_wave_amplitude,el->counter_wave_phase,

@@ -1,7 +1,7 @@
 import xobjects as xo
 
 from .bend import Bend
-from .cavity import Cavity, MagnetOverlappedCavity
+from .cavity import Cavity, FieldExpansionCavity, MagnetOverlappedCavity
 from .crab_cavity import CrabCavity
 from .drift import Drift
 from .drift_exact import DriftExact
@@ -145,6 +145,16 @@ class DriftSliceMagnetOverlappedCavity(DriftSliceCavity):
 
     _extra_c_sources = [
         '#include "xtrack/beam_elements/elements_src/drift_slice_magnet_overlapped_cavity.h"'
+    ]
+
+
+class DriftSliceFieldExpansionCavity(DriftSliceCavity):
+
+    isthick = True
+    _xofields = cavity_slice_xofields(FieldExpansionCavity)
+
+    _extra_c_sources = [
+        '#include "xtrack/beam_elements/elements_src/drift_slice_field_expansion_cavity.h"'
     ]
 
 class DriftSliceMultipole(_DriftSliceElementBase, BeamElement):
