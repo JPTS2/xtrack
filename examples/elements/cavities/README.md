@@ -41,7 +41,7 @@ kick. Matching them requires `knl[0] = crab_voltage/p0c` and a `pi/2` offset in
 `phase_n[0]` for this unit-charge reference. An off-axis launch exposes the
 associated longitudinal kick as well as the transverse deflection.
 
-These examples use the relative RF clock. Laboratory-time RF, `TimeDelay`,
-buckets and acceleration programmes belong to the planned
-[RF learning routes](../../README.md#rf). For model assembly, see
+These examples use the relative RF clock. For longitudinal dynamics and the
+laboratory-time RF and acceleration routes, see
+[RF and longitudinal motion](../../rf/README.md). For model assembly, see
 [line construction](../../line_construction/README.md).

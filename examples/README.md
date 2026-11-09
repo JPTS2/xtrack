@@ -338,12 +338,16 @@ See [measurement storage](monitors/storage/README.md).
 
 ## rf
 
+Start with [RF and longitudinal motion](rf/README.md).
+
 Longitudinal motion, laboratory-time RF, off-momentum delays and acceleration.
 Generic longitudinal Twiss and matching remain under optics and matching, with
 cross-links. LINAC optics and tracking stay with their complete acceleration
 workflow. The folder name `rf/` remains provisional.
 
 ### dynamics
+
+See [longitudinal dynamics](rf/dynamics/README.md).
 
 - `001_synchrotron_motion.py`
 - `002_rf_bucket_and_separatrix.py`
@@ -357,6 +361,7 @@ workflow. The folder name `rf/` remains provisional.
 - `002_time_delays_off_momentum.py`
 - `003_rf_frequency_steering.py`
 - `004_frequency_ramps_and_phase.py`
+- `005_synchronized_time_frames.py`
 
 ### acceleration
 
