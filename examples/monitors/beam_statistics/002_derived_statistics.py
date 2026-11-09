@@ -8,7 +8,6 @@
 ################################################################################
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import xtrack as xt
 
@@ -36,9 +35,8 @@ SIGMA_ZETA      = 1.0e-2                # Imposed longitudinal rms [m]
 SIGMA_DELTA     = 1.0e-5                # Imposed relative momentum rms
 
 ########################################
-# Observation and covariance comparison
+# Instantaneous covariance comparison
 ########################################
-N_TURNS         = 32
 ROTATION        = np.deg2rad(20)        # Transverse canonical rotation [rad]
 
 ################################################################################
@@ -57,7 +55,7 @@ line        = env[LINE_NAME]
 ########################################
 # Use on-momentum optics for the transverse shape, without a dispersion term.
 rng = np.random.default_rng(SEED)
-particles = line.build_particles(
+particles   = line.build_particles(
     method      = '4d',
     x_norm      = rng.standard_normal(N_PARTICLES),
     px_norm     = rng.standard_normal(N_PARTICLES),
@@ -89,7 +87,7 @@ particles.weight    = weights
 initial             = particles.copy()
 
 ################################################################################
-# Record moments and quantities derived from covariance
+# Measure moments and quantities derived from the prepared covariance
 ################################################################################
 
 ########################################
@@ -101,7 +99,7 @@ emittance_stats = [
 ]
 monitor = xt.BeamStatsMonitor(
     start_at_turn   = 0,
-    stop_at_turn    = N_TURNS,
+    stop_at_turn    = 1,
     stats           = [
         'num_particles', 'mean_x', 'sigma_x',
         *emittance_stats,
@@ -109,10 +107,12 @@ monitor = xt.BeamStatsMonitor(
 )
 
 ########################################
-# Sample the beam at the ring entrance
+# Sample the prepared entrance population without transport
 ########################################
-line.insert('beam_stats', monitor, at = 'arc.s1.c1.qf.in@start')
-line.track(particles, num_turns = N_TURNS)
+monitor.track(initial)
+
+# This is one instantaneous measurement, as is the rotated comparison below.
+# No turn evolution or equilibrium is inferred from the covariance diagnostics.
 
 ################################################################################
 # Derive the first sample directly from the input particles
@@ -148,20 +148,6 @@ print('Direct and monitored projected emittance [m rad]:',
       nemitt_x, monitor.nemitt_x_projected[0])
 
 ################################################################################
-# Distinguish centroid motion from rms beam size
-################################################################################
-# The initial beam is not dispersively matched, so its size can evolve too.
-# Centroid motion and size evolution remain distinct observables.
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
-axes[0].plot(monitor.turns, monitor.mean_x * 1e3, '.-')
-axes[0].set_ylabel('Centroid x [mm]')
-axes[1].plot(monitor.turns, monitor.sigma_x * 1e3, '.-')
-axes[1].set_ylabel('Rms size x [mm]')
-axes[1].set_ylim(0, 1.15 * np.max(monitor.sigma_x) * 1e3)
-axes[1].set_xlabel('Turn at ring entrance')
-fig.tight_layout()
-
-################################################################################
 # Distinguish plane projections from covariance normal modes
 ################################################################################
 
@@ -177,7 +163,7 @@ xt.Rotation(rot_s_rad = ROTATION).track(rotated)
 ########################################
 # Measure the rotated covariance
 ########################################
-after = xt.BeamStatsMonitor(
+after   = xt.BeamStatsMonitor(
     start_at_turn   = 0,
     stop_at_turn    = 1,
     stats           = emittance_stats,
@@ -190,7 +176,7 @@ after.track(rotated)
 # _projected names describe plane projections. Unqualified nemitt_x/y/zeta
 # name covariance modes, labelled using their eigenvectors. In strongly mixed
 # cases compare the set of eigenemittances as well as their individual labels.
-result = xt.Table(
+result  = xt.Table(
     data    = {
         'statistic': np.array(emittance_stats),
         'before':    np.array([getattr(monitor, nn)[0]
@@ -205,4 +191,3 @@ result.show(maxwidth = 'full')
 print('Covariance calculation status:',
       monitor.optics_from_covariance(turn = 0)['status'],
       after.optics_from_covariance(turn = 0)['status'])
-plt.show()

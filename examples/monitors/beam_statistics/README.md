@@ -34,6 +34,11 @@ diagnostics in `001` describe the finite weighted
 sample; they are not constrained to equal the lattice Twiss. Its momentum
 spread is small and does not qualify the ring's momentum acceptance.
 
+`002` measures one instantaneous population through the native monitor, then
+rotates an independent copy and measures it again. Its covariance and projected
+emittances are the lesson; no intervening ring transport is needed. The prepared
+longitudinal spread gives full-rank covariance without an RF-equilibrium claim.
+
 `003`, `004` and `006` acquire one explicitly prepared snapshot directly, without
 lattice transport. Their slot, slice and profile semantics do not require a
 matched bunch, a machine model or an RF system. Slot j is centered at
