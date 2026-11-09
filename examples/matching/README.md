@@ -26,9 +26,10 @@ first pass.
 | [012_coupling_knobs.py](012_coupling_knobs.py) | Build two superposable knobs for a fixed-reference coupling phasor |
 | [013_correct_optics_errors.py](013_correct_optics_errors.py) | Fit quadrupole trims to reference beta functions and tunes |
 
-These use the [native teaching models](../../test_data/example_lattices/README.md)
-with their 1 GeV/c electron references and 4D optics. There is no RF, radiation or
-collective effect. Ring tune targets are full tunes, including the integer part.
+These top-level scripts use the
+[native teaching models](../../test_data/example_lattices/README.md) with their
+1 GeV/c electron references and 4D optics. There is no RF, radiation or collective
+effect. Ring tune targets are full tunes, including the integer part.
 
 `001` demonstrates the immediate solve performed by default by `line.match`.
 `003` defers the solve to inspect the initial state, take a fixed number of
@@ -98,6 +99,9 @@ variables. This is an ideal noiseless, fully actuated correction: sparse
 actuators, measurement noise and error identifiability need additional analysis.
 
 For initialization and transport conventions, see [optics](../optics/).
+
+For RF voltage, synchronous energy and phase targets, see
+[longitudinal matching](longitudinal/README.md).
 
 For correction using orbit-response matrices, see
 the [errors and correction plan](../README.md#errors_and_correction).
