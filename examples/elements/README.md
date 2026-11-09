@@ -15,7 +15,6 @@ For assembling these elements into a model, use
 | [Cavities](cavities/README.md) | Energy and transverse RF kicks, finite-length transport and numerical map choices |
 | [Maps](maps/README.md) | Taylor approximations and assigned segment optics |
 | [Spatial transformations](transformations/README.md) | Coordinate frames, ordered rotations and element misalignment attributes |
+| [Custom elements](custom/README.md) | Tracking kernels, particle random streams and internal event records |
 
-For the planned advanced custom elements, see the
-[collection structure](../README.md#elements).
 Machine-level RF dynamics belongs with RF; apertures have their own subject.
