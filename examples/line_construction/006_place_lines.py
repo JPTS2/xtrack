@@ -81,7 +81,7 @@ for label, line in [('Start anchor', line_start),
 # Give the sublines distinct element names
 ########################################
 # replicate gives each occurrence a distinct name while referencing the same
-# original magnets. See 006_clones_and_replicas.py for the ownership comparison.
+# original magnets. See 008_clones_and_replicas.py for the ownership comparison.
 # Here qd ends at the cell exit; a cell with a trailing drift would differ.
 env.new_line(
     name        = 'first_cell',

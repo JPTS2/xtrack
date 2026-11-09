@@ -39,4 +39,4 @@ These recipes cover Xtrack particle containers and their preparation for a line.
 For distribution generators and longitudinal matching, see Xpart. Continue with
 [tracking](../tracking/) and [particle records](../monitors/).
 For a reference controlled by model expressions, see
-[named reference particles](../line_construction/010_reference_particles.py).
+[named reference particles](../line_construction/013_reference_particles.py).
