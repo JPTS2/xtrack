@@ -5,9 +5,11 @@ Copyright (c) CERN, 2026.
 
 # Getting started
 
-A short introduction to constructing a line, exploring a model, calculating
-optics, matching and tracking. Each example runs independently. The topic folders
-provide more detailed examples.
+Work through the numbered examples to construct and inspect a line, calculate
+open and periodic optics, match tunes, track particles, compare measurements at
+two locations, and save a model. Each script runs independently; there is no
+need to run the preceding files first. Follow the topic links for more detail,
+or use the [examples index](../README.md) to choose another subject.
 
 | Example | Topic | Continue with |
 | --- | --- | --- |
