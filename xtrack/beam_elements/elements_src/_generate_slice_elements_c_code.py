@@ -160,12 +160,13 @@ to_do = [
     ("Sextupole", "sextupole.h"),
     ("UniformSolenoid", "uniform_solenoid.h"),
     ("Cavity", "cavity.h"),
+    ("MagnetOverlappedCavity", "magnet_overlapped_cavity.h"),
     ("CrabCavity", "crab_cavity.h"),
     ("RFMultipole", "rfmultipole.h"),
     ("Multipole", "multipole.h")
 ]
 
-no_edge_for = ["Cavity", "CrabCavity", "RFMultipole", "Multipole"]
+no_edge_for = ["Cavity", "MagnetOverlappedCavity", "CrabCavity", "RFMultipole", "Multipole"]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate element slice headers.')
@@ -203,6 +204,8 @@ for td in to_do:
         capitalized_parent_class = parent_class.upper()
         if capitalized_parent_class == 'UNIFORMSOLENOID':
             capitalized_parent_class = 'UNIFORM_SOLENOID'
+        if capitalized_parent_class == 'MAGNETOVERLAPPEDCAVITY':
+            capitalized_parent_class = 'MAGNET_OVERLAPPED_CAVITY'
         assert f"XTRACK_{capitalized_parent_class}_H" in out_content
         out_content = out_content.replace(f"XTRACK_{capitalized_parent_class}_H",
                     f"XTRACK_{generating.upper()}_{capitalized_parent_class}_H")
@@ -229,7 +232,7 @@ for td in to_do:
         out_content = out_content.replace(generated_data_class + '_getp_', generated_data_class + '_getp__parent_')
         out_content = out_content.replace(generated_data_class + '_len_', generated_data_class + '_len__parent_')
 
-        if parent_class == 'Cavity':
+        if parent_class in ('Cavity', 'MagnetOverlappedCavity'):
             data = generated_data_class
             parent = f'{data}_getp__parent(el)'
             old_call = f'{generated_class}_prepare_cavity_plan(el, part0, 1., 0., &plan->cavity);'
@@ -244,12 +247,12 @@ for td in to_do:
                             '    plan->cavity.thin_slice = 1;')
             out_content = out_content.replace(old_call, new_call)
 
-        if parent_class not in ['Cavity', 'CrabCavity', 'RFMultipole']:
+        if parent_class not in ['Cavity', 'MagnetOverlappedCavity', 'CrabCavity', 'RFMultipole']:
             assert generated_data_class + '_getp1_' in out_content
         out_content = out_content.replace(generated_data_class + '_getp1_', generated_data_class + '_getp1__parent_')
 
         # delta_taper must come from the slice and not from the parent
-        if parent_class not in ['Cavity', 'CrabCavity', 'RFMultipole']:
+        if parent_class not in ['Cavity', 'MagnetOverlappedCavity', 'CrabCavity', 'RFMultipole']:
             assert "_get__parent_delta_taper" in out_content
         out_content = out_content.replace("_get__parent_delta_taper", "_get_delta_taper")
 
@@ -279,7 +282,7 @@ for td in to_do:
 
         out_content = "\n".join(out_lines) + "\n"
 
-        if parent_class == 'Cavity' and generating == 'thick_slice':
+        if parent_class in ('Cavity', 'MagnetOverlappedCavity') and generating == 'thick_slice':
             # The usual alignment wrapper consumes a distance. Store the
             # fraction so changing parent.length preserves the source anchor.
             marker = 'GPUFUN\nvoid ThickSliceCavity_prepare_rf'
@@ -302,6 +305,8 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
 }
 
 '''
+            marker, accessor = (text.replace('ThickSliceCavity', generated_class)
+                                for text in (marker, accessor))
             if marker not in out_content:
                 raise ValueError('Thick Cavity slice function template changed')
             out_content = out_content.replace(marker, accessor + marker)
@@ -352,7 +357,9 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
     out_drift_slice = drift_slice_template.replace("Octupole", parent_class)
     out_drift_slice = out_drift_slice.replace("Octupole".upper(), parent_class.upper())
 
-    if parent_class == 'Cavity':
+    if parent_class in ('Cavity', 'MagnetOverlappedCavity'):
+        # Written for Cavity: the other parent takes its names at the end.
+        out_drift_slice = out_drift_slice.replace('DriftSlice' + parent_class, 'DriftSliceCavity')
         out_drift_slice = out_drift_slice.replace(
             '#include "xtrack/beam_elements/elements_src/track_drift.h"',
             '#include "xtrack/beam_elements/elements_src/track_drift.h"\n'
@@ -389,6 +396,12 @@ double ThickSliceCavityData_get_slice_offset_fraction(ThickSliceCavityData el) {
             DriftSliceCavityData_get_weight(el),
             DriftSliceCavityData_get_slice_offset_fraction(el));
 ''' + out_drift_slice[i_end:])
+        out_drift_slice = out_drift_slice.replace('DriftSliceCavity', 'DriftSlice' + parent_class)
+        out_drift_slice = out_drift_slice.replace('Cavity_prepare_cavity_plan(',
+                                                  parent_class + '_prepare_cavity_plan(')
+        out_drift_slice = out_drift_slice.replace('elements_src/cavity_plan.h',
+            'elements_src/' + ('cavity_plan.h' if parent_class == 'Cavity'
+                               else 'magnet_overlapped_cavity_plan.h'))
 
     if parent_class == "RBend":
 

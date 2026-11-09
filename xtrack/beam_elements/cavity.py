@@ -21,26 +21,16 @@ from ._common import (
     _for_docstring_alignment,
 )
 
-# Cavity has its own physics model axis; CrabCavity and RFMultipole keep the
-# shared RF table. The kernel ids 5 and 6 are the legacy kick-drift maps.
-_CAVITY_MODELS = {0: 'adaptive', 6: 'longitudinal-only',
-                  5: 'longitudinal-only-exact', 10: 'phase-resolved',
-                  11: 'phase-averaged', 12: 'phase-resolved-paraxial',
-                  13: 'phase-resolved-frozen'}
+# The physical models and their integrator are experimental, so their names start
+# with an underscore. "adaptive" is the default and stays the legacy map.
+_CAVITY_MODELS = dict(_INDEX_TO_MODEL_RF)
+_CAVITY_MODELS.update({10: '_phase-resolved', 11: '_phase-averaged',
+                       12: '_phase-resolved-paraxial', 13: '_phase-resolved-frozen'})
 _CAVITY_MODEL_IDS = {value: key for key, value in _CAVITY_MODELS.items()}
-# For RF the rot-kick-rot maps equal drift-kick-drift-exact bit for bit.
-_DEPRECATED_CAVITY_MODELS = {
-    'drift-kick-drift-expanded': 'longitudinal-only',
-    'drift-kick-drift-exact': 'longitudinal-only-exact',
-    'rot-kick-rot-low-order': 'longitudinal-only-exact',
-    'rot-kick-rot-high-order': 'longitudinal-only-exact',
-}
 _CAVITY_INTEGRATORS = dict(_INDEX_TO_INTEGRATOR)
-_CAVITY_INTEGRATORS[7] = 'geometric'
+_CAVITY_INTEGRATORS[7] = '_geometric'
 _CAVITY_INTEGRATOR_IDS = {
     value: key for key, value in _CAVITY_INTEGRATORS.items()}
-_DEPRECATED_CAVITY_INTEGRATORS = {'gauss2': 'uniform',
-                                  'geometric-kick-drift': 'geometric'}
 _CAVITY_RF_PROFILES = {0: 'p16', 1: 'uniform', 2: 'gaussian'}
 _CAVITY_RF_PROFILE_IDS = {value: key for key, value in _CAVITY_RF_PROFILES.items()}
 _CAVITY_MAGNETIC_PROFILES = {0: 'uniform', 1: 'gaussian'}
@@ -55,19 +45,19 @@ def _constant_part(value):
 
 _NONZERO_DEFAULTS = {
     'eta': 1., 'calibration_beta': 1., 'rf_field_order': 2,
-    'edge_entry_active': 1, 'edge_exit_active': 1, 'order': 5,
+    'edge_entry_active': 1, 'edge_exit_active': 1,
 }
 
 
 def _default_eta(model):
-    return 0. if model == 'phase-resolved-frozen' else 1.
+    return 0. if model == '_phase-resolved-frozen' else 1.
 
 
 def _default_rf_profile(model):
-    return 'uniform' if model == 'phase-resolved-frozen' else 'p16'
+    return 'uniform' if model == '_phase-resolved-frozen' else 'p16'
 
 
-class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
+class Cavity(_HasModelRF, _HasIntegrator, BeamElement):
 
     _docstring_start = \
     '''RF cavity element.
@@ -98,9 +88,9 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         simulation, otherwise the cavity is synchronized with the arrival time of
         the reference particle (zeta=0). Default is False.
 
-    The following parameters are used only by the physical models
-    "phase-averaged", "phase-resolved", "phase-resolved-paraxial" and
-    "phase-resolved-frozen"; the longitudinal models ignore them. A whole cavity's end planes are hard
+    The following parameters are used only by the experimental physical models
+    "_phase-averaged", "_phase-resolved", "_phase-resolved-paraxial" and
+    "_phase-resolved-frozen"; the longitudinal models ignore them. A whole cavity's end planes are hard
     edges: an RF field that does not vanish there ("uniform", a truncated
     "gaussian") ends abruptly, and the particle leaves field-free.
 
@@ -125,64 +115,45 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     rf_profile_sigma, rf_profile_center : float
         Width (required for "gaussian") and centre of the Gaussian envelope, in
         metres relative to the cavity midpoint.
-    magnetic_profile : str
-        Longitudinal profile of the static fields: "uniform" (default) or
-        "gaussian"; the latter requires `magnetic_profile_sigma` and inactive
-        end faces.
-    ks : float
-        Solenoid strength in 1/m. Normal and skew multipoles use `knl`, `ksl`.
     edge_entry_active, edge_exit_active : bool
-        Whether the entrance and exit faces of the static fields are applied.
-        Default is True.
+        Whether the entrance and exit faces of the static fields are applied,
+        on a MagnetOverlappedCavity. Default is True.
     '''.strip()
 
     _docstring_models = '''model : str
-        "adaptive" (default) chooses for each particle, from its reference, the
-        cheapest map that holds, with V/E the crest voltage |q|V over the total
-        energy and V/T over the kinetic energy, whatever the phase:
-        "longitudinal-only" where V/E <= 2e-4 (or the cavity is thin);
-        "phase-resolved" where V/T > 1, so the cavity could stop the particle;
-        "phase-averaged" where V/E <= 0.1, the envelope is at least 0.44 of a
-        half-wavelength wide (about five half-wavelengths of P16) and the wave
-        is travelling or the envelope is smooth over the counter-wave beat, which
-        a hard edge never is, and a hard edge is at least two half-wavelengths
-        long; "phase-resolved-paraxial" otherwise. It reads the reference, not the
-        particle's coordinates. "phase-averaged" and "phase-resolved-paraxial" drop
-        the force cubic in the offset r, at most 0.56 (r/sigma)^2 of the kick for an
-        envelope of width sigma: 0.1% at r = sigma/24. For larger offsets, or very
-        short cavities, name "phase-resolved".
-        "longitudinal-only" (expanded drifts) and
-        "longitudinal-only-exact" apply RF energy kicks only.
-        "phase-averaged" is Sagan's averaged map with finite-beta terms, the
-        fastest transverse model, valid for envelopes smooth over the
-        counter-wave beat; it takes the steps its envelope needs, at least two
-        per half wavelength. "phase-resolved-paraxial" keeps both waves at
-        quadratic transverse order, per step as an exact second-order
-        generator along the reference orbit (accurate for any envelope and
-        hard edges). "phase-resolved" integrates the full Hamiltonian of the
-        RF and static fields in Gauss collocation cells;
-        "phase-resolved-frozen" is the frozen-coefficient voltage-action model
-        with canonical faces. The drift-kick-drift and rot-kick-rot names are
-        deprecated aliases.
+        "adaptive" (default) and the drift-kick-drift models are the
+        longitudinal maps, which apply RF energy kicks only. The physical models
+        are experimental, so their names start with an underscore:
+        "_phase-averaged" is Sagan's averaged map with finite-beta terms, the
+        fastest transverse model, valid where the energy barely changes and the
+        envelope is smooth over the counter-wave beat; it takes the steps its
+        envelope needs, at least two per half wavelength.
+        "_phase-resolved-paraxial" keeps both waves at quadratic transverse
+        order, per step as an exact second-order generator along the reference
+        orbit (accurate for any envelope and hard edges), for particles that the
+        cavity cannot stop. "_phase-resolved" integrates the full Hamiltonian of
+        the RF and static fields in Gauss collocation cells.
+        "_phase-resolved-frozen" is the frozen-coefficient voltage-action model
+        with canonical faces. "_phase-averaged" and "_phase-resolved-paraxial"
+        drop the force cubic in the offset r, at most 0.56 (r/sigma)^2 of the
+        kick for an envelope of width sigma: 0.1% at r = sigma/24.
     integrator : str
         How the model's base step is placed. Longitudinal models: "teapot",
-        "uniform", "yoshida-4/6/8". "phase-resolved": "uniform" (Gauss cells),
-        "yoshida-6/8" (higher-order compositions), "geometric" (cells graded
-        by the energy ratio). "phase-averaged" and "phase-resolved-paraxial":
-        "uniform", "geometric". Frozen
-        model: "geometric" (default, SAD's mesh), "uniform". "gauss2" and
-        "geometric-kick-drift" are deprecated aliases.
+        "uniform", "yoshida-4/6/8". "_phase-resolved": "uniform" (Gauss cells),
+        "yoshida-6/8" (higher-order compositions), "_geometric" (cells graded
+        by the energy ratio). "_phase-averaged" and "_phase-resolved-paraxial":
+        "uniform", "_geometric". Frozen model: "_geometric" (default, SAD's
+        mesh), "uniform".
     num_kicks : int
-        Number of integration cells when nonzero. With zero, phase-resolved
-        uses 16 per half RF wavelength and at least 64, phase-averaged
-        the steps its envelope needs, at least two per half RF wavelength,
-        phase-resolved-paraxial two per half RF wavelength for a travelling wave
-        (eta = 0) and four otherwise, at least eight in all and at least one for
-        each 2% of V/E, and the frozen model its own count.
+        Number of integration cells when nonzero. With zero, "_phase-resolved"
+        uses 16 per half RF wavelength and at least 64, "_phase-averaged" the
+        steps its envelope needs, at least two per half RF wavelength,
+        "_phase-resolved-paraxial" two per half RF wavelength for a travelling
+        wave (eta = 0) and four otherwise, at least eight in all and at least
+        one for each 2% of V/E, and the frozen model its own count.
     '''.strip()
 
     __doc__ = '\n    '.join([_docstring_start, _docstring_models,
-        _HasKnlKsl._for_docstring,
         _for_docstring_alignment, '\n',
         _docstring_general_notes, '\n\n'])
 
@@ -210,19 +181,10 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         'rf_profile': xo.Int64,
         'rf_profile_sigma': FloatOrTpsa,
         'rf_profile_center': FloatOrTpsa,
-        'magnetic_profile': xo.Int64,
-        'magnetic_profile_sigma': FloatOrTpsa,
         'rf_field_order': xo.Int64,
-        'ks': FloatOrTpsa,
         'spin_tracking': xo.Int64,
         'edge_entry_active': xo.Int64,
         'edge_exit_active': xo.Int64,
-        'order': xo.Int64,
-        'inv_factorial_order': xo.Float64,
-        'knl': xo.Float64[:],
-        'ksl': xo.Float64[:],
-        'knl_tpsa': xo.UInt64[:],
-        'ksl_tpsa': xo.UInt64[:],
         'absolute_time': xo.Int64,
         'num_kicks': xo.Int64,
         'model': xo.Int64,
@@ -233,8 +195,6 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         '#include "xtrack/beam_elements/elements_src/cavity.h"',
     ]
 
-    _skip_in_to_dict = ['_order', 'inv_factorial_order',
-                        'knl_tpsa', 'ksl_tpsa', '_knl_tpsa', '_ksl_tpsa']
 
     _rename = {
         'model': '_model',
@@ -245,20 +205,12 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         'wave_number': '_wave_number',
         'nominal_energy_gain': '_nominal_energy_gain',
         'rf_profile': '_rf_profile',
-        'magnetic_profile': '_magnetic_profile',
-        'order': '_order',
-        'knl': '_knl',
-        'ksl': '_ksl',
-        'knl_tpsa': '_knl_tpsa',
-        'ksl_tpsa': '_ksl_tpsa',
     }
-
-    _float_or_tpsa_array_fields = ('knl', 'ksl')
 
     _default_frequency = 0.0
     _default_harmonic = 0.0
 
-    _noexpr_fields = _NOEXPR_FIELDS | {'rf_profile', 'magnetic_profile'}
+    _noexpr_fields = _NOEXPR_FIELDS | {'rf_profile'}
 
     def __init__(self, **kwargs):
 
@@ -287,24 +239,6 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         sigma = kwargs.pop('rf_profile_sigma', None)
         kwargs['rf_profile_sigma'] = 0. if sigma is None else sigma
         kwargs.setdefault('rf_profile_center', 0.)
-        magnetic_profile = kwargs.pop('magnetic_profile', 'uniform')
-        try:
-            kwargs['magnetic_profile'] = _CAVITY_MAGNETIC_PROFILE_IDS[magnetic_profile]
-        except KeyError:
-            raise ValueError(
-                f'Invalid Cavity magnetic_profile: {magnetic_profile}') from None
-        magnetic_sigma = kwargs.pop('magnetic_profile_sigma', None)
-        kwargs['magnetic_profile_sigma'] = (
-            0. if magnetic_sigma is None else magnetic_sigma)
-        order = kwargs.pop('order', 5)
-        kwargs.update(self._prepare_multipolar_params(
-            order, knl=kwargs.pop('knl', None), ksl=kwargs.pop('ksl', None)))
-        for name in ('knl', 'ksl'):
-            # Handles are process-local owned storage, never serialized knobs.
-            handles = kwargs.pop(name + '_tpsa', None)
-            if handles is not None and any(handles):
-                raise ValueError('Cavity TPSA array handles cannot be imported')
-            kwargs[name + '_tpsa'] = [0] * len(kwargs[name])
         kwargs.setdefault('eta', _default_eta(model))
         kwargs.setdefault('counter_phase', 0.)
         kwargs.setdefault('calibration_beta', 1.)
@@ -348,19 +282,8 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
                 raise ValueError('A Gaussian RF profile requires a positive '
                                  'finite width rf_profile_sigma and a finite '
                                  'centre rf_profile_center')
-        if self.magnetic_profile == 'gaussian':
-            if self._model != 10:
-                raise ValueError(f'{self.model} does not support a Gaussian '
-                                 'magnetic profile')
-            width = float(_constant_part(self.magnetic_profile_sigma))
-            if not (isfinite(width) and width > 0.):
-                raise ValueError('A Gaussian magnetic profile requires a '
-                                 'positive finite width magnetic_profile_sigma')
-            if self.edge_entry_active or self.edge_exit_active:
-                raise ValueError('A Gaussian magnetic profile requires '
-                                 'inactive entry/exit faces')
-        if self.model == 'phase-resolved-frozen' and self.rf_profile != 'uniform':
-            raise ValueError('phase-resolved-frozen requires rf_profile="uniform"')
+        if self._model == 13 and self.rf_profile != 'uniform':
+            raise ValueError('_phase-resolved-frozen requires rf_profile="uniform"')
         # Length is commonly assigned after construction.
         if tracking and not (isfinite(_constant_part(self.length))
                              and _constant_part(self.length) > 0.):
@@ -369,34 +292,23 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
             raise ValueError('num_kicks must be non-negative')
         if self.rf_field_order != 2:
             raise ValueError(f'{self.model} supports only rf_field_order=2')
-        if self.model == 'phase-resolved-frozen':
-            if self.integrator not in ('adaptive', 'geometric', 'uniform'):
-                raise ValueError('phase-resolved-frozen supports the "geometric" '
+        if self._model == 13:
+            if self.integrator not in ('adaptive', '_geometric', 'uniform'):
+                raise ValueError('_phase-resolved-frozen supports the "_geometric" '
                                  'and "uniform" integrators')
             if (_constant_part(self.eta) != 0.
                     or _constant_part(self.calibration_beta) != 1.
                     or not self.wave_number_from_frequency):
-                raise ValueError('phase-resolved-frozen requires eta=0, '
+                raise ValueError('_phase-resolved-frozen requires eta=0, '
                                  'calibration_beta=1 and the carrier from frequency')
-        elif self.model in ('phase-averaged', 'phase-resolved-paraxial'):
-            if self.integrator not in ('adaptive', 'uniform', 'geometric'):
+        elif self._model in (11, 12):
+            if self.integrator not in ('adaptive', 'uniform', '_geometric'):
                 raise ValueError(f'{self.model} supports the "uniform" and '
-                                 '"geometric" integrators: its cell-tied steps '
+                                 '"_geometric" integrators: its cell-tied steps '
                                  'admit no teapot placement or higher-order '
                                  'composition')
-            normal, skew = np.asarray(self.knl), np.asarray(self.ksl)
-            others = (np.any(normal[np.arange(len(normal)) != 1] != 0.)
-                      or np.any(skew != 0.) or self.magnetic_profile != 'uniform')
-            solenoid = _constant_part(self.ks) != 0.
-            if others or (solenoid and (np.any(normal != 0.) or self.edge_entry_active
-                                        or self.edge_exit_active)):
-                raise ValueError(f'{self.model} supports a uniform solenoid with '
-                                 'faces off or a normal quadrupole as static field')
-            if self.spin_tracking and (solenoid or np.any(normal != 0.)):
-                raise NotImplementedError('Cavity spin transport with static fields '
-                                          f'is not implemented for {self.model}')
         elif self.integrator == 'teapot':
-            raise ValueError('phase-resolved has no kicks to place: "teapot" '
+            raise ValueError('_phase-resolved has no kicks to place: "teapot" '
                              'does not apply')
         if self.spin_tracking:
             self._check_spin_support()
@@ -404,28 +316,11 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     def _check_spin_support(self):
         """Raise if spin transport is not implemented for these settings."""
         if self._model in (11, 12, 13):
-            if (_constant_part(self.ks) != 0. or np.any(np.asarray(self.knl) != 0.)
-                    or np.any(np.asarray(self.ksl) != 0.)):
-                raise NotImplementedError(f'Cavity spin transport with static fields '
-                                          f'is not implemented for {self.model}')
             return
         if (self._model != 10 or self._rf_profile != 0
-                or self._magnetic_profile != 0
                 or self.rf_field_order != 2 or self.integrator == 'teapot'):
-            raise NotImplementedError('Cavity spin transport requires the phase-resolved model '
-                                      'with the P16 profile and a uniform magnetic profile')
-        normal = np.asarray(self.knl)
-        skew = np.asarray(self.ksl)
-        if (np.any(normal[np.arange(len(normal)) != 1] != 0.)
-                or np.any(skew[np.arange(len(skew)) != 1] != 0.)
-                or (self.order < 1 and (np.any(normal != 0.) or np.any(skew != 0.)))):
-            raise NotImplementedError('Cavity spin transport supports only solenoid and '
-                                      'normal/skew quadrupole static strengths')
-        static = self.ks != 0. or np.any(normal != 0.) or np.any(skew != 0.)
-        if static and (self.edge_entry_active or self.edge_exit_active):
-            raise NotImplementedError('Cavity spin transport with static fields requires both faces disabled')
-        if static and self.transformations_active:
-            raise NotImplementedError('Cavity spin transport with static fields does not support alignment transformations')
+            raise NotImplementedError('Cavity spin transport requires the _phase-resolved '
+                                      'model with the P16 profile')
 
     @property
     def model(self):
@@ -433,11 +328,6 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
 
     @model.setter
     def model(self, value):
-        if value in _DEPRECATED_CAVITY_MODELS:
-            new = _DEPRECATED_CAVITY_MODELS[value]
-            warn(f'Cavity model "{value}" is deprecated; use "{new}".',
-                 FutureWarning)
-            value = new
         try:
             self._model = _CAVITY_MODEL_IDS[value]
         except KeyError:
@@ -457,11 +347,6 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
             # Preserve the shared mixin's deprecated historical spelling.
             _HasIntegrator.integrator.fset(self, value)
             return
-        if value in _DEPRECATED_CAVITY_INTEGRATORS:
-            new = _DEPRECATED_CAVITY_INTEGRATORS[value]
-            warn(f'Cavity integrator "{value}" is deprecated; use "{new}".',
-                 FutureWarning)
-            value = new
         try:
             self._integrator = _CAVITY_INTEGRATOR_IDS[value]
         except KeyError:
@@ -487,17 +372,6 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
         return list(_CAVITY_RF_PROFILE_IDS)
 
     @property
-    def magnetic_profile(self):
-        return _CAVITY_MAGNETIC_PROFILES[self._magnetic_profile]
-
-    @magnetic_profile.setter
-    def magnetic_profile(self, value):
-        try:
-            self._magnetic_profile = _CAVITY_MAGNETIC_PROFILE_IDS[value]
-        except KeyError:
-            raise ValueError(f'Invalid Cavity magnetic_profile: {value}') from None
-
-    @property
     def wave_number(self):
         return None if self.wave_number_from_frequency else self._wave_number
 
@@ -515,34 +389,6 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     def nominal_energy_gain(self, value):
         self.nominal_energy_gain_from_rf = int(value is None)
         self._nominal_energy_gain = 0. if value is None else value
-
-    @property
-    def knl(self):
-        from ..tpsa._cavity_array import CavityArrayView
-        return CavityArrayView(self, '_knl', '_knl_tpsa')
-
-    @knl.setter
-    def knl(self, value):
-        self.knl[:] = value
-
-    @property
-    def ksl(self):
-        from ..tpsa._cavity_array import CavityArrayView
-        return CavityArrayView(self, '_ksl', '_ksl_tpsa')
-
-    @ksl.setter
-    def ksl(self, value):
-        self.ksl[:] = value
-
-    # HybridClass inspection uses raw field names even when Python storage
-    # descriptors are renamed. These are internal handles, not saved settings.
-    @property
-    def knl_tpsa(self):
-        return self._knl_tpsa
-
-    @property
-    def ksl_tpsa(self):
-        return self._ksl_tpsa
 
     def to_dict(self, **kwargs):
         result = super().to_dict(**kwargs)
@@ -563,28 +409,10 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
                 result.pop(name, None)
             else:
                 result[name] = getattr(self, name)
-        for name, default in (('rf_profile', _default_rf_profile(self.model)),
-                              ('magnetic_profile', 'uniform')):
-            if getattr(self, name) == default:
-                result.pop(name, None)
-            else:
-                result[name] = getattr(self, name)
-        for name in ('knl', 'ksl'):
-            values = self._context.nparray_from_context_array(getattr(self, '_' + name))
-            if np.any(values != 0.):
-                result[name] = values.tolist()
-            else:
-                result.pop(name, None)
-        return result
-
-    @classmethod
-    def from_dict(cls, dct, **kwargs):
-        # A later order change can deliberately leave a larger allocated
-        # array. Restore the saved active order after allocating that storage.
-        order = dct.get('order')
-        result = super().from_dict(dct, **kwargs)
-        if order is not None:
-            result.order = order
+        if self.rf_profile == _default_rf_profile(self.model):
+            result.pop('rf_profile', None)
+        else:
+            result['rf_profile'] = self.rf_profile
         return result
 
     def track(self, particles, *args, **kwargs):
@@ -647,3 +475,210 @@ class Cavity(_HasKnlKsl, _HasModelRF, _HasIntegrator, BeamElement):
     @property
     def _drift_slice_class(self):
         return xt.DriftSliceCavity
+
+
+class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
+
+    _docstring_start = Cavity._docstring_start.replace(
+        'RF cavity element.',
+        'RF cavity overlapped with static magnetic fields: a solenoid, and normal\n'
+        '    and skew multipoles. It is tracked by the experimental physical models.', 1) + '''
+    ks : float
+        Solenoid strength in 1/m. Normal and skew multipoles use `knl`, `ksl`.
+    magnetic_profile : str
+        Longitudinal profile of the static fields: "uniform" (default) or
+        "gaussian"; the latter requires `magnetic_profile_sigma` and inactive
+        end faces.'''
+
+    __doc__ = '\n    '.join([_docstring_start, Cavity._docstring_models,
+        _HasKnlKsl._for_docstring,
+        _for_docstring_alignment, '\n',
+        _docstring_general_notes, '\n\n'])
+
+    _xofields = {
+        **Cavity._xofields,
+        'magnetic_profile': xo.Int64,
+        'magnetic_profile_sigma': FloatOrTpsa,
+        'ks': FloatOrTpsa,
+        'order': xo.Int64,
+        'inv_factorial_order': xo.Float64,
+        'knl': xo.Float64[:],
+        'ksl': xo.Float64[:],
+        'knl_tpsa': xo.UInt64[:],
+        'ksl_tpsa': xo.UInt64[:],
+    }
+
+    isthick = True
+
+    _extra_c_sources = [
+        '#include "xtrack/beam_elements/elements_src/magnet_overlapped_cavity.h"',
+    ]
+
+    _skip_in_to_dict = ['_order', 'inv_factorial_order',
+                        'knl_tpsa', 'ksl_tpsa', '_knl_tpsa', '_ksl_tpsa']
+
+    _rename = {
+        **Cavity._rename,
+        'magnetic_profile': '_magnetic_profile',
+        'order': '_order',
+        'knl': '_knl',
+        'ksl': '_ksl',
+        'knl_tpsa': '_knl_tpsa',
+        'ksl_tpsa': '_ksl_tpsa',
+    }
+
+    _float_or_tpsa_array_fields = ('knl', 'ksl')
+
+    _noexpr_fields = Cavity._noexpr_fields | {'magnetic_profile'}
+
+    def __init__(self, **kwargs):
+        if '_xobject' in kwargs and kwargs['_xobject'] is not None:
+            self.xoinitialize(**kwargs)
+            return
+        magnetic_profile = kwargs.pop('magnetic_profile', 'uniform')
+        try:
+            kwargs['magnetic_profile'] = _CAVITY_MAGNETIC_PROFILE_IDS[magnetic_profile]
+        except KeyError:
+            raise ValueError(
+                f'Invalid magnetic_profile: {magnetic_profile}') from None
+        magnetic_sigma = kwargs.pop('magnetic_profile_sigma', None)
+        kwargs['magnetic_profile_sigma'] = (
+            0. if magnetic_sigma is None else magnetic_sigma)
+        order = kwargs.pop('order', 5)
+        kwargs.update(self._prepare_multipolar_params(
+            order, knl=kwargs.pop('knl', None), ksl=kwargs.pop('ksl', None)))
+        for name in ('knl', 'ksl'):
+            # Handles are process-local owned storage, never serialized knobs.
+            handles = kwargs.pop(name + '_tpsa', None)
+            if handles is not None and any(handles):
+                raise ValueError('Cavity TPSA array handles cannot be imported')
+            kwargs[name + '_tpsa'] = [0] * len(kwargs[name])
+        # _HasKnlKsl comes first in the order and has its own __init__.
+        Cavity.__init__(self, **kwargs)
+
+    def _check_physical_model(self, tracking=False):
+        super()._check_physical_model(tracking=tracking)
+        if self._model < 10:
+            return
+        if self.magnetic_profile == 'gaussian':
+            if self._model != 10:
+                raise ValueError(f'{self.model} does not support a Gaussian '
+                                 'magnetic profile')
+            width = float(_constant_part(self.magnetic_profile_sigma))
+            if not (isfinite(width) and width > 0.):
+                raise ValueError('A Gaussian magnetic profile requires a '
+                                 'positive finite width magnetic_profile_sigma')
+            if self.edge_entry_active or self.edge_exit_active:
+                raise ValueError('A Gaussian magnetic profile requires '
+                                 'inactive entry/exit faces')
+        if self._model in (11, 12):
+            normal, skew = np.asarray(self.knl), np.asarray(self.ksl)
+            others = (np.any(normal[np.arange(len(normal)) != 1] != 0.)
+                      or np.any(skew != 0.) or self.magnetic_profile != 'uniform')
+            solenoid = _constant_part(self.ks) != 0.
+            if others or (solenoid and (np.any(normal != 0.) or self.edge_entry_active
+                                        or self.edge_exit_active)):
+                raise ValueError(f'{self.model} supports a uniform solenoid with '
+                                 'faces off or a normal quadrupole as static field')
+
+    def _check_spin_support(self):
+        super()._check_spin_support()
+        normal = np.asarray(self.knl)
+        skew = np.asarray(self.ksl)
+        static = _constant_part(self.ks) != 0. or np.any(normal != 0.) or np.any(skew != 0.)
+        if self._model in (11, 12, 13):
+            if static:
+                raise NotImplementedError(f'Cavity spin transport with static fields '
+                                          f'is not implemented for {self.model}')
+            return
+        if self._magnetic_profile != 0:
+            raise NotImplementedError('Cavity spin transport requires a uniform '
+                                      'magnetic profile')
+        if (np.any(normal[np.arange(len(normal)) != 1] != 0.)
+                or np.any(skew[np.arange(len(skew)) != 1] != 0.)
+                or (self.order < 1 and (np.any(normal != 0.) or np.any(skew != 0.)))):
+            raise NotImplementedError('Cavity spin transport supports only solenoid and '
+                                      'normal/skew quadrupole static strengths')
+        if static and (self.edge_entry_active or self.edge_exit_active):
+            raise NotImplementedError('Cavity spin transport with static fields requires both faces disabled')
+        if static and self.transformations_active:
+            raise NotImplementedError('Cavity spin transport with static fields does not support alignment transformations')
+
+    @property
+    def magnetic_profile(self):
+        return _CAVITY_MAGNETIC_PROFILES[self._magnetic_profile]
+
+    @magnetic_profile.setter
+    def magnetic_profile(self, value):
+        try:
+            self._magnetic_profile = _CAVITY_MAGNETIC_PROFILE_IDS[value]
+        except KeyError:
+            raise ValueError(f'Invalid magnetic_profile: {value}') from None
+
+    @property
+    def knl(self):
+        from ..tpsa._cavity_array import CavityArrayView
+        return CavityArrayView(self, '_knl', '_knl_tpsa')
+
+    @knl.setter
+    def knl(self, value):
+        self.knl[:] = value
+
+    @property
+    def ksl(self):
+        from ..tpsa._cavity_array import CavityArrayView
+        return CavityArrayView(self, '_ksl', '_ksl_tpsa')
+
+    @ksl.setter
+    def ksl(self, value):
+        self.ksl[:] = value
+
+    # HybridClass inspection uses raw field names even when Python storage
+    # descriptors are renamed. These are internal handles, not saved settings.
+    @property
+    def knl_tpsa(self):
+        return self._knl_tpsa
+
+    @property
+    def ksl_tpsa(self):
+        return self._ksl_tpsa
+
+    def to_dict(self, **kwargs):
+        result = super().to_dict(**kwargs)
+        if self.order == 5:
+            result.pop('order', None)
+        else:
+            result['order'] = self.order
+        if self.magnetic_profile == 'uniform':
+            result.pop('magnetic_profile', None)
+        else:
+            result['magnetic_profile'] = self.magnetic_profile
+        for name in ('knl', 'ksl'):
+            values = self._context.nparray_from_context_array(getattr(self, '_' + name))
+            if np.any(values != 0.):
+                result[name] = values.tolist()
+            else:
+                result.pop(name, None)
+        return result
+
+    @classmethod
+    def from_dict(cls, dct, **kwargs):
+        # A later order change can deliberately leave a larger allocated
+        # array. Restore the saved active order after allocating that storage.
+        order = dct.get('order')
+        result = super().from_dict(dct, **kwargs)
+        if order is not None:
+            result.order = order
+        return result
+
+    @property
+    def _thin_slice_class(self):
+        return xt.ThinSliceMagnetOverlappedCavity
+
+    @property
+    def _thick_slice_class(self):
+        return xt.ThickSliceMagnetOverlappedCavity
+
+    @property
+    def _drift_slice_class(self):
+        return xt.DriftSliceMagnetOverlappedCavity

@@ -6,12 +6,12 @@ from _cavity_context import kernel_context
 
 
 def eligible_line(**changes):
-    controls=dict(model='phase-resolved',length=.05,frequency=400e6,
+    controls=dict(model='_phase-resolved',length=.05,frequency=400e6,
                   voltage=2e4,phase=.4,num_kicks=8)
     controls.update(changes)
-    if controls['model']=='phase-resolved':
+    if controls['model']=='_phase-resolved':
         controls.setdefault('eta',.25)
-    line=xt.Line(elements={'rf':xt.Cavity(**controls)})
+    line=xt.Line(elements={'rf':xt.MagnetOverlappedCavity(**controls)})
     line.particle_ref=xt.Particles(p0c=14e6,mass0=xt.ELECTRON_MASS_EV)
     return line
 
@@ -22,7 +22,7 @@ def snapshot(line):
 
 
 @pytest.mark.parametrize('changes',[
-    dict(model='phase-resolved-frozen', knl=[0., .05]),
+    dict(model='_phase-resolved-frozen', knl=[0., .05]),
     dict(rf_profile='uniform'),
     dict(rf_profile='gaussian',rf_profile_sigma=.01),
     dict(ks=.1),
@@ -80,7 +80,7 @@ def test_later_unsupported_mutation_refuses_before_tracking(tmp_path):
                                     dict(rf_field_order=1),dict(eta=.3)])
 def test_later_invalid_configuration_raises_before_tracking(tmp_path,changes):
     with kernel_context(tmp_path) as context:
-        line=eligible_line(model='phase-resolved-frozen')
+        line=eligible_line(model='_phase-resolved-frozen')
         line.build_tracker(_context=context)
         for name,value in changes.items():
             setattr(line['rf'],name,value)

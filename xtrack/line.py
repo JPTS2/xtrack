@@ -8699,7 +8699,7 @@ class LineAttr:
                 if (not isinstance(parent, beam_elements.Cavity)
                         or not getattr(element, '_inherit_strengths', False)):
                     continue
-                if parent.magnetic_profile != 'gaussian':
+                if getattr(parent, 'magnetic_profile', 'uniform') != 'gaussian':
                     continue
                 if parent.length <= 0.:
                     raise ValueError('Gaussian magnetic readback requires positive length and width')
@@ -8707,7 +8707,7 @@ class LineAttr:
                 fraction = getattr(element, '_slice_offset_fraction', -1.)
                 start = (float(fraction) if fraction >= 0. else
                          float(element.slice_offset)/parent.length)
-            if parent.magnetic_profile != 'gaussian':
+            if getattr(parent, 'magnetic_profile', 'uniform') != 'gaussian':
                 continue
             length, sigma = float(parent.length), scalar(parent.magnetic_profile_sigma)
             if (not np.isfinite(length) or length <= 0.

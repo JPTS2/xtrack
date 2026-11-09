@@ -18,11 +18,11 @@ _RF = dict(frequency=_FREQUENCY, absolute_time=True)
 _MULTIPOLE = dict(knl=[1e-3, 2e-2], ksl=[1e-4, 3e-3], phase_n=[.1, .2], phase_s=[.3, .4],
                   voltage=1e5, phase=.2)
 _FAMILIES = {
-    'cavity': (xt.Cavity, dict(_RF, voltage=1e6, phase=.2, model='longitudinal-only')),
+    'cavity': (xt.Cavity, dict(_RF, voltage=1e6, phase=.2, model='drift-kick-drift-expanded')),
     'crab': (xt.CrabCavity, dict(_RF, crab_voltage=1e6, phase=.2)),
     'multipole': (xt.RFMultipole, dict(_RF, **_MULTIPOLE)),
 }
-_PHYSICAL = ('phase-resolved', 'phase-averaged', 'phase-resolved-paraxial')
+_PHYSICAL = ('_phase-resolved', '_phase-averaged', '_phase-resolved-paraxial')
 
 
 def _launch(context, time_s=0., s=.3):
@@ -110,7 +110,7 @@ def _reference_phase(line, cavity, particles, zeta, s, start, stop):
 
 
 @for_all_test_contexts
-@pytest.mark.parametrize('model', ['longitudinal-only', 'phase-resolved', 'phase-averaged'])
+@pytest.mark.parametrize('model', ['drift-kick-drift-expanded', '_phase-resolved', '_phase-averaged'])
 def test_locked_phase_is_the_integral_of_the_frequency_through_an_energy_program(test_context, model):
     # The truth is 2 pi h int beta c / L dt from the program, not the clock's own count.
     # The physical maps use a cell short enough that their transit is negligible.

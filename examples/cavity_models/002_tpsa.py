@@ -32,7 +32,7 @@ import xtrack.tpsa as xtpsa
 ########################################
 # Physical model and RF settings
 ########################################
-MODEL               = "phase-resolved"
+MODEL               = "_phase-resolved"
 LENGTH_M            = 0.05
 VOLTAGE_V           = 20E3
 FREQUENCY_HZ        = 400E6

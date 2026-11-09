@@ -29,7 +29,7 @@ from .acdipole import ACDipole
 from .beam_interaction import BeamInteraction, ParticlesInjectionSample
 from .bend import Bend
 from .bfield_expansion import BFieldExpansion
-from .cavity import Cavity
+from .cavity import Cavity, MagnetOverlappedCavity
 from .combined_function_magnet import CombinedFunctionMagnet
 from .crab_cavity import CrabCavity
 from .device import Device
@@ -73,6 +73,7 @@ from .slice_elements_drift import (
     DriftSlice,
     DriftSliceBend,
     DriftSliceCavity,
+    DriftSliceMagnetOverlappedCavity,
     DriftSliceCrabCavity,
     DriftSliceMultipole,
     DriftSliceOctupole,
@@ -101,6 +102,7 @@ from .slice_elements_thick import (
     ThickSliceBend,
     ThickSliceBFieldExpansion,
     ThickSliceCavity,
+    ThickSliceMagnetOverlappedCavity,
     ThickSliceCrabCavity,
     ThickSliceDevice,
     ThickSliceMultipole,
@@ -114,6 +116,7 @@ from .slice_elements_thick import (
 from .slice_elements_thin import (
     ThinSliceBend,
     ThinSliceCavity,
+    ThinSliceMagnetOverlappedCavity,
     ThinSliceCrabCavity,
     ThinSliceMultipole,
     ThinSliceOctupole,

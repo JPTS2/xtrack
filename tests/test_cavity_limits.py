@@ -18,7 +18,7 @@ import xtrack as xt
 from _cavity_context import kernel_context
 
 
-MODELS = ('phase-resolved',)
+MODELS = ('_phase-resolved',)
 C_LIGHT = 299792458.
 MASS0 = 510998.95069
 COORDINATES = ('x', 'px', 'y', 'py', 'zeta', 'delta')
@@ -87,7 +87,7 @@ def test_public_cavity_independent_quadrupole_limit(tmp_path):
     expected_y = epsilon*np.array([np.cosh(angle), wave*np.sinh(angle)])
     with kernel_context(tmp_path) as context:
         for model in MODELS:
-            element = xt.Cavity(_context=context, length=length, voltage=0.,
+            element = xt.MagnetOverlappedCavity(_context=context, length=length, voltage=0.,
                 frequency=0., eta=0., knl=[0., k1*length], ks=0.,
                 model=model, integrator='uniform', num_kicks=64)
             for charge in (-1., 1.):
@@ -181,10 +181,10 @@ def test_public_cavity_mixed_species_reference_equivalence(tmp_path):
     metadata = ('ptau', 'pzeta', 'rpp', 'rvv', 'ax', 'ay', 's')
     with kernel_context(tmp_path) as context:
         for model in MODELS:
-            fixed = xt.Cavity(_context=context, model=model,
+            fixed = xt.MagnetOverlappedCavity(_context=context, model=model,
                               **controls, **base_static)
             rebuilt_controls = {**controls, 'phase': controls['phase']-np.pi}
-            rebuilt = xt.Cavity(_context=context, model=model,
+            rebuilt = xt.MagnetOverlappedCavity(_context=context, model=model,
                                 **rebuilt_controls, **actual_static)
             mixed = particle(context, gamma, charge_ratio=-1., mass_ratio=2.,
                              px=.005, py=-.004, zeta=.001, delta=.03)
@@ -383,16 +383,16 @@ def test_builtin_gaussian_source_and_crest_calibration(scalar_source_library):
 
 def test_gaussian_profile_selection_is_stored_independently():
     """A model edit cannot silently replace the explicitly selected source."""
-    default = xt.Cavity(length=.2, model='phase-resolved')
+    default = xt.Cavity(length=.2, model='_phase-resolved')
     assert default.rf_profile == 'p16'
-    gaussian = xt.Cavity(length=.2, model='phase-resolved',
+    gaussian = xt.Cavity(length=.2, model='_phase-resolved',
         rf_profile='gaussian', rf_profile_sigma=.04, rf_profile_center=.01)
     restored = xt.Cavity.from_dict(gaussian.to_dict())
     assert restored.rf_profile == 'gaussian'
     assert restored.rf_profile_sigma == .04
     assert restored.rf_profile_center == .01
     with pytest.raises(ValueError, match='width'):
-        xt.Cavity(length=.2, model='phase-resolved', rf_profile='gaussian')
+        xt.Cavity(length=.2, model='_phase-resolved', rf_profile='gaussian')
 
 
 def independent_static_point(state,charge,scale,model):

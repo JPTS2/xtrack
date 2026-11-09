@@ -16,11 +16,11 @@ _MISALIGNMENT = dict(shift_x=1e-3, shift_y=-2e-4, shift_s=.01, rot_x_rad=2e-3,
 _P0C = 1e9
 _CAVITY = dict(length=1., frequency=1.3e9, voltage=2e7, phase=1.4)
 _ELEMENTS = {
-    'longitudinal-only': (xt.Cavity, dict(_CAVITY, model='longitudinal-only')),
-    'phase-averaged': (xt.Cavity, dict(_CAVITY, model='phase-averaged')),
-    'phase-resolved-paraxial': (xt.Cavity, dict(_CAVITY, model='phase-resolved-paraxial', eta=.25)),
-    'phase-resolved': (xt.Cavity, dict(_CAVITY, model='phase-resolved', num_kicks=8, eta=.25)),
-    'phase-resolved-frozen': (xt.Cavity, dict(_CAVITY, model='phase-resolved-frozen', eta=0.)),
+    'drift-kick-drift-expanded': (xt.Cavity, dict(_CAVITY, model='drift-kick-drift-expanded')),
+    '_phase-averaged': (xt.Cavity, dict(_CAVITY, model='_phase-averaged')),
+    '_phase-resolved-paraxial': (xt.Cavity, dict(_CAVITY, model='_phase-resolved-paraxial', eta=.25)),
+    '_phase-resolved': (xt.Cavity, dict(_CAVITY, model='_phase-resolved', num_kicks=8, eta=.25)),
+    '_phase-resolved-frozen': (xt.Cavity, dict(_CAVITY, model='_phase-resolved-frozen', eta=0.)),
     'adaptive': (xt.Cavity, dict(_CAVITY, model='adaptive', eta=.25)),
     'crab': (xt.CrabCavity, dict(length=.5, frequency=4e8, crab_voltage=1e6, phase=.3)),
     'multipole': (xt.RFMultipole, dict(frequency=4e8, voltage=1e5, knl=[1e-3, 2e-2],
@@ -66,8 +66,8 @@ def test_map_matches_the_cpu(test_context, name, misaligned):
 
 
 @for_all_test_contexts
-@pytest.mark.parametrize('name', ['phase-resolved', 'phase-averaged',
-                                  'phase-resolved-paraxial', 'adaptive'])
+@pytest.mark.parametrize('name', ['_phase-resolved', '_phase-averaged',
+                                  '_phase-resolved-paraxial', 'adaptive'])
 def test_reversal_restores_the_launch(test_context, name):
     end = _end(test_context, name, backtrack=True)
     start = _launch(xo.context_default)
@@ -76,29 +76,9 @@ def test_reversal_restores_the_launch(test_context, name):
 
 
 @for_all_test_contexts
-@pytest.mark.parametrize('name', ['phase-resolved', 'phase-averaged', 'adaptive'])
+@pytest.mark.parametrize('name', ['_phase-resolved', '_phase-averaged'])
 def test_thick_slices_match_the_whole_element(test_context, name):
     whole = _end(test_context, name)
     sliced = _end(test_context, name, slicing=xt.Teapot(4, mode='thick'))
     xo.assert_allclose(sliced, whole, rtol=0, atol=5e-11)
 
-
-@for_all_test_contexts
-def test_adaptive_chooses_per_particle(test_context):
-    # Two particles of one batch on references that select different maps.
-    def end(model, p0c):
-        line = xt.Line(elements={'rf': xt.Cavity(**dict(_CAVITY, model=model, phase=np.pi / 2,
-                                                        eta=0.))})
-        line.particle_ref = xt.Particles(mass0=xt.ELECTRON_MASS_EV, p0c=_P0C)
-        line.build_tracker(_context=test_context)
-        particles = xt.Particles(_context=test_context, mass0=xt.ELECTRON_MASS_EV, p0c=p0c,
-                                 x=1e-3, zeta=1e-3, delta=1e-4)
-        line.track(particles)
-        particles.move(_context=xo.context_default)
-        particles.sort(interleave_lost_particles=True)
-        return np.array([getattr(particles, coord) for coord in _COORDS])
-    mixed = end('adaptive', np.array([1e13, 3e6]))
-    xo.assert_allclose(mixed[:, 0], end('longitudinal-only', np.array([1e13]))[:, 0],
-                       rtol=0, atol=1e-14)
-    xo.assert_allclose(mixed[:, 1], end('phase-resolved', np.array([3e6]))[:, 0],
-                       rtol=0, atol=1e-14)

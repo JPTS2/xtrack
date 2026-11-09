@@ -106,44 +106,6 @@ static const double CAVITY_COMPOSITION_ORDER8[9]={
     CAVITY_W8_INNER*CAVITY_W6_OUTER, CAVITY_W8_INNER*CAVITY_W6_INNER, CAVITY_W8_INNER*CAVITY_W6_OUTER,
     CAVITY_W8_OUTER*CAVITY_W6_OUTER, CAVITY_W8_OUTER*CAVITY_W6_INNER, CAVITY_W8_OUTER*CAVITY_W6_OUTER};
 
-// Content of the ponderomotive product f^2 at the counter-wave beat 2 nu,
-// D2 = |int f^2 e^{2i nu Z} dZ| / int f^2 dZ over the parent (Z = k z). Sagan's
-// averaged factors miss about 1.2 D2 of the RF focusing, independent of energy
-//. Eight Gauss nodes per beat period; quadrature error only rejects.
-GPUFUN
-double CavityModels_envelope_beat(const RFModelFields* el, double wave_number) {
-    const double half=.5*wave_number*el->length;
-    double nu=1.;
-    if (!el->wave_number_from_frequency)
-        nu=xt_float_or_tpsa_const_part(el->wave_number)/wave_number;
-    const int profile=el->rf_profile;
-    // Its integral vanishes at whole half-wavelengths, but the edges still kick.
-    if (profile==1) return 1.;
-    const double sigma=wave_number*xt_float_or_tpsa_const_part(el->rf_profile_sigma);
-    const double centre=wave_number*xt_float_or_tpsa_const_part(el->rf_profile_center);
-    if (profile==2 && !(sigma>0.)) return 1.;
-    const int64_t segments=(int64_t)ceil(2.*fabs(nu)*half/PI)+1;
-    const double width=2.*half/segments;
-    double re=0., im=0., norm=0.;
-    for (int64_t n=0;n<segments;++n)
-        for (int i=0;i<CAVITY_MAGNUS_NODES;++i) {
-            const double z=-half+(n+.5+.5*CAVITY_MAGNUS_X[i])*width;
-            double square;
-            if (profile==0) {
-                const double u=z/half, w=1.-u*u;
-                double f=w*w; f=f*f; f=f*f; f=f*f;   // (1-u^2)^16
-                square=f*f;
-            } else {
-                const double v=(z-centre)/sigma;
-                square=exp(-v*v);
-            }
-            const double weight=.5*width*CAVITY_MAGNUS_W[i]*square;
-            re+=weight*cos(2.*nu*z); im+=weight*sin(2.*nu*z); norm+=weight;
-        }
-    return norm>0. ? sqrt(re*re+im*im)/norm : 1.;
-}
-
-
 // The length over which the RF envelope changes, in metres; zero for a uniform
 // envelope, which only changes at its hard edges. P16 is (1-u^2)^16 ~ exp(-16 u^2),
 // a Gaussian of sigma = half-length / sqrt(32).
@@ -190,20 +152,6 @@ int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double 
     return controls==CAVITY_MODEL_OK ? (int64_t)ceil(parent_cells*weight) : 1;
 }
 
-// "adaptive" leaves the averaged map where its resolved steps would cost as much as
-// the paraxial map, which is then the better choice: envelopes narrower than 0.44 of
-// a half-wavelength, which for P16 is below five half-wavelengths of cavity length
-// (5 / (2 sqrt(32)) = 0.442). A hard edge has no width, and needs two half-wavelengths
-// for there to be a wave to average over.
-#define CAVITY_ADAPTIVE_AVERAGED_MIN_WIDTH .44
-#define CAVITY_ADAPTIVE_AVERAGED_MIN_HARD_EDGE 2.
-GPUFUN
-int CavityPlan_envelope_long(double envelope_width, double length, double frequency) {
-    if (envelope_width>0.)
-        return envelope_width*2.*frequency/C_LIGHT>=CAVITY_ADAPTIVE_AVERAGED_MIN_WIDTH;
-    return length*2.*frequency/C_LIGHT>=CAVITY_ADAPTIVE_AVERAGED_MIN_HARD_EDGE*(1.-1e-12);
-}
-
 GPUFUN
 int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model, int integrator,
                         int64_t requested, double weight, double slice_start) {
@@ -227,9 +175,8 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
         ||(magnetic_profile==1&&(model!=CAVITY_MODEL_FULL
             ||el->edge_entry_active||el->edge_exit_active))
         || (model==CAVITY_MODEL_FROZEN&&profile!=1)
-        || el->order<0
-        || el->knl_len<=el->order
-        || el->ksl_len<=el->order)
+        || (el->knl_len>0 && (el->order<0 || el->knl_len<=el->order
+                              || el->ksl_len<=el->order)))
         controls=CAVITY_MODEL_ARGUMENT;
     // Spin is integrated on the scalar CPU full model only.
 #if defined(XTRACK_TPSA_TRACK) || (!defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)) || defined(XTRACK_MULTIPOLE_NO_SYNRAD)
@@ -268,16 +215,14 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
     const RFModelFields* el=&plan->fields;
     const int model=el->model;
     plan->model=model;
-    plan->adaptive=model==0;
     plan->thin_slice=0;
-    if (model>0 && model<10) return;
+    if (model<10) return;
 
     const double length=el->length;
     const double frequency=xt_float_or_tpsa_const_part(el->frequency);
     const double eta=xt_float_or_tpsa_const_part(el->eta);
-    // An adaptive choice uses the chosen model's integrator and resolution.
-    const int integrator=model==0 ? 0 : el->integrator;
-    const int64_t requested=model==0 ? 0 : el->num_kicks;
+    const int integrator=el->integrator;
+    const int64_t requested=el->num_kicks;
     const double envelope_width=CavityPlan_envelope_width(el->rf_profile,length,
         xt_float_or_tpsa_const_part(el->rf_profile_sigma));
     plan->integrator=integrator; plan->requested=requested; plan->eta=eta;
@@ -285,28 +230,9 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
     plan->profile=el->rf_profile;
     plan->magnetic_profile=el->magnetic_profile;
     plan->spin_tracking=el->spin_tracking;
-    if (model==0) {
-        for (int chosen=CAVITY_MODEL_FULL; chosen<=CAVITY_MODEL_PARAXIAL; ++chosen) {
-            const int controls=CavityPlan_controls(el,part0,chosen,integrator,requested,weight,slice_start);
-            plan->choice[chosen-CAVITY_MODEL_FULL].controls=controls;
-            plan->choice[chosen-CAVITY_MODEL_FULL].cells=CavityPlan_cells(chosen,requested,frequency,length,envelope_width,eta,weight,controls,0.);
-        }
-        const double voltage=fabs(xt_float_or_tpsa_const_part(el->voltage));
-        const double harmonic=xt_float_or_tpsa_const_part(el->harmonic);
-        plan->adaptive_length=length;
-        plan->adaptive_frequency=frequency;
-        plan->adaptive_harmonic=harmonic;
-        plan->adaptive_voltage=voltage;
-        plan->adaptive_needs_beat=eta!=0.;
-        plan->adaptive_beat_small=eta==0.;
-        // A harmonic frequency follows the particle's reference: beat per particle.
-        if (eta!=0. && harmonic==0. && length>0. && frequency>0.)
-            plan->adaptive_beat_small=CavityModels_envelope_beat(el,2.*PI*frequency/C_LIGHT)<=1e-4;
-    } else {
-        const int controls=CavityPlan_controls(el,part0,model,integrator,requested,weight,slice_start);
-        plan->choice[0].controls=controls;
-        plan->choice[0].cells=CavityPlan_cells(model,requested,frequency,length,envelope_width,eta,weight,controls,0.);
-    }
+    const int controls=CavityPlan_controls(el,part0,model,integrator,requested,weight,slice_start);
+    plan->choice.controls=controls;
+    plan->choice.cells=CavityPlan_cells(model,requested,frequency,length,envelope_width,eta,weight,controls,0.);
 
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
     // Slicing sums can differ from a parent boundary by a few ulps. Use
@@ -325,44 +251,6 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
     plan->physical_outer=reverse ? left_fraction==0. : right_fraction==1.;
 }
 
-// "adaptive", from the cheapest map to the most complete, for each particle's own
-// reference. V/E is the crest voltage over the total energy, V/T over the kinetic:
-// 1. Longitudinal map: V/E <= 2e-4, or the cavity is thin or at zero frequency, so
-//    the transverse RF force is negligible. The crest holds at every phase: at the
-//    zero crossing the reference gains no energy, but that force is at its largest.
-// 2. Phase-resolved: V/T > 1, where the cavity could stop the particle.
-// 3. Phase-averaged: V/E <= 0.1, so the energy barely changes, with an envelope
-//    longer than the steps it would need (above), and no counter wave at the beat
-//    that the average drops: a travelling wave, or envelope beat D2 <= 1e-4 (its
-//    error is about 1.2 D2, independent of energy).
-// 4. Phase-resolved paraxial otherwise.
-// It reads no coordinates, so particles of one reference share a map. The averaged and
-// paraxial maps drop the force cubic in the offset, at most 0.56 (r/width)^2 of the kick:
-// a limit of those maps that a large offset needs "phase-resolved" by name to avoid.
-// Other selectors are returned unchanged.
-GPUFUN
-int CavityPlan_choose(const CavityPlan* plan, LocalParticle* part) {
-    const RFModelFields* el=&plan->fields;
-    if (!plan->adaptive) return plan->model;
-    double frequency=plan->adaptive_frequency;
-    const double harmonic=plan->adaptive_harmonic;
-    if (harmonic!=0. && part->line_length>0.)
-        frequency+=harmonic*LocalParticle_get_beta0(part)*C_LIGHT/part->line_length;
-    if (!(plan->adaptive_length>0.) || !(frequency>0.)) return 0;
-    const double charge=fabs(LocalParticle_get_q0(part));
-    const double p0c=LocalParticle_get_p0c(part), mass0=LocalParticle_get_mass0(part);
-    const double voltage=charge*plan->adaptive_voltage;
-    const double energy=sqrt(p0c*p0c+mass0*mass0);
-    if (voltage<=2e-4*energy) return 0;
-    if (voltage>p0c*p0c/(energy+mass0)) return CAVITY_MODEL_FULL;
-    if (voltage<=.1*energy && CavityPlan_envelope_long(plan->envelope_width,plan->adaptive_length,frequency)) {
-        int beat_small=plan->adaptive_beat_small;
-        if (plan->adaptive_needs_beat && harmonic!=0.)
-            beat_small=CavityModels_envelope_beat(el,2.*PI*frequency/C_LIGHT)<=1e-4;
-        if (beat_small) return CAVITY_MODEL_AVERAGED;
-    }
-    return CAVITY_MODEL_PARAXIAL;
-}
 
 // Gauge transformation between the phase-resolved temporal RF potential and
 // the field-free-outside gauge of the end-plane impulse. The gauge
@@ -392,9 +280,8 @@ GPUFUN
 void track_cavity_single_particle(const CavityPlan* plan, int model,
                                   LocalParticle* part, CavityMagnusCache* magnus_cache) {
     const RFModelFields* el=&plan->fields;
-    const int slot=plan->adaptive ? model-CAVITY_MODEL_FULL : 0;
-    const int controls=plan->choice[slot].controls;
-    int64_t cells=plan->choice[slot].cells;
+    const int controls=plan->choice.controls;
+    int64_t cells=plan->choice.cells;
     const int integrator=plan->integrator;
     const int profile=plan->profile;
     const int magnetic_profile=plan->magnetic_profile;
@@ -718,14 +605,14 @@ void track_cavity_plan(LocalParticle* part0, const RFPlan* plan) {
     // The taper pass (tapering.py) only shares the energy loss among the
     // cavities at zero frequency: every model uses the longitudinal map there.
     if (LocalParticle_check_track_flag(part0,XS_FLAG_SR_TAPER)
-        || (!cavity->adaptive && cavity->model<10)) {
+        || cavity->model<10) {
         track_rf_body_particles(part0,&plan->body);
     } else {
         // Reference-only paraxial step generators, reused across the call.
         CavityMagnusCache magnus_cache;
         magnus_cache.valid=0;
         START_PER_PARTICLE_BLOCK(part0,part);
-            const int model=CavityPlan_choose(cavity,part);
+            const int model=cavity->model;
             if (model<10) track_rf_body_single_particle(part,&plan->body);
             else if (!cavity->thin_slice)
                 track_cavity_single_particle(cavity,model,part,&magnus_cache);

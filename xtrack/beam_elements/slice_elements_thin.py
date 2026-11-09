@@ -3,7 +3,7 @@ import xobjects as xo
 from ..base_element import BeamElement
 from ..general import _pkg_root
 from .bend import Bend
-from .cavity import Cavity
+from .cavity import Cavity, MagnetOverlappedCavity
 from .crab_cavity import CrabCavity
 from .multipole import Multipole
 from .octupole import Octupole
@@ -171,6 +171,15 @@ class ThinSliceCavity(_ThinSliceElementBase, BeamElement):
 
         return out
 
+
+
+class ThinSliceMagnetOverlappedCavity(ThinSliceCavity):
+
+    _xofields = {'_parent': xo.Ref(MagnetOverlappedCavity), **COMMON_SLICE_XO_FIELDS}
+
+    _extra_c_sources = [
+        _pkg_root.joinpath('beam_elements/elements_src/thin_slice_magnet_overlapped_cavity.h'),
+    ]
 
 class ThinSliceCrabCavity(_ThinSliceElementBase, BeamElement):
 

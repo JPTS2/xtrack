@@ -13,7 +13,7 @@ import xtrack as xt
 from _cavity_context import kernel_context
 
 
-MODELS = ('phase-resolved', 'phase-resolved-frozen')
+MODELS = ('_phase-resolved', '_phase-resolved-frozen')
 EVOLVING_MODELS = MODELS[:1]
 COORDINATES = ('x', 'px', 'y', 'py', 'zeta', 'delta')
 MASS_EV = 510998.95
@@ -30,7 +30,7 @@ def cpu_context(tmp_path_factory):
 def hardware(model):
     """Small declared hardware, with nonzero counter-wave where retained."""
     return dict(model=model, length=.05, voltage=2e4, frequency=400e6,
-        phase=.35, eta=0. if model == 'phase-resolved-frozen' else .25,
+        phase=.35, eta=0. if model == '_phase-resolved-frozen' else .25,
         counter_phase=.3, calibration_beta=1., num_kicks=16,
         absolute_time=True)
 
@@ -142,13 +142,13 @@ def test_normal_match_uses_selected_tracking_map(cpu_context, model):
     assert abs(float(matched.delta[0])-target_delta) < 1e-11
 
 
-@pytest.mark.parametrize('model,field', [('phase-resolved', 'eta'),
-    ('phase-resolved', 'edge_entry_active'), ('phase-resolved', 'edge_exit_active'),
-    ('phase-resolved', 'order'), ('phase-resolved-frozen', 'order')])
+@pytest.mark.parametrize('model,field', [('_phase-resolved', 'eta'),
+    ('_phase-resolved', 'edge_entry_active'), ('_phase-resolved', 'edge_exit_active'),
+    ('_phase-resolved', 'order'), ('_phase-resolved-frozen', 'order')])
 def test_zero_controls_survive_json_roundtrip(model, field):
     """Zero hardware/face settings must not turn into constructor defaults."""
-    original = xt.Cavity(**dict(hardware(model), **{field: 0}))
-    restored = xt.Cavity.from_dict(original.to_dict())
+    original = xt.MagnetOverlappedCavity(**dict(hardware(model), **{field: 0}))
+    restored = xt.MagnetOverlappedCavity.from_dict(original.to_dict())
     assert getattr(restored, field) == 0
     assert restored.model == original.model
 
@@ -156,7 +156,7 @@ def test_zero_controls_survive_json_roundtrip(model, field):
 @pytest.mark.parametrize('field', ('calibration_beta', 'rf_field_order'))
 def test_inadmissible_zero_controls_refuse_at_construction(field):
     with pytest.raises(ValueError):
-        xt.Cavity(**dict(hardware('phase-resolved-frozen'), **{field: 0}))
+        xt.Cavity(**dict(hardware('_phase-resolved-frozen'), **{field: 0}))
 
 
 def test_failed_knob_apply_restores_original_series_and_new_promotions():
@@ -442,10 +442,10 @@ def test_gaussian_readback_keeps_live_parent_slice_and_replica_controls():
     from math import erf, sqrt, pi
     from types import SimpleNamespace
 
-    parent = xt.Cavity(model='phase-resolved', length=.12, voltage=0.,
+    parent = xt.MagnetOverlappedCavity(model='_phase-resolved', length=.12, voltage=0.,
         frequency=400e6, ks=.3, knl=[0., .08], ksl=[0., -.02],
         edge_entry_active=0, edge_exit_active=0)
-    interval = xt.DriftSliceCavity(_parent=parent, _buffer=parent._buffer,
+    interval = xt.DriftSliceMagnetOverlappedCavity(_parent=parent, _buffer=parent._buffer,
         weight=.25, slice_offset=.015)
     elements = {'drift': xt.Drift(length=.3), 'rf': parent,
                 'interval': interval,
@@ -510,7 +510,7 @@ def thread_context(request, tmp_path_factory):
         yield serial if request.param == 0 else xo.ContextCpu(omp_num_threads=1)
 
 
-@pytest.mark.parametrize('model', ('phase-resolved',))
+@pytest.mark.parametrize('model', ('_phase-resolved',))
 @pytest.mark.parametrize('cells', (3, 64))
 def test_compact_p16_face_has_exactly_zero_potential_readback(cpu_context, model, cells):
     """Observe the declared support face, independently of accumulated z+=h.
@@ -541,7 +541,7 @@ def test_finite_rf_face_is_a_hard_edge(cpu_context, profile):
     """A whole cavity's end planes are hard edges: a field that does
     not vanish there ends abruptly and the particle leaves field-free."""
     line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
-        model='phase-resolved', rf_profile=profile, rf_profile_sigma=.12,
+        model='_phase-resolved', rf_profile=profile, rf_profile_sigma=.12,
         rf_profile_center=.02, length=.56, frequency=712e6, voltage=2000.,
         phase=.4, eta=.25, counter_phase=.3, calibration_beta=.9,
         num_kicks=64, absolute_time=True), xt.Marker(_context=cpu_context)],
@@ -569,7 +569,7 @@ def test_p16_face_frequency_tpsa_has_zero_cache_coefficients(cpu_context):
 
     frequency = 712e6
     line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
-        model='phase-resolved', rf_profile='p16', length=.56,
+        model='_phase-resolved', rf_profile='p16', length=.56,
         frequency=frequency, voltage=2000., phase=.4, eta=.25,
         counter_phase=.3, calibration_beta=.9, num_kicks=3,
         absolute_time=True), xt.Marker(_context=cpu_context)],
@@ -605,7 +605,7 @@ def test_accepted_transformed_species_and_reference_rows_are_independent(
     or physical inverse-error bound.
     """
     context = thread_context
-    controls = dict(hardware('phase-resolved'), num_kicks=24,
+    controls = dict(hardware('_phase-resolved'), num_kicks=24,
         shift_x=.001, shift_y=-.0003, shift_s=.001,
         rot_x_rad=-.02, rot_y_rad=.03, rot_s_rad=.12)
     line = xt.Line(elements=[

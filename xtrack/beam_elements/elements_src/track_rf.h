@@ -45,7 +45,7 @@ typedef struct RFBody_s {
     uint8_t kill_energy_kick;
 } RFBody;
 
-// One physical model of a cavity: "adaptive" keeps one per model it can pick.
+// The resolved controls and step count of a physical model.
 typedef struct CavityChoice_s {
     int controls;
     int64_t cells;
@@ -105,6 +105,13 @@ typedef struct RFModelFields_s {
     (f)->rot_shift_anchor=DATA##_get_rot_shift_anchor(el); \
 } while (0)
 
+// An element without static fields: a Cavity.
+#define RF_MODEL_FIELDS_CLEAR_STATIC(f) do { \
+    (f)->magnetic_profile=0; (f)->magnetic_profile_sigma=0.; (f)->ks=0.; \
+    (f)->order=-1; (f)->knl_len=0; (f)->ksl_len=0; \
+    (f)->knl=NULL; (f)->ksl=NULL; (f)->knl_tpsa=NULL; (f)->ksl_tpsa=NULL; \
+} while (0)
+
 #define RF_MODEL_FIELDS_FILL_STATIC(DATA, el, f) do { \
     (f)->magnetic_profile=DATA##_get_magnetic_profile(el); \
     (f)->magnetic_profile_sigma=DATA##_get_magnetic_profile_sigma(el); \
@@ -115,15 +122,10 @@ typedef struct RFModelFields_s {
 } while (0)
 
 // The physical models of a Cavity or a slice of it (cavity_models_adapter.h).
-// "adaptive" keeps the parts of its choice that depend on the element only;
-// each particle's reference is compared with them by CavityPlan_choose.
 typedef struct CavityPlan_s {
     RFModelFields fields;
-    int model, adaptive, thin_slice;
-    double adaptive_length, adaptive_frequency, adaptive_harmonic;
-    double adaptive_voltage;
-    int adaptive_needs_beat, adaptive_beat_small;
-    CavityChoice choice[4];
+    int model, thin_slice;
+    CavityChoice choice;
     int integrator, profile, magnetic_profile, spin_tracking;
     int64_t requested;
     double eta, envelope_width, length, weight;

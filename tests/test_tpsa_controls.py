@@ -337,7 +337,7 @@ def test_multisetter_resolves_canonical_slice_parent(tmp_path):
 
 def test_indexed_cavity_knob_lifecycle(tmp_path):
     with kernel_context(tmp_path) as context:
-        line=xt.Line(elements={'c':xt.Cavity(model='phase-resolved',length=.05,knl=[0.,.2],ksl=[0.,.3])})
+        line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(model='_phase-resolved',length=.05,knl=[0.,.2],ksl=[0.,.3])})
         line.vars['normal']=.2;line.vars['skew']=.3
         line.element_refs['c'].knl[1]=line.vars['normal']
         line.element_refs['c'].ksl[1]=line.vars['skew']
@@ -393,7 +393,7 @@ def test_indexed_cavity_knob_lifecycle(tmp_path):
 def test_cavity_array_masked_ufunc_preserves_untouched_storage(active):
     """Masked outputs preserve scalar mirrors and the actual owned series."""
     context = xo.ContextCpu(omp_num_threads=0)
-    owner = xt.Cavity(model='phase-resolved',_context=context, order=2,
+    owner = xt.MagnetOverlappedCavity(model='_phase-resolved',_context=context, order=2,
                      knl=[1.,2.,3.], ksl=[91.,82.,73.])
     mask = np.array([True,False,True])
     if active:
@@ -427,7 +427,7 @@ def test_cavity_array_masked_ufunc_preserves_untouched_storage(active):
 
 def test_cavity_array_ufunc_allocated_and_aliased_multiple_outputs():
     context = xo.ContextCpu(omp_num_threads=0)
-    owner = xt.Cavity(model='phase-resolved',_context=context, order=2,
+    owner = xt.MagnetOverlappedCavity(model='_phase-resolved',_context=context, order=2,
                      knl=[1.25,2.5,3.75], ksl=[91.,82.,73.])
     allocated = np.add(owner.knl,1.,out=(None,))
     assert isinstance(allocated,np.ndarray)
@@ -454,7 +454,7 @@ def test_cavity_array_ufunc_allocated_and_aliased_multiple_outputs():
 
 def test_cavity_array_ufunc_numpy_outputs_keep_casting_and_mask_rules():
     context = xo.ContextCpu(omp_num_threads=0)
-    owner = xt.Cavity(model='phase-resolved',_context=context, order=2,knl=[1.25,2.5,3.75])
+    owner = xt.MagnetOverlappedCavity(model='_phase-resolved',_context=context, order=2,knl=[1.25,2.5,3.75])
     integer_target = np.array([91,82,73],dtype=np.int64)
     with pytest.raises(TypeError,match='cast'):
         np.add(owner.knl,.5,out=integer_target)
@@ -479,8 +479,8 @@ def test_cavity_array_ufunc_numpy_outputs_keep_casting_and_mask_rules():
 @pytest.mark.parametrize('same_owner', [False, True])
 def test_cavity_array_ufunc_promotes_scalar_output_without_losing_mask(same_owner):
     context = xo.ContextCpu(omp_num_threads=0)
-    source = xt.Cavity(model='phase-resolved',_context=context, order=2,ksl=[91.,82.,73.])
-    target = source if same_owner else xt.Cavity(model='phase-resolved',
+    source = xt.MagnetOverlappedCavity(model='_phase-resolved',_context=context, order=2,ksl=[91.,82.,73.])
+    target = source if same_owner else xt.MagnetOverlappedCavity(model='_phase-resolved',
         _context=context, order=2,ksl=[91.,82.,73.])
     descriptor = madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
     source.knl[:] = [descriptor.param(1,value) for value in (1.,2.,3.)]
@@ -504,7 +504,7 @@ def test_cavity_array_ufunc_promotes_scalar_output_without_losing_mask(same_owne
 def test_cavity_array_ufunc_rejects_invalid_results_before_target_mutation(active):
     """A late invalid result must not alter earlier coefficients or activation."""
     context = xo.ContextCpu(omp_num_threads=0)
-    owner = xt.Cavity(model='phase-resolved',_context=context, order=2,
+    owner = xt.MagnetOverlappedCavity(model='_phase-resolved',_context=context, order=2,
                      knl=[1.,2.,3.], ksl=[91.,82.,73.])
     descriptor = madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
     foreign = madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
@@ -534,7 +534,7 @@ def test_cavity_array_ufunc_rejects_invalid_results_before_target_mutation(activ
 
 
 def test_cavity_descriptor_change_is_atomic():
-    owner=xt.Cavity(length=.05)
+    owner=xt.MagnetOverlappedCavity(length=.05)
     first=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
     second=madng_tpsa.Descriptor(6,3,num_params=1,param_order=1)
     owner.phase=first.param(1,.4)

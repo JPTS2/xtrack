@@ -4,7 +4,7 @@ import xobjects as xo
 from ..base_element import BeamElement
 from .bend import Bend
 from .bfield_expansion import BFieldExpansion
-from .cavity import Cavity
+from .cavity import Cavity, MagnetOverlappedCavity
 from .crab_cavity import CrabCavity
 from .device import Device
 from .multipole import Multipole
@@ -178,6 +178,16 @@ class ThickSliceCavity(_CavitySliceOffset, _ThickSliceElementBase, BeamElement):
 
     _extra_c_sources = [
         '#include "xtrack/beam_elements/elements_src/thick_slice_cavity.h"'
+    ]
+
+
+class ThickSliceMagnetOverlappedCavity(ThickSliceCavity):
+
+    isthick = True
+    _xofields = cavity_slice_xofields(MagnetOverlappedCavity)
+
+    _extra_c_sources = [
+        '#include "xtrack/beam_elements/elements_src/thick_slice_magnet_overlapped_cavity.h"'
     ]
 
 class ThickSliceCrabCavity(_ThickSliceElementBase, BeamElement):

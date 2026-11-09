@@ -28,7 +28,7 @@ NUM_GAUSS_CELLS = 16
 # Line and reference particle
 ################################################################################
 line = xt.Line(elements={
-    'rf': xt.Cavity(model='phase-resolved', length=LENGTH_M,
+    'rf': xt.Cavity(model='_phase-resolved', length=LENGTH_M,
         frequency=FREQUENCY_HZ, voltage=VOLTAGE_V, phase=PHASE_RAD,
         eta=ETA, num_kicks=NUM_GAUSS_CELLS, absolute_time=True),
     'reference_update': xt.ReferenceEnergyIncrease(Delta_p0c=0.),

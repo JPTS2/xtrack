@@ -9,9 +9,7 @@
 // Ordinary DriftSliceCavity deliberately has no automatic parent transform:
 // its legacy path must remain an untransformed drift. New continuous models
 // instead integrate the physical parent source on this interval, with the
-// standard straight-element wrapper. When "adaptive" picks both in one call,
-// the particles on the longitudinal map drift in the same transformed frame,
-// as they do in a thick slice.
+// standard straight-element wrapper.
 GPUFUN
 void CavityModels_track_drift_slice(const CavityPlan* prepared, LocalParticle* part0,
         double weight, double start_fraction) {
@@ -19,16 +17,12 @@ void CavityModels_track_drift_slice(const CavityPlan* prepared, LocalParticle* p
     const RFModelFields* parent=&plan.fields;
     const int8_t reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
     const double drift_length=(reverse ? -weight : weight)*parent->length;
-    if (!plan.adaptive && plan.model<10) {
+    if (plan.model<10) {
         START_PER_PARTICLE_BLOCK(part0,part);
             Drift_single_particle(part,drift_length);
         END_PER_PARTICLE_BLOCK;
         return;
     }
-    int any_physical=0;
-    START_PER_PARTICLE_BLOCK(part0,part);
-        if (CavityPlan_choose(&plan,part)>=10) any_physical=1;
-    END_PER_PARTICLE_BLOCK;
     const double length=parent->length*weight;
     const double anchor=parent->rot_shift_anchor
         -parent->length*start_fraction;
@@ -39,7 +33,7 @@ void CavityModels_track_drift_slice(const CavityPlan* prepared, LocalParticle* p
     const double ry=parent->rot_y_rad;
     const double rz=parent->rot_s_rad;
     const double rz0=parent->rot_s_rad_no_frame;
-    const int transformed=any_physical && (dx!=0. || dy!=0. || ds!=0. || rx!=0. || ry!=0.
+    const int transformed=(dx!=0. || dy!=0. || ds!=0. || rx!=0. || ry!=0.
         || rz!=0. || rz0!=0.);
     if (transformed) {
         if (!reverse)
@@ -52,7 +46,7 @@ void CavityModels_track_drift_slice(const CavityPlan* prepared, LocalParticle* p
     CavityMagnusCache magnus_cache;
     magnus_cache.valid=0;
     START_PER_PARTICLE_BLOCK(part0,part);
-        const int model=CavityPlan_choose(&plan,part);
+        const int model=plan.model;
         if (model<10) Drift_single_particle(part,drift_length);
         else track_cavity_single_particle(&plan,model,part,&magnus_cache);
     END_PER_PARTICLE_BLOCK;

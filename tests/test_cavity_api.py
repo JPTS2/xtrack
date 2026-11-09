@@ -9,7 +9,7 @@ import xtrack as xt
 from _cavity_context import kernel_context
 
 
-MODELS = ('phase-resolved',)
+MODELS = ('_phase-resolved',)
 
 
 COORDS = ('x', 'px', 'y', 'py', 'zeta', 'delta')
@@ -22,14 +22,14 @@ def model_context(tmp_path_factory):
         yield context
 
 
-def cavity(model='phase-resolved', **kwargs):
+def cavity(model='_phase-resolved', **kwargs):
     controls = dict(length=.05, voltage=20e3, frequency=400e6, phase=.7,
                     eta=.25, counter_phase=.3, calibration_beta=1.,
                     model=model, integrator='uniform', num_kicks=16)
-    if model == 'phase-resolved-frozen':
-        controls.update(eta=0., integrator='geometric')
+    if model == '_phase-resolved-frozen':
+        controls.update(eta=0., integrator='_geometric')
     controls.update(kwargs)
-    return xt.Cavity(**controls)
+    return xt.MagnetOverlappedCavity(**controls)
 
 
 def particle(context=None):
@@ -63,7 +63,7 @@ def test_new_selectors_are_cavity_specific():
 
 
 @pytest.mark.parametrize('model,profile', [(None, 'p16'),
-    ('phase-resolved', 'p16'), ('phase-resolved-frozen', 'uniform')])
+    ('_phase-resolved', 'p16'), ('_phase-resolved-frozen', 'uniform')])
 def test_builtin_profile_inference_is_stored(model, profile):
     rf = xt.Cavity(**({} if model is None else {'model': model}))
     assert rf.rf_profile == profile
@@ -77,26 +77,26 @@ def test_builtin_profile_inference_is_stored(model, profile):
 @pytest.mark.parametrize('sigma', [None, 0., -.01, np.inf, np.nan])
 def test_gaussian_profile_never_guesses_a_width(sigma):
     with pytest.raises(ValueError, match='width'):
-        xt.Cavity(model='phase-resolved', rf_profile='gaussian',
+        xt.Cavity(model='_phase-resolved', rf_profile='gaussian',
                    rf_profile_sigma=sigma)
 
 
 def test_builtin_profile_model_changes_do_not_retarget_source():
     rf = cavity(rf_profile='uniform')
-    rf.model = 'phase-resolved-frozen'
+    rf.model = '_phase-resolved-frozen'
     assert rf.rf_profile == 'uniform'
-    rf.model = 'phase-resolved'
+    rf.model = '_phase-resolved'
     assert xt.Cavity.from_dict(rf.to_dict()).rf_profile == 'uniform'
     # Raw enum zero must not disappear and acquire a different inferred source.
     rf.rf_profile = 'p16'
-    rf.model = 'phase-resolved-frozen'
+    rf.model = '_phase-resolved-frozen'
     assert rf.rf_profile == rf.to_dict()['rf_profile'] == 'p16'
     with pytest.raises(ValueError, match='uniform'):
         xt.Cavity.from_dict(rf.to_dict())
 
 
 def test_gaussian_profile_live_metres_and_roundtrip():
-    line = xt.Line(elements={'rf': cavity('phase-resolved',
+    line = xt.Line(elements={'rf': cavity('_phase-resolved',
         rf_profile_sigma=.012, rf_profile_center=0.)})
     line.vars['sigma_m'] = .012
     line.vars['center_m'] = 0.
@@ -115,8 +115,8 @@ def test_gaussian_profile_live_metres_and_roundtrip():
     assert restored.rf_profile_center == -.003
 
 
-@pytest.mark.parametrize('model,profile', [('phase-resolved-frozen', 'p16'),
-    ('phase-resolved-frozen', 'gaussian')])
+@pytest.mark.parametrize('model,profile', [('_phase-resolved-frozen', 'p16'),
+    ('_phase-resolved-frozen', 'gaussian')])
 def test_builtin_profile_model_mismatches_refuse(model, profile):
     with pytest.raises(ValueError):
         xt.Cavity(model=model, rf_profile=profile, rf_profile_sigma=.02)
@@ -170,13 +170,13 @@ def test_serialization_writes_only_non_default_fields():
     legacy = xt.Cavity(voltage=1e6, frequency=4e8, phase=.3).to_dict()
     assert set(legacy) == {'__class__', 'voltage', 'frequency', 'phase'}
     # Explicit zeros of nonzero defaults, and explicit zero carriers, survive.
-    explicit = dict(model='phase-resolved', eta=0., calibration_beta=.9,
+    explicit = dict(model='_phase-resolved', eta=0., calibration_beta=.9,
         edge_entry_active=0, edge_exit_active=0, order=2,
         knl=[0., .1, 0.], wave_number=0., nominal_energy_gain=0.,
         rf_profile='uniform')
-    data = xt.Cavity(**explicit).to_dict()
+    data = xt.MagnetOverlappedCavity(**explicit).to_dict()
     assert set(data) == {'__class__', *explicit}
-    restored = xt.Cavity.from_dict(data)
+    restored = xt.MagnetOverlappedCavity.from_dict(data)
     for name, value in explicit.items():
         np.testing.assert_array_equal(getattr(restored, name), value)
     assert restored.to_dict() == data
@@ -186,7 +186,7 @@ def test_physical_controls_round_trip_and_carrier_origin():
     original = cavity(wave_number=None, knl=[0., .012], ksl=[0., -.003], ks=.2)
     assert original.wave_number is None
     assert original.eta == .25
-    copy = xt.Cavity.from_dict(original.to_dict())
+    copy = xt.MagnetOverlappedCavity.from_dict(original.to_dict())
     assert copy.wave_number is None
     assert copy.model == original.model
     np.testing.assert_array_equal(copy.knl, original.knl)
@@ -194,7 +194,7 @@ def test_physical_controls_round_trip_and_carrier_origin():
     copy.wave_number = 0.
     assert copy.wave_number == 0.
     assert not copy.wave_number_from_frequency
-    copy = xt.Cavity.from_dict(copy.to_dict())
+    copy = xt.MagnetOverlappedCavity.from_dict(copy.to_dict())
     assert copy.wave_number == 0.
     copy.wave_number = None
     assert copy.wave_number_from_frequency
@@ -203,7 +203,7 @@ def test_physical_controls_round_trip_and_carrier_origin():
 def test_serialization_preserves_tiny_coefficients_and_active_order():
     rf = cavity(knl=[0., 1e-19], ksl=[0., -2e-20])
     rf.order = 0
-    restored = xt.Cavity.from_dict(rf.to_dict())
+    restored = xt.MagnetOverlappedCavity.from_dict(rf.to_dict())
     assert restored.order == 0
     np.testing.assert_array_equal(restored.knl, rf.knl)
     np.testing.assert_array_equal(restored.ksl, rf.ksl)
@@ -211,14 +211,14 @@ def test_serialization_preserves_tiny_coefficients_and_active_order():
 
 @pytest.mark.parametrize('gain', [None, 0., 12000.])
 def test_frozen_nominal_programme_round_trip(gain):
-    rf = cavity('phase-resolved-frozen', nominal_energy_gain=gain)
+    rf = cavity('_phase-resolved-frozen', nominal_energy_gain=gain)
     restored = xt.Cavity.from_dict(rf.to_dict())
     assert restored.nominal_energy_gain == gain
     assert restored.nominal_energy_gain_from_rf == (gain is None)
 
 
 def test_frozen_nominal_programme_live_expression():
-    line = xt.Line(elements={'rf': cavity('phase-resolved-frozen')})
+    line = xt.Line(elements={'rf': cavity('_phase-resolved-frozen')})
     line.vars['programme_gain'] = 0.
     line.set('rf', nominal_energy_gain='programme_gain')
     assert line['rf'].nominal_energy_gain == 0.
@@ -228,7 +228,7 @@ def test_frozen_nominal_programme_live_expression():
     assert not line['rf'].nominal_energy_gain_from_rf
 
 
-@pytest.mark.parametrize('model', (*MODELS, 'phase-resolved-frozen'))
+@pytest.mark.parametrize('model', (*MODELS, '_phase-resolved-frozen'))
 def test_thin_source_strength_readback_follows_parent_model(model_context, model):
     line = xt.Line(elements={'rf': cavity(model, voltage=20e3,
                                          _context=model_context,
@@ -237,9 +237,9 @@ def test_thin_source_strength_readback_follows_parent_model(model_context, model
     line.build_tracker(_context=model_context)
     # These voltages are nominal parent-input allocations; the resolved P16
     # source's electric-crest integral over a partial interval is not weight*V.
-    source = np.array([isinstance(line[name], xt.DriftSliceCavity)
+    source = np.array([isinstance(line[name], xt.DriftSliceMagnetOverlappedCavity)
                        for name in line.element_names])
-    marker = np.array([isinstance(line[name], xt.ThinSliceCavity)
+    marker = np.array([isinstance(line[name], xt.ThinSliceMagnetOverlappedCavity)
                        for name in line.element_names])
     np.testing.assert_allclose(line.attr['voltage'][source].sum(), 20e3)
     np.testing.assert_array_equal(line.attr['voltage'][marker], 0.)
@@ -263,19 +263,19 @@ def test_source_interval_alignment_readback_is_live():
     line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
     # Metadata needs buffer offsets, not compilation of the physical maps.
     line.build_tracker(compile=False)
-    intervals = np.array([isinstance(line[name], xt.DriftSliceCavity)
+    intervals = np.array([isinstance(line[name], xt.DriftSliceMagnetOverlappedCavity)
                           for name in line.element_names])
     for name, value in [('shift_x', .0002), ('shift_y', -.0001),
                         ('rot_s_rad', .2), ('rot_y_rad', .001)]:
         np.testing.assert_array_equal(line.attr[name][intervals], value)
     line.set('rf', model='adaptive')
     np.testing.assert_array_equal(line.attr['shift_x'][intervals], 0.)
-    line.set('rf', model='phase-resolved', shift_x=.0003)
+    line.set('rf', model='_phase-resolved', shift_x=.0003)
     np.testing.assert_array_equal(line.attr['shift_x'][intervals], .0003)
     # Automatic drift transforms stay off; its new source helper owns them.
     assert all(not line[name].rot_and_shift_from_parent
                for name in line.element_names
-               if isinstance(line[name], xt.DriftSliceCavity))
+               if isinstance(line[name], xt.DriftSliceMagnetOverlappedCavity))
 
 
 @pytest.mark.parametrize('model', MODELS)
@@ -382,7 +382,8 @@ def test_slicing_shares_source_and_survives_serialization(model_context,
     np.testing.assert_allclose(physical_coordinates(optimized),
                                physical_coordinates(sliced),
                                rtol=0, atol=2e-12)
-    kind = xt.ThickSliceCavity if mode == 'thick' else xt.DriftSliceCavity
+    kind = (xt.ThickSliceMagnetOverlappedCavity if mode == 'thick'
+            else xt.DriftSliceMagnetOverlappedCavity)
     names = [name for name in restored.element_names
              if isinstance(restored[name], kind)]
     assert len(names) == (2 if mode == 'thick' else 3)
@@ -394,7 +395,7 @@ def test_slicing_shares_source_and_survives_serialization(model_context,
     assert second.slice_offset == 2*offset
 
 
-@pytest.mark.parametrize('model', ['adaptive', 'phase-resolved'])
+@pytest.mark.parametrize('model', ['adaptive', '_phase-resolved'])
 def test_cavity_slices_serialize_public_offset(model):
     """Cavity slices serialize offsets exactly as other element slices do."""
     def sliced(element):
@@ -418,12 +419,12 @@ def test_old_serialized_slice_distance_loads(kind):
     old = dict(__class__=kind.__name__, parent_name='rf',
                weight=.5, slice_offset=.025)
     restored = kind.from_dict(old)
-    restored._parent = cavity(_buffer=restored._buffer)
+    restored._parent = xt.Cavity(length=.05, _buffer=restored._buffer)
     assert restored.slice_offset == .025
 
 
-@pytest.mark.parametrize('model,mode', [('phase-resolved-frozen', 'thick'),
-    ('phase-resolved-frozen', 'thin'), ('phase-resolved', 'thick')])
+@pytest.mark.parametrize('model,mode', [('_phase-resolved-frozen', 'thick'),
+    ('_phase-resolved-frozen', 'thin'), ('_phase-resolved', 'thick')])
 def test_finite_parent_words_survive_layout_partition(model_context, model, mode):
     controls = dict(num_kicks=4,
                     edge_entry_active=0, edge_exit_active=1)
@@ -459,7 +460,7 @@ def test_finite_parent_words_survive_layout_partition(model_context, model, mode
                                rtol=0., atol=3e-11)
 
 
-@pytest.mark.parametrize('model', ('phase-resolved', 'phase-resolved-frozen'))
+@pytest.mark.parametrize('model', ('_phase-resolved', '_phase-resolved-frozen'))
 def test_optimized_source_layout_keeps_live_legacy_rf_switch(model_context, model):
     source = cavity(model, _context=model_context, integrator='adaptive',
                     num_kicks=24)
@@ -476,13 +477,13 @@ def test_optimized_source_layout_keeps_live_legacy_rf_switch(model_context, mode
 
     reference = xt.Line(elements={'rf': cavity(model, _context=model_context,
                         integrator='adaptive', num_kicks=24)})
-    reference['rf'].model = 'longitudinal-only'
+    reference['rf'].model = 'drift-kick-drift-expanded'
     reference.reset_s_at_end_turn = False
     reference.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
     reference.build_tracker(_context=model_context)
     expected_legacy = initial.copy()
     reference.track(expected_legacy)
-    line['rf'].model = 'longitudinal-only'
+    line['rf'].model = 'drift-kick-drift-expanded'
     actual = initial.copy()
     line.track(actual)
     assert expected_legacy.state[0] == actual.state[0] == 1
@@ -519,7 +520,7 @@ def test_matching_uses_normal_live_phase_knob(model_context):
 def test_legacy_models_ignore_physical_model_fields(model_context):
     plain = xt.Cavity(_context=model_context, voltage=20e3, frequency=400e6,
                       phase=.7)
-    dressed = xt.Cavity(_context=model_context, voltage=20e3, frequency=400e6,
+    dressed = xt.MagnetOverlappedCavity(_context=model_context, voltage=20e3, frequency=400e6,
         phase=.7, ks=.1, knl=[0., .01], ksl=[0., .02], rf_profile='gaussian',
         rf_profile_sigma=.02, eta=.3)
     expected = particle(model_context)
@@ -537,7 +538,7 @@ def test_gaussian_magnetic_integrated_strength_readback(mode):
                 magnetic_profile='gaussian', magnetic_profile_sigma=.015,
                 edge_entry_active=0, edge_exit_active=0)
     data = rf.to_dict()
-    restored = xt.Cavity.from_dict(data)
+    restored = xt.MagnetOverlappedCavity.from_dict(data)
     assert restored.magnetic_profile == 'gaussian'
     assert restored.magnetic_profile_sigma == .015
     line = xt.Line(elements={'rf': rf})
@@ -581,46 +582,16 @@ def test_gaussian_magnetic_width_is_explicit(width):
                edge_entry_active=0, edge_exit_active=0)
 
 
-@pytest.mark.parametrize('old,new', [
-    ('drift-kick-drift-expanded', 'longitudinal-only'),
-    ('drift-kick-drift-exact', 'longitudinal-only-exact'),
-    ('rot-kick-rot-low-order', 'longitudinal-only-exact'),
-    ('rot-kick-rot-high-order', 'longitudinal-only-exact')])
-def test_legacy_model_names_are_deprecated_aliases(model_context, old, new):
-    with pytest.warns(FutureWarning, match='deprecated'):
-        aliased = xt.Cavity(_context=model_context, length=1., voltage=20e6,
-                            frequency=1.3e9, phase=.3, num_kicks=4, model=old)
-    assert aliased.model == new
-    direct = xt.Cavity(_context=model_context, length=1., voltage=20e6,
-                       frequency=1.3e9, phase=.3, num_kicks=4, model=new)
-    tracked = []
-    for element in (aliased, direct):
-        probe = particle(model_context)
-        element.track(probe)
-        tracked.append(coordinates(probe))
-    np.testing.assert_array_equal(tracked[0], tracked[1])
-
-
-def test_old_integrator_names_are_deprecated_aliases():
-    with pytest.warns(FutureWarning, match='deprecated'):
-        rf = xt.Cavity(model='phase-resolved', length=.1, integrator='gauss2')
-    assert rf.integrator == 'uniform'
-    with pytest.warns(FutureWarning, match='deprecated'):
-        rf = xt.Cavity(model='phase-resolved-frozen', length=.1,
-                       integrator='geometric-kick-drift')
-    assert rf.integrator == 'geometric'
-
-
 def test_teapot_refused_for_phase_resolved():
     with pytest.raises(ValueError, match='teapot'):
-        xt.Cavity(model='phase-resolved', length=.1, integrator='teapot')
+        xt.Cavity(model='_phase-resolved', length=.1, integrator='teapot')
 
 
-def _averaged_cavity(model='phase-averaged', **changes):
+def _averaged_cavity(model='_phase-averaged', **changes):
     controls = dict(length=1.15, voltage=20e6, frequency=1.3e9, phase=1.2,
                     model=model, num_kicks=32)
     controls.update(changes)
-    return xt.Cavity(**controls)
+    return xt.MagnetOverlappedCavity(**controls)
 
 
 def _launch(gamma, **changes):
@@ -630,14 +601,14 @@ def _launch(gamma, **changes):
                         mass0=xt.ELECTRON_MASS_EV, **values)
 
 
-@pytest.mark.parametrize('model', ['phase-averaged', 'phase-resolved-paraxial'])
+@pytest.mark.parametrize('model', ['_phase-averaged', '_phase-resolved-paraxial'])
 def test_phase_averaged_refuses_unsupported_static_fields_and_integrators(model):
     with pytest.raises(ValueError, match='static'):
         _averaged_cavity(model, ks=.1)                     # solenoid with active faces
     with pytest.raises(ValueError, match='static'):
         _averaged_cavity(model, knl=[0., 0., .1], order=2)  # sextupole
     for integrator in ('teapot', 'yoshida-6'):
-        with pytest.raises(ValueError, match='geometric'):
+        with pytest.raises(ValueError, match='_geometric'):
             _averaged_cavity(model, integrator=integrator)
 
 
@@ -656,7 +627,7 @@ def _adaptive_line(model_context, **controls):
 
 
 def test_plan_follows_element_changes_between_track_calls(model_context):
-    line = _adaptive_line(model_context, model='longitudinal-only', length=1.,
+    line = _adaptive_line(model_context, model='drift-kick-drift-expanded', length=1.,
                           frequency=1e9, voltage=1e5, phase=np.pi / 2)
     def gain():
         probe = line.build_particles(zeta=0.)
@@ -666,6 +637,6 @@ def test_plan_follows_element_changes_between_track_calls(model_context):
     first = gain()
     line['rf'].voltage = 2e5
     np.testing.assert_allclose(gain(), 2 * first, rtol=1e-12)
-    line['rf'].model = 'phase-resolved'
+    line['rf'].model = '_phase-resolved'
     assert gain() != 2 * first
 

@@ -44,7 +44,7 @@ KSL1              = 0.            # 1/m, integrated skew quadrupole
 k = 2 * np.pi * FREQUENCY_HZ / 299792458.
 kappa = np.sqrt(GAMMA0**2 - 1.)
 line = xt.Line(elements={
-    'rf': xt.Cavity(model='phase-resolved', rf_profile='p16',
+    'rf': xt.MagnetOverlappedCavity(model='_phase-resolved', rf_profile='p16',
         length=LENGTH_M, frequency=FREQUENCY_HZ, voltage=VOLTAGE_V,
         phase=PHASE_RAD, eta=ETA, counter_phase=COUNTER_PHASE_RAD,
         calibration_beta=1., num_kicks=NUM_GAUSS_CELLS, absolute_time=True,

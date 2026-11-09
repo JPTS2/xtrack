@@ -51,18 +51,18 @@ PX_LIMIT          = .03
 # Explicit source/transport assumptions
 ########################################
 COHORTS = [
-    ('p16', .25, .3, .9, ['phase-resolved', 'phase-averaged']),
-    ('uniform', 0., 0., 1., ['phase-resolved', 'phase-averaged', 'phase-resolved-frozen']),
+    ('p16', .25, .3, .9, ['_phase-resolved', '_phase-averaged']),
+    ('uniform', 0., 0., 1., ['_phase-resolved', '_phase-averaged', '_phase-resolved-frozen']),
 ]
 INTEGRATORS = {
-    'phase-resolved': 'uniform',
-    'phase-averaged': 'uniform',
-    'phase-resolved-frozen': 'geometric',
+    '_phase-resolved': 'uniform',
+    '_phase-averaged': 'uniform',
+    '_phase-resolved-frozen': '_geometric',
 }
 LABELS = {
-    'phase-resolved': 'Full resolved',
-    'phase-averaged': 'Phase averaged (Sagan type)',
-    'phase-resolved-frozen': 'Frozen coefficients and faces',
+    '_phase-resolved': 'Full resolved',
+    '_phase-averaged': 'Phase averaged (Sagan type)',
+    '_phase-resolved-frozen': 'Frozen coefficients and faces',
 }
 
 
@@ -77,7 +77,7 @@ nominal_time = 0.
 elements, names, rf_names = [], [], []
 for cell in range(2):
     rf_name = f'rf{cell}'
-    elements.append(xt.Cavity(model='phase-resolved', rf_profile='p16',
+    elements.append(xt.Cavity(model='_phase-resolved', rf_profile='p16',
         length=LENGTH_M, voltage=VOLTAGE_V, frequency=FREQUENCY_HZ,
         phase=PHASE_RAD-2*np.pi*FREQUENCY_HZ*nominal_time,
         absolute_time=True, eta=.25, counter_phase=.3, calibration_beta=.9,
@@ -148,7 +148,7 @@ for profile, eta, counter_phase, beta_cal, models in COHORTS:
             cavity.counter_phase = counter_phase
             cavity.calibration_beta = beta_cal
             cavity.integrator = INTEGRATORS[model]
-            cavity.num_kicks = (FROZEN_CELLS if model == 'phase-resolved-frozen'
+            cavity.num_kicks = (FROZEN_CELLS if model == '_phase-resolved-frozen'
                                 else SOURCE_CELLS)
         twiss_started = perf_counter()
         twiss = line.twiss(method='6d', **twiss_range,

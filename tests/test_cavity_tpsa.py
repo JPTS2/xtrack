@@ -45,9 +45,9 @@ def test_frozen_energy_drift_uses_input_delta_series(tmp_path):
 
 
 @pytest.mark.parametrize('order,model,static_fields', [
-    (2,'phase-resolved',False),
-    (3,'phase-resolved',False),
-    (3,'phase-resolved',True)])
+    (2,'_phase-resolved',False),
+    (3,'_phase-resolved',False),
+    (3,'_phase-resolved',True)])
 def test_calibration_order_one_handle_on_higher_order_map(
         cavity_magnetic_context, order, model, static_fields):
     """Descriptor.param's direct order-one handle must not alter source constants."""
@@ -55,7 +55,7 @@ def test_calibration_order_one_handle_on_higher_order_map(
     context = cavity_magnetic_context
     launch = dict(LAUNCH, p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1))
     fields = dict(ks=.2, knl=[0.,.01], ksl=[0.,0.,.005]) if static_fields else {}
-    line = xt.Line(elements={'c':xt.Cavity(
+    line = xt.Line(elements={'c':xt.MagnetOverlappedCavity(
         length=.05 if static_fields else .167,
         voltage=2e3 if static_fields else 2e4,
         frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
@@ -123,9 +123,9 @@ def test_zero_primal_static_controls_keep_derivatives(cavity_magnetic_context):
     context = cavity_magnetic_context
     mass = xt.ELECTRON_MASS_EV
     launch = dict(LAUNCH, p0c=mass*np.sqrt(2.4**2-1), x=4e-4, y=-3e-4)
-    line = xt.Line(elements={'c':xt.Cavity(length=.05, voltage=2e3,
+    line = xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05, voltage=2e3,
         frequency=400e6, phase=.4, eta=.25, counter_phase=.3,
-        calibration_beta=1., model='phase-resolved', num_kicks=4)})
+        calibration_beta=1., model='_phase-resolved', num_kicks=4)})
     controls = ('solenoid', 'normal', 'skew')
     for name in controls:
         line.vars[name] = 0.
@@ -180,7 +180,7 @@ def test_frozen_fixed_nominal_gain_with_absolute_clock(cavity_magnetic_context):
     launch=dict(LAUNCH,p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1),s=.17)
     line=xt.Line(elements={'c':xt.Cavity(
         length=.167, voltage=2e4,frequency=400e6,phase=.4,eta=0.,
-        model='phase-resolved-frozen',absolute_time=True,num_kicks=4,
+        model='_phase-resolved-frozen',absolute_time=True,num_kicks=4,
         nominal_energy_gain=8e3)})
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
     line.reset_s_at_end_turn=False
@@ -281,7 +281,7 @@ def test_legacy_standalone_cavity_nonzero_s_tpsa(tmp_path):
                                    rtol=0., atol=3e-14)
 
 
-@pytest.mark.parametrize('model', ['phase-resolved'])
+@pytest.mark.parametrize('model', ['_phase-resolved'])
 @pytest.mark.parametrize('order',[2,3])
 def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order):
     """Nontrivial calibration and two waves expose hidden frozen preparation."""
@@ -355,7 +355,7 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
     np.testing.assert_allclose(mixed,fd_mixed,rtol=2e-4,atol=3e-8)
 
 
-@pytest.mark.parametrize('model',['phase-resolved'])
+@pytest.mark.parametrize('model',['_phase-resolved'])
 @pytest.mark.parametrize('explicit_carrier',[False,True])
 def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,explicit_carrier):
     mass=xt.ELECTRON_MASS_EV
@@ -365,7 +365,7 @@ def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,ex
     if explicit_carrier:
         values['wave_number']=1.1*2*np.pi*400e6/299792458.
     context=cavity_magnetic_context
-    line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,eta=.25,
+    line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,phase=.4,eta=.25,
         model=model,num_kicks=8,absolute_time=True,**values)})
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
     _build_shared_cavity_tracker(line,context)
@@ -403,7 +403,7 @@ def test_frozen_cavity_tpsa_phase_and_clock(tmp_path,absolute_time):
     with kernel_context(tmp_path) as context:
         line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
             voltage=2e4,frequency=400e6,phase=.4,eta=0.,
-            model='phase-resolved-frozen',num_kicks=8,
+            model='_phase-resolved-frozen',num_kicks=8,
             absolute_time=absolute_time)],element_names=['d','c'])
         line.particle_ref=xt.Particles(p0c=LAUNCH['p0c'],
             mass0=LAUNCH['mass0'],q0=1.)
@@ -435,9 +435,9 @@ def test_frozen_solenoid_zero_strength_parameter_tpsa(tmp_path):
     mass=xt.ELECTRON_MASS_EV
     launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
     with kernel_context(tmp_path) as context:
-        line=xt.Line(elements={'c':xt.Cavity(length=.05,frequency=400e6,
+        line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,frequency=400e6,
             voltage=0.,eta=0.,ks=0.,edge_entry_active=False,
-            edge_exit_active=False,model='phase-resolved-frozen',num_kicks=4)})
+            edge_exit_active=False,model='_phase-resolved-frozen',num_kicks=4)})
         line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
         line.reset_s_at_end_turn=False
         line.build_tracker(_context=context)
@@ -470,7 +470,7 @@ def test_frozen_cavity_tpsa_voltage_and_frequency(tmp_path):
     values=dict(voltage=2e4,frequency=400e6,phase_taper=.07,lag_taper=1.2)
     with kernel_context(tmp_path) as context:
         line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
-            phase=.4,eta=0.,model='phase-resolved-frozen',num_kicks=8,
+            phase=.4,eta=0.,model='_phase-resolved-frozen',num_kicks=8,
             absolute_time=True,**values)],element_names=['d','c'])
         line.particle_ref=xt.Particles(p0c=LAUNCH['p0c'],
             mass0=LAUNCH['mass0'],q0=1.)
@@ -505,10 +505,13 @@ def test_frozen_cavity_tpsa_voltage_and_frequency(tmp_path):
 
 def _build_shared_cavity_tracker(line, context):
     # Kernel ownership is per Tracker, not per Context. Reuse the supported
-    # track_kernel dictionary across identical one-Cavity type/ABI sets.
-    previous = getattr(context, '_cavity_test_track_kernels', None)
-    line.build_tracker(_context=context, track_kernel=previous)
-    context._cavity_test_track_kernels = line.tracker.track_kernel
+    # track_kernel dictionary across lines with the same element types.
+    kernels = getattr(context, '_cavity_test_track_kernels', {})
+    types = frozenset(type(element).__name__
+                      for element in line.element_dict.values())
+    line.build_tracker(_context=context, track_kernel=kernels.get(types))
+    kernels[types] = line.tracker.track_kernel
+    context._cavity_test_track_kernels = kernels
 
 
 @pytest.fixture(scope='module')
@@ -519,15 +522,15 @@ def cavity_magnetic_context(tmp_path_factory):
         yield context
 
 
-@pytest.mark.parametrize('model',['phase-resolved','phase-resolved-frozen'])
+@pytest.mark.parametrize('model',['_phase-resolved','_phase-resolved-frozen'])
 def test_native_indexed_magnetic_parameter_tpsa(cavity_magnetic_context,model):
     mass=xt.ELECTRON_MASS_EV
     launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1),x=4e-4,y=-3e-4)
-    frozen=model=='phase-resolved-frozen'
+    frozen=model=='_phase-resolved-frozen'
     values={'normal':0. if frozen else .01}
     if not frozen: values['skew']=.005
     context=cavity_magnetic_context
-    line=xt.Line(elements={'c':xt.Cavity(length=.05,voltage=2e4,
+    line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,voltage=2e4,
         frequency=400e6,phase=.4,eta=0. if frozen else .25,
         model=model,num_kicks=8)})
     for name,value in values.items():line.vars[name]=value
@@ -581,7 +584,7 @@ def test_gaussian_magnetic_profile_tpsa(cavity_magnetic_context):
         frequency=400e6,calibration_beta=.9,rf_profile_sigma=.035,
         rf_profile_center=.012)
     line=xt.Line(elements={'c':xt.Cavity(length=.167,
-        model='phase-resolved',rf_profile='gaussian',
+        model='_phase-resolved',rf_profile='gaussian',
         num_kicks=8,**values)})
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
     line.reset_s_at_end_turn=False
