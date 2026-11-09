@@ -34,7 +34,7 @@ NEMITT_Y        = 2.0e-6                # Normalized rms emittance [m rad]
 ################################################################################
 # Load the model
 ################################################################################
-repo_root   = Path(__file__).resolve().parents[2]
+repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
 

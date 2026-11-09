@@ -295,10 +295,14 @@ See [collective tracking](tracking/collective/README.md).
 
 ## monitors
 
+See the [monitor examples](monitors/README.md) for the learning route.
+
 Individual particle records, derived beam statistics and measurement storage.
 The element-by-element lesson includes `ONE_TURN_EBE`.
 
 ### particle_records
+
+See [particle records](monitors/particle_records/README.md).
 
 - `001_turn_by_turn.py`
 - `002_element_by_element.py`
@@ -308,6 +312,8 @@ The element-by-element lesson includes `ONE_TURN_EBE`.
 
 ### beam_statistics
 
+See [beam statistics](monitors/beam_statistics/README.md).
+
 - `001_whole_beam_statistics.py`
 - `002_derived_statistics.py`
 - `003_bunch_statistics.py`
@@ -316,6 +322,8 @@ The element-by-element lesson includes `ONE_TURN_EBE`.
 - `006_beam_profiles.py`
 
 ### storage
+
+See [measurement storage](monitors/storage/README.md).
 
 - `001_save_statistics_during_tracking.py`
 - `002_reuse_recording_frames.py`

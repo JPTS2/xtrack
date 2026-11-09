@@ -36,7 +36,7 @@ FRAME_PERIOD    = 8                     # Turns between window starts
 ################################################################################
 # Load the model
 ################################################################################
-repo_root   = Path(__file__).resolve().parents[2]
+repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
 
