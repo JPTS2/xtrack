@@ -191,10 +191,9 @@ Begin with [transverse optics](optics/transverse/README.md).
 - `010_reverse_reference_frame.py`
 - `011_closed_orbit_search.py`
 - `012_closed_orbit_dispersion.py`
-- `013_chromatic_optics.py`
-- `014_transfer_matrices.py`
-- `015_twiss_settings.py`
-- `016_save_and_load_twiss.py`
+- `013_transfer_matrices.py`
+- `014_twiss_settings.py`
+- `015_save_and_load_twiss.py`
 
 ### longitudinal
 
@@ -204,10 +203,14 @@ Begin with [transverse optics](optics/transverse/README.md).
 
 ### nonlinear
 
-- `001_nonlinear_chromaticity.py`
-- `002_amplitude_detuning.py`
-- `003_multiturn_optics.py`
-- `004_stability_diagram.py`
+Chromatic optics, from first-order derivatives to higher-order momentum
+dependence, followed by amplitude-dependent and other nonlinear studies.
+
+- `001_chromatic_optics.py`
+- `002_higher_order_chromaticity.py`
+- `003_amplitude_detuning.py`
+- `004_multiturn_optics.py`
+- `005_stability_diagram.py`
 
 ### collective
 

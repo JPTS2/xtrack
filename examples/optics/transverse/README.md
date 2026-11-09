@@ -20,6 +20,8 @@ this route, followed by inspecting results, beam covariance and coupled optics.
 | [008_periodic_cells.py](008_periodic_cells.py) | Solve a repeated cell and compare its optics and phase advances with the full ring |
 | [009_change_starting_point.py](009_change_starting_point.py) | Distinguish a wrapped calculation, coordinate zeros and cycling the line |
 | [010_reverse_reference_frame.py](010_reverse_reference_frame.py) | Transform orbit and optical quantities into the opposite local reference frame |
+| [011_closed_orbit_search.py](011_closed_orbit_search.py) | Find and track a transverse fixed point, reuse it for optics and choose a search location |
+| [012_closed_orbit_dispersion.py](012_closed_orbit_dispersion.py) | Differentiate off-momentum closed orbits and compare their shifts with dispersion |
 
 The [native magnetic models](../../../test_data/example_lattices/README.md) use
 1 GeV/c electrons. These calculations are 4D, with no RF, radiation or collective
@@ -70,6 +72,18 @@ the zeros of `s` and phase advance. `010` changes the local reference frame:
 reversed entrances correspond to proper-frame exits. Its sign comparisons use
 zero-length markers to identify the same physical locations. Small quadrupole
 offsets make both orbit planes visible; these offsets exist only in that load.
+
+`011` searches for transverse periodicity at fixed `delta` in a displaced
+quadrupole lattice. Without RF it does not require longitudinal phase closure.
+The returned particle is tracked for one turn, then reused for optics.
+`co_search_at` moves the search location while keeping the output line order.
+
+`012` keeps the reference momentum and magnetic strengths fixed.
+Dispersion differentiates the closed orbit; `dpx/dpy` refer to normalized
+canonical momenta. A finite-delta orbit also contains higher-order terms.
+Tune and local-optics momentum dependence belong together in the
+[chromatic optics sequence](../../README.md#nonlinear), within nonlinear optics.
+Matching chromaticity belongs with matching.
 
 For normalized launches and bunch preparation, see [particles](../../particles/).
 For measured beam envelopes with `ONE_TURN_EBE`, see

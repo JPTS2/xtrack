@@ -12,12 +12,13 @@ belongs with matching.
 
 | Route | Available lessons |
 | --- | --- |
-| [Transverse optics](transverse/README.md) | Periodic/open Twiss, covariance, coupled modes, boundary conditions and reference frames |
+| [Transverse optics](transverse/README.md) | Periodic/open Twiss, covariance, coupling, boundaries, reference frames and closed-orbit dispersion |
 
 The full [optics structure](../README.md#optics) also plans longitudinal,
-nonlinear and collective routes, plus further transverse topics. Those lessons
-will state their own model qualifications; a magnetic 4D ring is not a universal
-model for these subjects.
+nonlinear and collective routes, plus further transverse topics. All chromatic
+optics, including first-order chromaticity, belongs in the nonlinear route.
+Those lessons will state their own model qualifications; a magnetic 4D ring is
+not a universal model for these subjects.
 
 The [getting-started tour](../getting_started/README.md) provides a shorter first
 pass. General table operations live in [tables](../tables/README.md).
