@@ -58,6 +58,9 @@ The [examples index](../README.md#tracking) also lays out time-dependent,
 nonlinear and collective tracking. CPU/GPU contexts and
 memory ownership belong to [contexts and memory](../README.md#contexts_and_memory).
 
+For selecting a CPU context and retaining it through a tracker rebuild, see
+[execution context](004_execution_context.py).
+
 For clock-driven machine settings and sampled transverse drives, continue with
 [time-dependent tracking](time_dependent/README.md).
 

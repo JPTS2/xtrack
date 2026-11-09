@@ -10,7 +10,6 @@
 ################################################################################
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import xtrack as xt
 
 ################################################################################
@@ -39,9 +38,9 @@ K1_STEP         = 1.0e-5                # Finite-difference step [m^-2]
 ################################################################################
 # Load the model
 ################################################################################
-repo_root = Path(__file__).resolve().parents[2]
-env       = xt.load(repo_root / LATTICE_FILE)
-line      = env[LINE_NAME]
+repo_root   = Path(__file__).resolve().parents[2]
+env         = xt.load(repo_root / LATTICE_FILE)
+line        = env[LINE_NAME]
 
 ################################################################################
 # Calculate the starting optics
@@ -64,23 +63,9 @@ opt.solve()
 opt.target_status()
 
 ################################################################################
-# Inspect and plot the matched optics
+# Inspect the matched tunes and arc-family trims
 ################################################################################
-tw = line.twiss(method = '4d')
+tw  = line.twiss(method = '4d')
 print(f'After:  Qx = {tw.qx:.6f}, Qy = {tw.qy:.6f}')
 print(f'Matched dkqf = {env["dkqf"]:.9f} m^-2')
 print(f'Matched dkqd = {env["dkqd"]:.9f} m^-2')
-
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
-axes[0].plot(tw0.s, tw0.betx, label = 'Before')
-axes[0].plot(tw.s, tw.betx, label = 'After')
-axes[0].set_ylabel(r'$\beta_x$ [m]')
-axes[0].legend()
-
-axes[1].plot(tw0.s, tw0.bety, label = 'Before')
-axes[1].plot(tw.s, tw.bety, label = 'After')
-axes[1].set_ylabel(r'$\beta_y$ [m]')
-axes[1].set_xlabel('s [m]')
-fig.suptitle('Tune matching with two quadrupole families')
-fig.tight_layout()
-plt.show()

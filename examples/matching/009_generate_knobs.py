@@ -106,6 +106,10 @@ axes[0].plot(settings, qx_values - reference.qx, 'o-', label = 'Recomputed Qx')
 axes[0].plot(settings, settings, 'k--', label = 'Ideal offset')
 axes[0].set_ylabel('Qx offset')
 axes[0].legend()
+# The band is the endpoint solver tolerance, not a numerical error floor or
+# an imposed constraint on intermediate settings. Keep the residuals visible.
+axes[1].axhspan(-TUNE_TOL, TUNE_TOL, color = '0.8', alpha = 0.4,
+                label   = 'Endpoint target tolerance (context)')
 axes[1].plot(settings, qx_error, 'o-', label = 'Qx calibration error')
 axes[1].plot(settings, qy_leakage, 's-', label = 'Qy leakage')
 axes[1].set_ylabel('Tune residual')

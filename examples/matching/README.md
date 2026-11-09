@@ -6,7 +6,7 @@ Copyright (c) CERN, 2026.
 # Matching
 
 Match periodic and transport optics, control the optimizer, then build shared
-objectives and reusable knobs. Read in order; each script runs independently.
+objectives and reusable knobs. Each script runs independently.
 The [getting-started tour](../getting_started/05_match_tunes.py) offers a shorter
 first pass.
 
@@ -23,7 +23,7 @@ first pass.
 | [009_generate_knobs.py](009_generate_knobs.py) | Match a tune-knob endpoint and measure its response between settings |
 | [010_match_chromaticity.py](010_match_chromaticity.py) | Match first-order tune derivatives with two sextupole families |
 | [011_coupling_bumps.py](011_coupling_bumps.py) | Open local betatron coupling and close the transverse cross-plane map |
-| [012_coupling_knobs.py](012_coupling_knobs.py) | Build two superposable knobs for a fixed-reference coupling phasor |
+| [012_coupling_knobs.py](012_coupling_knobs.py) | Calibrate knobs against native coupling targets, inspect combinations and correct a skew error |
 | [013_correct_optics_errors.py](013_correct_optics_errors.py) | Fit quadrupole trims to reference beta functions and tunes |
 | [014_match_demo_ring.py](014_match_demo_ring.py) | Derive the demonstration ring's arc and straight-section strengths and save a setting |
 
@@ -34,6 +34,12 @@ examples request nearby values 8.760 and 10.020. The arc family controls leave
 final-focus and utility-straight settings fixed. Tune targets include the integer
 part. `002` retains its distinct open transport, while `014` derives the demo
 operating strengths from geometry alone.
+
+Start with `001` for periodic tunes or `002` for transport optics. Then choose
+the physical task: `004` for an orbit bump, `005` for local optics targets,
+`010` for chromaticity, `011`–`012` for coupling, or `013` for optics correction.
+The optimizer and reusable-control route is `003`, `006`–`009`, then `012`.
+These capabilities are useful tools rather than prerequisites for every task.
 
 `001` demonstrates the immediate solve performed by default by `line.match`.
 `003` defers the solve to inspect the initial state, take a fixed number of
@@ -96,11 +102,14 @@ terms at the section exit. Recomputed periodic mode projections demonstrate
 decoupling outside. This is a nonunique betatron-coupling bump at `delta=0`;
 diagonal optics and dispersion are not restored by those constraints.
 
-`012` binds thin skew-quadrupole components on `cor.s1` and `cor.ip.2` and uses
-a first-order coupling phasor with
-weights from the uncoupled reference optics. Two generated knobs superpose in
-that fixed reference convention. Actual coupled Twiss results are recomputed
-to show the difference between the proxy and the physical optics.
+`012` uses the installed `ks_s2` and `ks_s5` skew-quadrupole controls and native
+Twiss targets `c_minus_re_0` and `c_minus_im_0`. The coefficients follow Twiss's
+closest-tune-approach and entrance-phase convention; they are not a thin-source
+resonance-driving-term sum. Each generated knob is calibrated at its endpoint.
+Recomputed mixed settings expose departures from independent linear control.
+A subsequent nonlinear match uses the generated knobs to cancel a fixed skew
+error without varying that error. This is noiseless, fully actuated correction,
+not identification of an unknown distributed error pattern.
 
 `013` uses eight existing arc-QD error/trim circuit pairs. Fixed seeded errors
 have k1 RMS scale 1e-5 m^-2, and the independent trims start at zero. It
@@ -120,3 +129,6 @@ For RF voltage, synchronous energy and phase targets, see
 
 For correction using orbit-response matrices, see
 the [errors and correction plan](../README.md#errors_and_correction).
+
+To carry a chromaticity-corrected setting through off-momentum optics and actual
+tracking, continue with the [demo-ring workflow](../machine_studies/demo_ring_workflow.py).

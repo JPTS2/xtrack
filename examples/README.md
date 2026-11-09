@@ -67,7 +67,7 @@ detailed lessons; the subject folders remain independently usable.
 - `04_periodic_optics.py`
 - `05_match_tunes.py`
 - `06_track_particles.py`
-- `07_observe_particles.py`
+- `07_monitors_at_elements.py`
 - `08_save_and_load.py`
 
 ## tables
@@ -428,6 +428,9 @@ loss-location refinement.
 
 Execution contexts, arrays, buffers, shared storage and data movement.
 
+For an existing CPU-context and tracker-rebuild example, see
+[execution context](tracking/004_execution_context.py).
+
 - `001_cpu_context_and_rebuilds.py`
 - `002_move_particles_between_contexts.py`
 - `003_buffers_and_shared_storage.py`
@@ -451,7 +454,10 @@ package. Optional external engines require their own API and version checks.
 ## machine_studies
 
 Integrated applications whose machine geometry or operating conditions are
-essential. These three studies are candidates; they do not account for all
+essential. Start with the
+[demo-ring workflow](machine_studies/demo_ring_workflow.py), which carries a
+chromaticity-corrected setting into off-momentum optics and finite tracking.
+The three machine studies below are candidates; they do not account for all
 existing machine-specific material.
 
 - `elena_field_transport.py`

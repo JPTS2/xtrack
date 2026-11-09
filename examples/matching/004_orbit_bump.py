@@ -119,16 +119,33 @@ for knob in knobs:
 # the orbit deviation; it does not constrain beta functions or other optics.
 
 ########################################
-# Plot the full-ring bump relative to the clean periodic orbit
+# Resolve the insertion shape and the selected IP displacement
 ########################################
-fig, ax = plt.subplots(figsize = (9, 4))
-ax.plot(tw_after.s, 1e3 * (tw_after.x - tw_ref.x), '.-', label = 'Matched bump')
-ax.axhline(0, color = 'k', linestyle = '--', label = 'Clean orbit deviation')
-ax.plot(MID_S, 1e3 * BUMP_HEIGHT, 'rx', label = 'Displacement target')
-ax.axvspan(START_S, END_S, alpha = 0.1, color = 'C0')
-ax.set_xlabel('s [m]')
-ax.set_ylabel('x - clean orbit [mm]')
-ax.grid()
-ax.legend()
+fig, axes = plt.subplots(2, 1, figsize = (9, 7))
+axes[0].plot(tw_after.s, 1e3 * (tw_after.x - tw_ref.x), '.-')
+axes[0].axhline(0, color = 'k', linestyle = '--')
+axes[0].plot(MID_S, 1e3 * BUMP_HEIGHT, 'rx', label = 'IP displacement target')
+axes[0].axvline(MID_S, color = '0.5', linestyle = ':')
+axes[0].set_xlim(START_S - 5, END_S + 5)
+axes[0].set_xticks([START_S, MID_S, END_S],
+                   labels   = ['bump.start', 'ip.1', 'bump.end'])
+axes[0].set_ylabel('x - clean orbit [mm]')
+axes[0].set_title('Insertion detail: target displacement is not the peak')
+axes[0].legend()
+
+########################################
+# Retain the full-ring view to expose any external orbit leakage
+########################################
+axes[1].plot(tw_after.s, 1e3 * (tw_after.x - tw_ref.x), '.-',
+             label  = 'Matched bump')
+axes[1].axhline(0, color = 'k', linestyle = '--',
+                label   = 'Clean orbit deviation')
+axes[1].axvspan(START_S, END_S, alpha = 0.1, color = 'C0')
+axes[1].set_xlabel('s [m]')
+axes[1].set_ylabel('x - clean orbit [mm]')
+axes[1].set_title('Full ring: closure outside the insertion')
+axes[1].legend()
+for axis in axes:
+    axis.grid()
 fig.tight_layout()
 plt.show()

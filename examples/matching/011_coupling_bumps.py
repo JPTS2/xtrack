@@ -151,16 +151,32 @@ for knob in knobs:
 ################################################################################
 # Plot where each mode projects into the other physical plane
 ################################################################################
-fig, ax = plt.subplots(figsize = (9, 4))
-ax.plot(after.s, after.betx2, '.-', label = 'betx2: mode 2 in x')
-ax.plot(after.s, after.bety1, '.-', label = 'bety1: mode 1 in y')
-ax.axvspan(
-    after['s', START], after['s', END],
-    alpha   = 0.1,
-    label   = 'Bump region',
-)
-ax.set_xlabel('s [m]')
-ax.set_ylabel('Cross-plane projected beta [m]')
-ax.legend()
+
+########################################
+# Resolve the mode projections inside the insertion
+########################################
+fig, axes = plt.subplots(2, 1, figsize = (9, 7))
+axes[0].plot(after.s, after.betx2, '.-', label = 'betx2: mode 2 in x')
+axes[0].plot(after.s, after.bety1, '.-', label = 'bety1: mode 1 in y')
+axes[0].axvline(MIDDLE_S, color = '0.5', linestyle = ':')
+axes[0].set_xlim(START_S - 5, END_S + 5)
+axes[0].set_xticks([START_S, MIDDLE_S, END_S],
+                   labels   = ['bump.start', 'ip.1 / target', 'bump.end'])
+axes[0].set_ylabel('Cross-plane projected beta [m]')
+axes[0].set_title('Insertion detail')
+axes[0].legend()
+
+########################################
+# Keep the full ring visible to check external decoupling
+########################################
+axes[1].plot(after.s, after.betx2, '.-', label = 'betx2: mode 2 in x')
+axes[1].plot(after.s, after.bety1, '.-', label = 'bety1: mode 1 in y')
+axes[1].axvspan(START_S, END_S, alpha = 0.1, label = 'Bump region')
+axes[1].set_xlabel('s [m]')
+axes[1].set_ylabel('Cross-plane projected beta [m]')
+axes[1].set_title('Full ring: decoupled outside the insertion')
+axes[1].legend()
+for axis in axes:
+    axis.grid()
 fig.tight_layout()
 plt.show()

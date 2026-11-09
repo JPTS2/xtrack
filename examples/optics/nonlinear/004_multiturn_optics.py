@@ -99,7 +99,7 @@ print('Maximum tracked-minus-Twiss turn-start residual (x [m], px):',
 print('Final tracked state:', particle.state)
 
 ################################################################################
-# Inspect the island in phase space and along the unwrapped turn coordinate
+# Inspect the period-four orbit in phase space and at successive turns
 ################################################################################
 
 ########################################
@@ -114,10 +114,15 @@ axes[0].set_ylabel('px [1e-3]')
 axes[0].legend()
 
 ########################################
-# Follow the orbit over the unwrapped turns
+# Show discrete turn-start samples and the return after four turns
 ########################################
-axes[1].plot(island.s, 1e3 * island.x, '.-')
-axes[1].set_xlabel('Unwrapped reference s [m]')
+turns   = np.arange(N_TURNS)
+axes[1].plot(turns, 1e3 * record.x[0], 'o', label = 'Tracked turn starts')
+axes[1].plot(N_TURNS, 1e3 * particle.x[0], 'x',
+             label  = 'Return after four turns')
+axes[1].set_xticks(np.arange(N_TURNS + 1))
+axes[1].set_xlabel('Completed turns at the map entrance')
+axes[1].legend()
 axes[1].set_ylabel('Periodic orbit x [mm]')
 for axis in axes:
     axis.grid()
