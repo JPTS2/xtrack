@@ -227,6 +227,8 @@ See [optics with collective elements](optics/collective/README.md).
 Choose targets and controls, operate the optimizer, match bumps and multiple
 lines, and generate knobs. Longitudinal matching has its own subfolder.
 
+Start with the [matching lessons](matching/README.md).
+
 - `001_match_tunes.py`
 - `002_match_transport.py`
 - `003_optimizer_control.py`
