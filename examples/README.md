@@ -245,6 +245,8 @@ Start with the [matching lessons](matching/README.md).
 
 ### longitudinal
 
+See [longitudinal matching](matching/longitudinal/README.md).
+
 - `001_match_synchrotron_tune.py`
 - `002_match_phase_and_energy.py`
 
