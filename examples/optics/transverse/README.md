@@ -16,6 +16,10 @@ this route, followed by inspecting results, beam covariance and coupled optics.
 | [004_beam_covariance.py](004_beam_covariance.py) | Convert emittances to covariance, inspect an x-px block and include independent momentum spread |
 | [005_coupled_mode_optics.py](005_coupled_mode_optics.py) | Resolve both normal modes in each plane and combine mode emittances into projected sizes |
 | [006_edwards_teng.py](006_edwards_teng.py) | Read Edwards-Teng optics and use the coupling matrix to decouple the transverse one-turn map |
+| [007_twiss_initial_conditions.py](007_twiss_initial_conditions.py) | Reuse a complete Twiss state at upstream or downstream boundaries of a subrange |
+| [008_periodic_cells.py](008_periodic_cells.py) | Solve a repeated cell and compare its optics and phase advances with the full ring |
+| [009_change_starting_point.py](009_change_starting_point.py) | Distinguish a wrapped calculation, coordinate zeros and cycling the line |
+| [010_reverse_reference_frame.py](010_reverse_reference_frame.py) | Transform orbit and optical quantities into the opposite local reference frame |
 
 The [native magnetic models](../../../test_data/example_lattices/README.md) use
 1 GeV/c electrons. These calculations are 4D, with no RF, radiation or collective
@@ -50,6 +54,22 @@ from the transport `R_matrix`. The example states its transformation convention
 and shows the resulting one-turn blocks. This parameterization needs a suitable
 mode branch; it is not a universal coordinate chart at mode degeneracies.
 Constructing coupling bumps and knobs belongs with matching.
+
+`007` propagates a complete `TwissInit`, including orbit, dispersion and phase
+origins. A zero-length marker defines its downstream boundary. A ranged
+calculation includes its final element; its `_end_point` is
+that element's exit, which need not be the full line's final exit.
+
+`008` constructs one cell between equivalent quadrupole entrances, excluding the
+next cell's first quadrupole. Periodicity is an optical boundary condition; the
+cell's reference geometry need not form a closed ring. Its comparison with the
+full ring relies on this model's eight identical cells.
+
+`009` separates the calculation's starting point from the stored line order and
+the zeros of `s` and phase advance. `010` changes the local reference frame:
+reversed entrances correspond to proper-frame exits. Its sign comparisons use
+zero-length markers to identify the same physical locations. Small quadrupole
+offsets make both orbit planes visible; these offsets exist only in that load.
 
 For normalized launches and bunch preparation, see [particles](../../particles/).
 For measured beam envelopes with `ONE_TURN_EBE`, see
