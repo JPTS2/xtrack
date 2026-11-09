@@ -96,6 +96,7 @@ input, without live MAD-X execution or teaching `cpymad` imports.
 - `014_cut_at_positions.py`
 - `015_save_and_load_environment.py`
 - `016_read_legacy_madx_data.py`
+- `017_build_demo_ring.py`
 
 ## elements
 
@@ -242,6 +243,7 @@ Start with the [matching lessons](matching/README.md).
 - `011_coupling_bumps.py`
 - `012_coupling_knobs.py`
 - `013_correct_optics_errors.py`
+- `014_match_demo_ring.py`
 
 ### longitudinal
 

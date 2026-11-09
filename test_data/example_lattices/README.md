@@ -7,6 +7,7 @@ Copyright (c) CERN, 2026.
 
 | Model | Line name | Geometry |
 | --- | --- | --- |
+| [demo_ring/lattice.py](demo_ring/README.md) | `demo` | Instrumented 1.5 km ring with a low-beta IP and separate geometry/strength inputs |
 | [ring/lattice.py](ring/lattice.py) | `ring` | 40 m ring with eight FODO cells and observation markers at 0 and 20 m |
 | [transport/lattice.py](transport/lattice.py) | `transport` | 7.1 m line with three quadrupoles and two bends |
 | [rf_ring/lattice.py](rf_ring/lattice.py) | `rf_ring` | Native 40 m magnetic ring followed by one zero-length sinusoidal RF cavity |
@@ -21,8 +22,11 @@ All models use a 1 GeV/c electron reference (`p0c = 1e9` eV). Lengths are in
 metres, bend angles in radians and quadrupole `k1` in m^-2. The variables `kqf`
 and `kqd` drive the corresponding quadrupole families through expressions.
 
-Magnetic bodies use the adaptive model with linear bend edges, zero edge angles
-and zero fringe integrals. The magnetic ring and transport line have no RF;
+The compact ring and transport magnetic bodies use the adaptive model with
+linear bend edges, zero edge angles and zero fringe integrals. The demonstration
+ring uses `bend-kick-bend` bends; its configuration is documented in
+[demo_ring/README.md](demo_ring/README.md).
+The compact magnetic ring and transport line have no RF;
 use 4D optics, supplying entrance conditions for the transport line. There is no
 radiation, spin tracking, collective force, error or aperture model.
 
