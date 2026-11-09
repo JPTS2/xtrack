@@ -17,18 +17,18 @@ import xtrack as xt
 ########################################
 # Model and targets
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-QX_TARGET       = 1.70                  # Full tunes, including integer part
-QY_TARGET       = 1.65
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+QX_TARGET       = 8.760                  # Full tunes, including integer part
+QY_TARGET       = 10.020
 
 ########################################
 # Solver settings
 ########################################
 TUNE_TOL        = 1.0e-8
 K1_STEP         = 1.0e-5                # Finite-difference step [m^-2]
-K1_MIN          = -2.5                  # Lower family-strength bound [m^-2]
-K1_MAX          = 2.5                   # Upper family-strength bound [m^-2]
+K1_MIN          = -0.10                 # Lower family-strength bound [m^-2]
+K1_MAX          = 0.10                  # Upper family-strength bound [m^-2]
 MANUAL_STEPS    = 1
 QX_RETARGET     = 0.002                 # Temporary horizontal tune increment
 
@@ -47,8 +47,8 @@ k1_before   = {name: env[name] for name in ['kqf', 'kqd']}
 ########################################
 # Define variables and targets
 ########################################
-# The ring supplies an electron reference at p0*c = 1 GeV, without RF or
-# radiation. Periodic 4D optics uses delta=0 at fixed reference momentum.
+# The ring supplies an electron reference at p0*c = 1 GeV, with RF voltage
+# zero and radiation off. Periodic 4D optics uses delta=0 at fixed p0.
 # Family variables drive all their quadrupoles through lattice expressions.
 
 # The numerical bounds illustrate solver control, not hardware limits, and do

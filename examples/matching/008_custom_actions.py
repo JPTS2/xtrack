@@ -18,16 +18,16 @@ import xtrack as xt
 ########################################
 # Model and family perturbation
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-KQF_FACTOR      = 1.02
-KQD_FACTOR      = 0.98
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+KQF_FACTOR      = 1.0002
+KQD_FACTOR      = 0.9998
 
 ########################################
 # Numerical matching settings
 ########################################
 K1_STEP         = 1.0e-5                # Finite-difference step [m^-2]
-KQF_LIMITS      = [0.8, 1.7]             # Numerical bounds [m^-2]
-KQD_LIMITS      = [-2.0, -0.8]           # Numerical bounds [m^-2]
+KQF_LIMITS      = [0.06, 0.08]             # Numerical bounds [m^-2]
+KQD_LIMITS      = [-0.08, -0.06]           # Numerical bounds [m^-2]
 BETA_TOL        = 1.0e-8                # Average-beta target tolerance [m]
 
 ################################################################################
@@ -62,9 +62,9 @@ class ActionAverageBeta(xt.Action):
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
-# The ring has a 1 GeV/c electron reference and no RF or radiation. The action
-# explicitly requests periodic 4D optics at delta=0 on every evaluation.
+line        = env['demo']
+# The ring has a 1 GeV/c electron reference, RF voltage zero and radiation off.
+# The action requests periodic 4D optics at delta=0 on every evaluation.
 action      = ActionAverageBeta(line)
 reference   = action.run()
 

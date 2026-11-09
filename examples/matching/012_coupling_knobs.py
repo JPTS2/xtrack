@@ -18,8 +18,8 @@ import xtrack as xt
 ########################################
 # Ring and integrated skew-quadrupole controls
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-SKEW_S          = [0.75, 38.25]          # Existing drift locations [m]
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+SKEW_SITES      = ['cor.s1', 'cor.ip.2']  # Existing thin multipoles
 SKEW_STEP       = 1e-6                  # Integrated skew strength step [m^-1]
 
 ########################################
@@ -34,29 +34,30 @@ CASE_FACTORS    = [(0, 0), (1, 0), (0, 1), (0.5, 0.5), (-0.5, 0.5)]
 ################################################################################
 
 ########################################
-# Insert two initially unpowered thin skew quadrupoles
+# Bind skew-quadrupole components on two existing thin multipoles
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
+line        = env['demo']
 skew_knobs = []
-for index, position in enumerate(SKEW_S):
+for index, name in enumerate(SKEW_SITES):
     knob    = f'skew_strength_{index}'
-    name    = f'skew.{index}'
     env[knob] = 0.0
-    env.new(name, xt.Multipole, ksl = [0, knob])
-    line.insert(name, at = position)
+    env.set(name, ksl = [0, knob])
     skew_knobs.append(knob)
 
-# The 40 m ring has a 1 GeV/c electron reference, without RF or radiation.
+# The 1500 m ring has a 1 GeV/c electron reference, with RF voltage zero and
+# radiation off.
 reference = line.twiss4d()
 
 ########################################
 # Measure a first-order phasor using the saved uncoupled optics
 ########################################
 # C_ref = sum(k1sl*sqrt(betx*bety)*exp(i*2*pi*(mux-muy)))/(2*pi).
-# Only the two thin inserts have nonzero k1sl; no thick-skew quadrature is used.
-# Its phase is referenced to the fixed ring entrance obs.0. The weights remain
+# Only these two thin elements have nonzero k1sl; no thick-skew quadrature
+# is used.
+
+# Its phase is referenced to the fixed ring entrance. The weights remain
 # frozen while strengths vary. This weak-coupling proxy neglects changes in
 # optics and other resonance terms; it is not the exact Twiss complex c_minus.
 class ReferenceCoupling(xt.Action):

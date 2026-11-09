@@ -19,8 +19,8 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Launch coordinates
@@ -49,7 +49,7 @@ line        = env[LINE_NAME]
 ########################################
 # Transform normalized to physical coordinates
 ########################################
-# This is a launch scan, not a statistical bunch. With no RF, use 4D
+# This is a launch scan, not a statistical bunch. With zero RF voltage, use 4D
 # periodic optics. Unspecified longitudinal coordinates are zero.
 particles = line.build_particles(
     method      = '4d',

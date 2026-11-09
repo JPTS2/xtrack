@@ -20,8 +20,8 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Beam
@@ -44,9 +44,9 @@ ROTATION        = np.deg2rad(20)        # Transverse canonical rotation [rad]
 ################################################################################
 # Load the model
 ################################################################################
-repo_root = Path(__file__).resolve().parents[2]
-env       = xt.load(repo_root / LATTICE_FILE)
-line      = env[LINE_NAME]
+repo_root   = Path(__file__).resolve().parents[2]
+env         = xt.load(repo_root / LATTICE_FILE)
+line        = env[LINE_NAME]
 
 ################################################################################
 # Prepare one weighted distribution
@@ -111,7 +111,7 @@ monitor = xt.BeamStatsMonitor(
 ########################################
 # Sample the beam at the ring entrance
 ########################################
-line.insert('beam_stats', monitor, at = 'obs.0@start')
+line.insert('beam_stats', monitor, at = 'arc.s1.c1.qf.in@start')
 line.track(particles, num_turns = N_TURNS)
 
 ################################################################################
@@ -206,7 +206,7 @@ result = xt.Table(
     index   = 'statistic',
 )
 print('Normalized emittances before and after rotation [m rad]:')
-result.show()
+result.show(maxwidth = 'full')
 print('Covariance calculation status:',
       monitor.optics_from_covariance(turn = 0)['status'],
       after.optics_from_covariance(turn = 0)['status'])

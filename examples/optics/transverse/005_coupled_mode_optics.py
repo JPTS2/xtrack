@@ -19,10 +19,10 @@ import xtrack as xt
 ########################################
 # Native ring and skew quadrupole components
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-K1S_QF1         = 0.05                    # Skew k1 at qf.1 [m^-2]
-K1S_QD5         = -0.04                   # Skew k1 at qd.5 [m^-2]
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+K1S_S2          = 1.0e-3                 # Sector-2 cell-2 skew k1 [m^-2]
+K1S_S5          = -0.8e-3                # Sector-5 cell-2 skew k1 [m^-2]
 
 ########################################
 # Independent normal-mode populations
@@ -45,10 +45,10 @@ uncoupled   = line.twiss4d()
 ########################################
 # Add two skew field components to the loaded model
 ########################################
-# These are gradient components of existing 0.3 m quadrupoles, not integrated
+# These are gradient components of existing 1 m quadrupoles, not integrated
 # strengths. Each fresh load is independent of the native model on disk.
-env['qf.1'].k1s = K1S_QF1
-env['qd.5'].k1s = K1S_QD5
+env['ks_s2'] = K1S_S2
+env['ks_s5'] = K1S_S5
 tw = line.twiss4d()
 
 ################################################################################
@@ -62,7 +62,7 @@ tw = line.twiss4d()
 # With coupling, qx and qy label modes rather than independent plane motion.
 for label, optics in [('Uncoupled', uncoupled), ('Coupled', tw)]:
     print(f'{label}: mode tunes {optics.qx:.9f}, {optics.qy:.9f}')
-    optics.rows[['obs.0', 'obs.4']].cols[
+    optics.rows[['ip.1', 'bpm.s4.d']].cols[
         'name s betx1 betx2 bety1 bety2'].show(maxwidth = 'full')
 
 ########################################
@@ -109,4 +109,4 @@ sizes       = xt.Table(
         'sigma_y_api':     covariance.sigma_y},
     index   = 'name')
 print('Projected rms beam sizes [m]:')
-sizes.rows[['obs.0', 'obs.4']].show(maxwidth = 'full')
+sizes.rows[['ip.1', 'bpm.s4.d']].show(maxwidth = 'full')

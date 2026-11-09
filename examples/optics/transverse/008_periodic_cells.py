@@ -14,77 +14,70 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-CELL_START      = 'qf.1'
-NEXT_CELL_START = 'qf.2'
-NUM_CELLS       = 8
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+CELL_NAME       = 'arc.cell'
+CELL_START      = 'arc.s1.c1.qf.in'
+NEXT_CELL_START = 'arc.s1.c2.qf.in'
 
 ################################################################################
-# Select one complete cell between equivalent entrances
+# Load the reusable cell and the assembled ring
 ################################################################################
 
-########################################
-# Read the ring sequence
-########################################
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
-table       = line.get_table()
-
-########################################
-# Build a subline excluding the next cell's first quadrupole
-########################################
-# Table slices include their final row. Omit that row to select [qf.1, qf.2).
-# env_name identifies the actual elements, including shared drift occurrences.
-cell_rows   = table.rows[CELL_START:NEXT_CELL_START]
-cell        = env.new_line(components = list(cell_rows.env_name[:-1]))
+cell        = env[CELL_NAME]
 cell.particle_ref = line.particle_ref.copy()
 cell.get_table().cols['name s'].show(maxwidth = 'full')
 
 ################################################################################
-# Solve a periodic cell and the full ring
+# Solve periodic optics for one cell
 ################################################################################
 
 ########################################
-# Impose periodicity on the selected cell
+# Impose periodicity on the reusable optical unit
 ########################################
-# This treats the cell as a repeated optical unit. Its reference geometry
-# bends through 45 degrees and does not close by itself on the floor plan.
+# The cell bends through 15 degrees and need not close on the floor plan.
+# Its transverse phase advances are 90 degrees, or 0.25 turns, in both planes.
 tw_cell = cell.twiss4d()
-tw_cell.rows[[CELL_START, '_end_point']].cols[
+tw_cell.rows[[cell.element_names[0], '_end_point']].cols[
     'name s betx alfx bety alfy dx dpx'].show(maxwidth = 'full')
 
 ########################################
-# Compare with the ring made from eight identical cells
+# Distinguish the cell phase from the full-ring tunes
 ########################################
 tw_ring = line.twiss4d()
-print('Cell phase advances [turns]:', tw_cell.qx, tw_cell.qy)
-print('Cell phase advances times cell count:',
-      NUM_CELLS * tw_cell.qx, NUM_CELLS * tw_cell.qy)
-print('Full ring tunes:', tw_ring.qx, tw_ring.qy)
+print('Periodic cell phase advances [turns]:', tw_cell.qx, tw_cell.qy)
+print('Full ring tunes, including straight sections:', tw_ring.qx, tw_ring.qy)
+# Four cells form each arc, but the insertion and utility sections contribute
+# additional phase. Multiplying cell phases is not a calculation of ring tunes.
+# The four-cell transverse identity alone does not select unique periodic beta.
 
 ################################################################################
-# Compare the optical functions through the first cell
+# Compare the first cell with its use in the ring
 ################################################################################
 
 ########################################
-# Read the ring optics at the same entrances
+# Read the ring optics between equivalent cell entrances
 ########################################
-ring_cell   = tw_ring.rows[CELL_START:NEXT_CELL_START]
-print('Ring beta and dispersion at the cell entrance:')
+# Table slicing includes the next cell's entrance as this cell's final plane.
+ring_cell = tw_ring.rows[CELL_START:NEXT_CELL_START]
+print('Ring beta and dispersion at the first cell entrance:')
 tw_ring.rows[[CELL_START]].cols[
     'name betx alfx bety alfy dx dpx'].show(maxwidth = 'full')
+# The straights match the periodic cell's beta/alpha, but impose zero dispersion
+# at the arc ports. The ring dispersion is not the periodic-cell dispersion.
 
 ########################################
-# Overlay cell and ring beta functions
+# Overlay beta functions with the two different dispersion solutions
 ########################################
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
-for ax, column in zip(axes, ['betx', 'bety']):
+fig, axes = plt.subplots(3, 1, sharex = True, figsize = (8, 8))
+for ax, column in zip(axes, ['betx', 'bety', 'dx']):
     ax.plot(tw_cell.s, tw_cell[column], label = 'Periodic cell')
     ax.plot(
         ring_cell.s - ring_cell.s[0], ring_cell[column], 'o',
-        label = 'Full-ring solution')
+        label = 'Cell inside full ring')
     ax.set_ylabel(f'{column} [m]')
     ax.legend()
 axes[-1].set_xlabel('s from cell entrance [m]')

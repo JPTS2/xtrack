@@ -17,15 +17,15 @@ import xtrack as xt
 ########################################
 # Native ring and selected local reference conditions
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-OBSERVATION     = 'obs.4'               # Marker entrance at s=20 m
-QUAD_NAMES      = ['qf.3', 'qd.3']
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+OBSERVATION     = 'ip.1'                # Waist marker at s=205 m
+QUAD_NAMES      = ['arc.s1.c1.qf.in', 'arc.s1.c1.qd']
 KNOB_NAMES      = ['local_kqf', 'local_kqd']
 
 ########################################
 # Explicit perturbation and matching precision
 ########################################
-STRENGTH_FACTOR = [1.03, 0.98]           # Applied to these two magnets only
+STRENGTH_FACTOR = [1.0002, 0.9998]           # Applied to these two magnets only
 K1_STEP         = 1e-5                  # Finite-difference strength step [m^-2]
 BETA_TOL        = 1e-8                  # [m]
 ALPHA_TOL       = 1e-9                  # Dimensionless
@@ -39,8 +39,9 @@ ALPHA_TOL       = 1e-9                  # Dimensionless
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
-# The 40 m ring supplies a 1 GeV/c electron reference, without RF or radiation.
+line        = env['demo']
+# The 1500 m ring supplies a 1 GeV/c electron reference, with RF voltage
+# zero and radiation off.
 # Replacing these two strength expressions leaves their initial values intact;
 # the remaining quadrupoles continue to follow the native family variables.
 for name, knob in zip(QUAD_NAMES, KNOB_NAMES):

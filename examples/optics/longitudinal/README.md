@@ -15,12 +15,12 @@ Read in order; every script runs independently.
 | [002_longitudinal_covariance.py](002_longitudinal_covariance.py) | Set a longitudinal mode emittance, inspect correlations and draw a covariance contour |
 | [003_revolution_period.py](003_revolution_period.py) | Compare reference and searched periods, then measure momentum-dependent periods without RF |
 
-The [native RF ring](../../../test_data/example_lattices/README.md#rf-ring-qualification)
-uses the 40 m magnetic ring and its 1 GeV/c electron reference, adding one 100 kV
-thin cavity at harmonic 20, phase pi. This is stable in the current public
-`Cavity` convention using `abs(q0)`. RF tracking is sinusoidal; Twiss is a local
-linearization around the synchronous orbit. There is no radiation, acceleration,
-collective force or aperture model.
+The [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
+uses a 1 GeV/c electron reference and a 1.5 km circumference. Each example
+explicitly powers its thin cavity at 100 kV, harmonic 200 and phase pi.
+This is stable in the current public `Cavity` convention using `abs(q0)`.
+RF tracking is sinusoidal; Twiss is a local linearization around the synchronous
+orbit. There is no radiation, acceleration, collective force or aperture model.
 
 The canonical longitudinal pair is `(zeta, pzeta)`, with zeta in metres and
 `pzeta = (E-E0)/(beta0*p0*c)` for the reference species. Positive zeta means an
@@ -40,6 +40,10 @@ statement that the full distribution is matched at finite amplitude.
 `search_for_t_rev=True`. This search repeats `x, px, y, py, delta` over sampled
 turns while allowing zeta slippage to determine the period. Reference and
 searched periods agree closely for the nominal synchronous model here.
-The RF-free companion line supports a separate fixed-delta study: one-turn zeta
-slippage measures the actual period, and its first derivative is the slip
-factor. The example keeps reference momentum and magnetic strengths fixed.
+A fresh independent load with RF voltage zero supports a fixed-delta study:
+one-turn zeta slippage measures the actual period. Its first derivative is the
+slip factor. Reference momentum and magnetic strengths stay fixed.
+
+The off-momentum period sample uses `delta = -1e-4, 0, 1e-4`. The bare ring
+has large chromaticity and a vertical tune near an integer; these points do not
+qualify a momentum-acceptance interval.

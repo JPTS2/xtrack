@@ -13,9 +13,11 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-NEW_START       = 'obs.4'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+NEW_START       = 'ip.1'
+DISPLAY_ROWS    = (
+    r'arc[.]s1[.]c1[.]qf[.]in|ip[.]1|straight[.]s4[.]mid|_end_point')
 
 ################################################################################
 # Calculate the original periodic solution
@@ -42,7 +44,7 @@ for label, optics in [
     ('Original', original), ('New calculation start', wrapped),
 ]:
     print(label)
-    optics.rows[r'obs\..*|_end_point'].cols[
+    optics.rows[DISPLAY_ROWS].cols[
         'name s mux muy betx bety'].show(maxwidth = 'full')
 print('The line still starts at:', line.element_names[0])
 
@@ -59,7 +61,7 @@ zeroed  = line.twiss4d(zero_at = NEW_START)
 # Inspect negative coordinates upstream of the chosen zero
 ########################################
 # This does not reorder rows or wrap negative s/phase values into one turn.
-zeroed.rows[r'obs\..*|_end_point'].cols[
+zeroed.rows[DISPLAY_ROWS].cols[
     'name s mux muy betx bety'].show(maxwidth = 'full')
 
 ################################################################################
@@ -72,13 +74,13 @@ zeroed.rows[r'obs\..*|_end_point'].cols[
 # Cycling changes the element order. Keep the original line for comparison.
 cycled      = line.copy()
 cycled.cycle(name_first_element = NEW_START)
-tw_cycled      = cycled.twiss4d()
+tw_cycled   = cycled.twiss4d()
 
 ########################################
-# Compare the two full-turn solutions at named markers
+# Compare the two full-turn solutions at named planes
 ########################################
 print('Cycled line starts at:', cycled.element_names[0])
-tw_cycled.rows[r'obs\..*|_end_point'].cols[
+tw_cycled.rows[DISPLAY_ROWS].cols[
     'name s mux muy betx bety'].show(maxwidth = 'full')
 print('Full-turn phase advances from calculation start:',
       wrapped.mux[-1] - wrapped.mux[0], wrapped.muy[-1] - wrapped.muy[0])

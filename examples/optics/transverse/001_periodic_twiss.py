@@ -19,8 +19,8 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Momentum offset
@@ -37,8 +37,8 @@ line        = env[LINE_NAME]
 ################################################################################
 # Calculate periodic optics
 ################################################################################
-# With no RF, use 4D optics at fixed delta. The closed orbit and periodic
-# transverse optical functions are solved together; no entrance beta is given.
+# With RF voltage zero, use 4D optics at fixed delta. The closed orbit and
+# periodic transverse optics are solved together; no entrance beta is given.
 tw = line.twiss4d(delta0 = DELTA0)
 
 ################################################################################
@@ -50,7 +50,7 @@ tw = line.twiss4d(delta0 = DELTA0)
 ########################################
 # Rows are element entrances; _end_point is the final exit. Orbit, beta,
 # alpha and dispersion return to their initial values in a periodic solution.
-tw.rows[['obs.0', '_end_point']].cols[
+tw.rows[[line.element_names[0], '_end_point']].cols[
     'name s x px betx alfx bety alfy dx dpx'].show(maxwidth = 'full')
 
 ########################################
@@ -58,7 +58,7 @@ tw.rows[['obs.0', '_end_point']].cols[
 ########################################
 # mux and muy are in turns and are not reduced modulo one.
 print(f'Tunes: Qx = {tw.qx:.6f}, Qy = {tw.qy:.6f}')
-tw.rows[['obs.0', 'obs.4', '_end_point']].cols[
+tw.rows[[line.element_names[0], 'ip.1', '_end_point']].cols[
     'name s mux muy'].show(maxwidth = 'full')
 
 ################################################################################

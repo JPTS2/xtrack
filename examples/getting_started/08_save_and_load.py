@@ -21,19 +21,19 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Saved model
 ########################################
 # Saved file relative to this example.
-SAVE_FILE       = 'outputs/getting_started_ring.json'
+SAVE_FILE       = 'outputs/getting_started_demo.json'
 
 ########################################
 # Quadrupole strength
 ########################################
-KQF_SCALE       = 1.01                  # Scale kqf in the loaded copy
+KQF_SCALE       = 1.001                  # Scale kqf in the loaded copy
 
 ################################################################################
 # Load the model
@@ -68,11 +68,11 @@ print(f'Reloaded tunes: Qx = {tw_loaded.qx:.6f}, '
 ################################################################################
 # Change a knob in the loaded copy
 ################################################################################
-# The restored expressions still link every qf instance to kqf. The original
+# The restored expressions still link the arc QF magnets to kqf. The original
 # environment is independent and keeps its starting strengths.
 env_loaded['kqf'] *= KQF_SCALE
-print(f'Original qf.1 k1: {line["qf.1"].k1:.9f} m^-2')
-print(f'Loaded qf.1 k1:   {line_loaded["qf.1"].k1:.9f} m^-2')
+print(f'Original arc.s1.c1.qf.in k1: {line["arc.s1.c1.qf.in"].k1:.9f} m^-2')
+print('Loaded arc.s1.c1.qf.in k1 [m^-2]:', line_loaded['arc.s1.c1.qf.in'].k1)
 
 tw = line_loaded.twiss(method = '4d')
 print(f'Changed-copy tunes: Qx = {tw.qx:.6f}, '

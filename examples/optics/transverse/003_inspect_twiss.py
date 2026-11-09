@@ -14,11 +14,11 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-OBSERVATION     = 'obs.4'
-RANGE_START     = 'qf.1'
-RANGE_END       = 'qd.1'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+OBSERVATION     = 'bpm.s4.d'
+RANGE_START     = 'arc.s1.c1.qf.in'
+RANGE_END       = 'arc.s1.c1.qd'
 
 ################################################################################
 # Calculate the ring optics
@@ -44,7 +44,7 @@ print(f'Chromaticities: dQx/d(delta) = {tw.dqx:.6f}, '
 # A scalar at a named entrance and full column arrays
 ########################################
 print(f'beta_x at {OBSERVATION}: {tw["betx", OBSERVATION]:.6f} m')
-print(f'Maximum beta_x: {np.max(tw.betx):.6f} m')
+print(f'Maximum sampled beta_x: {np.max(tw.betx):.6f} m')
 print('Available quantities:', list(tw.keys()))
 
 ################################################################################
@@ -52,10 +52,10 @@ print('Available quantities:', list(tw.keys()))
 ################################################################################
 
 ########################################
-# Select observation markers by name pattern
+# Select ideal BPM read planes by name pattern
 ########################################
 # Regular expressions select table rows, not a new optics calculation.
-tw.rows[r'obs\..*'].cols[
+tw.rows[r'bpm\..*'].cols[
     'name s x px y py betx bety dx dy'].show(maxwidth = 'full')
 
 ########################################

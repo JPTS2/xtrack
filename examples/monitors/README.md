@@ -8,7 +8,7 @@ Copyright (c) CERN, 2026.
 Choose an observation according to the question: motion over successive turns,
 a beam envelope along the lattice, or measurements at selected locations.
 The examples run independently using the
-[native magnetic ring](../../test_data/example_lattices/README.md).
+[shared demonstration ring](../../test_data/example_lattices/demo_ring/README.md).
 For propagation controls, see [tracking](../tracking/).
 
 | Example | Question |
@@ -24,6 +24,8 @@ For a first turn-by-turn plot, see
 [getting started](../getting_started/06_track_particles.py).
 `001` develops that introduction by separating a saved observation interval
 from subsequent unmonitored propagation.
+`003` compares the two named IP BPM Device entrances. `004` puts its known
+loss cut near the ring entrance, before `bpm.s1.f`.
 `001`–`004` cover particle records and validity. `005` controls which particles
 and turns are recorded. `006` then moves from individual records to weighted
 population measurements: moments, beam sizes and covariance-derived emittances.
@@ -60,7 +62,10 @@ projections and eigenemittances.
 is identifying particles by ID and selecting valid recorded states. It does not
 teach aperture design or loss refinement.
 
-These ring examples have a 1 GeV/c electron reference and no RF, radiation or
-collective forces. The model has no explicit aperture except the cut in `004`.
+These examples use the 1.5 km ring with its 1 GeV/c electron reference.
+RF voltage and nonlinear strengths remain zero; radiation and collective forces
+are absent. The small imposed momentum spread in `006` is a tested sample, not
+a momentum-acceptance study of this highly chromatic bare lattice. The model
+has no explicit aperture except the cut in `004`.
 For the existing bunch/slice/coasting, profile and HDF5 examples, see
 [beam-statistics monitors](../beam_stats_monitor/).

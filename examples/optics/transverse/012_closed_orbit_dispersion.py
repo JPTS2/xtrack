@@ -19,9 +19,9 @@ import xtrack as xt
 ########################################
 # Model
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-OBSERVATION     = 'obs.0'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+OBSERVATION     = 'bpm.s1.d'
 
 ########################################
 # Momentum offsets
@@ -31,8 +31,8 @@ DELTA           = 1.0e-5                 # (p - p0) / p0, dimensionless
 ################################################################################
 # Load the ring
 ################################################################################
-# The model supplies an electron reference at p0*c = 1 GeV and a 40 m ring.
-# There is no RF or radiation. Periodic 4D optics fixes the momentum offset.
+# The model supplies a 1 GeV/c electron reference and a 1500 m ring.
+# RF voltage is zero and radiation is off. Periodic 4D optics fixes delta.
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]

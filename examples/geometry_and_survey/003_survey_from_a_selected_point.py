@@ -19,9 +19,9 @@ import xtrack as xt
 ########################################
 # Native ring
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-SURVEY_ORIGIN   = 'obs.4'                 # Entrance receiving the assigned pose
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+SURVEY_ORIGIN   = 'bpm.s4.f'              # Entrance receiving the assigned pose
 
 ########################################
 # Assigned global pose
@@ -72,7 +72,7 @@ for label, survey in [
     ('Default origin', reference), ('Assigned origin', placed),
 ]:
     print(label)
-    survey.rows[['obs.0', SURVEY_ORIGIN, '_end_point']].cols[
+    survey.rows[['arc.s1.c1.qf.in', SURVEY_ORIGIN, '_end_point']].cols[
         'name s X Y Z theta phi psi'].show(maxwidth = 'full')
 
 ########################################
@@ -83,8 +83,8 @@ origin_index        = np.flatnonzero(placed.name == SURVEY_ORIGIN)[0]
 reference_distance  = np.linalg.norm(
     reference.XYZ[0] - reference.XYZ[origin_index])
 placed_distance     = np.linalg.norm(placed.XYZ[0] - placed.XYZ[origin_index])
-print('obs.0 to selected entrance, default placement [m]:', reference_distance)
-print('obs.0 to selected entrance, assigned placement [m]:', placed_distance)
+print('Entrance to selected BPM, default placement [m]:', reference_distance)
+print('Ring entrance to selected BPM, assigned placement [m]:', placed_distance)
 
 ################################################################################
 # Plot the assigned placement and entrance tangent
@@ -99,7 +99,7 @@ ax.quiver(
     Z0, X0, tangent[2], tangent[0],
     angles          = 'xy',
     scale_units     = 'xy',
-    scale           = 0.5,
+    scale           = 0.025,
     label           = 'Entrance tangent')
 ax.set_xlabel('Z [m]')
 ax.set_ylabel('X [m]')

@@ -17,10 +17,10 @@ import xtrack as xt
 ########################################
 # Model and periodic tune targets
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-QX_TARGET       = 1.70                   # Full tune, including integer part
-QY_TARGET       = 1.65
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+QX_TARGET       = 8.760                   # Full tune, including integer part
+QY_TARGET       = 10.020
 
 ########################################
 # Matching precision and variable step
@@ -34,7 +34,8 @@ K1_STEP         = 1e-5                   # Finite-difference k1 step [m^-2]
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
-# This 40 m ring has a 1 GeV/c electron reference, without RF or radiation.
+# This 1500 m ring has a 1 GeV/c electron reference, with RF voltage zero
+# and radiation off.
 # Periodic 4D optics holds delta=0 at the fixed reference momentum.
 tw_before   = line.twiss4d()
 k1_before   = {name: env[name] for name in ['kqf', 'kqd']}
@@ -42,7 +43,8 @@ k1_before   = {name: env[name] for name in ['kqf', 'kqd']}
 ################################################################################
 # Match two tunes with two quadrupole-family strengths
 ################################################################################
-# kqf and kqd drive all focusing and defocusing quadrupoles, respectively.
+# kqf and kqd drive the focusing and defocusing ARC quadrupoles.
+# Final-focus and utility-straight strengths remain fixed.
 # match() solves immediately by default and leaves the changed strengths live.
 opt = line.match(
     method  = '4d',

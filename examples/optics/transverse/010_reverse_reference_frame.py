@@ -19,15 +19,15 @@ import xtrack as xt
 ########################################
 # Native ring with visible horizontal and vertical orbit offsets
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-SHIFT_X         = 0.1e-3                  # Horizontal qf.1 offset [m]
-SHIFT_Y         = 0.2e-3                  # Vertical qd.3 offset [m]
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+SHIFT_X         = 0.1e-3                # Horizontal quad offset [m]
+SHIFT_Y         = 0.02e-3               # Vertical quad offset [m]
 
 ########################################
 # Compare the same physical points
 ########################################
-MARKERS         = ['obs.0', 'obs.4']
+MARKERS         = ['ip.1', 'straight.s4.mid']
 
 ################################################################################
 # Calculate optics in proper and reversed local frames
@@ -39,8 +39,8 @@ MARKERS         = ['obs.0', 'obs.4']
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
-env['qf.1'].shift_x = SHIFT_X
-env['qd.3'].shift_y = SHIFT_Y
+env['arc.s1.c1.qf.in'].shift_x = SHIFT_X
+env['arc.s2.c2.qd'].shift_y = SHIFT_Y
 
 ########################################
 # Request the reversed-frame result

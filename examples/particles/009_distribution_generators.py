@@ -31,7 +31,7 @@ PENCIL_WIDTH    = 0.2                     # Radial thickness [sigma]
 ########################################
 # Transform the grid to a physical launch
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 NEMITT_X        = 1e-6                    # Normalized rms emittance [m rad]
 NEMITT_Y        = 2e-6                    # [m rad]
 
@@ -100,7 +100,7 @@ plt.show()
 ################################################################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
+line        = env['demo']
 # With these emittances, x_norm and px_norm are dimensionless sigma-scaled
 # Floquet coordinates. The vertical launch and longitudinal offsets are zero.
 particles = line.build_particles(

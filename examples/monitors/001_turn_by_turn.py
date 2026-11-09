@@ -19,8 +19,8 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Launch and observation
@@ -32,9 +32,9 @@ X               = 1.0e-4                # [m]
 ################################################################################
 # Load the model
 ################################################################################
-repo_root = Path(__file__).resolve().parents[2]
-env       = xt.load(repo_root / LATTICE_FILE)
-line      = env[LINE_NAME]
+repo_root   = Path(__file__).resolve().parents[2]
+env         = xt.load(repo_root / LATTICE_FILE)
+line        = env[LINE_NAME]
 
 ################################################################################
 # Record the first tracking interval

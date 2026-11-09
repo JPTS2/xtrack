@@ -20,10 +20,10 @@ import xtrack as xt
 ########################################
 # Ring and finite-duration horizontal drive
 ########################################
-LATTICE_FILE        = 'test_data/example_lattices/ring/lattice.py'
+LATTICE_FILE        = 'test_data/example_lattices/demo_ring/lattice.py'
 KICK_AMPLITUDE      = 1e-7              # Peak Delta px, normalized to p0
 PHASE               = 0.0               # Cosine waveform phase [rad]
-DRIVE_DETUNINGS     = [0.005, 0.10]      # Drive minus natural Qx, cycles/turn
+DRIVE_DETUNINGS     = [0.005, 0.10]      # Fractional drive detuning [turn^-1]
 
 ########################################
 # Waveform clock and observation window
@@ -43,14 +43,15 @@ N_TURNS             = 256
 ########################################
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
-base        = env['ring']
+base        = env['demo']
 reference   = base.twiss4d()
 beta0       = float(base.particle_ref.beta0[0])
 frev        = beta0 * c / base.get_length()
 fs          = SAMPLES_PER_TURN * frev
 natural_q   = reference.qx % 1
 
-# The native 40 m ring has a 1 GeV/c electron reference, no RF or radiation.
+# The 1500 m demo ring has a 1 GeV/c electron reference; RF voltage and
+# radiation are off. The drive addresses Qx modulo an integer: Qx%1~0.755.
 # Exciter uses its at_turn/zeta clock, without enable_time_dependent_vars.
 
 ########################################
@@ -61,8 +62,10 @@ envelope        = np.minimum(
     np.clip(sample_turns / RAMP_TURNS, 0, 1),
     np.clip((DRIVE_TURNS - sample_turns) / RAMP_TURNS, 0, 1),
 )
+
 # Half a sample of arrival delay keeps this coasting particle away from sample
-# edges. zeta is unconstrained by RF here; transverse maps do not depend on it.
+# edges. Here zeta=-C/(2*SAMPLES_PER_TURN)=-93.75 m is a clock offset,
+# not a bunch length. It is allowed for this coasting particle with RF off.
 zeta_start = -beta0 * c / (2 * fs)
 
 ################################################################################

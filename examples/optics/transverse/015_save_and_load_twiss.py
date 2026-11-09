@@ -18,8 +18,8 @@ import xtrack as xt
 ########################################
 # Native ring and analysis emittances
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 NEMITT_X        = 1e-6                    # Normalized rms emittance [m rad]
 NEMITT_Y        = 2e-6                    # [m rad]
 
@@ -67,7 +67,7 @@ for label, optics in [
     ('Original', tw), ('Dictionary', from_dict), ('JSON', restored),
 ]:
     print(label, 'tunes:', optics.qx, optics.qy)
-    optics.rows[['obs.0', 'obs.4']].cols[
+    optics.rows[['ip.1', 'bpm.s4.d']].cols[
         'name s betx bety dx mux muy'].show(maxwidth = 'full')
 print('Loaded reference p0*c [eV]:', restored.particle_on_co.p0c[0])
 print('Loaded W-matrix shape:', restored.W_matrix.shape)
@@ -80,7 +80,7 @@ print('Loaded W-matrix shape:', restored.W_matrix.shape)
 covariance = restored.get_beam_covariance(
     nemitt_x    = NEMITT_X,
     nemitt_y    = NEMITT_Y)
-covariance.rows[['obs.0', 'obs.4']].cols[
+covariance.rows[['ip.1', 'bpm.s4.d']].cols[
     'name sigma_x sigma_y'].show(maxwidth = 'full')
 print('Largest beta_x difference after JSON reload [m]:',
       np.max(np.abs(restored.betx - tw.betx)))

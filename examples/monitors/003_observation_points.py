@@ -20,24 +20,24 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Launch and observation points
 ########################################
 X               = np.array([0.1, 0.2, 0.3]) * 1e-3  # [m]
 N_TURNS         = 16
-OBS_PATTERN     = r'obs\..*'
+OBS_PATTERN     = r'bpm\.ip\..*'
 PARTICLE_ID     = 1
 SELECTED_TURN   = 3
 
 ################################################################################
 # Load the model
 ################################################################################
-repo_root = Path(__file__).resolve().parents[2]
-env       = xt.load(repo_root / LATTICE_FILE)
-line      = env[LINE_NAME]
+repo_root   = Path(__file__).resolve().parents[2]
+env         = xt.load(repo_root / LATTICE_FILE)
+line        = env[LINE_NAME]
 
 ################################################################################
 # Select an observation family from the element table
@@ -65,7 +65,7 @@ print('Full x record shape:', record.get('x').shape)
 ################################################################################
 
 ########################################
-# Create separate records and place them before the markers
+# Create separate records and place them before the BPM Device planes
 ########################################
 for name in observations:
     env.elements[f'monitor.{name}'] = xt.ParticlesMonitor(
@@ -100,7 +100,7 @@ for name in observations:
     print('Monitor element index:', installed.at_element[0, 0])
 
 # The installed record identifies its monitor element; the named record samples
-# the original marker entrance. The zero-length monitor does not change motion.
+# the original Device entrance. The zero-length monitor does not change motion.
 
 ########################################
 # Select one particle, turn and location
@@ -108,7 +108,7 @@ for name in observations:
 locations   = record.get('x', particle_id = PARTICLE_ID, turn = SELECTED_TURN)
 value       = record.get(
     'x',
-    obs_name    = 'obs.4',
+    obs_name    = 'bpm.ip.r',
     particle_id = PARTICLE_ID,
     turn        = SELECTED_TURN,
 )

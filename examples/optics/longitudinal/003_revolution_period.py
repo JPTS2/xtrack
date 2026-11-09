@@ -15,17 +15,20 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-LATTICE_FILE        = 'test_data/example_lattices/rf_ring/lattice.py'
+LATTICE_FILE        = 'test_data/example_lattices/demo_ring/lattice.py'
+RF_VOLTAGE          = 1e5                # Thin-cavity voltage [V]
 NUM_SEARCH_TURNS    = 4
-DELTA_SCAN          = np.array([-1e-3, 0.0, 1e-3])
+DELTA_SCAN          = np.array([-1e-4, 0.0, 1e-4])
 
 ################################################################################
-# Load the RF ring and its underlying magnetic ring
+# Load independent RF-on and RF-off configurations
 ################################################################################
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
-rf_ring     = env['rf_ring']
-magnetic    = env['ring']
+rf_ring     = env['demo']
+env['voltage_rf'] = RF_VOLTAGE
+magnetic_env = xt.load(repo_root / LATTICE_FILE)
+magnetic     = magnetic_env['demo']
 
 ################################################################################
 # Compare reference and tracked synchronous revolution periods
@@ -59,7 +62,7 @@ print('Period minus reference [s]:', searched.t_rev - searched.t_rev0)
 ########################################
 # Track transverse closed orbits at fixed momentum
 ########################################
-# The RF-free companion line lets delta remain fixed. Over one turn,
+# The fresh RF-off load lets delta remain fixed. Over one turn,
 # Delta_zeta = length - beta0*c*T, hence T = t_rev0 - Delta_zeta/(beta0*c).
 nominal     = magnetic.twiss4d()
 periods     = np.zeros(len(DELTA_SCAN))
@@ -84,3 +87,6 @@ xt.Table(
         'relative_change':  relative,
         'eta_delta':        nominal.slip_factor * DELTA_SCAN},
     index   = 'delta').show(maxwidth = 'full')
+
+# These small offsets sample the bare lattice near its integer vertical tune;
+# they do not establish a momentum-acceptance interval.

@@ -20,17 +20,18 @@ import xtrack as xt
 ########################################
 # Native magnetic ring
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-OBSERVATION     = 'obs.0'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+OBSERVATION     = 'arc.s1.c1.qf.in'
 
 ########################################
 # Momentum scan and polynomial fits
 ########################################
-DELTA_MAX       = 5e-3
+DELTA_MAX       = 2e-5
 NUM_DELTA       = 13                     # More samples than fit coefficients
 FIT_ORDER       = 3                      # At least 2; leave room for order + 1
-LOCAL_STEP      = 1e-3                   # Local Twiss derivative step
+LOCAL_STEP      = 1e-5                   # Local Twiss derivative step
+# The bare vertical tune is near an integer; use a small stable fit window.
 
 ################################################################################
 # Fit the momentum dependence using the public helper
@@ -142,6 +143,10 @@ for label, alternative in [('Half range', narrow), ('Higher degree', higher)]:
 
 # Derivative estimates depend on the fit window, degree and numerical precision;
 # a higher polynomial degree alone does not establish convergence.
+# In this window the tune predictions are more robust than their derivatives.
+
+# The x-plane second derivative is particularly sensitive to local differencing;
+# the printed comparisons are an error diagnostic, not an accuracy guarantee.
 
 ################################################################################
 # Plot the tune curvature beyond the constant and linear terms

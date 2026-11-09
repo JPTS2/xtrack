@@ -20,23 +20,23 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Transverse beam
 ########################################
 SEED            = 12345
-N_PARTICLES     = 4096
+N_PARTICLES     = 2048
 NEMITT_X        = 1.0e-6                # Normalized rms emittance [m rad]
 NEMITT_Y        = 2.0e-6                # Normalized rms emittance [m rad]
 
 ################################################################################
 # Load the model
 ################################################################################
-repo_root = Path(__file__).resolve().parents[2]
-env       = xt.load(repo_root / LATTICE_FILE)
-line      = env[LINE_NAME]
+repo_root   = Path(__file__).resolve().parents[2]
+env         = xt.load(repo_root / LATTICE_FILE)
+line        = env[LINE_NAME]
 
 ################################################################################
 # Calculate the linear beam envelope
@@ -84,6 +84,7 @@ record = line.record_last_track
 # Axes are (particle-ID slot, element boundary). The final column is the line
 # end, not an additional element. Twiss includes that same final boundary.
 print('Recorded boundary count:', record.x.shape[1])
+print('Surviving macroparticles:', np.count_nonzero(particles.state > 0))
 print('First and last s [m]:', record.s[0, 0], record.s[0, -1])
 
 ################################################################################

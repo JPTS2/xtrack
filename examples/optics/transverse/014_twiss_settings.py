@@ -18,8 +18,8 @@ import xtrack as xt
 ########################################
 # Native ring
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Alternative finite-difference steps
@@ -58,14 +58,14 @@ print('Tunes:', baseline.qx, baseline.qy)
 # Request only the orbit
 ########################################
 orbit = line.twiss(only_orbit = True)
-orbit.rows[r'obs\..*'].cols['name s x px y py'].show(maxwidth = 'full')
+orbit.rows[r'bpm\..*'].cols['name s x px y py'].show(maxwidth = 'full')
 print('Beta functions included in orbit-only result:', 'betx' in orbit.keys())
 
 ########################################
 # Attach magnetic strengths to the optics table
 ########################################
 with_strengths = line.twiss(strengths = True)
-with_strengths.rows[['qf.1', 'qd.1', 'bf.1']].cols[
+with_strengths.rows[['arc.s1.c1.qf.in', 'arc.s1.c1.qd', 'arc.s1.c1.b1']].cols[
     'name s betx bety k0l k1l angle'].show(maxwidth = 'full')
 
 # k0l and bend angle are dimensionless; k1l is in m^-1.

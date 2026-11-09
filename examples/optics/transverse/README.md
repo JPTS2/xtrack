@@ -26,10 +26,13 @@ this route, followed by inspecting results, beam covariance and coupled optics.
 | [014_twiss_settings.py](014_twiss_settings.py) | Choose result content and line defaults, then check finite-difference step sensitivity |
 | [015_save_and_load_twiss.py](015_save_and_load_twiss.py) | Save a complete Twiss result and continue analysis after loading it |
 
-The [native magnetic models](../../../test_data/example_lattices/README.md) use
-1 GeV/c electrons. These calculations are 4D, with no RF, radiation or collective
-forces. The ring's optics are periodic; the transport line's entrance conditions
-are supplied. `line.twiss4d(...)` is the explicit 4D form of
+Most lessons use the [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
+with its 1 GeV/c electron reference and 1.5 km circumference. RF voltage and
+nonlinear strengths are zero; radiation is off and no collective force is
+included in these 4D calculations. The open-line lessons `002`, `007` and `013`
+retain the [native transport line](../../../test_data/example_lattices/transport/lattice.py):
+they supply entrance conditions rather than imposing ring periodicity.
+`line.twiss4d(...)` is the explicit 4D form of
 `line.twiss(method='4d', ...)`.
 
 Twiss rows describe element entrances and a final exit called `_end_point`.
@@ -46,9 +49,10 @@ first-order dispersion contribution to the transverse covariance. This is not
 an RF-matched longitudinal distribution. Coupled and longitudinal covariance
 need their corresponding optical modes and assumptions.
 
-`005` and `006` add skew components to `qf.1` and `qd.5` in independent loads
-of the native ring. The supplied strengths give stable, distinct transverse
-modes with nonzero cross-plane projections. No skew fields are added to the
+`005` and `006` power `ks_s2` and `ks_s5` in independent loads of DEMO.
+These add skew components of +0.001 and -0.0008 m^-2 to the 1 m quadrupoles
+`arc.s2.c2.qd` and `arc.s5.c2.qd`. The supplied strengths give stable, distinct
+transverse modes with nonzero cross-plane projections. No skew fields are added to the
 model file. Mode labels follow the horizontal/vertical branches near the
 uncoupled limit; they are not two independent physical-plane oscillations.
 The covariance API's `nemitt_x/y` specify the two mode populations here.
@@ -65,10 +69,14 @@ origins. A zero-length marker defines its downstream boundary. A ranged
 calculation includes its final element; its `_end_point` is
 that element's exit, which need not be the full line's final exit.
 
-`008` constructs one cell between equivalent quadrupole entrances, excluding the
-next cell's first quadrupole. Periodicity is an optical boundary condition; the
-cell's reference geometry need not form a closed ring. Its comparison with the
-full ring relies on this model's eight identical cells.
+`008` solves the reusable `arc.cell`, with a 15-degree geometric bend and
+90-degree betatron phase advance in each plane. The straight sections match
+its periodic beta/alpha, but the assembled ring has zero dispersion at the
+arc ports; that differs from the periodic cell's dispersion. Cell phase alone
+does not give the ring tunes, because the straight sections add phase. Nor does
+the four-cell transverse identity determine a unique periodic beta solution.
+Periodicity is an optical boundary condition; the cell need not close on the
+floor plan.
 
 `009` separates the calculation's starting point from the stored line order and
 the zeros of `s` and phase advance. `010` changes the local reference frame:
@@ -84,6 +92,10 @@ The returned particle is tracked for one turn, then reused for optics.
 `012` keeps the reference momentum and magnetic strengths fixed.
 Dispersion differentiates the closed orbit; `dpx/dpy` refer to normalized
 canonical momenta. A finite-delta orbit also contains higher-order terms.
+The centered difference uses delta = +/-1e-5. The imposed spread in `004`
+is also small: these examples demonstrate local derivatives and linear covariance,
+not a qualified momentum acceptance. DEMO's bare chromaticity is large and its
+vertical tune is close to an integer.
 Tune and local-optics momentum dependence belong together in the
 [chromatic optics sequence](../../README.md#nonlinear), within nonlinear optics.
 Matching chromaticity belongs with matching.

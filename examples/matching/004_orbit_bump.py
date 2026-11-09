@@ -19,12 +19,12 @@ import xtrack as xt
 ########################################
 # Native ring and local bump geometry
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-START_S         = 0.35                  # Upstream boundary [m]
-CORRECTOR_S     = [0.4, 5.4, 10.4]       # Thin dipole positions [m]
-MID_S           = 7.4                   # Observation between correctors 2/3 [m]
-END_S           = 10.5                  # Boundary after the last corrector [m]
-BUMP_HEIGHT     = 1e-3                  # Displacement at MID_S [m]
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+START_S         = 160.0                 # Upstream boundary [m]
+CORRECTORS      = ['cor.ip.1', 'cor.ip.2', 'cor.ip.3']
+MID_S           = 205.0                 # IP between correctors 2/3 [m]
+END_S           = 250.0                 # Boundary after the last corrector [m]
+BUMP_HEIGHT     = 1e-4                  # Displacement at MID_S [m]
 
 ########################################
 # Solver precision
@@ -38,20 +38,19 @@ PX_TOL          = 1e-10                 # Normalized canonical px tolerance
 ################################################################################
 
 ########################################
-# Insert three correctors
+# Bind the three existing insertion correctors
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
-# The 40 m electron ring has p0*c=1 GeV, without RF or radiation; delta=0.
+line        = env['demo']
+# The 1500 m electron ring has p0*c=1 GeV, with RF voltage zero and
+# radiation off; delta=0.
 knobs = []
-for index, position in enumerate(CORRECTOR_S):
+for index, name in enumerate(CORRECTORS):
     knob    = f'bump_kick_{index}'
-    name    = f'bump.corr.{index}'
     env[knob] = 0.0
     # Multipole Delta px=-knl[0]: the knob is the positive horizontal kick.
-    env.new(name, xt.Multipole, knl = ['-' + knob])
-    line.insert(name, at = position)
+    env.set(name, knl = ['-' + knob])
     knobs.append(knob)
 
 ########################################

@@ -17,8 +17,7 @@ import xtrack as xt
 ########################################
 # Ring and desired tune derivatives
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-N_CELLS         = 8
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 DQX_TARGET      = 1.0                   # dQx/d(delta), dimensionless
 DQY_TARGET      = 2.0                   # dQy/d(delta), dimensionless
 
@@ -26,35 +25,27 @@ DQY_TARGET      = 2.0                   # dQy/d(delta), dimensionless
 # Sextupole controls and numerical precision
 ########################################
 K2L_STEP        = 1.0e-4                # Integrated k2 variation step [m^-2]
-K2L_LIMITS      = [-20.0, 20.0]          # Numerical search bounds [m^-2]
+K2L_LIMITS      = [-1.0, 1.0]            # Numerical search bounds [m^-2]
 CHROM_TOL       = 1.0e-6
-DELTA_STEP      = 1.0e-4                # Chromaticity computation step
-DELTA_CHECK     = 5.0e-5                # Independent centered difference step
+DELTA_STEP      = 2.0e-6                # Chromaticity computation step
+DELTA_CHECK     = 1.0e-6                # Independent centered difference step
 
 ################################################################################
-# Add two normal-sextupole families to a fresh native ring
+# Use the two existing normal-sextupole families
 ################################################################################
 
 ########################################
-# Install integrated kicks at focusing and defocusing quad entrances
+# Load the existing dispersed arc sextupoles
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['ring']
-# The 40 m ring supplies a 1 GeV/c electron reference, without RF or radiation.
+line        = env['demo']
+# The 1500 m ring supplies a 1 GeV/c electron reference, with RF voltage
+# zero and radiation off.
 # knl[2] is integrated normal k2 [m^-2], with Delta px=-knl[2]*(x^2-y^2)/2.
-# These zero-length kicks preserve the reference geometry.
+# Existing zero-length kicks preserve the reference geometry.
 env['k2lf'] = 0.0
 env['k2ld'] = 0.0
-placements = []
-for cell in range(1, N_CELLS + 1):
-    for prefix, quad, knob in [('sf', 'qf', 'k2lf'), ('sd', 'qd', 'k2ld')]:
-        placements.append(env.new(
-            f'{prefix}.{cell}', xt.Multipole,
-            knl = [0.0, 0.0, knob],
-            at  = f'{quad}.{cell}@start',
-        ))
-line.insert(placements)
 
 ########################################
 # Record the zero-sextupole reference

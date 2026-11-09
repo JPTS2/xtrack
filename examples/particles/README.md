@@ -23,11 +23,12 @@ preparation. Each script runs independently in your Xsuite environment.
 
 The reference and coordinate examples use a 1 GeV/c proton reference.
 `003`, `004` and `009` use the
-[native magnetic ring](../../test_data/example_lattices/README.md), with its
-1 GeV/c electron reference and 4D optics. These native-ring examples have no RF
+[shared demo ring](../../test_data/example_lattices/demo_ring/README.md), with its
+1 GeV/c electron reference and 4D optics. RF voltage is zero, with no RF
 confinement: the imposed longitudinal Gaussian in `004` is not a matched RF
 distribution. A launch scan is not a statistical bunch, and a finite random
-sample does not have exact target moments.
+sample does not have exact target moments. `004` prepares the prescribed
+distribution without qualifying its off-momentum stability or tracking it.
 
 `003_normalized_coordinates.py` distinguishes unscaled Courant-Snyder
 (Floquet) coordinates from emittance-scaled coordinates. Omitting emittances

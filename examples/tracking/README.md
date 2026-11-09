@@ -60,3 +60,9 @@ memory ownership belong to [contexts and memory](../README.md#contexts_and_memor
 
 For clock-driven machine settings and sampled transverse drives, continue with
 [time-dependent tracking](time_dependent/README.md).
+
+For amplitude-dependent tunes and finite-turn survival, see
+[nonlinear tracking](nonlinear/README.md).
+
+For bunch-dependent fields and coordinated interacting populations, see
+[collective tracking](collective/README.md).

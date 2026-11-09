@@ -21,8 +21,8 @@ import xtrack as xt
 # Model
 ########################################
 # Lattice file relative to the repository root.
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
 
 ########################################
 # Tracking
@@ -55,8 +55,8 @@ monitor_middle = xt.ParticlesMonitor(
 env.elements['monitor_start'] = monitor_start
 env.elements['monitor_middle'] = monitor_middle
 line.insert([
-    env.place('monitor_start', at = 'obs.0'),
-    env.place('monitor_middle', at = 'obs.4'),
+    env.place('monitor_start', at = 'bpm.s1.f'),
+    env.place('monitor_middle', at = 'bpm.s4.f'),
 ])
 
 ################################################################################
@@ -86,11 +86,11 @@ monitors.cols['name s element_type'].show(maxrows = 12)
 fig, ax = plt.subplots(figsize = (8, 4))
 ax.plot(
     monitor_start.at_turn[0], monitor_start.x[0] * 1e3,
-    label = 's = 0 m', marker = '.',
+    label = 'bpm.s1.f (s = 1 m)', marker = '.',
 )
 ax.plot(
     monitor_middle.at_turn[0], monitor_middle.x[0] * 1e3,
-    label = 's = 20 m', marker = '.',
+    label = 'bpm.s4.f (s = 751 m)', marker = '.',
 )
 ax.set_xlabel('Turn')
 ax.set_ylabel('x [mm]')

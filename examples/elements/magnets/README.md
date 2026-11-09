@@ -26,10 +26,12 @@ fields are normalized to its signed rigidity. Distributed normal strengths
 The multipole polynomial includes `1/n!`; the stored coefficient does not.
 The thin-kick comparison uses the reference species at `delta = 0` and `y = 0`.
 
-`002` uses the [native magnetic ring](../../../test_data/example_lattices/README.md)
+`002` uses the [shared demo ring](../../../test_data/example_lattices/demo_ring/README.md)
 with its 1 GeV/c electron reference and 4D periodic optics. It changes body
 settings while retaining strengths, bend edges and reference geometry. The
 resulting tune differences describe those settings, rather than rank accuracy.
+Its focusing-family regex selects arc QF halves; the insertion quadrupoles
+retain the class-level settings. RF voltage is zero and radiation is off.
 
 `003` uses one quadrupole, with fringe fields disabled, and a common proton
 input ensemble at 1 GeV/c. The thin and thick representations preserve geometric

@@ -19,10 +19,10 @@ import xtrack as xt
 ########################################
 # Native ring and quadrupole offsets
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
-LINE_NAME       = 'ring'
-SHIFT_X         = 0.1e-3                  # Horizontal qf.1 offset [m]
-SHIFT_Y         = 0.2e-3                  # Vertical qd.3 offset [m]
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+SHIFT_X         = 0.1e-3                # Horizontal quad offset [m]
+SHIFT_Y         = 0.02e-3               # Vertical quad offset [m]
 
 ########################################
 # Search conditions
@@ -30,7 +30,7 @@ SHIFT_Y         = 0.2e-3                  # Vertical qd.3 offset [m]
 DELTA0          = 0.0                    # Fixed relative momentum deviation
 GUESS_X         = 0.2e-3                 # Initial horizontal guess [m]
 GUESS_Y         = -0.1e-3                # Initial vertical guess [m]
-SEARCH_AT       = 'obs.4'                # Alternative search location
+SEARCH_AT       = 'bpm.s4.d'                # Alternative search location
 
 ################################################################################
 # Build a model with a nonzero closed orbit
@@ -38,8 +38,8 @@ SEARCH_AT       = 'obs.4'                # Alternative search location
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
-env['qf.1'].shift_x = SHIFT_X
-env['qd.3'].shift_y = SHIFT_Y
+env['arc.s1.c1.qf.in'].shift_x = SHIFT_X
+env['arc.s2.c2.qd'].shift_y = SHIFT_Y
 line.build_tracker()
 
 ################################################################################
@@ -49,7 +49,7 @@ line.build_tracker()
 ########################################
 # Supply a first guess and longitudinal constraints
 ########################################
-# There is no RF. delta0 fixes momentum and zeta0 fixes the entrance time gauge;
+# RF voltage is zero. delta0 fixes momentum; zeta0 fixes the time gauge;
 # only the transverse coordinates must return after one turn.
 closed = line.find_closed_orbit(
     co_guess    = {'x': GUESS_X, 'y': GUESS_Y},
@@ -93,7 +93,7 @@ alternative = line.twiss4d(co_search_at = SEARCH_AT, delta0 = DELTA0)
 print('Search-location maximum orbit differences [m]:',
       np.max(np.abs(alternative.x - tw.x)),
       np.max(np.abs(alternative.y - tw.y)))
-tw.rows[r'obs\..*'].cols['name s x px y py'].show(maxwidth = 'full')
+tw.rows[r'bpm\..*'].cols['name s x px y py'].show(maxwidth = 'full')
 
 ################################################################################
 # Plot the transverse closed orbit

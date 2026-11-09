@@ -19,8 +19,9 @@ import xtrack as xt
 ########################################
 # Native RF ring
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/rf_ring/lattice.py'
-LINE_NAME       = 'rf_ring'
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+LINE_NAME       = 'demo'
+RF_VOLTAGE      = 1e5                    # Thin-cavity voltage [V]
 
 ########################################
 # Mode populations
@@ -35,6 +36,7 @@ SIGMA_ZETA_3    = 0.02                    # Mode 3 rms zeta at the entrance [m]
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
+env['voltage_rf'] = RF_VOLTAGE
 tw          = line.twiss6d()
 
 ################################################################################
@@ -72,7 +74,7 @@ print('Full entrance sigma_zeta [m]:', covariance.sigma_zeta[0])
 ########################################
 # The longitudinal block has diagonal units m^2 and 1, and covariance in m.
 # pzeta agrees with delta only to first order near the reference particle.
-covariance.rows[['obs.0', 'obs.4', 'rf']].cols[
+covariance.rows[['arc.s1.c1.qf.in', 'ip.1', 'rf.1']].cols[
     'name sigma_zeta sigma_pzeta'].show(maxwidth = 'full')
 longitudinal = covariance.Sigma[0, 4:6, 4:6]
 print('Entrance covariance block (zeta, pzeta):')
