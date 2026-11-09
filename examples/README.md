@@ -63,6 +63,8 @@ detailed lessons; the subject folders remain independently usable.
 
 ## tables
 
+See the [table examples](tables/README.md) for the runnable learning route.
+
 Table access, selections, calculations and table formats. Saving and loading
 models, particles, Twiss results, aperture models and measurements stays with
 the corresponding subject.
