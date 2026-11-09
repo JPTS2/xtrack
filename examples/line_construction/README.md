@@ -13,43 +13,45 @@ script runs independently. Begin with the
 
 | Example | Subject |
 | --- | --- |
-| [001_place_elements.py](001_place_elements.py) | Element start/centre/end anchors and relative positions |
-| [002_strength_expressions.py](002_strength_expressions.py) | Scalar/array strengths, values versus references and numeric overrides |
-| [003_line_algebra.py](003_line_algebra.py) | Combine assembled lines by concatenation, repetition and reversal |
-| [004_place_lines.py](004_place_lines.py) | Subline start/centre/end anchors and relative placement |
-| [005_parametric_geometry.py](005_parametric_geometry.py) | Compose mode: retain and regenerate placement expressions |
-| [006_clones_and_replicas.py](006_clones_and_replicas.py) | Repeated objects, named replicas and independent clones |
-| [007_edit_line.py](007_edit_line.py) | Insert, replace, remove and append with explicit geometry |
-| [008_shared_lines.py](008_shared_lines.py) | Shared selections versus independent environment copies |
-| [009_import_line.py](009_import_line.py) | Import between environments: variable conflicts, independence and slice parents |
-| [010_reference_particles.py](010_reference_particles.py) | Named references and a field-normalized spectrometer |
-| [011_replace_elements.py](011_replace_elements.py) | Replace one magnet, every use of a name, or names matching a pattern |
+| [001_environment_and_elements.py](001_environment_and_elements.py) | Element definitions, named access and the environment registry |
+| [002_assemble_line.py](002_assemble_line.py) | Ordered components, named lines and entrance positions |
+| [003_place_elements.py](003_place_elements.py) | Element start/centre/end anchors and relative positions |
+| [004_strength_expressions.py](004_strength_expressions.py) | Scalar/array strengths, values versus references and numeric overrides |
+| [005_line_algebra.py](005_line_algebra.py) | Combine assembled lines by concatenation, repetition and reversal |
+| [006_place_lines.py](006_place_lines.py) | Subline start/centre/end anchors and relative placement |
+| [007_parametric_geometry.py](007_parametric_geometry.py) | Compose mode: retain and regenerate placement expressions |
+| [008_clones_and_replicas.py](008_clones_and_replicas.py) | Repeated objects, named replicas and independent clones |
+| [009_edit_line.py](009_edit_line.py) | Insert, replace, remove and append with explicit geometry |
+| [010_replace_elements.py](010_replace_elements.py) | Replace one magnet, every use of a name, or names matching a pattern |
+| [011_shared_lines.py](011_shared_lines.py) | Shared selections versus independent environment copies |
+| [012_import_line.py](012_import_line.py) | Import between environments: variable conflicts, independence and slice parents |
+| [013_reference_particles.py](013_reference_particles.py) | Named references and a field-normalized spectrometer |
 
-`003_line_algebra.py` combines already assembled element sequences.
-`005_parametric_geometry.py` uses `compose = True` to retain placement expressions
+`005_line_algebra.py` combines already assembled element sequences.
+`007_parametric_geometry.py` uses `compose = True` to retain placement expressions
 and rebuild the geometry when a variable changes.
 
 Run the scripts in your Xsuite environment.
 
-`002_strength_expressions.py` introduces environment variables and expressions
+`004_strength_expressions.py` introduces environment variables and expressions
 for element strengths. Parametric placements are covered in
-`005_parametric_geometry.py`. Expression-based matching and time-dependent
+`007_parametric_geometry.py`. Expression-based matching and time-dependent
 tracking are developed with those subjects.
 
-`009_import_line.py` transfers a line's elements and variable dependencies into
+`012_import_line.py` transfers a line's elements and variable dependencies into
 a destination environment, including the parents of sliced elements. It then
 imports two sliced lines with the same element names and shows how their
 parents are renamed. Separate knob changes expose which source or imported
 line responds.
 
-`011_replace_elements.py` answers: how do I replace just the second magnet when
+`010_replace_elements.py` answers: how do I replace just the second magnet when
 several positions share the same element? It then replaces every use of a name
 and both screens selected by a pattern. All replacements preserve length.
 
 The inline lattices teach geometry and object ownership; no periodic optics or
 closed-ring geometry is implied.
 Lengths and positions are in metres, quadrupole `k1` in m^-2, and rotations in
-radians. These recipes do not track. `010_reference_particles.py` uses a proton
+radians. These recipes do not track. `013_reference_particles.py` uses a proton
 reference and relates a signed magnetic field to its rigidity.
 The other recipes need no reference particle.
 
