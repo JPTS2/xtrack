@@ -10,8 +10,7 @@ import numpy as np
 import pytest
 import xobjects as xo
 import xtrack as xt
-from _cavity_lorentz import (COORDINATES, calibrated_waves, gaussian, hard_edge, lorentz_end,
-                             lorentz_end_at_any_radius, p16, ramped)
+from _cavity_lorentz import COORDINATES, calibrated_waves, hard_edge, lorentz_end, ramped
 from scipy.constants import c as clight
 
 _FREQUENCY = 801.58e6
@@ -41,14 +40,12 @@ def _track(context, controls, p0c, mass0=_ELECTRON, q0=1.):
 
 
 @lru_cache(maxsize=None)
-def _truth(gamma, half_waves, gradient, amplitude, phase, profile='p16', sigma=None, counter_phase=0.,
+def _truth(gamma, half_waves, gradient, amplitude, phase, counter_phase=0.,
            mass0=_ELECTRON, q0=1., n_cells=None, ks=0., k1=0.):
     p0c = mass0 * np.sqrt(gamma**2 - 1)
     length = half_waves * _HALF_WAVE
     voltage = gradient * length
-    shape = {'p16': lambda: p16(length), 'gaussian': lambda: gaussian(sigma),
-             'uniform': lambda: hard_edge}[profile]()
-    waves = calibrated_waves(voltage, _FREQUENCY, length, phase, amplitude, shape, counter_phase,
+    waves = calibrated_waves(voltage, _FREQUENCY, length, phase, amplitude, hard_edge, counter_phase,
                              n_cells, q0)
     def magnet(ramp):
         if ks == 0. and k1 == 0.:
@@ -61,15 +58,12 @@ def _truth(gamma, half_waves, gradient, amplitude, phase, profile='p16', sigma=N
             return ks * p0c / q0 * h, ks * p0c / q0 * dh, k1 * p0c / q0
         return fields
 
-    if profile == 'uniform' or ks != 0.:
-        # A hard edge is the limit of vanishing ramps, linear in the ramp's length.
-        ramps = [[lorentz_end(launch, waves, length, ramped(length, ramp) if profile == 'uniform' else shape,
-                              p0c, mass0, q0, magnet=magnet(ramp))
-                  for launch in _LAUNCHES] for ramp in (1e-3, 5e-4)]
-        return tuple({name: 2 * fine[name] - coarse[name] for name in COORDINATES}
-                     for coarse, fine in zip(*ramps))
-    return tuple(lorentz_end(launch, waves, length, shape, p0c, mass0, q0, magnet=magnet(1e-3))
-                 for launch in _LAUNCHES)
+    # A hard edge is the limit of vanishing ramps, linear in the ramp's length.
+    ramps = [[lorentz_end(launch, waves, length, ramped(length, ramp), p0c, mass0, q0,
+                          magnet=magnet(ramp), ramp=ramp)
+              for launch in _LAUNCHES] for ramp in (1e-3, 5e-4)]
+    return tuple({name: 2 * fine[name] - coarse[name] for name in COORDINATES}
+                 for coarse, fine in zip(*ramps))
 
 
 def _errors(ends, truth, p0c, voltage):
@@ -80,6 +74,9 @@ def _errors(ends, truth, p0c, voltage):
     energy = max(abs(e['delta'] - t['delta']) for e, t in zip(ends, truth)) * p0c / voltage
     return position, momentum / kick, energy
 
+
+# The ramp-resolved reference pins the energy through hard edges to about 1e-6 of the gain.
+_REFERENCE_ENERGY = 5e-6
 
 _GRID = [(gamma, gradient, half_waves, amplitude, phase)
          for gamma, gradient in ((20., 5e6), (400., 20e6), (4000., 20e6))
@@ -95,7 +92,7 @@ def test_phase_resolved_follows_the_orbit(context, gamma, gradient, half_waves, 
                                 phase=phase, counter_wave_amplitude=amplitude, num_kicks=16 * half_waves), p0c)
     position, kick, energy = _errors(ends, _truth(gamma, half_waves, gradient, amplitude, phase), p0c,
                                      gradient * length)
-    assert position < 1e-8 and kick < 1e-3 and energy < 1e-9
+    assert position < 1e-8 and kick < 1e-3 and energy < _REFERENCE_ENERGY
 
 
 @pytest.mark.parametrize('gamma, gradient, half_waves, amplitude, phase', _GRID)
@@ -108,7 +105,7 @@ def test_phase_resolved_paraxial_follows_the_orbit(context, gamma, gradient, hal
                                      gradient * length)
     # The map truncates at second order in the RF strength g/p0.
     strength = gradient / (2 * np.pi * _FREQUENCY / clight * p0c)
-    assert position < 2e-7 and kick < 1e-3 + 3 * strength**2 and energy < 2e-6
+    assert position < 2e-7 and kick < 1e-3 + 3 * strength**2 and energy < _REFERENCE_ENERGY
 
 
 @pytest.mark.parametrize('gamma, gradient', [(20., 5e6), (400., 20e6), (4000., 20e6)])
@@ -122,7 +119,7 @@ def test_phase_averaged_resolves_short_travelling_waves(context, gamma, gradient
     position, kick, energy = _errors(ends, _truth(gamma, half_waves, gradient, 0., np.pi / 2), p0c,
                                      gradient * length)
     assert kick < (5e-3 if gamma < 100 else 3e-4)
-    assert energy < 1e-6
+    assert energy < _REFERENCE_ENERGY
 
 
 @pytest.mark.parametrize('gamma, half_waves', [(400., 15), (4000., 15), (400., 20), (4000., 20)])
@@ -147,50 +144,28 @@ def test_hard_edges_follow_the_orbit(context, model, gamma, half_waves, amplitud
     gradient = 20e6 if gamma > 100 else 5e6
     length = half_waves * _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
-    controls = dict(model=model, length=length, voltage=gradient * length, phase=phase, counter_wave_amplitude=amplitude,
-                    rf_profile='uniform')
+    controls = dict(model=model, length=length, voltage=gradient * length, phase=phase, counter_wave_amplitude=amplitude)
     if model == '_phase-resolved':
         controls['num_kicks'] = int(16 * half_waves)
     ends = _track(context, controls, p0c)
-    truth = _truth(gamma, half_waves, gradient, amplitude, phase, 'uniform')
+    truth = _truth(gamma, half_waves, gradient, amplitude, phase)
     assert _errors(ends, truth, p0c, gradient * length)[1] < 3e-4
 
 
-@pytest.mark.parametrize('half_waves, sigma', [(4., .15), (6., .3), (8., .6), (10., 1.)])
-@pytest.mark.parametrize('model', ['_phase-resolved', '_phase-resolved-paraxial', '_phase-averaged'])
-def test_gaussian_envelopes_follow_the_orbit(context, model, half_waves, sigma):
-    gamma, gradient, sigma_m = 400., 20e6, sigma * _HALF_WAVE
-    length = half_waves * _HALF_WAVE
-    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
-    controls = dict(model=model, length=length, voltage=gradient * length, phase=np.pi / 2, counter_wave_amplitude=0.,
-                    rf_profile='gaussian', rf_profile_sigma=sigma_m)
-    if model == '_phase-resolved':
-        controls['num_kicks'] = int(16 * half_waves)
-    ends = _track(context, controls, p0c)
-    truth = _truth(gamma, half_waves, gradient, 0., np.pi / 2, 'gaussian', sigma_m)
-    # This field stops at r^2: a narrow envelope reaches its r^4 / sigma^4 terms.
-    assert _errors(ends, truth, p0c, gradient * length)[1] < (1e-3 if sigma < .2 else 3e-4)
-
-
-@pytest.mark.parametrize('profile', ['p16', 'uniform', 'gaussian'])
 @pytest.mark.parametrize('model', ['_phase-resolved', '_phase-resolved-paraxial'])
 @pytest.mark.parametrize('counter_phase', [.7, -2.])
-def test_counter_wave_phase_follows_the_orbit(context, model, counter_phase, profile):
+def test_counter_wave_phase_follows_the_orbit(context, model, counter_phase):
     gamma, half_waves, gradient, amplitude, phase = 400., 5, 20e6, .8, 1.2
     length = half_waves * _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
-    # Narrow enough to vanish at the ends, which the Gaussian reference assumes.
-    sigma = .4 * _HALF_WAVE if profile == 'gaussian' else None
     controls = dict(model=model, length=length, voltage=gradient * length, phase=phase, counter_wave_amplitude=amplitude,
-                    counter_wave_phase=counter_phase, rf_profile=profile)
-    if sigma:
-        controls['rf_profile_sigma'] = sigma
+                    counter_wave_phase=counter_phase)
     if model == '_phase-resolved':
         controls['num_kicks'] = 16 * half_waves
     ends = _track(context, controls, p0c)
-    truth = _truth(gamma, half_waves, gradient, amplitude, phase, profile, sigma, counter_phase)
+    truth = _truth(gamma, half_waves, gradient, amplitude, phase, counter_phase)
     position, kick, energy = _errors(ends, truth, p0c, gradient * length)
-    assert kick < 2e-3 and energy < 2e-6
+    assert kick < 2e-3 and energy < _REFERENCE_ENERGY
 
 
 @pytest.mark.parametrize('q0', [-1., 2.])
@@ -218,12 +193,11 @@ def test_low_beta_protons_follow_the_orbit_through_synchronous_cells(context, mo
     mass0 = xt.PROTON_MASS_EV
     p0c = mass0 * np.sqrt(gamma**2 - 1)
     controls = dict(model=model, length=length, voltage=gradient * length, phase=phase,
-                    counter_wave_amplitude=amplitude, n_cells=n_cells, rf_profile='uniform')
+                    counter_wave_amplitude=amplitude, n_cells=n_cells)
     if model == '_phase-resolved':
         controls['num_kicks'] = 16 * n_cells
     ends = _track(context, controls, p0c, mass0=mass0)
-    truth = _truth(gamma, half_waves, gradient, amplitude, phase, 'uniform', mass0=mass0,
-                   n_cells=n_cells)
+    truth = _truth(gamma, half_waves, gradient, amplitude, phase, mass0=mass0, n_cells=n_cells)
     assert _errors(ends, truth, p0c, gradient * length)[1] < 1e-3
 
 
@@ -307,41 +281,18 @@ def test_phase_resolved_keeps_its_accuracy_on_a_long_cavity_that_could_stop_the_
     assert _errors(ends, _truth(gamma, half_waves, gradient, amplitude, phase), p0c, gradient * length)[1] < 1e-2
 
 
-@pytest.mark.parametrize('model, sigma, offset, limit', [
-    ('_phase-resolved', 5e-3, 1e-3, 1e-4), ('_phase-resolved', 10e-3, 1e-3, 2e-4),
-    ('_phase-resolved', 10e-3, 3e-3, 5e-4), ('_phase-resolved', 100e-3, 10e-3, 1e-4),
-    # This map drops the cubic force, at most 0.1% of the kick at an offset of sigma / 24.
-    ('_phase-resolved-paraxial', 24e-3, 1e-3, 1e-3), ('_phase-resolved-paraxial', 50e-3, 1e-3, 1e-3),
-    ('_phase-resolved-paraxial', 100e-3, 1e-3, 1e-3)])
-def test_the_kick_against_the_orbit_with_the_cubic_force(context, model, sigma, offset, limit):
-    # At the zero crossing the kick is at its largest, so this is the error over the phases' largest kick.
-    gamma, frequency, phase = 10., 8e8, 0.
-    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
-    voltage = .05 * gamma * _ELECTRON
-    truth = lorentz_end_at_any_radius(dict(x=offset, px=.1 * offset, y=0., py=0.), frequency, voltage,
-                                      sigma, phase, p0c, _ELECTRON)
-    rf = xt.Cavity(model=model, frequency=frequency, length=12 * sigma, voltage=voltage, phase=phase, counter_wave_amplitude=0., rf_profile='gaussian', rf_profile_sigma=sigma)
-    particles = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, x=offset, px=.1 * offset)
-    rf.track(particles)
-    assert abs(particles.px[0] - truth) < limit * abs(truth - .1 * offset)
-
-
 @pytest.mark.parametrize('gamma, voltage_over_energy', [(5., .1), (10., .05)])
 def test_phase_averaged_reads_its_radial_kick_at_the_mean_energy_of_the_step(context, gamma, voltage_over_energy):
     # The error of a radial kick read at one end of the step is (dE/E per step) / 2: here 0.2 to 0.5%.
-    sigma, frequency, offset = .1, 8e8, 1e-3
+    half_waves = 6.4
+    length = half_waves * _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
-    voltage = voltage_over_energy * gamma * _ELECTRON
-    largest = abs(lorentz_end_at_any_radius(dict(x=offset, px=0., y=0., py=0.), frequency, voltage, sigma, 0.,
-                                            p0c, _ELECTRON))
+    gradient = voltage_over_energy * gamma * _ELECTRON / length
     for phase in (.6, 1.2, -.6, -1.2):
-        truth = lorentz_end_at_any_radius(dict(x=offset, px=0., y=0., py=0.), frequency, voltage, sigma, phase,
-                                          p0c, _ELECTRON)
-        rf = xt.Cavity(model='_phase-averaged', frequency=frequency, length=12 * sigma, voltage=voltage, phase=phase,
-                       counter_wave_amplitude=0., rf_profile='gaussian', rf_profile_sigma=sigma)
-        particles = xt.Particles(_context=context, p0c=p0c, mass0=_ELECTRON, x=offset, px=0.)
-        rf.track(particles)
-        assert abs(particles.px[0] - truth) < 5e-4 * largest
+        ends = _track(context, dict(model='_phase-averaged', length=length, voltage=gradient * length,
+                                    phase=phase, counter_wave_amplitude=0.), p0c)
+        truth = _truth(gamma, half_waves, gradient, 0., phase)
+        assert _errors(ends, truth, p0c, gradient * length)[1] < 1e-3
 
 
 def _spin_end(context, model, gamma, half_waves, gradient, amplitude, phase, anomaly, spin, **controls):
@@ -370,11 +321,11 @@ def test_spin_through_hard_edges_follows_thomas_bmt(context, gamma, gradient, am
     length = half_waves * _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
     end = _spin_end(context, '_phase-resolved', gamma, half_waves, gradient, amplitude, phase, anomaly,
-                    spin, num_kicks=16 * half_waves, rf_profile='uniform', n_cells=n_cells)
+                    spin, num_kicks=16 * half_waves, n_cells=n_cells)
     waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, hard_edge,
                              n_cells=n_cells)
     launch = dict(_LAUNCHES[0], spin_x=spin[0], spin_y=spin[1], spin_z=spin[2])
-    truth = lorentz_end(launch, waves, length, ramped(length, 3e-4), p0c, _ELECTRON, anomaly=anomaly)
+    truth = lorentz_end(launch, waves, length, ramped(length, 3e-4), p0c, _ELECTRON, anomaly=anomaly, ramp=3e-4)
     truth = np.array([truth['spin_x'], truth['spin_y'], truth['spin_z']])
     assert np.linalg.norm(end - truth) < 1e-3 * np.linalg.norm(truth - spin)
 
@@ -390,9 +341,9 @@ def test_spin_rotation_follows_thomas_bmt(context, model, gamma, gradient, toler
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
     controls = dict(num_kicks=16 * half_waves) if model == '_phase-resolved' else {}
     end = _spin_end(context, model, gamma, half_waves, gradient, amplitude, phase, anomaly, spin, **controls)
-    waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, p16(length))
+    waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, hard_edge)
     launch = dict(_LAUNCHES[0], spin_x=spin[0], spin_y=spin[1], spin_z=spin[2])
-    truth = lorentz_end(launch, waves, length, p16(length), p0c, _ELECTRON, anomaly=anomaly)
+    truth = lorentz_end(launch, waves, length, ramped(length, 3e-4), p0c, _ELECTRON, anomaly=anomaly, ramp=3e-4)
     truth = np.array([truth['spin_x'], truth['spin_y'], truth['spin_z']])
     rotation = np.linalg.norm(truth - spin)
     assert rotation > 0.
@@ -411,7 +362,7 @@ def test_static_fields_inside_the_cavity_follow_the_orbit(context, ks, k1, phase
                                 edge_exit_active=ks != 0.), p0c)
     truth = _truth(gamma, half_waves, gradient, amplitude, phase, ks=ks, k1=k1)
     position, kick, energy = _errors(ends, truth, p0c, gradient * length)
-    assert position < 2e-7 and kick < 1e-4 and energy < 1e-7
+    assert position < 2e-7 and kick < 1e-4 and energy < _REFERENCE_ENERGY
 
 
 @pytest.mark.parametrize('misalignment', [dict(shift_x=1e-3), dict(shift_y=-2e-3), dict(rot_s_rad=.3),
@@ -430,14 +381,14 @@ def test_misalignment_moves_the_field_seen_by_the_orbit(context, model, misalign
     ends = _track(context, controls, p0c)
     dx, dy = misalignment.get('shift_x', 0.), misalignment.get('shift_y', 0.)
     cos, sin = np.cos(misalignment.get('rot_s_rad', 0.)), np.sin(misalignment.get('rot_s_rad', 0.))
-    waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, p16(length))
+    waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, hard_edge)
     truth = []
     for launch in _LAUNCHES:
         local = dict(launch, x=cos * (launch['x'] - dx) + sin * (launch['y'] - dy),
                      y=-sin * (launch['x'] - dx) + cos * (launch['y'] - dy),
                      px=cos * launch['px'] + sin * launch['py'],
                      py=-sin * launch['px'] + cos * launch['py'])
-        end = lorentz_end(local, waves, length, p16(length), p0c, _ELECTRON)
+        end = lorentz_end(local, waves, length, ramped(length, 3e-4), p0c, _ELECTRON, ramp=3e-4)
         truth.append(dict(end, x=cos * end['x'] - sin * end['y'] + dx, y=sin * end['x'] + cos * end['y'] + dy,
                           px=cos * end['px'] - sin * end['py'], py=sin * end['px'] + cos * end['py']))
     assert _errors(ends, truth, p0c, gradient * length)[1] < 1e-3
@@ -491,14 +442,14 @@ def test_tpsa_map_matches_the_derivatives_of_the_orbit(model):
     series = xtpsa.ParticlesTpsa(order=1, p0c=p0c, mass0=_ELECTRON, **launch)
     line.track(series)
     jacobian = np.asarray(series.jacobian())
-    waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, p16(length))
+    waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, hard_edge)
     steps = dict(x=1e-5, px=1e-6, y=1e-5, py=1e-6, zeta=1e-5, delta=1e-5)
     truth = np.zeros((6, 6))
     for column, name in enumerate(COORDINATES):
         plus = lorentz_end(dict(launch, **{name: launch[name] + steps[name]}), waves, length,
-                           p16(length), p0c, _ELECTRON)
+                           ramped(length, 3e-4), p0c, _ELECTRON, ramp=3e-4)
         minus = lorentz_end(dict(launch, **{name: launch[name] - steps[name]}), waves, length,
-                            p16(length), p0c, _ELECTRON)
+                            ramped(length, 3e-4), p0c, _ELECTRON, ramp=3e-4)
         truth[:, column] = [(plus[row] - minus[row]) / (2 * steps[name]) for row in COORDINATES]
     # Relative to each element's own size, with a floor for the structural zeros.
     np.testing.assert_allclose(jacobian, truth, rtol=2e-3, atol=2e-5)

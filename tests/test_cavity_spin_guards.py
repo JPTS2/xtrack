@@ -23,7 +23,6 @@ def snapshot(line):
 
 @pytest.mark.parametrize('changes',[
     dict(model='_phase-resolved-frozen', knl=[0., .05]),
-    dict(rf_profile='gaussian',rf_profile_sigma=.01),
     dict(ks=.1),
     dict(knl=[0.,0.,.1],order=2),
     dict(ks=.1,edge_entry_active=0,edge_exit_active=0,shift_x=1e-4),
@@ -66,8 +65,7 @@ def test_later_unsupported_mutation_refuses_before_tracking(tmp_path):
         line=eligible_line()
         line.build_tracker(_context=context)
         line.configure_spin(True)
-        line['rf'].rf_profile_sigma=.01
-        line['rf'].rf_profile='gaussian'
+        line['rf'].ks=.1
         particle=xt.Particles(_context=context,p0c=14e6,mass0=xt.ELECTRON_MASS_EV,
             x=2e-4,px=3e-4,zeta=4e-4,delta=.002,spin_x=.6,spin_z=.8)
         with pytest.raises(NotImplementedError,match='Cavity spin'):

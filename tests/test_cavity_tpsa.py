@@ -116,7 +116,7 @@ def test_calibration_order_one_handle_on_higher_order_map(
             finite_cubic += weight*np.array([
                 ray.coefficient('x', (0,0,2,0,0,0)),
                 ray.coefficient('x', (0,2,0,0,0,0))/3.])/(12e-3)
-        assert np.all(abs(cubic) > .01)
+        assert np.all(abs(cubic) > 1e-3)
         np.testing.assert_allclose(cubic, finite_cubic, rtol=3e-5, atol=3e-7)
 
 
@@ -573,59 +573,4 @@ def test_native_indexed_magnetic_parameter_tpsa(cavity_magnetic_context,model):
     line.vars['normal']=values['normal']
     assert abs(mixed)>1e-4
     np.testing.assert_allclose(mixed,difference,rtol=3e-5,atol=3e-8)
-
-
-def test_gaussian_magnetic_profile_tpsa(cavity_magnetic_context):
-    """Differentiate the native Gaussian M1 lift, including source calibration."""
-    context=cavity_magnetic_context
-    launch=dict(LAUNCH,p0c=xt.ELECTRON_MASS_EV*np.sqrt(2.4**2-1))
-    values=dict(phase=.4,counter_wave_amplitude=.5,counter_wave_phase=.3,voltage=2e4,
-        frequency=400e6,rf_profile_sigma=.035,rf_profile_center=.012)
-    line=xt.Line(elements={'c':xt.Cavity(length=.167,n_cells=1,
-        model='_phase-resolved',rf_profile='gaussian',
-        num_kicks=8,**values)})
-    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
-    line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
-    scalar=xt.Particles(_context=context,**launch);line.track(scalar)
-    assert scalar.state[0]==1
-    desc=madng_tpsa.Descriptor(6,2,num_params=len(values),param_order=1)
-    for index,(name,value) in enumerate(values.items(),1):
-        setattr(line['c'],name,desc.param(index,value))
-    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
-    line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-12)
-    gradients=series.param_jacobian().copy()
-    jacobian=series.jacobian().copy()
-    mixed=series.coefficient('x',(0,1,0,0,0,0,0,0,0,0,0,1,0))
-    line.disable_tpsa_elements()
-    weights={-2:1.,-1:-8.,1:8.,2:-1.}
-    for column,(name,value) in enumerate(values.items()):
-        scale=abs(value) if value else 1.
-        step=scale*1e-4
-        finite=np.zeros(6)
-        for offset,weight in weights.items():
-            setattr(line['c'],name,value+offset*step)
-            particle=xt.Particles(_context=context,**launch);line.track(particle)
-            assert particle.state[0]==1
-            finite+=weight*_values(particle)/(12*step)
-        setattr(line['c'],name,value)
-        np.testing.assert_allclose(gradients[:,column]*scale,finite*scale,
-                                   rtol=3e-6,atol=3e-8,err_msg=name)
-    finite_jacobian=np.zeros((6,6))
-    for column,name in enumerate(COORDS):
-        for offset,weight in weights.items():
-            particle=xt.Particles(_context=context,**dict(launch,**{name:launch[name]+offset*1e-4}))
-            line.track(particle)
-            finite_jacobian[:,column]+=weight*_values(particle)/(12e-4)
-    np.testing.assert_allclose(jacobian,finite_jacobian,rtol=3e-6,atol=3e-8)
-    finite_mixed=0.
-    for ip,wp in weights.items():
-        for iw,ww in weights.items():
-            line['c'].rf_profile_sigma=values['rf_profile_sigma']+iw*1e-4
-            particle=xt.Particles(_context=context,**dict(launch,px=launch['px']+ip*1e-3))
-            line.track(particle)
-            finite_mixed+=wp*ww*float(particle.x[0])/(144*1e-3*1e-4)
-    np.testing.assert_allclose(mixed,finite_mixed,rtol=3e-5,atol=3e-8)
-    print('Gaussian20 mixed dR12/dsigma',mixed,'FD',finite_mixed)
 

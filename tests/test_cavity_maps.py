@@ -224,7 +224,7 @@ def test_phase_averaged_geometric_and_uniform_converge_together():
     def endpoint(integrator, cells):
         probe = _launch(20.)
         _averaged_cavity(integrator=integrator, num_kicks=cells,
-                         rf_profile='uniform', counter_wave_amplitude=0.).track(probe)
+                         counter_wave_amplitude=0.).track(probe)
         return np.array([probe.x[0], probe.px[0], probe.zeta[0], probe.delta[0]])
     gaps = [np.abs(endpoint('_geometric', n) - endpoint('uniform', n)).max()
             for n in (16, 64)]
@@ -239,12 +239,14 @@ def test_phase_averaged_static_fields_follow_phase_resolved(static, voltage, mod
     ends = []
     for chosen in (model, '_phase-resolved'):
         probe = _launch(2000.)
-        xt.MagnetOverlappedCavity(length=1.15, voltage=voltage, frequency=1.3e9,
-            phase=1.2, model=chosen, num_kicks=64, **static).track(probe)
+        xt.MagnetOverlappedCavity(length=10*clight/1.3e9/2, n_cells=10, voltage=voltage,
+            frequency=1.3e9, phase=1.2, model=chosen, num_kicks=64, **static).track(probe)
         assert probe.state[0] == 1
         ends.append(np.array([getattr(probe, n)[0]
                               for n in ('x', 'px', 'y', 'py', 'zeta', 'delta')]))
-    np.testing.assert_allclose(ends[0], ends[1], rtol=0, atol=5e-10)
+    # The averaged map's own error over these ten cells at V/E 0.02 is 2.5e-8 in x.
+    tolerance = 5e-8 if model == '_phase-averaged' and voltage else 5e-10
+    np.testing.assert_allclose(ends[0], ends[1], rtol=0, atol=tolerance)
 
 
 @pytest.mark.parametrize('phase', [np.pi/2, 1.])
@@ -305,16 +307,13 @@ def _short_cavity(model, cells, **changes):
     return xt.Cavity(**controls)
 
 
-@pytest.mark.parametrize('profile,extra', [('uniform', {}),
-                                           ('gaussian', dict(rf_profile_sigma=.13))])
-def test_phase_resolved_truncates_end_fields_as_hard_edges(profile, extra):
+def test_phase_resolved_truncates_end_fields_as_hard_edges():
     """A whole cavity's end planes are hard edges of both waves: the
     particle leaves field-free, as in the paraxial map, and slices compose."""
     cells = 5.3
-    resolved = _short_cavity('_phase-resolved', cells, counter_wave_amplitude=.8, rf_profile=profile,
-                             num_kicks=530, **extra)
-    paraxial = _short_cavity('_phase-resolved-paraxial', cells, counter_wave_amplitude=.8, rf_profile=profile,
-                             num_kicks=170, **extra)
+    resolved = _short_cavity('_phase-resolved', cells, counter_wave_amplitude=.8, num_kicks=530)
+    paraxial = _short_cavity('_phase-resolved-paraxial', cells, counter_wave_amplitude=.8,
+                             num_kicks=170)
     np.testing.assert_allclose(_focusing(resolved), _focusing(paraxial), rtol=1e-5)
     p0c = xt.ELECTRON_MASS_EV*np.sqrt(400.**2 - 1)
     lines = {}
@@ -365,7 +364,7 @@ def test_frozen_spin_uses_the_shared_factor_rules(phase):
     turned = {}
     for model in ('_phase-resolved-frozen', '_phase-averaged'):
         line = xt.Line(elements={'rf': _averaged_cavity(model, phase=phase,
-            num_kicks=64, rf_profile='uniform', counter_wave_amplitude=0.)})
+            num_kicks=64, counter_wave_amplitude=0.)})
         line.particle_ref = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV)
         line.build_tracker()
         line.configure_spin(True)

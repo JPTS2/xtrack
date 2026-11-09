@@ -3,7 +3,8 @@
 BMT carries the Cartesian rest-spin vector in fixed lab axes on the accepted
 orbital stages. Spin is passive: there is no Stern--Gerlach force, spin-flip
 sampling or polarization model. The first implementation is CPU scalar,
-M2/P16 with optional uniform solenoid and normal/skew quadrupole fields.
+on the uniform RF field with optional uniform solenoid and normal/skew
+quadrupole fields.
 The overlap case observes two planes INSIDE the static field, with canonical
 input momenta: it does not model hard-edge spin fringes. Cavities do not
 radiate. Magnetic fringes, GPU and TPSA spin remain unsupported.
@@ -44,7 +45,7 @@ KSL1              = 0.            # 1/m, integrated skew quadrupole
 k = 2 * np.pi * FREQUENCY_HZ / 299792458.
 kappa = np.sqrt(GAMMA0**2 - 1.)
 line = xt.Line(elements={
-    'rf': xt.MagnetOverlappedCavity(model='_phase-resolved', rf_profile='p16',
+    'rf': xt.MagnetOverlappedCavity(model='_phase-resolved',
         length=LENGTH_M, frequency=FREQUENCY_HZ, voltage=VOLTAGE_V,
         phase=PHASE_RAD, counter_wave_amplitude=COUNTER_AMPLITUDE, counter_wave_phase=COUNTER_PHASE_RAD, num_kicks=NUM_GAUSS_CELLS, absolute_time=True,
         ks=KS, knl=[0., KNL1], ksl=[0., KSL1],
@@ -56,7 +57,7 @@ line.reset_s_at_end_turn = False
 line.use_time_based_zeta_update = True
 line.build_tracker()
 line.configure_spin(True)
-# Mechanical u_x=2, u_y=-1 are in units of mc. P16 RF A vanishes here;
+# Mechanical u_x=2, u_y=-1 are in units of mc. The RF field ends at the faces;
 # canonical momenta include the uniform solenoid's transverse potential.
 # Setting native ax/ay consistently makes before/after readbacks explicit.
 x0, y0 = 0.1/k, -0.07/k

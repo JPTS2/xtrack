@@ -8606,17 +8606,8 @@ class LineAttr:
         _rot_and_shift_from_parent = np.zeros(len(line.element_names), dtype=np.float64)
         dynamic_inheritance = []
         dynamic_alignment = []
-        cavity_integral_candidates = []
         for ii, nn in enumerate(line.element_names):
             ee = line._element_dict[nn]
-            resolved = ee.resolve(line) if isinstance(ee, xt.Replica) else ee
-            if (isinstance(resolved, beam_elements.Cavity)
-                    or isinstance(getattr(resolved, '_parent', None),
-                                  beam_elements.Cavity)):
-                # Cache structural membership, not the current profile or
-                # strengths. Ordinary live model/profile changes must remain
-                # visible without scanning every other element on each read.
-                cavity_integral_candidates.append((ii, resolved))
             if hasattr(ee, '_inherit_strengths') and ee._inherit_strengths:
                 _inherit_strengths[ii] = 1.
             if isinstance(getattr(type(ee), '_inherit_strengths', None), property):
@@ -8631,7 +8622,6 @@ class LineAttr:
         self._dynamic_inherit_strengths = dynamic_inheritance
         self._static_rot_and_shift_from_parent = _rot_and_shift_from_parent
         self._dynamic_rot_and_shift_from_parent = dynamic_alignment
-        self._cavity_integral_candidates = cavity_integral_candidates
 
         for fn, fa in zip(field_names, field_access):
             name=fa.name
@@ -8676,60 +8666,10 @@ class LineAttr:
         else:
             out = self._cache[key].get_full_array(method_cache=self._value_cache)
 
-        if key in ('ksoll', '_k1l_no_rel', '_k1sl_no_rel'):
-            out = self._gaussian_cavity_integrals(key, out)
-
         if self._value_cache is not None:
             self._value_cache[key] = out
 
         return out
-
-    def _gaussian_cavity_integrals(self, key, values):
-        """Integrate the declared finite-parent magnetic hardware profile.
-
-        Gaussian ks is a peak strength; knl/ksl are finite-parent integrals.
-        RF voltage readback keeps its existing nominal weight allocation.
-        """
-        from math import erf, sqrt, pi
-        result = None
-        scalar = lambda value: float(getattr(value, 'const_part', value))
-        for index, element in self._cavity_integral_candidates:
-            if isinstance(element, beam_elements.Cavity):
-                parent, weight, start = element, 1., 0.
-            else:
-                parent = getattr(element, '_parent', None)
-                if (not isinstance(parent, beam_elements.Cavity)
-                        or not getattr(element, '_inherit_strengths', False)):
-                    continue
-                if getattr(parent, 'magnetic_profile', 'uniform') != 'gaussian':
-                    continue
-                if parent.length <= 0.:
-                    raise ValueError('Gaussian magnetic readback requires positive length and width')
-                weight = float(element.weight)
-                fraction = getattr(element, '_slice_offset_fraction', -1.)
-                start = (float(fraction) if fraction >= 0. else
-                         float(element.slice_offset)/parent.length)
-            if getattr(parent, 'magnetic_profile', 'uniform') != 'gaussian':
-                continue
-            length, sigma = float(parent.length), scalar(parent.magnetic_profile_sigma)
-            if (not np.isfinite(length) or length <= 0.
-                    or sigma <= 0. or not np.isfinite(sigma)):
-                raise ValueError('Gaussian magnetic readback requires positive length and width')
-            scale = sqrt(2.)*sigma
-            integral = lambda a, b: sqrt(pi/2.)*sigma*(erf(b/scale)-erf(a/scale))
-            full = integral(-length/2., length/2.)
-            left = length*(start-.5)
-            partial = integral(left, left+length*weight)
-            if key == 'ksoll':
-                correction = scalar(parent.ks)*(partial-length*weight)
-            else:
-                strengths = parent.knl if key == '_k1l_no_rel' else parent.ksl
-                correction = ((scalar(strengths[1]) if len(strengths)>1 else 0.)
-                              *(partial/full-weight))
-            if result is None:
-                result = values.copy()
-            result[index] += correction
-        return values if result is None else result
 
     def keys(self):
         return list(self.derived_fields.keys()) + list(self.fields)

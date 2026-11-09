@@ -33,7 +33,7 @@ def test_cavity_is_the_two_harmonic_case(mass0, gamma, n_cells, ratio, counter_p
     wave_number = np.pi * n_cells / length
     common = dict(length=length, voltage=3e6 * length, frequency=frequency, phase=phase,
                   num_kicks=16 * n_cells, shift_x=1e-4, rot_s_rad=.1)
-    cavity = xt.Cavity(model='_phase-resolved', rf_profile='uniform', n_cells=n_cells,
+    cavity = xt.Cavity(model='_phase-resolved', n_cells=n_cells,
                        counter_wave_amplitude=ratio, counter_wave_phase=counter_phase, **common)
     expansion = xt.FieldExpansionCavity(
         wave_numbers=[wave_number, -wave_number],
@@ -75,7 +75,7 @@ def test_tesla_field_follows_the_orbit(gamma, offset):
     waves = calibrated_waves(voltage, frequency, TESLA_LENGTH, np.pi / 2 + offset, 1., field,
                              wave_number=0.)
     launch = dict(x=1e-3, px=0., y=0., py=0., zeta=0., delta=0.)
-    truth = lorentz_end(launch, waves, TESLA_LENGTH, field, p0c, mass0)
+    truth = lorentz_end(launch, waves, TESLA_LENGTH, field, p0c, mass0, ramp=1e-3)
     rf = xt.FieldExpansionCavity.from_fourier_series(
         TESLA, length=TESLA_LENGTH, frequency=frequency, voltage=voltage,
         phase=np.pi / 2 + offset, num_kicks=400)

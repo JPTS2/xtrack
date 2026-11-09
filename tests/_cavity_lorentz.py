@@ -2,27 +2,13 @@
 
 An independent reference for the cavity maps: the field is written directly from
 the wave equation and integrated with a general ODE solver, using none of the maps'
-generators, gauges or factors. `lorentz_end` keeps a force linear in r, and
-`lorentz_end_at_any_radius` the higher orders, for a Gaussian travelling wave.
+generators, gauges or factors. `lorentz_end` keeps a force linear in r.
 """
-import math
-
 import numpy as np
-from numpy.polynomial import hermite_e, polynomial
 from scipy.constants import c as clight
 from scipy.integrate import quad, solve_ivp
 
 COORDINATES = ('x', 'px', 'y', 'py', 'zeta', 'delta')
-
-
-def p16(length):
-    half = length / 2
-
-    def envelope(z):
-        u = np.clip(z / half, -1, 1)
-        w = 1 - u * u
-        return w**16, -32 * u * w**15 / half, (-32 * w**15 + 960 * u * u * w**14) / half**2
-    return envelope
 
 
 def ramped(length, ramp):
@@ -38,57 +24,8 @@ def ramped(length, ramp):
     return envelope
 
 
-def gaussian(sigma):
-    def envelope(z):
-        h = np.exp(-z * z / (2 * sigma**2))
-        return h, -z / sigma**2 * h, (z * z / sigma**4 - 1 / sigma**2) * h
-    return envelope
-
-
 def hard_edge(z):
     return 1., 0., 0.
-
-
-def lorentz_end_at_any_radius(launch, frequency, voltage, sigma, phase, p0c, mass0, order=4):
-    """px at the exit of a Gaussian travelling wave, in the field of the wave equation to
-    r^(2 order). `lorentz_end` stops at a force linear in r: this one keeps the cubic force
-    that a quadratic map drops, for a check of the maps' reach in r."""
-    length = 12 * sigma
-    waves = calibrated_waves(voltage, frequency, length, phase, 0., gaussian(sigma))
-    k, field, carrier_phase = waves['k'], waves['forward'], waves['phase']
-    # On h(z) exp(-ikz), d^2/dz^2 + k^2 and d/dz act as polynomials in the derivatives of h.
-    laplacian = np.array([0., -2j * k, 1.])
-    terms = [np.array([1. + 0j])]
-    for _ in range(order):
-        terms.append(polynomial.polymul(terms[-1], laplacian))
-    slopes = [polynomial.polymul(term, np.array([-1j * k, 1.])) for term in terms]
-    highest = len(slopes[-1])
-
-    def rhs(z, state):
-        x, y, ct, px, py, energy = state
-        pz = np.sqrt(energy**2 - mass0**2 - px**2 - py**2)
-        u = z / sigma
-        derivatives = [(-1)**j * hermite_e.hermeval(u, [0] * j + [1]) / sigma**j * np.exp(-u * u / 2)
-                       for j in range(highest)]
-        r2 = x * x + y * y
-        E_z = E_r_over_r = cB_over_r = 0j
-        for n in range(order + 1):
-            weight = (-r2 / 4)**n / math.factorial(n)**2
-            value = np.dot(terms[n], derivatives[:len(terms[n])])
-            E_z += weight * value
-            E_r_over_r -= weight * np.dot(slopes[n], derivatives[:len(slopes[n])]) / (2 * n + 2)
-            cB_over_r += 1j * k * weight * value / (2 * n + 2)
-        carrier = field * np.exp(1j * (k * (ct - z) + carrier_phase))
-        E_z, E_r_over_r, cB_over_r = (E_z * carrier).real, (E_r_over_r * carrier).real, (cB_over_r * carrier).real
-        transverse = E_r_over_r - pz / energy * cB_over_r
-        return [px / pz, py / pz, energy / pz, transverse * x * energy / pz, transverse * y * energy / pz,
-                (E_r_over_r * (x * px + y * py) + E_z * pz) / pz]
-
-    start = [launch['x'], launch['y'], -length / 2, launch['px'] * p0c, launch['py'] * p0c, np.hypot(p0c, mass0)]
-    solution = solve_ivp(rhs, (-length / 2, length / 2), start, method='DOP853', rtol=1e-12, atol=1e-14,
-                         max_step=min(2 * np.pi / k / 32, sigma / 4))
-    assert solution.success, solution.message
-    return solution.y[3, -1] / p0c
 
 
 def calibrated_waves(voltage, frequency, length, phase, ratio, envelope,
@@ -121,12 +58,14 @@ def calibrated_waves(voltage, frequency, length, phase, ratio, envelope,
 
 
 def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=None, tolerance=1e-12,
-                magnet=None):
+                magnet=None, ramp=None):
     """Coordinates at the exit plane, from those at the entry plane, for a field-free
     outside: Xtrack's x, px, y, py, zeta, delta relative to p0c. With `anomaly`, the
     launch's spin_x, spin_y, spin_z follow the Thomas-BMT equation in the same fields.
     `magnet(z)` adds static fields: c B_z, its derivative, and the quadrupole gradient
-    c dB_y/dx, in eV/m and eV/m^2 per unit charge."""
+    c dB_y/dx, in eV/m and eV/m^2 per unit charge. With `ramp`, the length of the
+    envelope's end ramps, each ramp is integrated as its own segment in steps that
+    resolve it."""
     k, kz, phase = waves['k'], waves['wave_number'], waves['phase']
     F, B, chi = waves['forward'], waves['backward'], waves['counter_phase']
     beta0 = p0c / np.hypot(p0c, mass0)
@@ -173,9 +112,15 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
              launch['px'] * p0c, launch['py'] * p0c, np.hypot(momentum, mass0)]
     if anomaly is not None:
         start += [launch['spin_x'], launch['spin_y'], launch['spin_z']]
-    solution = solve_ivp(rhs, (-length / 2, length / 2), start, method='DOP853', rtol=tolerance,
-                         atol=1e-14, max_step=2 * np.pi / max(k, kz) / 64)
-    assert solution.success, solution.message
+    wave_step = 2 * np.pi / max(k, kz) / 64
+    planes = [-length / 2, length / 2]
+    if ramp is not None:
+        planes = [-length / 2, -length / 2 + ramp, length / 2 - ramp, length / 2]
+    for a, b in zip(planes[:-1], planes[1:]):
+        solution = solve_ivp(rhs, (a, b), start, method='DOP853', rtol=tolerance, atol=1e-14,
+                             max_step=min(wave_step, (b - a) / 16))
+        assert solution.success, solution.message
+        start = solution.y[:, -1]
     x, y, ct, px, py, energy = solution.y[:6, -1]
     end = dict(x=x, px=px / p0c, y=y, py=py / p0c, zeta=length - beta0 * (ct + length / 2),
                delta=np.sqrt(energy**2 - mass0**2) / p0c - 1)

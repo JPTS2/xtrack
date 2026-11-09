@@ -5,9 +5,10 @@
 
 """Synthetic RF cells and separate quadrupoles: tracking-derived optics.
 
-Every case computes Twiss and tracks both 9×9 grids. The P16 case traverses
-the two-cell linac with one prescribed momentum/clock programme. The uniform
-case compares the phase-resolved and frozen models on a single cavity,
+Every case computes Twiss and tracks both 9×9 grids. The partly standing
+wave traverses the two-cavity linac with one prescribed momentum/clock
+programme. The travelling wave compares the phase-resolved and frozen models
+on a single cavity,
 observed inside the RF field. The frozen voltage-action faces are a distinct
 approximation. The grids share canonical launches; different boundary
 assumptions can give different mechanical slopes at those coordinates.
@@ -51,8 +52,8 @@ PX_LIMIT          = .03
 # Explicit source/transport assumptions
 ########################################
 COHORTS = [
-    ('p16', .5, .3, 1, ['_phase-resolved', '_phase-averaged']),
-    ('uniform', 0., 0., None, ['_phase-resolved', '_phase-averaged', '_phase-resolved-frozen']),
+    ('partly standing', .5, .3, 1, ['_phase-resolved', '_phase-averaged']),
+    ('travelling', 0., 0., None, ['_phase-resolved', '_phase-averaged', '_phase-resolved-frozen']),
 ]
 INTEGRATORS = {
     '_phase-resolved': 'uniform',
@@ -77,7 +78,7 @@ nominal_time = 0.
 elements, names, rf_names = [], [], []
 for cell in range(2):
     rf_name = f'rf{cell}'
-    elements.append(xt.Cavity(model='_phase-resolved', rf_profile='p16',
+    elements.append(xt.Cavity(model='_phase-resolved',
         length=LENGTH_M, voltage=VOLTAGE_V, frequency=FREQUENCY_HZ,
         phase=PHASE_RAD-2*np.pi*FREQUENCY_HZ*nominal_time,
         absolute_time=True, counter_wave_amplitude=.5, counter_wave_phase=.3, n_cells=1,
@@ -130,12 +131,12 @@ timings = []
 ################################################################################
 # Tracking-derived Twiss and the two transported grids
 ################################################################################
-for profile, amplitude, counter_phase, n_cells, models in COHORTS:
+for wave, amplitude, counter_phase, n_cells, models in COHORTS:
     figure, axes = plt.subplots(2, 2, figsize=(12, 8), layout='constrained')
-    # Uniform sources have nonzero RF potentials at their observation planes.
-    # Compare this interval without pretending it has field-free interfaces
-    # to the rest of the linac. The already compiled Line serves both ranges.
-    linac_case = profile == 'p16'
+    # The travelling wave is observed inside the RF field, so this interval is
+    # not compared as if it had field-free interfaces to the rest of the linac.
+    # The already compiled Line serves both ranges.
+    linac_case = wave == 'partly standing'
     stop = 'physical_exit' if linac_case else 'reference0'
     twiss_range = dict(start=xt.START, end=xt.END) if linac_case else dict(
         start='rf0', end='rf0')
@@ -143,7 +144,6 @@ for profile, amplitude, counter_phase, n_cells, models in COHORTS:
         for name in rf_names:
             cavity = line[name]
             cavity.model = model
-            cavity.rf_profile = profile
             cavity.counter_wave_amplitude = amplitude
             cavity.counter_wave_phase = counter_phase
             cavity.n_cells = n_cells
@@ -165,7 +165,7 @@ for profile, amplitude, counter_phase, n_cells, models in COHORTS:
         assert np.all(recovered.state == 1)
         reverse_gaps = {name: float(np.max(abs(getattr(recovered, name)-values)))
                         for name, values in launch.items()}
-        timings.append(dict(profile=profile, model=model,
+        timings.append(dict(wave=wave, model=model,
             twiss_seconds=twiss_seconds, track_seconds=tracking_seconds,
             reverse_gaps=reverse_gaps))
         label = LABELS[model]
@@ -182,7 +182,7 @@ for profile, amplitude, counter_phase, n_cells, models in COHORTS:
             second = 1e3*np.asarray(second).reshape(GRID_SIZE, GRID_SIZE)
             axis.plot(first, second, color=colour, linewidth=.5, alpha=.4)
             axis.plot(first.T, second.T, color=colour, linewidth=.5, alpha=.4)
-        print(profile, model, INTEGRATORS[model],
+        print(wave, model, INTEGRATORS[model],
               'exit beta [m]:', twiss.betx[-1], twiss.bety[-1])
     axes[0, 0].set(xlabel='s [m]', ylabel=r'$\beta_x$ [m]')
     axes[0, 1].set(xlabel='s [m]', ylabel=r'$\beta_y$ [m]')
@@ -193,7 +193,7 @@ for profile, amplitude, counter_phase, n_cells, models in COHORTS:
         axis.legend(fontsize=8)
     geometry = ('Two-cell linac' if linac_case else
                 'Single RF interval; native canonical observation planes')
-    figure.suptitle(geometry+f'\n{profile} source; counter-wave amplitude={amplitude:g}, '
+    figure.suptitle(geometry+f'\n{wave} wave; counter-wave amplitude={amplitude:g}, '
                     f'cells={n_cells}')
 
 print('Cold build [s]:', build_seconds)

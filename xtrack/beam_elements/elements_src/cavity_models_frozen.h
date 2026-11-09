@@ -216,7 +216,7 @@ int CavityModel_static_quad_face(xt_float_or_tpsa state[6],
 // First-RF-interaction, transverse-quadratic voltage actions with a fixed
 // nominal inverse-momentum coefficient and collapsed physical RF faces.
 // The geometrically weighted exact-drift/voltage/clock word is the retained
-// TCAV-connected recipe, not a Gauss step through the smooth P16 source.
+// TCAV-connected recipe, not a Gauss step through the phase-resolved source.
 // Algebra owner: verification/physics/orbit/sad_reduction.py:tcav_factor_map.
 // Source face continuation is deliberately kept, including its cubic defect
 // relative to the quadratic canonical face generator. Its inverse below is

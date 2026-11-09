@@ -412,86 +412,6 @@ def test_reference_rebase_preserves_tpsa_nonzero_potential(cpu_context):
     np.testing.assert_allclose(actual[1], expected[1], rtol=0., atol=3e-14)
 
 
-def test_gaussian_readback_does_not_revisit_non_cavity_elements():
-    """Repeated strength readback must not scan an ordinary lattice in Python.
-
-    Exercise the correction independently of tracker construction or timing:
-    after structural discovery no ordinary element needs to be read again.
-    """
-    from types import SimpleNamespace
-
-    class NoElementReads(dict):
-        def __getitem__(self, key):
-            pytest.fail('Gaussian correction revisited an ordinary element')
-
-    elements = {'drift': xt.Drift(length=.3),
-                'quad': xt.Quadrupole(length=.2, k1=.4)}
-    line = SimpleNamespace(element_names=list(elements), _element_dict=elements)
-    attributes = xt.line.LineAttr(line, fields={})
-    line._element_dict = NoElementReads(elements)
-    original = np.array([.3, .08])
-    for key in ('ksoll', '_k1l_no_rel', '_k1sl_no_rel'):
-        assert attributes._gaussian_cavity_integrals(key, original) is original
-
-
-def test_gaussian_readback_keeps_live_parent_slice_and_replica_controls():
-    """Structural caching must not freeze a profile, width or interval.
-
-    The independent reference integrates the physical finite Gaussian parent;
-    ks is peak strength, while knl/ksl are finite-parent integrals.
-    """
-    from math import erf, sqrt, pi
-    from types import SimpleNamespace
-
-    parent = xt.MagnetOverlappedCavity(model='_phase-resolved', length=.12, voltage=0.,
-        frequency=400e6, ks=.3, knl=[0., .08], ksl=[0., -.02],
-        edge_entry_active=0, edge_exit_active=0)
-    interval = xt.DriftSliceMagnetOverlappedCavity(_parent=parent, _buffer=parent._buffer,
-        weight=.25, slice_offset=.015)
-    elements = {'drift': xt.Drift(length=.3), 'rf': parent,
-                'interval': interval,
-                'rf_replica': xt.Replica(parent_name='rf'),
-                'interval_replica': xt.Replica(parent_name='interval')}
-    line = SimpleNamespace(element_names=list(elements), _element_dict=elements)
-    attributes = xt.line.LineAttr(line, fields={})
-
-    for profile, sigma, length, strength, weight, start in (
-            ('uniform', .02, .12, .3, .25, .125),
-            ('gaussian', .02, .12, .3, .25, .125),
-            ('gaussian', .035, .18, -.2, .4, .2),
-            ('uniform', .035, .18, -.2, .4, .2)):
-        parent.magnetic_profile = profile
-        parent.magnetic_profile_sigma = sigma
-        parent.length = length
-        parent.ks = strength
-        parent.knl[1], parent.ksl[1] = 2*strength, -strength/3
-        interval.weight = weight
-        interval.slice_offset = start*length
-
-        def integral(a, b):
-            scale = sqrt(2.)*sigma
-            return sqrt(pi/2.)*sigma*(erf(b/scale)-erf(a/scale))
-
-        full = integral(-length/2, length/2)
-        partial = integral(length*(start-.5), length*(start+weight-.5))
-        for key, coefficient in (('ksoll', strength),
-                ('_k1l_no_rel', 2*strength), ('_k1sl_no_rel', -strength/3)):
-            nominal_full = coefficient*length if key == 'ksoll' else coefficient
-            nominal = np.array([0., nominal_full, nominal_full*weight,
-                                nominal_full, nominal_full*weight])
-            expected = nominal.copy()
-            if profile == 'gaussian':
-                if key == 'ksoll':
-                    full_value, partial_value = coefficient*full, coefficient*partial
-                else:
-                    full_value, partial_value = coefficient, coefficient*partial/full
-                expected[1:] = full_value, partial_value, full_value, partial_value
-            actual = attributes._gaussian_cavity_integrals(key, nominal)
-            np.testing.assert_allclose(actual, expected, rtol=2e-14, atol=2e-16)
-            if profile == 'uniform':
-                assert actual is nominal
-
-
 NUMERIC_FIELDS = COORDINATES + (
     'pzeta', 'rvv', 'rpp', 's', 'ax', 'ay', 'spin_x', 'spin_y', 'spin_z',
     'p0c', 'gamma0', 'beta0', 'chi', 'charge_ratio', 'weight',
@@ -511,39 +431,11 @@ def thread_context(request, tmp_path_factory):
         yield serial if request.param == 0 else xo.ContextCpu(omp_num_threads=1)
 
 
-@pytest.mark.parametrize('model', ('_phase-resolved',))
-@pytest.mark.parametrize('cells', (3, 64))
-def test_compact_p16_face_has_exactly_zero_potential_readback(cpu_context, model, cells):
-    """Observe the declared support face, independently of accumulated z+=h.
-
-    The synthetic 64-cell mesh previously finished a few ulps inside support,
-    manufacturing tiny nonzero caches at an exactly field-free plane.
-    """
-    line = xt.Line(elements=[xt.Cavity(_context=cpu_context, model=model,
-        rf_profile='p16', length=.56, frequency=712e6, voltage=2000.,
-        phase=.4, counter_wave_amplitude=.5, counter_wave_phase=.3, n_cells=3,
-        num_kicks=cells, absolute_time=True), xt.Marker(_context=cpu_context)],
-        element_names=['rf', 'end'])
-    line.particle_ref = xt.Particles(_context=cpu_context, mass0=MASS_EV,
-                                    p0c=P0C_EV, q0=1.)
-    line.reset_s_at_end_turn = False
-    line.build_tracker(_context=cpu_context)
-    rays = particle(cpu_context, x=[.0004, -.0003], y=[-.0003, .0002],
-        px=[.002, -.001], py=[-.001, .0005], s=.17, time_s=1.9e-9)
-    for reverse in (False, True):
-        line.track(rays, ele_start=0, ele_stop=1, backtrack=reverse)
-        assert np.all(rays.state == 1)
-        np.testing.assert_array_equal(rays.ax, np.zeros(2))
-        np.testing.assert_array_equal(rays.ay, np.zeros(2))
-
-
-@pytest.mark.parametrize('profile', ('uniform', 'gaussian'))
-def test_finite_rf_face_is_a_hard_edge(cpu_context, profile):
+def test_finite_rf_face_is_a_hard_edge(cpu_context):
     """A whole cavity's end planes are hard edges: a field that does
     not vanish there ends abruptly and the particle leaves field-free."""
     line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
-        model='_phase-resolved', rf_profile=profile, rf_profile_sigma=.12,
-        rf_profile_center=.02, length=.56, frequency=712e6, voltage=2000.,
+        model='_phase-resolved', length=.56, frequency=712e6, voltage=2000.,
         phase=.4, counter_wave_amplitude=.5, counter_wave_phase=.3, n_cells=3,
         num_kicks=64, absolute_time=True), xt.Marker(_context=cpu_context)],
         element_names=['rf', 'end'])
@@ -561,35 +453,6 @@ def test_finite_rf_face_is_a_hard_edge(cpu_context, profile):
     for name in ('x', 'px', 'y', 'py', 'zeta', 'delta'):
         np.testing.assert_allclose(getattr(ray, name)[0], getattr(start, name)[0],
                                    rtol=0, atol=1e-14)
-
-
-def test_p16_face_frequency_tpsa_has_zero_cache_coefficients(cpu_context):
-    """The support face moves with k; retain that same boundary in TPSA."""
-    import madng_tpsa
-    import xtrack.tpsa as xtpsa
-
-    frequency = 712e6
-    line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
-        model='_phase-resolved', rf_profile='p16', length=.56,
-        frequency=frequency, voltage=2000., phase=.4, counter_wave_amplitude=.5,
-        counter_wave_phase=.3, n_cells=3, num_kicks=3,
-        absolute_time=True), xt.Marker(_context=cpu_context)],
-        element_names=['rf', 'end'])
-    line.particle_ref = xt.Particles(_context=cpu_context, mass0=MASS_EV,
-                                    p0c=P0C_EV, q0=1.)
-    line.reset_s_at_end_turn = False
-    line.build_tracker(_context=cpu_context)
-    descriptor = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=2)
-    line['rf'].frequency = frequency*(1.+descriptor.param(1, 0.))
-    series = xtpsa.ParticlesTpsa(order=2, descriptor=descriptor,
-        mass0=MASS_EV, p0c=P0C_EV, q0=1., x=.0004, y=-.0003,
-        px=.002, py=-.001, zeta=.0002, delta=.001, s=.17, time_s=1.9e-9)
-    # High-level TPSA backtracking is independently unsupported by Tracker;
-    # the scalar cases above check both directions of the cavity word.
-    line.track(series, ele_start=0, ele_stop=1)
-    assert series._xobject.state == 1
-    assert series._local_series['ax'].is_zero()
-    assert series._local_series['ay'].is_zero()
 
 
 @pytest.mark.parametrize('mode', (None, 'thick', 'thin'),

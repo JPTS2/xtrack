@@ -63,66 +63,6 @@ def test_new_selectors_are_cavity_specific():
     assert 'midpoint' not in xt.Quadrupole.get_available_integrators()
 
 
-@pytest.mark.parametrize('model,profile', [(None, 'p16'),
-    ('_phase-resolved', 'p16'), ('_phase-resolved-frozen', 'uniform')])
-def test_builtin_profile_inference_is_stored(model, profile):
-    rf = xt.Cavity(**({} if model is None else {'model': model}))
-    assert rf.rf_profile == profile
-    data = rf.to_dict()
-    assert not {'rf_profile', 'rf_profile_sigma', 'rf_profile_center'} & set(data)
-    restored = xt.Cavity.from_dict(data)
-    assert restored.rf_profile == profile
-    assert restored.rf_profile_sigma == restored.rf_profile_center == 0.
-
-
-@pytest.mark.parametrize('sigma', [None, 0., -.01, np.inf, np.nan])
-def test_gaussian_profile_never_guesses_a_width(sigma):
-    with pytest.raises(ValueError, match='width'):
-        xt.Cavity(model='_phase-resolved', rf_profile='gaussian',
-                   rf_profile_sigma=sigma)
-
-
-def test_builtin_profile_model_changes_do_not_retarget_source():
-    rf = cavity(rf_profile='uniform')
-    rf.model = '_phase-resolved-frozen'
-    assert rf.rf_profile == 'uniform'
-    rf.model = '_phase-resolved'
-    assert xt.Cavity.from_dict(rf.to_dict()).rf_profile == 'uniform'
-    # Raw enum zero must not disappear and acquire a different inferred source.
-    rf.rf_profile = 'p16'
-    rf.model = '_phase-resolved-frozen'
-    assert rf.rf_profile == rf.to_dict()['rf_profile'] == 'p16'
-    with pytest.raises(ValueError, match='uniform'):
-        xt.Cavity.from_dict(rf.to_dict())
-
-
-def test_gaussian_profile_live_metres_and_roundtrip():
-    line = xt.Line(elements={'rf': cavity('_phase-resolved',
-        rf_profile_sigma=.012, rf_profile_center=0.)})
-    line.vars['sigma_m'] = .012
-    line.vars['center_m'] = 0.
-    line.set('rf', rf_profile='gaussian', rf_profile_sigma='sigma_m',
-             rf_profile_center='center_m')
-    line.vars['sigma_m'] = .017
-    line.vars['center_m'] = -.003
-    line.set('rf', frequency=800e6)
-    rf = line['rf']
-    assert rf.rf_profile == 'gaussian'
-    assert rf.rf_profile_sigma == .017
-    assert rf.rf_profile_center == -.003
-    restored = xt.Cavity.from_dict(rf.to_dict())
-    assert restored.rf_profile == 'gaussian'
-    assert restored.rf_profile_sigma == .017
-    assert restored.rf_profile_center == -.003
-
-
-@pytest.mark.parametrize('model,profile', [('_phase-resolved-frozen', 'p16'),
-    ('_phase-resolved-frozen', 'gaussian')])
-def test_builtin_profile_model_mismatches_refuse(model, profile):
-    with pytest.raises(ValueError):
-        xt.Cavity(model=model, rf_profile=profile, rf_profile_sigma=.02)
-
-
 def test_owned_ref_null_move_preserves_active_scalar_and_array_handles():
     import madng_tpsa
     import xobjects as xo
@@ -173,7 +113,7 @@ def test_serialization_writes_only_non_default_fields():
     # Explicit zeros of nonzero defaults, and explicit zero carriers, survive.
     explicit = dict(model='_phase-resolved', counter_wave_amplitude=0., n_cells=3,
         edge_entry_active=0, edge_exit_active=0, order=2,
-        knl=[0., .1, 0.], nominal_energy_gain=0., rf_profile='uniform')
+        knl=[0., .1, 0.], nominal_energy_gain=0.)
     data = xt.MagnetOverlappedCavity(**explicit).to_dict()
     assert set(data) == {'__class__', *explicit}
     restored = xt.MagnetOverlappedCavity.from_dict(data)
@@ -249,7 +189,7 @@ def test_thin_source_strength_readback_follows_parent_model(model_context, model
                                          knl=[0., .012], ksl=[0., -.003])})
     line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
     line.build_tracker(_context=model_context)
-    # These voltages are nominal parent-input allocations; the resolved P16
+    # These voltages are nominal parent-input allocations; the resolved
     # source's electric-crest integral over a partial interval is not weight*V.
     source = np.array([isinstance(line[name], xt.DriftSliceMagnetOverlappedCavity)
                        for name in line.element_names])
@@ -535,65 +475,14 @@ def test_legacy_models_ignore_physical_model_fields(model_context):
     plain = xt.Cavity(_context=model_context, voltage=20e3, frequency=400e6,
                       phase=.7)
     dressed = xt.MagnetOverlappedCavity(_context=model_context, voltage=20e3, frequency=400e6,
-        phase=.7, ks=.1, knl=[0., .01], ksl=[0., .02], rf_profile='gaussian',
-        rf_profile_sigma=.02, counter_wave_amplitude=.55)
+        phase=.7, ks=.1, knl=[0., .01], ksl=[0., .02], n_cells=1,
+        counter_wave_amplitude=.55)
     expected = particle(model_context)
     actual = expected.copy()
     plain.track(expected)
     dressed.track(actual)
     assert actual.state[0] == 1
     np.testing.assert_array_equal(coordinates(actual), coordinates(expected))
-
-
-@pytest.mark.parametrize('mode', [None, 'thick', 'thin'])
-def test_gaussian_magnetic_integrated_strength_readback(mode):
-    from math import erf, sqrt, pi
-    rf = cavity(ks=.4, knl=[0., .03], ksl=[0., -.02],
-                magnetic_profile='gaussian', magnetic_profile_sigma=.015,
-                edge_entry_active=0, edge_exit_active=0)
-    data = rf.to_dict()
-    restored = xt.MagnetOverlappedCavity.from_dict(data)
-    assert restored.magnetic_profile == 'gaussian'
-    assert restored.magnetic_profile_sigma == .015
-    line = xt.Line(elements={'rf': rf})
-    if mode:
-        line.slice_thick_elements([xt.Strategy(xt.Teapot(3, mode=mode))])
-    # Metadata uses ordinary MultiSetter access, without tracker compilation.
-    for width in (.015, .03):
-        rf.magnetic_profile_sigma = width
-        expected_integral = sqrt(2*pi)*width*erf(rf.length/(2*sqrt(2)*width))
-        np.testing.assert_allclose(sum(line.attr['ksoll']), rf.ks*expected_integral,
-                                   rtol=2e-15, atol=1e-17)
-        np.testing.assert_allclose(sum(line.attr['k1l']), .03, rtol=2e-15)
-        np.testing.assert_allclose(sum(line.attr['k1sl']), -.02, rtol=2e-15)
-        for index, element in enumerate(line.elements):
-            if mode and not getattr(element, '_inherit_strengths', False):
-                continue
-            weight = float(element.weight) if mode else 1.
-            start = float(element._slice_offset_fraction) if mode else 0.
-            a, b = rf.length*(start-.5), rf.length*(start+weight-.5)
-            partial = sqrt(pi/2)*width*(erf(b/(sqrt(2)*width))
-                                         -erf(a/(sqrt(2)*width)))
-            np.testing.assert_allclose(line.attr['ks'][index], rf.ks, rtol=0.)
-            np.testing.assert_allclose(line.attr['ksoll'][index], rf.ks*partial,
-                                       rtol=2e-15, atol=1e-17)
-            np.testing.assert_allclose(line.attr['k1l'][index],
-                                       .03*partial/expected_integral, rtol=2e-15)
-            np.testing.assert_allclose(line.attr['k1sl'][index],
-                                       -.02*partial/expected_integral, rtol=2e-15)
-        if mode:
-            actual = line.attr['ksoll']
-            # A nonuniform profile must not reduce to equal weight allocation.
-            assert np.ptp(actual[actual != 0.]) > 0.
-        np.testing.assert_allclose(sum(line.attr['voltage']), rf.voltage,
-                                   rtol=2e-15)
-
-
-@pytest.mark.parametrize('width', [None, 0., -.01, np.inf, np.nan])
-def test_gaussian_magnetic_width_is_explicit(width):
-    with pytest.raises(ValueError, match='width'):
-        cavity(magnetic_profile='gaussian', magnetic_profile_sigma=width,
-               edge_entry_active=0, edge_exit_active=0)
 
 
 def test_teapot_refused_for_phase_resolved():

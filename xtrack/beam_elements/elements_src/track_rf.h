@@ -62,11 +62,8 @@ typedef struct RFModelFields_s {
     xt_float_or_tpsa nominal_energy_gain;
     int64_t nominal_energy_gain_from_rf;
     int64_t rf_profile;
-    xt_float_or_tpsa rf_profile_sigma, rf_profile_center;
     int64_t num_harmonics;
     GPUGLMEM const double *harmonic_wave_number, *harmonic_re, *harmonic_im;
-    int64_t magnetic_profile;
-    xt_float_or_tpsa magnetic_profile_sigma;
     int64_t spin_tracking, edge_entry_active, edge_exit_active;
     xt_float_or_tpsa ks;
     int64_t order, knl_len, ksl_len;
@@ -103,9 +100,7 @@ typedef struct RFModelFields_s {
     (f)->n_cells=DATA##_get_n_cells(el); (f)->calibration_beta=1.; \
     (f)->nominal_energy_gain=DATA##_get_nominal_energy_gain(el); \
     (f)->nominal_energy_gain_from_rf=DATA##_get_nominal_energy_gain_from_rf(el); \
-    (f)->rf_profile=DATA##_get_rf_profile(el); \
-    (f)->rf_profile_sigma=DATA##_get_rf_profile_sigma(el); \
-    (f)->rf_profile_center=DATA##_get_rf_profile_center(el); \
+    (f)->rf_profile=0; \
     (f)->edge_entry_active=DATA##_get_edge_entry_active(el); \
     (f)->edge_exit_active=DATA##_get_edge_exit_active(el); \
     (f)->num_harmonics=0; (f)->harmonic_wave_number=NULL; \
@@ -117,7 +112,7 @@ typedef struct RFModelFields_s {
     (f)->counter_wave_amplitude=0.; (f)->counter_wave_phase=0.; (f)->n_cells=0; \
     (f)->calibration_beta=DATA##_get_calibration_beta(el); \
     (f)->nominal_energy_gain=0.; (f)->nominal_energy_gain_from_rf=1; \
-    (f)->rf_profile=3; (f)->rf_profile_sigma=0.; (f)->rf_profile_center=0.; \
+    (f)->rf_profile=1; \
     (f)->edge_entry_active=1; (f)->edge_exit_active=1; \
     (f)->num_harmonics=DATA##_len_wave_numbers(el); \
     (f)->harmonic_wave_number=DATA##_getp1_wave_numbers(el,0); \
@@ -127,14 +122,12 @@ typedef struct RFModelFields_s {
 
 // An element without static fields: a Cavity.
 #define RF_MODEL_FIELDS_CLEAR_STATIC(f) do { \
-    (f)->magnetic_profile=0; (f)->magnetic_profile_sigma=0.; (f)->ks=0.; \
+    (f)->ks=0.; \
     (f)->order=-1; (f)->knl_len=0; (f)->ksl_len=0; \
     (f)->knl=NULL; (f)->ksl=NULL; (f)->knl_tpsa=NULL; (f)->ksl_tpsa=NULL; \
 } while (0)
 
 #define RF_MODEL_FIELDS_FILL_STATIC(DATA, el, f) do { \
-    (f)->magnetic_profile=DATA##_get_magnetic_profile(el); \
-    (f)->magnetic_profile_sigma=DATA##_get_magnetic_profile_sigma(el); \
     (f)->ks=DATA##_get_ks(el); (f)->order=DATA##_get_order(el); \
     (f)->knl_len=DATA##_len_knl(el); (f)->ksl_len=DATA##_len_ksl(el); \
     (f)->knl=DATA##_getp1_knl(el,0); (f)->ksl=DATA##_getp1_ksl(el,0); \
@@ -146,9 +139,9 @@ typedef struct CavityPlan_s {
     RFModelFields fields;
     int model, thin_slice;
     CavityChoice choice;
-    int integrator, profile, magnetic_profile, spin_tracking;
+    int integrator, profile, spin_tracking;
     int64_t requested;
-    double counter_wave_amplitude, envelope_width, length, weight;
+    double counter_wave_amplitude, length, weight;
     double left_fraction, right_fraction;
     double start_fraction, end_fraction, direction;
     int reverse, clear_face, physical_outer;

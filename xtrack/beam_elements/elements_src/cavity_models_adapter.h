@@ -81,7 +81,6 @@ int CavityModels_transformations_active(const RFModelFields* el) {
 GPUFUN
 int CavityModels_potential(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
         const CavityModelSource *source,int model,xt_float_or_tpsa out[4]) {
-    int valid=CavityModel_static_validate(source);if(valid!=CAVITY_MODEL_OK)return valid;
     return CavityModel_physical_potential(q,z,source,model,out);
 }
 
@@ -106,33 +105,20 @@ static const double CAVITY_COMPOSITION_ORDER8[9]={
     CAVITY_W8_INNER*CAVITY_W6_OUTER, CAVITY_W8_INNER*CAVITY_W6_INNER, CAVITY_W8_INNER*CAVITY_W6_OUTER,
     CAVITY_W8_OUTER*CAVITY_W6_OUTER, CAVITY_W8_OUTER*CAVITY_W6_INNER, CAVITY_W8_OUTER*CAVITY_W6_OUTER};
 
-// The length over which the RF envelope changes, in metres; zero for a uniform
-// envelope, which only changes at its hard edges. P16 is (1-u^2)^16 ~ exp(-16 u^2),
-// a Gaussian of sigma = half-length / sqrt(32).
-GPUFUN
-double CavityPlan_envelope_width(int profile, double length, double sigma) {
-    if (profile==0) return length/(2.*sqrt(32.));
-    return profile==2 ? sigma : 0.;
-}
-
-// The averaged map holds the envelope over a step, so its step must resolve the
-// envelope as well as the wave. Steps per half-wavelength: two for the wave, and
-// no step wider than width/sqrt(2). Against the Lorentz orbit the error of a
-// travelling wave's transverse kick then stays below 3e-4, where two steps alone
-// miss 69 % of it for two P16 cells. For P16 the rule reads ceil(16/half-wavelengths).
+// The averaged map takes two steps per half-wavelength of the uniform field.
 // The paraxial map integrates its generator through each step: two steps are
 // enough for a travelling wave, four once a counter wave turns its phase by 2k. Its
 // kick error is then about (dE/E per step)^2, so it takes a step for each 2 % of
 // energy change, from V/E, the crest voltage over the total energy, and at least 8 to
-// resolve the envelope of a short cavity: the step error of the kick is then below
-// 1e-4, at any frequency, where 4 steps give about 1e-3 and one step 10%.
+// resolve a short cavity: the step error of the kick is then below 1e-4, at any
+// frequency, where 4 steps give about 1e-3 and one step 10%.
 // The full map takes 16 steps per half-wavelength, as 8 lose particles an accelerating
-// orbit keeps, and at least 64 to resolve the envelope of a short cavity, where the
-// wave alone would ask for one to three.
+// orbit keeps, and at least 64 for a short cavity, where the wave alone would ask for
+// one to three. These minima were measured on smooth envelopes.
 GPUFUN
 int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double length,
-                         double spatial_half_waves,
-                         double envelope_width, double counter_wave_amplitude, double weight, int controls,
+                         double spatial_half_waves, double counter_wave_amplitude,
+                         double weight, int controls,
                          double voltage_over_energy) {
     int64_t parent_cells=requested>0 ? requested : 64;
     if (requested==0) {
@@ -142,9 +128,7 @@ int64_t CavityPlan_cells(int model, int64_t requested, double frequency, double 
         if (model==CAVITY_MODEL_AVERAGED || model==CAVITY_MODEL_PARAXIAL) {
             double per_half=2.;
             if (model==CAVITY_MODEL_PARAXIAL && counter_wave_amplitude>0.) per_half=4.;
-            const int resolve=model==CAVITY_MODEL_AVERAGED && envelope_width>0. && half_wave>0.;
-            if (resolve) per_half=fmax(per_half,ceil(sqrt(2.)*half_wave/envelope_width));
-            parent_cells=(resolve||half_cells>.5) ? (int64_t)ceil(per_half*half_cells) : 1;
+            parent_cells=half_cells>.5 ? (int64_t)ceil(per_half*half_cells) : 1;
             if (model==CAVITY_MODEL_PARAXIAL)
                 parent_cells=(int64_t)fmax(fmax((double)parent_cells,8.),ceil(voltage_over_energy/.02));
         } else if (model==CAVITY_MODEL_FULL) {
@@ -159,7 +143,6 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
                         int64_t requested, double weight, double slice_start) {
     const double length=el->length;
     const int profile=el->rf_profile;
-    const int magnetic_profile=el->magnetic_profile;
     const int spin_tracking=el->spin_tracking;
     int controls=CAVITY_MODEL_OK;
     if (!(isfinite(length) && length>0. && isfinite(weight) && weight>0.
@@ -167,17 +150,12 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
           && weight<=1. && slice_start+weight<=1.+8e-15)
         || el->n_cells<0
         || spin_tracking<0||spin_tracking>1
-        ||(spin_tracking&&(el->tpsa_enabled!=0
-            ||(model==CAVITY_MODEL_FULL&&(profile==2||magnetic_profile!=0))))
+        ||(spin_tracking&&el->tpsa_enabled!=0)
         || requested<0
         || (model!=CAVITY_MODEL_FULL && model!=CAVITY_MODEL_FROZEN
             && model!=CAVITY_MODEL_AVERAGED && model!=CAVITY_MODEL_PARAXIAL)
-        || profile<0 || profile>3
-        || (profile==3 && (model!=CAVITY_MODEL_FULL || el->num_harmonics<=0))
-        || magnetic_profile<0||magnetic_profile>1
-        ||(magnetic_profile==1&&(model!=CAVITY_MODEL_FULL
-            ||el->edge_entry_active||el->edge_exit_active))
-        || (model==CAVITY_MODEL_FROZEN&&profile!=1)
+        || profile<0 || profile>1
+        || (profile==1 && (model!=CAVITY_MODEL_FULL || el->num_harmonics<=0))
         || (el->knl_len>0 && (el->order<0 || el->knl_len<=el->order
                               || el->ksl_len<=el->order)))
         controls=CAVITY_MODEL_ARGUMENT;
@@ -197,7 +175,7 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
             || el->n_cells!=0)
             controls=CAVITY_MODEL_ARGUMENT;
     } else if (model==CAVITY_MODEL_AVERAGED || model==CAVITY_MODEL_PARAXIAL) {
-        if ((integrator!=0 && integrator!=3 && integrator!=7) || magnetic_profile!=0)
+        if (integrator!=0 && integrator!=3 && integrator!=7)
             controls=CAVITY_MODEL_ARGUMENT;
     } else if (integrator==1 || integrator<0 || integrator>7 || integrator==6) {
         controls=CAVITY_MODEL_ARGUMENT;
@@ -234,16 +212,12 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
     const double counter_wave_amplitude=xt_float_or_tpsa_const_part(el->counter_wave_amplitude);
     const int integrator=el->integrator;
     const int64_t requested=el->num_kicks;
-    const double envelope_width=CavityPlan_envelope_width(el->rf_profile,length,
-        xt_float_or_tpsa_const_part(el->rf_profile_sigma));
     plan->integrator=integrator; plan->requested=requested; plan->counter_wave_amplitude=counter_wave_amplitude;
-    plan->envelope_width=envelope_width;
     plan->profile=el->rf_profile;
-    plan->magnetic_profile=el->magnetic_profile;
     plan->spin_tracking=el->spin_tracking;
     const int controls=CavityPlan_controls(el,part0,model,integrator,requested,weight,slice_start);
     plan->choice.controls=controls;
-    plan->choice.cells=CavityPlan_cells(model,requested,frequency,length,CavityPlan_spatial_half_waves(el),envelope_width,
+    plan->choice.cells=CavityPlan_cells(model,requested,frequency,length,CavityPlan_spatial_half_waves(el),
         counter_wave_amplitude,weight,controls,0.);
 
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
@@ -296,7 +270,6 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     int64_t cells=plan->choice.cells;
     const int integrator=plan->integrator;
     const int profile=plan->profile;
-    const int magnetic_profile=plan->magnetic_profile;
     const int spin_tracking=plan->spin_tracking;
     const int64_t requested=plan->requested;
     const double length=plan->length;
@@ -340,7 +313,7 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     // A harmonic frequency and the energy change follow this particle's reference.
     if (!xt_float_or_tpsa_is_zero(harmonic) || (model==CAVITY_MODEL_PARAXIAL && requested==0))
         cells=CavityPlan_cells(model,requested,xt_float_or_tpsa_const_part(frequency),
-            length,CavityPlan_spatial_half_waves(el),plan->envelope_width,
+            length,CavityPlan_spatial_half_waves(el),
             plan->counter_wave_amplitude,weight,controls,
             fabs(q0*xt_float_or_tpsa_const_part(el->voltage))
                 /sqrt(mass0*mass0+LocalParticle_get_p0c(part)*LocalParticle_get_p0c(part)));
@@ -366,23 +339,20 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
         if (xt_float_or_tpsa_const_part(synchronous)<1.) calibration_beta=synchronous;
     }
     CavityModelSource source;
-    if (status==CAVITY_MODEL_OK && profile==3) {
+    if (status==CAVITY_MODEL_OK && profile==1) {
         status=CavityModel_prepare_harmonics(frequency,voltage,length,phase,calibration_beta,
                 mass0,q0,el->num_harmonics,el->harmonic_wave_number,
                 el->harmonic_re,el->harmonic_im,&source);
     } else if (status==CAVITY_MODEL_OK) {
-        status=CavityModel_prepare_profile(frequency,
+        status=CavityModel_prepare(frequency,
                 model==CAVITY_MODEL_FROZEN?0.:voltage,
                 length,phase,el->counter_wave_amplitude,el->counter_wave_phase,
-                calibration_beta,wave_number,mass0,q0,profile,
-                el->rf_profile_sigma,el->rf_profile_center,&source);
+                calibration_beta,wave_number,mass0,q0,&source);
     }
     xt_float_or_tpsa q[6], clock_base=0.;
     xt_float_or_tpsa z=0., h=0.;
     if (status==CAVITY_MODEL_OK) {
         source.ks=el->ks;
-        source.magnetic_profile=magnetic_profile;
-        source.magnetic_sigma=source.k*el->magnetic_profile_sigma;
         if (model==CAVITY_MODEL_FROZEN)
             source.voltage_norm=voltage/mass0;
         source.magnetic_scale=LocalParticle_get_p0c(part)/(q0*mass0);
@@ -393,7 +363,6 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
         source.ksl_tpsa=el->ksl_tpsa;
         source.reference_beta=beta0;
         source.uniform_mesh=integrator==3;
-        status=CavityModel_static_validate(&source);
         source.freeze_energy=LocalParticle_check_track_flag(part,XS_FLAG_KILL_CAVITY_KICK)
             || XT_LP_IS_FROZEN(delta) || XT_LP_IS_FROZEN(pzeta);
         source.freeze_zeta=XT_LP_IS_FROZEN(zeta);
@@ -545,7 +514,7 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     if (status==CAVITY_MODEL_OK) {
         // Observation planes are fixed by the parent interval, as in s
         // and the zeta conversion below. Repeated z+=h can finish a few
-        // ulps inside a compact P16 face and manufacture a tiny cached
+        // ulps inside a face and manufacture a tiny cached
         // RF potential. Keep the accepted stages/orbit unchanged, but
         // evaluate the physical readback at the declared endpoint.
         if (model==CAVITY_MODEL_FULL)
@@ -589,7 +558,7 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     xt_float_or_tpsa readback[4];
     if(status==CAVITY_MODEL_OK) {
         for(int i=0;i<4;++i)readback[i]=potential[i];
-        if(clear_face&&physical_outer&&source.magnetic_profile==0) {
+        if(clear_face&&physical_outer) {
             CavityModelSource rf_only=field_source;
             rf_only.ks=0.;rf_only.magnetic_scale=0.;rf_only.order=-1;
             rf_only.knl=NULL;rf_only.ksl=NULL;rf_only.knl_tpsa=NULL;rf_only.ksl_tpsa=NULL;

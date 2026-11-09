@@ -223,21 +223,6 @@ typedef const double xt_float_or_tpsa_arg;
 static inline double xt_float_or_tpsa_const_part(double x){return x;}
 static inline int xt_float_or_tpsa_is_zero(double x){return x==0.;}
 #include "xtrack/beam_elements/elements_src/cavity_models.h"
-int profile_case(const double *a,int profile,double fraction,double *out){
- CavityModelSource s={0};
- const double k=a[0]>0.?2.*3.14159265358979323846*a[0]/299792458.:1.;
- int status=CavityModel_prepare_profile(a[0],a[1],a[2],a[3],a[4],a[5],
-  a[6],a[7]*k,510998.95069,a[10],profile,a[8],a[9],&s);
- if(status!=CAVITY_MODEL_OK)return status;
- out[0]=s.k;out[1]=s.half_span;out[2]=s.forward;out[3]=s.backward;
- out[4]=s.clock_origin;out[5]=s.profile_sigma;out[6]=s.profile_center;
- CavityModel_source_envelope(fraction*s.half_span,&s,out+7);
- CavityModel_profile(fraction*s.half_span,&s,out+12,out+17);
- double error;
- CavityModel_profile_integral(s.half_span,1./a[6]-s.carrier,&s,1e-15,out+22,&error);
- CavityModel_profile_integral(s.half_span,1./a[6]+s.carrier,&s,1e-15,out+24,&error);
- return status;
-}
 int static_case(const double *q,double Q,double scale,int model,double *out){
  CavityModelSource s={0};
  const double normal[4]={.017,.23,-.19,.13};
@@ -277,120 +262,7 @@ int mixed_case(const double *q,double Q,int model,double *out){
     result.static_case.restype=ctypes.c_int
     result.mixed_case.argtypes=[pointer,ctypes.c_double,ctypes.c_int,pointer]
     result.mixed_case.restype=ctypes.c_int
-    result.profile_case.argtypes=[pointer,ctypes.c_int,ctypes.c_double,pointer]
-    result.profile_case.restype=ctypes.c_int
     return result
-
-
-def gaussian_fourier_integral(half_span, sigma, center, detuning):
-    """Exact finite Gaussian Fourier integral, independent of source Gauss64."""
-    from scipy.special import erf
-    shift = 1j*detuning*sigma*sigma
-    upper = (half_span-center-shift)/(np.sqrt(2)*sigma)
-    lower = (-half_span-center-shift)/(np.sqrt(2)*sigma)
-    return (sigma*np.sqrt(np.pi/2)
-        *np.exp(1j*detuning*center-(detuning*sigma)**2/2)
-        *(erf(upper)-erf(lower)))
-
-
-def test_builtin_gaussian_source_and_crest_calibration(scalar_source_library):
-    """Hermite jets and complex crest calibration retain live source knobs.
-
-    The calibration ray has fixed beta; signed reference charge controls
-    the accelerating-phase convention. A displaced Gaussian is not even,
-    so its Fourier integral has an essential imaginary part. Its tails
-    remain present beyond the finite observation interval.
-    """
-    # f, V, L, phase, ratio, counterphase, beta_cal, nu, sigma_m, center_m, q0.
-    base = np.array([400e6, 20e3, .23, .37, .5, .43,
-                     .83, 1.17, .035, .012, 1.])
-    cases = [base.copy()]
-    for index, value in ((3, -.61), (4, 0.), (4, np.inf), (4, 1.3),
-                         (5, -.8), (6, .71), (6, 1.), (8, .052),
-                         (9, -.027), (10, -1.)):
-        changed = base.copy()
-        changed[index] = value
-        cases.append(changed)
-    for settings in cases:
-        frequency, voltage, length, phase, ratio, counterphase, beta, nu, \
-            sigma_m, center_m, charge = settings
-        k = 2*np.pi*frequency/C_LIGHT
-        half_span, sigma, center = k*length/2, k*sigma_m, k*center_m
-        if np.isinf(ratio):
-            forward, backward = 0., 1.
-        else:
-            forward, backward = 1/(1+ratio), ratio/(1+ratio)
-        slow_integral = gaussian_fourier_integral(
-            half_span, sigma, center, 1/beta-nu)
-        fast_integral = gaussian_fourier_integral(
-            half_span, sigma, center, 1/beta+nu)
-        crest = np.exp(1j*half_span/beta)*(forward*slow_integral
-            +backward*np.exp(1j*counterphase)*fast_integral)
-        amplitude = voltage/(MASS0*abs(crest))
-        weights = amplitude*np.array([forward, backward])
-        clock = phase-np.copysign(np.pi/2, charge)-np.angle(crest)
-        for fraction in (-1.3, -.55, .17, .8, 1.2):
-            observed = np.full(26, np.nan)
-            status = scalar_source_library.profile_case(
-                settings, 2, fraction, observed)
-            assert status == 1, settings
-            np.testing.assert_allclose(observed[:2], [k, half_span],
-                                       rtol=2e-15, atol=0.)
-            np.testing.assert_allclose(observed[2:4], weights,
-                                       rtol=3e-13, atol=2e-15)
-            np.testing.assert_allclose(np.exp(1j*observed[4]), np.exp(1j*clock),
-                                       rtol=0., atol=3e-13)
-            np.testing.assert_allclose(observed[5:7], [sigma, center],
-                                       rtol=2e-15, atol=0.)
-            z = fraction*half_span
-            u = (z-center)/sigma
-            envelope = np.exp(-u*u/2)
-            derivatives = []
-            for order in range(5):
-                coefficient = np.zeros(order+1)
-                coefficient[-1] = 1.
-                derivatives.append((-1)**order*envelope
-                    *np.polynomial.hermite_e.hermeval(u, coefficient)
-                    /sigma**order)
-            np.testing.assert_allclose(observed[7:12], derivatives,
-                                       rtol=5e-13, atol=3e-14)
-            # The source stores R with S=Re(R)*sin(T)-Im(R)*cos(T),
-            # hence conjugate carrier signs relative to the physical
-            # sin(T-nu*Z) and sin(T+nu*Z+counterphase) waves.
-            expected = []
-            for order in range(5):
-                expected.append(sum(comb(order, power)*derivatives[order-power]
-                    *(weights[0]*(1j*nu)**power*np.exp(1j*nu*z)
-                      +weights[1]*(-1j*nu)**power
-                      *np.exp(-1j*(nu*z+counterphase)))
-                    for power in range(order+1)))
-            np.testing.assert_allclose(observed[12:17]+1j*observed[17:22],
-                expected, rtol=7e-13, atol=3e-14)
-            np.testing.assert_allclose(observed[22]+1j*observed[23],
-                slow_integral, rtol=3e-13, atol=3e-15)
-            np.testing.assert_allclose(observed[24]+1j*observed[25],
-                fast_integral, rtol=3e-13, atol=3e-15)
-        # Independent fixed-beta longitudinal work, using the analytic
-        # integral rather than the calibrated amplitude's own quadrature.
-        gain = charge*np.real(np.exp(1j*(clock+half_span/beta))
-            *(weights[0]*slow_integral
-              +weights[1]*np.exp(1j*counterphase)*fast_integral))
-        np.testing.assert_allclose(gain, abs(charge)*voltage/MASS0*np.sin(phase),
-                                   rtol=4e-13, atol=3e-15)
-
-
-def test_gaussian_profile_selection_is_stored_independently():
-    """A model edit cannot silently replace the explicitly selected source."""
-    default = xt.Cavity(length=.2, model='_phase-resolved')
-    assert default.rf_profile == 'p16'
-    gaussian = xt.Cavity(length=.2, model='_phase-resolved',
-        rf_profile='gaussian', rf_profile_sigma=.04, rf_profile_center=.01)
-    restored = xt.Cavity.from_dict(gaussian.to_dict())
-    assert restored.rf_profile == 'gaussian'
-    assert restored.rf_profile_sigma == .04
-    assert restored.rf_profile_center == .01
-    with pytest.raises(ValueError, match='width'):
-        xt.Cavity(length=.2, model='_phase-resolved', rf_profile='gaussian')
 
 
 def independent_static_point(state,charge,scale,model):
@@ -443,11 +315,10 @@ def test_source_static_independent_magnetic_laws(scalar_source_library):
 
 
 def mixed_source_profile():
-    """Differentiate the defining P16 polynomial, not the C recurrence."""
+    """Jets of the two waves on the uniform envelope, written independently."""
     span=.9*.43/2
     position=.17*span
-    polynomial=np.polynomial.Polynomial([1.,0.,-1.])**16
-    envelope=[polynomial.deriv(j)(position/span)/span**j for j in range(5)]
+    envelope=[1.,0.,0.,0.,0.]
     return np.array([sum(weight*np.exp(1j*(nu*position+phase))*sum(
         comb(j,l)*envelope[l]*(1j*nu)**(j-l) for l in range(j+1))
         for weight,nu,phase in ((.04,1.1,0.),(.017,-1.1,-.3)))
