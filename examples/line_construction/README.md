@@ -29,6 +29,7 @@ script runs independently. Begin with the
 | [014_cut_at_positions.py](014_cut_at_positions.py) | Cut at specified positions and inspect parent-linked thick slices |
 | [015_save_and_load_environment.py](015_save_and_load_environment.py) | Save multiple lines, common definitions and live expressions |
 | [016_read_legacy_madx_data.py](016_read_legacy_madx_data.py) | Parse legacy data natively and convert it to native JSON |
+| [017_build_demo_ring.py](017_build_demo_ring.py) | Build an instrumented ring with a low-beta IP and live machine controls |
 
 `005_line_algebra.py` combines already assembled element sequences.
 `007_parametric_geometry.py` uses `compose = True` to retain placement expressions
@@ -51,23 +52,23 @@ line responds.
 several positions share the same element? It then replaces every use of a name
 and both screens selected by a pattern. All replacements preserve length.
 
-The inline lattices teach geometry and object ownership; no periodic optics or
-closed-ring geometry is implied.
+The small inline lattices in `001`–`016` teach geometry and object ownership;
+no periodic optics or closed-ring geometry is implied for those definitions.
 Lengths and positions are in metres, quadrupole `k1` in m^-2, and rotations in
 radians. These recipes do not track. `013_reference_particles.py` uses a proton
 reference and relates a signed magnetic field to its rigidity.
-The other recipes need no reference particle.
+The other small recipes need no reference particle.
 
 For reusable native Python definitions, see the
 [teaching models](../../test_data/example_lattices/README.md). For persistence,
 see [save and load an environment](015_save_and_load_environment.py).
 
 For shared-line applications in optics matching, see the
-[matching examples](../match/).
+[matching examples](../matching/).
 
 `014_cut_at_positions.py` teaches geometric boundary placement and parent-linked
 thick slices. For choosing slicing strategies and slice counts, see the
-[slicing examples](../slicing/).
+[magnet slicing example](../elements/magnets/003_thin_and_thick_slices.py).
 
 `015_save_and_load_environment.py` saves both named lines in one environment and
 shows that the restored expressions remain shared inside the loaded copy. The
@@ -79,3 +80,21 @@ way to author new models. It uses Xtrack's native parser without `cpymad`, MAD-X
 macros or a MAD-X process, and writes `outputs/converted_legacy_environment.json`.
 The embedded definition is magnetic geometry with strength expressions; no
 reference particle, optics or tracking configuration is implied.
+
+`017` inspects the shared demonstration-machine families and sections, assembles
+the full ring, then compares its survey and optics. The hardware definitions
+and operating strengths are separate native inputs under
+[`test_data/example_lattices/demo_ring/`](../../test_data/example_lattices/demo_ring/README.md).
+From the repository root, other lessons load the nominal machine with:
+
+```python
+env = xt.load('test_data/example_lattices/demo_ring/lattice.py')
+line = env['demo']
+```
+
+Each load creates an independent environment without executing plots or a
+matching solve. `017` itself runs its inspection and plotting at module level.
+The [matching recipe](../matching/014_match_demo_ring.py) derives strengths and
+writes a separate output setting; canonical inputs are not overwritten.
+The model README states the qualified IP optics, device conventions and the
+limits of the nominal nonlinear and RF configurations.

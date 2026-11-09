@@ -25,6 +25,7 @@ first pass.
 | [011_coupling_bumps.py](011_coupling_bumps.py) | Open local betatron coupling and close the transverse cross-plane map |
 | [012_coupling_knobs.py](012_coupling_knobs.py) | Build two superposable knobs for a fixed-reference coupling phasor |
 | [013_correct_optics_errors.py](013_correct_optics_errors.py) | Fit quadrupole trims to reference beta functions and tunes |
+| [014_match_demo_ring.py](014_match_demo_ring.py) | Derive the demonstration ring's arc and straight-section strengths and save a setting |
 
 These top-level scripts use the
 [native teaching models](../../test_data/example_lattices/README.md) with their
@@ -99,6 +100,11 @@ variables. This is an ideal noiseless, fully actuated correction: sparse
 actuators, measurement noise and error identifiability need additional analysis.
 
 For initialization and transport conventions, see [optics](../optics/).
+
+`014` separates geometry from the operating strengths. It starts from declared
+seeds, matches the arc cell and open half-straights, and exports a strength
+file. The underdetermined straight matches also depend on their seeds, bounds
+and continuation path; endpoint targets alone do not select a unique setting.
 
 For RF voltage, synchronous energy and phase targets, see
 [longitudinal matching](longitudinal/README.md).

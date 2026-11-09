@@ -98,3 +98,67 @@ def test_teaching_rf_ring_synchronous_orbit_and_modes():
 
     bare = env['ring'].twiss4d()
     np.testing.assert_allclose([bare.qx, bare.qy], [1.62, 1.58], atol = 1e-8)
+
+
+demo_recipe = model_root / 'demo_ring/lattice.py'
+
+
+def test_demo_ring_geometry_ip_and_sextupole_pair_maps():
+    env = xt.load(demo_recipe)
+    line = env['demo']
+    np.testing.assert_allclose(line.particle_ref.p0c, 1e9)
+    assert line.particle_ref.q0 == -1
+    np.testing.assert_allclose(line.get_length(), 1500, atol = 1e-10)
+    survey = line.survey()
+    np.testing.assert_allclose(survey.XYZ[-1], survey.XYZ[0], atol = 1e-9)
+    for angle in ['theta', 'phi', 'psi']:
+        difference = survey[angle][-1] - survey[angle][0]
+        np.testing.assert_allclose(np.exp(1j * difference), 1, atol = 1e-10)
+    tw = line.twiss4d()
+    np.testing.assert_allclose(
+        [tw['betx', 'ip.1'], tw['bety', 'ip.1']], [1, .01],
+        rtol = 1e-6, atol = 1e-9)
+    np.testing.assert_allclose(
+        [tw[key, 'ip.1'] for key in ['alfx', 'alfy', 'dx', 'dpx']],
+        0, atol = 1e-7)
+    np.testing.assert_allclose(
+        abs(np.linalg.eigvals(tw.R_matrix[:4, :4])), 1, atol = 1e-7)
+    for part in ['sf', 'sd']:
+        matrix = tw.get_R_matrix(f'arc.s1.c1.{part}', f'arc.s1.c3.{part}')
+        np.testing.assert_allclose(matrix[:4, :4], -np.eye(4), atol = 1e-6)
+    bpms = line.steering_monitors_x
+    assert len(bpms) == 14
+    assert all(isinstance(line[name], xt.Device)
+               for name in bpms)
+    particles = line.build_particles(x = [1e-6, -1e-6], y = [1e-7, -1e-7])
+    line.track(particles, num_turns = 16)
+    np.testing.assert_array_equal(particles.state, 1)
+
+
+def test_demo_ring_independent_controls_and_rf_mode():
+    env = xt.load(demo_recipe)
+    independent = xt.load(demo_recipe)
+    quad = 'arc.s1.c1.qf.in'
+    before = independent['demo'][quad].k1
+    env['dkqf'] = 1e-4
+    np.testing.assert_allclose(env['demo'][quad].k1, before + 1e-4)
+    np.testing.assert_allclose(independent['demo'][quad].k1, before)
+    env['dkqf'] = 0
+    env['h_cor_s1'], env['v_cor_s1'] = 2e-6, -3e-6
+    probe = xt.Particles(p0c = 1e9, mass0 = xt.ELECTRON_MASS_EV, q0 = -1)
+    env['demo']['cor.s1'].track(probe)
+    np.testing.assert_allclose([probe.px[0], probe.py[0]], [2e-6, -3e-6])
+    assert independent['h_cor_s1'] == independent['v_cor_s1'] == 0
+
+    independent['voltage_rf'] = 1e5
+    line = independent['demo']
+    tw = line.twiss6d()
+    assert tw.slip_factor > 0 and tw.qs > 0
+    np.testing.assert_allclose(abs(np.linalg.eigvals(tw.R_matrix)), 1, atol = 1e-7)
+    synchronous = tw.particle_on_co.copy()
+    line.track(synchronous)
+    for coordinate in ['x', 'px', 'y', 'py', 'zeta', 'pzeta']:
+        np.testing.assert_allclose(
+            getattr(synchronous, coordinate),
+            getattr(tw.particle_on_co, coordinate), atol = 1e-9, rtol = 0)
+    assert env['voltage_rf'] == 0
