@@ -26,6 +26,9 @@ script runs independently. Begin with the
 | [011_shared_lines.py](011_shared_lines.py) | Shared selections versus independent environment copies |
 | [012_import_line.py](012_import_line.py) | Import between environments: variable conflicts, independence and slice parents |
 | [013_reference_particles.py](013_reference_particles.py) | Named references and a field-normalized spectrometer |
+| [014_cut_at_positions.py](014_cut_at_positions.py) | Cut at specified positions and inspect parent-linked thick slices |
+| [015_save_and_load_environment.py](015_save_and_load_environment.py) | Save multiple lines, common definitions and live expressions |
+| [016_read_legacy_madx_data.py](016_read_legacy_madx_data.py) | Parse legacy data natively and convert it to native JSON |
 
 `005_line_algebra.py` combines already assembled element sequences.
 `007_parametric_geometry.py` uses `compose = True` to retain placement expressions
@@ -57,10 +60,22 @@ The other recipes need no reference particle.
 
 For reusable native Python definitions, see the
 [teaching models](../../test_data/example_lattices/README.md). For persistence,
-see [save and load](../getting_started/08_save_and_load.py).
+see [save and load an environment](015_save_and_load_environment.py).
 
 For shared-line applications in optics matching, see the
 [matching examples](../match/).
 
-For slicing strategies and slice counts, see the
+`014_cut_at_positions.py` teaches geometric boundary placement and parent-linked
+thick slices. For choosing slicing strategies and slice counts, see the
 [slicing examples](../slicing/).
+
+`015_save_and_load_environment.py` saves both named lines in one environment and
+shows that the restored expressions remain shared inside the loaded copy. The
+original environment stays independent. It writes
+`outputs/shared_environment.json` beside the script.
+
+`016_read_legacy_madx_data.py` is a legacy data-input example, not a recommended
+way to author new models. It uses Xtrack's native parser without `cpymad`, MAD-X
+macros or a MAD-X process, and writes `outputs/converted_legacy_environment.json`.
+The embedded definition is magnetic geometry with strength expressions; no
+reference particle, optics or tracking configuration is implied.
