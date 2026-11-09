@@ -177,6 +177,8 @@ coupled optics; constructing coupling bumps and knobs belongs with matching.
 
 ### transverse
 
+Begin with [transverse optics](optics/transverse/README.md).
+
 - `001_periodic_twiss.py`
 - `002_open_twiss.py`
 - `003_inspect_twiss.py`
