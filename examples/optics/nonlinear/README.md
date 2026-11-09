@@ -17,8 +17,11 @@ higher-order chromaticity together gives the subject one learning sequence.
 | --- | --- |
 | [001_chromatic_optics.py](001_chromatic_optics.py) | Inspect tune and local-optics derivatives and compare a momentum scan with linear chromaticity |
 | [002_higher_order_chromaticity.py](002_higher_order_chromaticity.py) | Fit a momentum scan, interpret higher derivatives and compare fit-window and polynomial-order choices |
+| [003_amplitude_detuning.py](003_amplitude_detuning.py) | Measure four action-detuning coefficients and compare tracked phases with the action-frequency relation |
+| [004_multiturn_optics.py](004_multiturn_optics.py) | Find a nonzero four-turn island orbit, compute its local optics and compare it with tracking |
+| [005_stability_diagram.py](005_stability_diagram.py) | Build a tracked action footprint and evaluate the Gaussian dispersion integral |
 
-These examples use the [native magnetic ring](../../../test_data/example_lattices/README.md)
+`001` and `002` use the [native magnetic ring](../../../test_data/example_lattices/README.md)
 with a 1 GeV/c electron reference. Reference momentum and magnet strengths stay
 fixed while `delta` varies. There is no RF, radiation or collective force.
 
@@ -39,6 +42,30 @@ compares predictions over their shared window. Numerical precision, the scan
 range and fit degree all matter. The qualified scan stays on a stable optical
 branch; this helper does not unwrap tune branches or determine momentum
 acceptance. Higher-order estimates need their own convergence check.
+
+`003` and `005` use explicit integrable detuning maps, with symmetric cross
+coefficients compatible with a common action Hamiltonian. Geometric actions
+are in metres, with `J = amplitude_sigma^2 * nemitt/(2*beta0*gamma0)`; the
+factor of two is part of the convention. The emittances set action scales.
+These maps isolate the APIs and their assumptions from a machine lattice.
+
+`003` requires optional **nafflib** for
+`line.get_amplitude_detuning_coefficients`. Its independent phase measurement
+checks the resulting action-frequency relation. Tunes remain below one half
+in the qualified scan; other tune branches and finite records require suitable
+frequency estimation. `005` uses FFT extraction and needs no nafflib.
+
+`004` combines a thin octupole with a linear rotation. Its analytic seed is
+specifically a period-four orbit; the four-turn search and its local phase
+advance describe that island, rather than the zero core orbit. The chosen
+parameters give stable local optics. A different resonance or turn count needs
+its own seed and stability qualification.
+
+`005` uses the tracked uniform-action grid with an uncoupled Gaussian action
+density. The returned boundary follows the API's positive-imaginary sign
+convention. The finite regulator, action cutoff and quadrature are explicit;
+the example does not establish convergence or supply an impedance/coherent-mode
+model for a stability assessment.
 
 For closed-orbit momentum shifts and dispersion, see
 [transverse optics](../transverse/README.md). Chromaticity correction belongs
