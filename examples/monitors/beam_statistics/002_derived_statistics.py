@@ -44,7 +44,7 @@ ROTATION        = np.deg2rad(20)        # Transverse canonical rotation [rad]
 ################################################################################
 # Load the model
 ################################################################################
-repo_root   = Path(__file__).resolve().parents[2]
+repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
 
@@ -172,12 +172,7 @@ fig.tight_layout()
 # Rotating both position and canonical momentum pairs mixes the transverse
 # planes while preserving the eigenemittances of the full covariance matrix.
 rotated = initial.copy()
-c       = np.cos(ROTATION)
-s       = np.sin(ROTATION)
-rotated.x   = c * initial.x + s * initial.y
-rotated.y   = -s * initial.x + c * initial.y
-rotated.px  = c * initial.px + s * initial.py
-rotated.py  = -s * initial.px + c * initial.py
+xt.Rotation(rot_s_rad = ROTATION).track(rotated)
 
 ########################################
 # Measure the rotated covariance

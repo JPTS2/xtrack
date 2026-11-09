@@ -32,7 +32,7 @@ X               = 1.0e-4                # [m]
 ################################################################################
 # Load the model
 ################################################################################
-repo_root   = Path(__file__).resolve().parents[2]
+repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
 

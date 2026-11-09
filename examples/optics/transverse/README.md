@@ -118,5 +118,5 @@ Other table formats and column selection are covered in [tables](../../tables/).
 
 For normalized launches and bunch preparation, see [particles](../../particles/).
 For measured beam envelopes with `ONE_TURN_EBE`, see
-[element-by-element monitoring](../../monitors/002_element_by_element.py).
+[element-by-element monitoring](../../monitors/particle_records/002_element_by_element.py).
 For general table operations, see [tables](../../tables/).
