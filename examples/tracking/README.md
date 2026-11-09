@@ -30,16 +30,23 @@ Freezing is a numerical constraint, not longitudinal confinement. In this
 static magnetic ring delta is conserved even without freezing; zeta evolves
 again after the frozen call. Equal transverse endpoints are specific to this
 model, whose transverse maps depend on delta but not on zeta.
+The demonstrated momentum offsets are within `+/-1e-4`; this is a tested
+launch sample, not a momentum-acceptance measurement. The bare demonstration
+ring has large chromaticity and a vertical tune near an integer.
 
 `005` compares a fixed configuration on an independent deep copy. Optimization
 disables expressions for the copy's entire environment and can remove markers
-and change indices. The original environment remains live; numeric fields in
-the snapshot remain editable. Coordinate agreement is checked for this model
-and launch, without a tracking-throughput claim.
+and change indices. Passive BPM Devices become drifts and lose their survey
+poses; their zero-length observation planes disappear. Inactive multipoles
+are also removed, so their circuits cannot subsequently be powered. The
+original environment remains live; retained numeric fields in the snapshot
+remain editable. Coordinate agreement is checked for this nominal aligned
+model and launch, without a tracking-throughput claim.
 
 Except for the transparent proton drift line in `002`, the examples use the
-[native magnetic ring](../../test_data/example_lattices/README.md) with its
-1 GeV/c electron reference. There is no RF, radiation or collective force.
+[shared demonstration ring](../../test_data/example_lattices/demo_ring/README.md)
+with its 1 GeV/c electron reference and 1.5 km circumference. RF voltage and
+nonlinear strengths are zero; radiation and collective forces are absent.
 Backtracking inverts deterministic maps; it does not undo losses or stochastic
 processes.
 
