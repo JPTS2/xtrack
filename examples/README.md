@@ -218,6 +218,8 @@ Begin with the [chromatic optics lessons](optics/nonlinear/README.md).
 
 ### collective
 
+See [optics with collective elements](optics/collective/README.md).
+
 - `001_optics_with_collective_elements.py`
 
 ## matching
