@@ -22,6 +22,9 @@ this route, followed by inspecting results, beam covariance and coupled optics.
 | [010_reverse_reference_frame.py](010_reverse_reference_frame.py) | Transform orbit and optical quantities into the opposite local reference frame |
 | [011_closed_orbit_search.py](011_closed_orbit_search.py) | Find and track a transverse fixed point, reuse it for optics and choose a search location |
 | [012_closed_orbit_dispersion.py](012_closed_orbit_dispersion.py) | Differentiate off-momentum closed orbits and compare their shifts with dispersion |
+| [013_transfer_matrices.py](013_transfer_matrices.py) | Compose entrance-to-entrance maps and compare Twiss, finite differences and displaced-particle tracking |
+| [014_twiss_settings.py](014_twiss_settings.py) | Choose result content and line defaults, then check finite-difference step sensitivity |
+| [015_save_and_load_twiss.py](015_save_and_load_twiss.py) | Save a complete Twiss result and continue analysis after loading it |
 
 The [native magnetic models](../../../test_data/example_lattices/README.md) use
 1 GeV/c electrons. These calculations are 4D, with no RF, radiation or collective
@@ -84,6 +87,22 @@ canonical momenta. A finite-delta orbit also contains higher-order terms.
 Tune and local-optics momentum dependence belong together in the
 [chromatic optics sequence](../../README.md#nonlinear), within nonlinear optics.
 Matching chromaticity belongs with matching.
+
+`013` uses canonical column vectors `(x, px, y, py, zeta, pzeta)` and compares
+the fixed-momentum transverse block. Map endpoints are element entrances;
+tracking excludes its stop element to use that same plane. Predictions describe
+displacements from the reference trajectory, with nonlinear and numerical
+residuals. Transfer-matrix entries carry coordinate-dependent units.
+
+`014` sets defaults only on its freshly loaded line and compares requested
+outputs and finite-difference steps. Its numerical check is qualified for this
+smooth model; step-size convergence depends on the lattice and amplitudes.
+
+`015` writes `outputs/twiss.json` beside the script. The result includes optical
+matrices, phase advances and reference-particle data for subsequent analysis.
+It is distinct from saving the associated line or environment, covered in
+[environment persistence](../../line_construction/015_save_and_load_environment.py).
+Other table formats and column selection are covered in [tables](../../tables/).
 
 For normalized launches and bunch preparation, see [particles](../../particles/).
 For measured beam envelopes with `ONE_TURN_EBE`, see
