@@ -99,6 +99,8 @@ input, without live MAD-X execution or teaching `cpymad` imports.
 
 ## elements
 
+See the [element examples](elements/README.md) for the available learning routes.
+
 Single-element behaviour, grouped by physical role. Apertures belong with
 apertures; machine-level RF behaviour belongs with RF. Custom elements form an
 advanced branch rather than an introduction to element usage.
