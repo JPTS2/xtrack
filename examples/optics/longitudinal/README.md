@@ -47,3 +47,6 @@ slip factor. Reference momentum and magnetic strengths stay fixed.
 The off-momentum period sample uses `delta = -1e-4, 0, 1e-4`. The bare ring
 has large chromaticity and a vertical tune near an integer; these points do not
 qualify a momentum-acceptance interval.
+
+For tracked oscillations, RF separatrices and changing RF conditions, continue
+with [longitudinal dynamics](../../rf/dynamics/README.md).

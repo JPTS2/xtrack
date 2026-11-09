@@ -39,5 +39,5 @@ the turn clock. With the laboratory clock, the searched orbit satisfies
 that slip measures the difference between synchronous and reference periods.
 
 See [longitudinal optics](../../optics/longitudinal/) for coordinate, emittance
-and revolution-period conventions, and [RF examples](../../README.md#rf) for
-the dynamics, timing and acceleration plan.
+and revolution-period conventions, and [RF examples](../../rf/README.md) for
+tracking dynamics and the timing and acceleration routes.
