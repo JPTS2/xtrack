@@ -15,6 +15,10 @@ independently.
 | [002_models_and_integrators.py](002_models_and_integrators.py) | Query model choices and apply class, family and individual settings |
 | [003_thin_and_thick_slices.py](003_thin_and_thick_slices.py) | Inspect slice geometry, parent ownership and strength; compare exit coordinates |
 | [004_bend_geometry_and_edges.py](004_bend_geometry_and_edges.py) | Sector versus rectangular geometry, fixed-chord changes and edge focusing |
+| [005_fringe_fields_and_drifts.py](005_fringe_fields_and_drifts.py) | Change quadrupole fringe and surrounding drift settings independently |
+| [006_solenoids.py](006_solenoids.py) | Uniform and ramped solenoids, field reversal and transverse coupling |
+| [007_spline_fields.py](007_spline_fields.py) | Define a physical field with Hermite boundary data and track with SplineBoris |
+| [008_field_expansion.py](008_field_expansion.py) | Define normalized polynomial fields and inspect BFieldExpansion tracking |
 
 `001` uses a positive-charge proton reference with `p0c = 1e9` eV. Physical
 fields are normalized to its signed rigidity. Distributed normal strengths
@@ -37,10 +41,40 @@ study. The plot uses Matplotlib; `px` and `py` are normalized canonical momenta.
 and angle. Changing angle at fixed chord also changes arc length and the
 field-following `k0`. Its tracking comparison uses the original geometry, linear
 edge maps and zero fringe integrals. Zero user edge angles mean different face
-incidences for these two bend types. More detailed fringe models are planned for the
-next magnet lessons.
+incidences for these two bend types.
+
+`005` holds the quadrupole body map fixed while changing its hard-edge fringe
+maps or the models of the two surrounding drifts. Exit differences use the
+fringe-on/exact-drift case as a stated comparison baseline.
+
+`006` uses `UniformSolenoid` with hard-edge entrance/exit maps, then constructs
+a continuous on-axis longitudinal-field profile with `VariableSolenoid`. The
+uniform and ramped cases have the same peak field but different total lengths and field
+integrals; their different exit coordinates describe different magnets. Both
+use exterior field-free launch/readout planes. Linear-ramp slopes and the
+associated transverse fields jump at ramp boundaries and body joins. Reversing
+the uniform field illustrates the sign of the cross-plane response.
+
+`007` and `008` describe the same compact on-axis vertical field, with zero
+endpoint values and derivatives, for a 1 GeV/c proton. They run independently.
+`Spline4.mean` is a mean field, not an integral. `SplineBoris` takes physical
+fields in tesla; `BFieldExpansion.knc` uses rigidity-normalized coefficients in
+ascending longitudinal powers. Their field plots convert to tesla consistently.
+
+`008` explicitly chooses `pkin_const = True` for kinetic-momentum boundary
+conversions and reports the exit transverse vector potential. Its RK4 stepper
+is not exactly symplectic. Both field examples use a straight reference frame,
+`y = 0` and no radiation or spin. Their printed momentum integrals provide a
+reference for these chosen settings; varying integration and expansion settings
+belongs in a convergence study.
 
 For positioning and cutting a line, see
 [line construction](../../line_construction/README.md). For slicing strategies,
 see the [slicing examples](../../slicing/). Existing longer numerical studies
 remain under [magnet models and integrators](../../magnet_models_and_integrators/).
+
+Retained advanced studies are available under [solenoids](../../solenoid/),
+[spline fields](../../splineboris/) and
+[field expansions](../../bfieldexpansion/). These include machine applications,
+field fitting and numerical comparisons. Consult their local inputs and
+requirements before running them.
