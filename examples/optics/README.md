@@ -12,7 +12,7 @@ belongs with matching.
 
 | Route | Available lessons |
 | --- | --- |
-| [Transverse optics](transverse/README.md) | Periodic/open Twiss, inspecting results and beam covariance |
+| [Transverse optics](transverse/README.md) | Periodic/open Twiss, inspecting results, beam covariance and coupled modes |
 
 The full [optics structure](../README.md#optics) also plans longitudinal,
 nonlinear and collective routes, plus further transverse topics. Those lessons
