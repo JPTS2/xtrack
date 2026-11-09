@@ -1,0 +1,106 @@
+# copyright ############################### #
+# This file is part of the Xtrack Package.  #
+# Copyright (c) CERN, 2026.                 #
+# ######################################### #
+
+################################################################################
+# Required packages
+################################################################################
+from pathlib import Path
+
+import xtrack as xt
+
+################################################################################
+# User parameters
+################################################################################
+
+########################################
+# Native ring and selected local reference conditions
+########################################
+LATTICE_FILE    = 'test_data/example_lattices/ring/lattice.py'
+OBSERVATION     = 'obs.4'               # Marker entrance at s=20 m
+QUAD_NAMES      = ['qf.3', 'qd.3']
+KNOB_NAMES      = ['local_kqf', 'local_kqd']
+
+########################################
+# Explicit perturbation and matching precision
+########################################
+STRENGTH_FACTOR = [1.03, 0.98]           # Applied to these two magnets only
+K1_STEP         = 1e-5                  # Finite-difference strength step [m^-2]
+BETA_TOL        = 1e-8                  # [m]
+ALPHA_TOL       = 1e-9                  # Dimensionless
+
+################################################################################
+# Capture a reference before perturbing two individual quadrupoles
+################################################################################
+
+########################################
+# Give the selected magnets individual live strength knobs
+########################################
+repo_root   = Path(__file__).resolve().parents[2]
+env         = xt.load(repo_root / LATTICE_FILE)
+line        = env['ring']
+# The 40 m ring supplies a 1 GeV/c electron reference, without RF or radiation.
+# Replacing these two strength expressions leaves their initial values intact;
+# the remaining quadrupoles continue to follow the native family variables.
+for name, knob in zip(QUAD_NAMES, KNOB_NAMES):
+    env[knob] = line[name].k1
+    env.set(name, k1 = knob)
+reference   = line.twiss4d()
+
+########################################
+# Apply a stated perturbation after saving the reference
+########################################
+for knob, factor in zip(KNOB_NAMES, STRENGTH_FACTOR):
+    env[knob] *= factor
+perturbed   = line.twiss4d()
+
+################################################################################
+# Restore selected local optics using values from the Twiss table
+################################################################################
+# Passing the table as value selects the named quantity at the named location;
+# it does not compare entire tables. This restores horizontal beta and alpha,
+# rather than the two global tunes matched in the first lesson.
+opt = line.match(
+    method  = '4d',
+    vary    = xt.VaryList(KNOB_NAMES, step = K1_STEP),
+    targets = [
+        xt.Target(
+            'betx',
+            at      = OBSERVATION,
+            value   = reference,
+            tol     = BETA_TOL,
+        ),
+        xt.Target(
+            'alfx',
+            at      = OBSERVATION,
+            value   = reference,
+            tol     = ALPHA_TOL,
+        ),
+    ],
+)
+restored    = line.twiss4d()
+
+################################################################################
+# Inspect the reference, perturbed and rematched values
+################################################################################
+
+########################################
+# Compare the selected beta and alpha at the same marker
+########################################
+print('Observation:', OBSERVATION, 'at s [m]:', reference['s', OBSERVATION])
+print(f'{"Quantity":<10} {"Reference":>14} {"Perturbed":>14} {"Restored":>14}')
+for quantity in ['betx', 'alfx']:
+    print(f'{quantity:<10} {reference[quantity, OBSERVATION]:14.9f}'
+          f' {perturbed[quantity, OBSERVATION]:14.9f}'
+          f' {restored[quantity, OBSERVATION]:14.9f}')
+print('betx has units m; alfx is dimensionless.')
+
+########################################
+# Inspect which individual strength knobs were changed
+########################################
+for name, knob in zip(QUAD_NAMES, KNOB_NAMES):
+    print(name, knob, 'restored k1 [m^-2]:', env[knob])
+
+# The target set constrains only two local observables. Equality of unrequested
+# quantities, or the complete reference lattice, is not an optimizer condition.
