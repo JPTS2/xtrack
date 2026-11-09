@@ -197,6 +197,8 @@ Begin with [transverse optics](optics/transverse/README.md).
 
 ### longitudinal
 
+Follow the [longitudinal optics lessons](optics/longitudinal/README.md).
+
 - `001_six_dimensional_twiss.py`
 - `002_longitudinal_covariance.py`
 - `003_revolution_period.py`
