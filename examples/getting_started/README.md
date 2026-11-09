@@ -15,8 +15,8 @@ or use the [examples index](../README.md) to choose another subject.
 | --- | --- | --- |
 | [01_build_line.py](01_build_line.py) | Elements, line assembly and strength expressions | [line construction](../line_construction/README.md) |
 | [02_load_and_inspect.py](02_load_and_inspect.py) | Loading a model and exploring its element table | [line construction](../line_construction/README.md) |
-| [03_open_optics.py](03_open_optics.py) | Optics from specified entrance conditions | [Twiss examples](../twiss/) |
-| [04_periodic_optics.py](04_periodic_optics.py) | Periodic optics, tunes and chromaticities | [Twiss examples](../twiss/) |
+| [03_open_optics.py](03_open_optics.py) | Optics from specified entrance conditions | [transverse optics](../optics/transverse/README.md) |
+| [04_periodic_optics.py](04_periodic_optics.py) | Periodic optics, tunes and chromaticities | [transverse optics](../optics/transverse/README.md) |
 | [05_match_tunes.py](05_match_tunes.py) | Tune matching with quadrupole families | [matching](../match/) |
 | [06_track_particles.py](06_track_particles.py) | Normalized launches and turn-by-turn tracking | [particle preparation](../particles/README.md), [tracking](../tracking/), [particle records](../monitors/) |
 | [07_monitors_at_elements.py](07_monitors_at_elements.py) | Particle monitors at different locations | [monitors](../monitors/) |

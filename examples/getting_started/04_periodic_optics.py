@@ -3,7 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Further examples: examples/twiss/
+# Further examples: examples/optics/transverse/
 
 ################################################################################
 # Required packages
