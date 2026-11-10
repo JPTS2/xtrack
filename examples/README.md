@@ -376,6 +376,8 @@ See [acceleration and reference momentum](rf/acceleration/README.md).
 
 ## radiation
 
+See [synchrotron radiation](radiation/README.md).
+
 Energy loss, compensation, tapering, damping, equilibrium and photon emission.
 Keep model configuration, specialised optics and tracking interpretation together;
 the operation indexes link here.
