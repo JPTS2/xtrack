@@ -24,7 +24,8 @@
 #define CAVITY_MAGNUS_NODES 8
 #define CAVITY_MAGNUS_TERMS 31
 #if (defined(XO_CONTEXT_CPU_SERIAL) || defined(XO_CONTEXT_CPU_OPENMP)) && !defined(XTRACK_TPSA_TRACK)
-#define CAVITY_MAGNUS_CACHE_STEPS 128
+#define CAVITY_MAGNUS_CACHE
+#include <stdlib.h>
 #endif
 
 
@@ -446,14 +447,27 @@ void CavityMagnus_spin_step(const CavitySpin *spin, const CavityMagnusStep *step
 ////////////////////////////////////////
 // Interval
 ////////////////////////////////////////
+// One cache per kernel call and thread, grown on the heap to the step count:
+// a fixed array large enough for any count would not fit on the stack.
 typedef struct {
     int valid;
-    int64_t cells;
+    int64_t cells, capacity;
     double key[6];
-#ifdef CAVITY_MAGNUS_CACHE_STEPS
-    CavityMagnusStep step[CAVITY_MAGNUS_CACHE_STEPS];
-#endif
+    CavityMagnusStep *step;
 } CavityMagnusCache;
+
+GPUFUN
+void CavityMagnusCache_init(CavityMagnusCache *cache) {
+    cache->valid=0; cache->cells=0; cache->capacity=0; cache->step=NULL;
+}
+
+GPUFUN
+void CavityMagnusCache_free(CavityMagnusCache *cache) {
+#ifdef CAVITY_MAGNUS_CACHE
+    free(cache->step);
+#endif
+    CavityMagnusCache_init(cache);
+}
 
 GPUFUN
 void CavityMagnus_key(const CavityModelSource *source, double key[6]) {
@@ -508,8 +522,13 @@ int CavityModel_paraxial_interval(const xt_float_or_tpsa q_in[6],
     const double Q_spin=xt_float_or_tpsa_const_part(Q);
     // Reference-only step generators are cached once per call on the CPU.
     int cached=0;
-#ifdef CAVITY_MAGNUS_CACHE_STEPS
-    if (cache && cells<=CAVITY_MAGNUS_CACHE_STEPS) {
+#ifdef CAVITY_MAGNUS_CACHE
+    if (cache && cells>cache->capacity) {
+        CavityMagnusStep *grown=(CavityMagnusStep*)realloc(cache->step, cells*sizeof(CavityMagnusStep));
+        if (grown) {cache->step=grown; cache->capacity=cells;}
+        cache->valid=0;
+    }
+    if (cache && cells<=cache->capacity) {
         double key[6];
         CavityMagnus_key(source, key);
         int same=cache->valid && cache->cells==cells;
@@ -554,7 +573,7 @@ int CavityModel_paraxial_interval(const xt_float_or_tpsa q_in[6],
         const xt_float_or_tpsa width=end-start;
         CavityMagnusStep local;
         const CavityMagnusStep *step=&local;
-#ifdef CAVITY_MAGNUS_CACHE_STEPS
+#ifdef CAVITY_MAGNUS_CACHE
         if (cached) step=&cache->step[j];
 #endif
         if (!cached) CavityMagnus_prepare_step(source, (start+end)*.5, width, &local);

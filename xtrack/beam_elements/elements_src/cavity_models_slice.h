@@ -44,12 +44,13 @@ void CavityModels_track_drift_slice(const CavityPlan* prepared, LocalParticle* p
                                              anchor,length,rz,reverse);
     }
     CavityMagnusCache magnus_cache;
-    magnus_cache.valid=0;
+    CavityMagnusCache_init(&magnus_cache);
     START_PER_PARTICLE_BLOCK(part0,part);
         const int model=plan.model;
         if (model<10) Drift_single_particle(part,drift_length);
         else track_cavity_single_particle(&plan,model,part,&magnus_cache);
     END_PER_PARTICLE_BLOCK;
+    CavityMagnusCache_free(&magnus_cache);
     if (transformed) {
         if (!reverse)
             track_misalignment_exit_straight(part0,dx,dy,ds,ry,rx,rz0,

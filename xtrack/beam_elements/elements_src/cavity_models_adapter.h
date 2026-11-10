@@ -615,13 +615,14 @@ void track_cavity_plan(LocalParticle* part0, const RFPlan* plan) {
     } else {
         // Reference-only paraxial step generators, reused across the call.
         CavityMagnusCache magnus_cache;
-        magnus_cache.valid=0;
+        CavityMagnusCache_init(&magnus_cache);
         START_PER_PARTICLE_BLOCK(part0,part);
             const int model=cavity->model;
             if (model<10) track_rf_body_single_particle(part,&plan->body);
             else if (!cavity->thin_slice)
                 track_cavity_single_particle(cavity,model,part,&magnus_cache);
         END_PER_PARTICLE_BLOCK;
+        CavityMagnusCache_free(&magnus_cache);
     }
     if (transform->active) magnet_transform(part0,transform,1);
 }
