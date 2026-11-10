@@ -357,6 +357,8 @@ See [longitudinal dynamics](rf/dynamics/README.md).
 
 ### timing
 
+See [RF clocks and timing](rf/timing/README.md).
+
 - `001_absolute_time_cavities.py`
 - `002_time_delays_off_momentum.py`
 - `003_rf_frequency_steering.py`
