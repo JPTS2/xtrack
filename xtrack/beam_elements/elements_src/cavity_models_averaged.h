@@ -93,12 +93,12 @@ int CavityModel_averaged_ponderomotive(xt_float_or_tpsa q[6],
 
 // Implicit midpoint (symplectic) for a generator a w(E) trig(T - phase) of
 // unit duration: kind 0 is the edge, a cos with w = E/p; kind 1 the
-// synchronous radial term, a sin with w = E/p - 1. Positions are invariant
+// synchronous radial term, a sin with w = nu E/p - 1. Positions are invariant
 // and the momenta change by c (X, Y).
 GPUFUN
 int CavityModel_averaged_midpoint(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg a,
         xt_float_or_tpsa_arg momentum_factor, xt_float_or_tpsa_arg phase, int kind,
-        int freeze_energy, int freeze_zeta) {
+        xt_float_or_tpsa_arg nu, int freeze_energy, int freeze_zeta) {
     xt_float_or_tpsa T1=q[2], E1=q[5], c=0.;
     int converged=0, sweeps=CAVITY_MODEL_JET_SWEEPS;
     for (int iteration=0; iteration<CAVITY_AVERAGED_MIDPOINT_ITERATIONS
@@ -108,14 +108,14 @@ int CavityModel_averaged_midpoint(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg a,
         if (xt_float_or_tpsa_const_part(square)<=0.) return CAVITY_MODEL_DOMAIN;
         const xt_float_or_tpsa p=sqrt(square);
         const xt_float_or_tpsa theta=Tm-phase;
-        const xt_float_or_tpsa dw=-1./(p*p*p);
-        xt_float_or_tpsa w=Em/p, dT, dE;
+        xt_float_or_tpsa dw=-1./(p*p*p), w=Em/p, dT, dE;
         if (kind==0) {
             dT=-a*dw*cos(theta);
             dE=-a*w*sin(theta);
             c=-momentum_factor*w*cos(theta);
         } else {
-            w-=1.;
+            w=nu*w-1.;
+            dw*=nu;
             dT=-a*dw*sin(theta);
             dE=a*w*cos(theta);
             c=-momentum_factor*w*sin(theta);
@@ -152,7 +152,7 @@ int CavityModel_averaged_edge(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg jump,
     const double energy=xt_float_or_tpsa_const_part(q[5]);
     const xt_float_or_tpsa r2=q[0]*q[0]+q[1]*q[1];
     const int status=CavityModel_averaged_midpoint(q, jump*r2/4., jump/2.,
-        source->carrier*z, 0, source->freeze_energy, source->freeze_zeta);
+        source->carrier*z, 0, source->carrier, source->freeze_energy, source->freeze_zeta);
     if (status==CAVITY_MODEL_OK)
         CavitySpin_kick(spin, xt_float_or_tpsa_const_part(q[3])-px0,
             xt_float_or_tpsa_const_part(q[4])-py0, energy, 0);
@@ -205,13 +205,13 @@ int CavityModel_averaged_step(xt_float_or_tpsa q[6], xt_float_or_tpsa_arg h,
     for (int side=0; side<2 && status==CAVITY_MODEL_OK; ++side) {
         const xt_float_or_tpsa r2=q[0]*q[0]+q[1]*q[1];
         status=CavityModel_averaged_midpoint(q, gradient*h*r2/8.,
-            gradient*h/4., phase, 1, freeze_energy, freeze_zeta);
+            gradient*h/4., phase, 1, source->carrier, freeze_energy, freeze_zeta);
         if (side==0 && status==CAVITY_MODEL_OK && !freeze_energy) {
             // Carrier precession in the forward wave's radial fields, then
             // the longitudinal-field rotation of the energy kick.
             CavitySpin_carrier(spin, xt_float_or_tpsa_const_part(gradient*h*sin(q[2]-phase)),
-                xt_float_or_tpsa_const_part(q[5]), xt_float_or_tpsa_const_part(q[0]),
-                xt_float_or_tpsa_const_part(q[1]));
+                xt_float_or_tpsa_const_part(source->carrier), xt_float_or_tpsa_const_part(q[5]),
+                xt_float_or_tpsa_const_part(q[0]), xt_float_or_tpsa_const_part(q[1]));
             const double px=xt_float_or_tpsa_const_part(q[3]);
             const double py=xt_float_or_tpsa_const_part(q[4]);
             const double E0=xt_float_or_tpsa_const_part(q[5]);

@@ -47,13 +47,13 @@ void CavitySpin_kick(const CavitySpin *spin, double dpx, double dpy,
 
 // Precession in the co-propagating wave's radial fields over one step,
 // strength = (energy gain per length) k sin(theta) length, with the offset
-// (x, y) in the same length unit; it vanishes on crest.
+// (x, y) in the same length unit and nu = k_z / k; it vanishes on crest.
 GPUFUN
-void CavitySpin_carrier(const CavitySpin *spin, double strength, double energy,
+void CavitySpin_carrier(const CavitySpin *spin, double strength, double nu, double energy,
                         double x, double y) {
     if (!spin || !spin->spin) return;
     const double a=spin->anomaly, beta=sqrt(1.-1./(energy*energy));
-    const double factor=strength/(2.*beta)*((a+1./energy)-beta*(a+1./(energy+1.)));
+    const double factor=strength/(2.*beta)*((a+1./energy)-nu*beta*(a+1./(energy+1.)));
     CavitySpin_rotate(spin->spin, -factor*y, factor*x, 0.);
 }
 

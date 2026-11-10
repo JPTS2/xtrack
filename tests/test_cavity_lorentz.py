@@ -201,6 +201,20 @@ def test_low_beta_protons_follow_the_orbit_through_synchronous_cells(context, mo
     assert _errors(ends, truth, p0c, gradient * length)[1] < 1e-3
 
 
+@pytest.mark.parametrize('gamma', [1.5, 2., 5.])
+def test_phase_averaged_follows_the_orbit_through_synchronous_cells(context, gamma):
+    """The forward wave's radial force carries the cells' wave number, nu E/p - 1."""
+    n_cells, gradient, amplitude, phase = 5, 5e6, .5, 1.2
+    beta = np.sqrt(1 - 1 / gamma**2)
+    length = n_cells * beta * _HALF_WAVE
+    mass0 = xt.PROTON_MASS_EV
+    p0c = mass0 * np.sqrt(gamma**2 - 1)
+    ends = _track(context, dict(model='_phase-averaged', length=length, voltage=gradient * length, phase=phase,
+                                counter_wave_amplitude=amplitude, n_cells=n_cells), p0c, mass0=mass0)
+    truth = _truth(gamma, n_cells * beta, gradient, amplitude, phase, mass0=mass0, n_cells=n_cells)
+    assert _errors(ends, truth, p0c, gradient * length)[1] < 1e-2
+
+
 def test_paraxial_takes_a_step_for_each_two_percent_of_energy_change(context):
     # V/E is 0.62, so 31 steps where the wave alone asks for 4.
     gamma, gradient, half_waves, phase = 5.9095, 5e6, 2, -np.pi / 2

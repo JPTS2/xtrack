@@ -322,7 +322,7 @@ int CavityModel_frozen_kick(xt_float_or_tpsa state[6],
     const double py0=xt_float_or_tpsa_const_part(state[4]);
     const double energy0=xt_float_or_tpsa_const_part(state[5]);
     CavitySpin_carrier(spin, xt_float_or_tpsa_const_part(signed_weight*voltage
-        *wave_number*cos(psi)), energy0, xt_float_or_tpsa_const_part(state[0]),
+        *wave_number*cos(psi)), 1., energy0, xt_float_or_tpsa_const_part(state[0]),
         xt_float_or_tpsa_const_part(state[1]));
     if (!freeze_energy)
         state[5]-=signed_weight*(voltage+radial
