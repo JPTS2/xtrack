@@ -64,7 +64,7 @@ typedef struct RFModelFields_s {
     int64_t rf_profile;
     int64_t num_harmonics;
     GPUGLMEM const double *harmonic_wave_number, *harmonic_re, *harmonic_im;
-    int64_t spin_tracking, edge_entry_active, edge_exit_active;
+    int64_t edge_entry_active, edge_exit_active;
     xt_float_or_tpsa ks;
     int64_t order, knl_len, ksl_len;
     GPUGLMEM const double *knl, *ksl;
@@ -81,7 +81,6 @@ typedef struct RFModelFields_s {
     (f)->lag=DATA##_get_lag(el); (f)->phase=DATA##_get_phase(el); \
     (f)->harmonic=DATA##_get_harmonic(el); \
     (f)->lag_taper=DATA##_get_lag_taper(el); (f)->phase_taper=DATA##_get_phase_taper(el); \
-    (f)->spin_tracking=DATA##_get_spin_tracking(el); \
     (f)->absolute_time=DATA##_get_absolute_time(el); (f)->num_kicks=DATA##_get_num_kicks(el); \
     (f)->model=DATA##_get_model(el); (f)->integrator=DATA##_get_integrator(el); \
     (f)->tpsa_enabled=DATA##_get__tpsa_enabled(el); \
@@ -139,7 +138,7 @@ typedef struct CavityPlan_s {
     RFModelFields fields;
     int model, thin_slice;
     CavityChoice choice;
-    int integrator, profile, spin_tracking;
+    int integrator, profile, spin_supported;
     int64_t requested;
     double counter_wave_amplitude, length, weight;
     double left_fraction, right_fraction;

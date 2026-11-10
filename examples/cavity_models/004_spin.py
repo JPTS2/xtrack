@@ -7,7 +7,8 @@ on the uniform RF field with optional uniform solenoid and normal/skew
 quadrupole fields.
 The overlap case observes two planes INSIDE the static field, with canonical
 input momenta: it does not model hard-edge spin fringes. Cavities do not
-radiate. Magnetic fringes, GPU and TPSA spin remain unsupported.
+radiate. As for the magnets, TPSA tracking does not turn the spin; magnetic
+fringes and GPU contexts lose a particle with spin (state -99744).
 """
 
 ################################################################################

@@ -143,14 +143,11 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
                         int64_t requested, double weight, double slice_start) {
     const double length=el->length;
     const int profile=el->rf_profile;
-    const int spin_tracking=el->spin_tracking;
     int controls=CAVITY_MODEL_OK;
     if (!(isfinite(length) && length>0. && isfinite(weight) && weight>0.
           && isfinite(slice_start) && slice_start>=0.
           && weight<=1. && slice_start+weight<=1.+8e-15)
         || el->n_cells<0
-        || spin_tracking<0||spin_tracking>1
-        ||(spin_tracking&&el->tpsa_enabled!=0)
         || requested<0
         || (model!=CAVITY_MODEL_FULL && model!=CAVITY_MODEL_FROZEN
             && model!=CAVITY_MODEL_AVERAGED && model!=CAVITY_MODEL_PARAXIAL)
@@ -159,16 +156,6 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
         || (el->knl_len>0 && (el->order<0 || el->knl_len<=el->order
                               || el->ksl_len<=el->order)))
         controls=CAVITY_MODEL_ARGUMENT;
-    // Spin is integrated on the scalar CPU full model only.
-#if defined(XTRACK_TPSA_TRACK) || (!defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)) || defined(XTRACK_MULTIPOLE_NO_SYNRAD)
-    if(spin_tracking)controls=CAVITY_MODEL_ARGUMENT;
-#endif
-    if(spin_tracking&&controls==CAVITY_MODEL_OK) {
-        if(CavityModels_effects_static_unsupported(el))controls=CAVITY_MODEL_ARGUMENT;
-        else if(CavityModels_effects_static_present(el)
-            &&(el->edge_entry_active||el->edge_exit_active
-               ||CavityModels_transformations_active(el)))controls=CAVITY_MODEL_ARGUMENT;
-    }
     if (model==CAVITY_MODEL_FROZEN) {
         if ((integrator!=0 && integrator!=7 && integrator!=3)
             || !xt_float_or_tpsa_is_zero(el->counter_wave_amplitude)
@@ -182,11 +169,28 @@ int CavityPlan_controls(const RFModelFields* el, LocalParticle* part0, int model
     }
     // The whole-cavity taper pass takes the longitudinal map (track_cavity_plan);
     // tapering refuses cavity slices.
-    if(LocalParticle_check_track_flag(part0,XS_FLAG_SR_TAPER)
-        ||(spin_tracking&&(LocalParticle_check_track_flag(part0,XS_FLAG_SR_KICK_SAME_AS_FIRST)
-            ||weight!=1.||slice_start!=0.)))
+    if(LocalParticle_check_track_flag(part0,XS_FLAG_SR_TAPER))
         controls=CAVITY_MODEL_ARGUMENT;
     return controls;
+}
+
+// Spin follows the magnets: it is transported when spin or radiation is compiled in,
+// for particles whose spin is not zero. Where this cavity cannot carry it, such a
+// particle is lost rather than passed through unturned.
+GPUFUN
+int CavityPlan_spin_supported(const RFModelFields* el, LocalParticle* part0, int model,
+                              double weight, double slice_start) {
+#if !defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)
+    return 0;
+#else
+    if(el->tpsa_enabled||weight!=1.||slice_start!=0.
+        ||LocalParticle_check_track_flag(part0,XS_FLAG_SR_KICK_SAME_AS_FIRST)
+        ||LocalParticle_check_track_flag(part0,XS_FLAG_KILL_CAVITY_KICK))return 0;
+    if(!CavityModels_effects_static_present(el))return 1;
+    return model==CAVITY_MODEL_FULL&&!CavityModels_effects_static_unsupported(el)
+        &&!el->edge_entry_active&&!el->edge_exit_active
+        &&!CavityModels_transformations_active(el);
+#endif
 }
 
 // The half wavelengths of the field's fastest spatial variation along the element.
@@ -214,7 +218,7 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
     const int64_t requested=el->num_kicks;
     plan->integrator=integrator; plan->requested=requested; plan->counter_wave_amplitude=counter_wave_amplitude;
     plan->profile=el->rf_profile;
-    plan->spin_tracking=el->spin_tracking;
+    plan->spin_supported=CavityPlan_spin_supported(el,part0,model,weight,slice_start);
     const int controls=CavityPlan_controls(el,part0,model,integrator,requested,weight,slice_start);
     plan->choice.controls=controls;
     plan->choice.cells=CavityPlan_cells(model,requested,frequency,length,CavityPlan_spatial_half_waves(el),
@@ -270,7 +274,7 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     int64_t cells=plan->choice.cells;
     const int integrator=plan->integrator;
     const int profile=plan->profile;
-    const int spin_tracking=plan->spin_tracking;
+    int spin_tracking=0;
     const int64_t requested=plan->requested;
     const double length=plan->length;
     const double weight=plan->weight;
@@ -370,6 +374,13 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
         source.freeze_px=XT_LP_IS_FROZEN(px);
         source.freeze_y=XT_LP_IS_FROZEN(y);
         source.freeze_py=XT_LP_IS_FROZEN(py);
+#if !defined(XTRACK_TPSA_TRACK) && !defined(XTRACK_MULTIPOLE_NO_SYNRAD)
+        if(LocalParticle_get_spin_x(part)!=0.||LocalParticle_get_spin_y(part)!=0.
+            ||LocalParticle_get_spin_z(part)!=0.) {
+            if(plan->spin_supported) spin_tracking=1;
+            else status=CAVITY_MODEL_ARGUMENT;
+        }
+#endif
         if(spin_tracking) {
             if(CavityModels_freeze_mask(&source)||XT_LP_IS_FROZEN(s)
                 ||XT_LP_IS_FROZEN(rpp)||XT_LP_IS_FROZEN(rvv)
@@ -610,7 +621,6 @@ void track_cavity_plan(LocalParticle* part0, const RFPlan* plan) {
             if (model<10) track_rf_body_single_particle(part,&plan->body);
             else if (!cavity->thin_slice)
                 track_cavity_single_particle(cavity,model,part,&magnus_cache);
-            else if (cavity->spin_tracking) LocalParticle_set_state(part,-99744);
         END_PER_PARTICLE_BLOCK;
     }
     if (transform->active) magnet_transform(part0,transform,1);

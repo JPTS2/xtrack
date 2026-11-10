@@ -5037,40 +5037,6 @@ class Line:
         return (ee for ee in self._used_owners()
                 if isinstance(ee, (xt.Cavity, xt.FieldExpansionCavity)))
 
-    def _slices_physical_cavity(self):
-        """Whether a physical-model cavity is used through its slices."""
-        for element in self._used_owners():
-            parent = getattr(element, 'parent_name', None)
-            if parent is None:
-                continue
-            owner = self._element_dict[parent]
-            if isinstance(owner, xt.Replica):
-                owner = owner.resolve(self)
-            if (isinstance(owner, (xt.Cavity, xt.FieldExpansionCavity))
-                    and owner._model >= 10):
-                return True
-        return False
-
-    def _check_cavity_spin(self):
-        """Raise if a used physical-model cavity cannot transport spin."""
-        cavities = tuple(ee for ee in self._used_cavity_owners() if ee._model >= 10)
-        if not cavities:
-            return
-        if any(name.startswith('FREEZE_VAR_') and value for name, value in self.config.items()):
-            raise NotImplementedError('Cavity spin transport does not support frozen-coordinate analysis')
-        if self.config.get('XTRACK_TPSA_TRACK', False):
-            raise NotImplementedError('Cavity spin transport is scalar only, not TPSA')
-        context = self._context
-        if context is not None and not isinstance(context, xo.ContextCpu):
-            raise NotImplementedError('Cavity spin transport is implemented only for CPU')
-        if any(getattr(getattr(ee, '_xobject', None), '_tpsa_enabled', 0)
-               for ee in self._used_owners()):
-            raise NotImplementedError('Cavity spin transport does not support active TPSA owners')
-        if self._slices_physical_cavity():
-            raise NotImplementedError('Cavity spin transport is not yet supported through slices')
-        for element in cavities:
-            element._check_spin_support()
-
     @doc_group("Radiation, Spin and Intra-Beam Scattering")
     def configure_radiation(self, model=None, model_beamstrahlung=None,
                             model_bhabha=None, mode='deprecated'):
@@ -5187,11 +5153,6 @@ class Line:
             spin_model = 'auto'
         elif spin_model not in (None, 'auto'):
             raise ValueError("spin_model must be None, 'auto', True, or False")
-
-        if spin_model is not None:
-            self._check_cavity_spin()
-        for element in self._used_cavity_owners():
-            element.spin_tracking = int(spin_model is not None)
 
         self._spin_model = spin_model
 

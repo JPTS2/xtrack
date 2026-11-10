@@ -169,7 +169,12 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
     "_phase-resolved-frozen"; the longitudinal models ignore them. The RF field
     is uniform along the cavity and ends abruptly at its end planes, which are hard
     edges: the particle leaves field-free. For a measured field, or a single cell,
-    use FieldExpansionCavity.
+    use FieldExpansionCavity. Spin is transported as by the magnets: when the line
+    is configured for spin or radiation, for particles whose spin is not zero, and
+    not in TPSA tracking. A particle with spin is lost (state -99744) where the
+    cavity cannot carry it: through slices, on a context other than CPU, or with
+    static fields that have active faces, a misalignment or a model other than
+    "_phase-resolved".
 
     counter_wave_amplitude : float
         Amplitude of the counter-propagating RF wave over that of the
@@ -251,7 +256,6 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         'n_cells': xo.Int64,
         'nominal_energy_gain': FloatOrTpsa,
         'nominal_energy_gain_from_rf': xo.Int64,
-        'spin_tracking': xo.Int64,
         'edge_entry_active': xo.Int64,
         'edge_exit_active': xo.Int64,
         'absolute_time': xo.Int64,
@@ -353,16 +357,6 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         elif self.integrator == 'teapot':
             raise ValueError('_phase-resolved has no kicks to place: "teapot" '
                              'does not apply')
-        if self.spin_tracking:
-            self._check_spin_support()
-
-    def _check_spin_support(self):
-        """Raise if spin transport is not implemented for these settings."""
-        if self._model in (11, 12, 13):
-            return
-        if self._model != 10 or self.integrator == 'teapot':
-            raise NotImplementedError('Cavity spin transport requires the _phase-resolved '
-                                      'model')
 
     @property
     def n_cells(self):
@@ -514,26 +508,6 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
                 raise ValueError(f'{self.model} supports a uniform solenoid with '
                                  'faces off or a normal quadrupole as static field')
 
-    def _check_spin_support(self):
-        super()._check_spin_support()
-        normal = np.asarray(self.knl)
-        skew = np.asarray(self.ksl)
-        static = _constant_part(self.ks) != 0. or np.any(normal != 0.) or np.any(skew != 0.)
-        if self._model in (11, 12, 13):
-            if static:
-                raise NotImplementedError(f'Cavity spin transport with static fields '
-                                          f'is not implemented for {self.model}')
-            return
-        if (np.any(normal[np.arange(len(normal)) != 1] != 0.)
-                or np.any(skew[np.arange(len(skew)) != 1] != 0.)
-                or (self.order < 1 and (np.any(normal != 0.) or np.any(skew != 0.)))):
-            raise NotImplementedError('Cavity spin transport supports only solenoid and '
-                                      'normal/skew quadrupole static strengths')
-        if static and (self.edge_entry_active or self.edge_exit_active):
-            raise NotImplementedError('Cavity spin transport with static fields requires both faces disabled')
-        if static and self.transformations_active:
-            raise NotImplementedError('Cavity spin transport with static fields does not support alignment transformations')
-
     @property
     def knl(self):
         from ..tpsa._cavity_array import CavityArrayView
@@ -647,7 +621,6 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         'wave_numbers': xo.Float64[:],
         'amplitudes_re': xo.Float64[:],
         'amplitudes_im': xo.Float64[:],
-        'spin_tracking': xo.Int64,
         'absolute_time': xo.Int64,
         'num_kicks': xo.Int64,
         'model': xo.Int64,
@@ -758,12 +731,6 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
                 and np.all(np.isfinite(self.amplitudes))
                 and np.any(self.amplitudes != 0.)):
             raise ValueError('The space harmonics must be finite and not all zero')
-        if self.spin_tracking:
-            self._check_spin_support()
-
-    def _check_spin_support(self):
-        if self.integrator == 'teapot':
-            raise NotImplementedError('Cavity spin transport does not take "teapot"')
 
     @property
     def amplitudes(self):

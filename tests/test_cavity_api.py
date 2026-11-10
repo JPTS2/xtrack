@@ -515,11 +515,14 @@ def test_phase_averaged_refuses_unsupported_static_fields_and_integrators(model)
             _averaged_cavity(model, integrator=integrator)
 
 
-def test_phase_averaged_spin_with_static_fields_refuses_at_configuration():
+def test_phase_averaged_with_static_fields_loses_a_spinning_particle():
     line = xt.Line(elements={'rf': _averaged_cavity(knl=[0., .05])})
     line.particle_ref = _launch(200., x=0., px=0., y=0., py=0., zeta=0., delta=0.)
-    with pytest.raises(NotImplementedError, match='static'):
-        line.configure_spin(True)
+    line.build_tracker()
+    line.configure_spin(True)
+    particles = _launch(200., spin_z=1.)
+    line.track(particles)
+    assert particles.state[0] == -99744
 
 
 def _adaptive_line(model_context, **controls):
