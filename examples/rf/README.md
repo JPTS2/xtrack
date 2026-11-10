@@ -18,6 +18,7 @@ points and synchrotron-tune targets, see
 
 Continue with [RF clocks and timing](timing/README.md) for absolute-time cavities,
 time delays, frequency steering, phase programs and synchronized frames.
-The [examples index](../README.md#rf) also lays out the acceleration lessons.
-Each dynamics example states its model and reference particle; an
+Then explore [acceleration and reference momentum](acceleration/README.md):
+ring ramps, LINAC energy gain and optics, and mixed-species reference clocks.
+Each example states its model and reference particle; an
 ideal longitudinal model does not qualify the shared ring's momentum acceptance.
