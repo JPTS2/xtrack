@@ -367,6 +367,8 @@ See [RF clocks and timing](rf/timing/README.md).
 
 ### acceleration
 
+See [acceleration and reference momentum](rf/acceleration/README.md).
+
 - `001_ring_energy_ramp.py`
 - `002_linac_energy_gain.py`
 - `003_linac_optics_and_tracking.py`
