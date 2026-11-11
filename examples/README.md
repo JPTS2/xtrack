@@ -472,12 +472,15 @@ Integrated applications whose machine geometry or operating conditions are
 essential. Start with the
 [demo-ring workflow](machine_studies/demo_ring_workflow.py), which carries a
 chromaticity-corrected setting into off-momentum optics and finite tracking.
-The three machine studies below are candidates; they do not account for all
-existing machine-specific material.
+The machine folders connect operations around a particular physical problem:
 
-- `elena_field_transport.py`
-- `fcc_ee_solenoid_compensation.py`
-- `lep_polarization.py`
+- [elena/](machine_studies/elena/README.md): fitted fields and curved-reference
+  transport with `BFieldExpansion`.
+- [fcc_ee/](machine_studies/fcc_ee/README.md): experimental-solenoid compensation.
+- [lep/](machine_studies/lep/README.md): polarization recovery with spin bumps and
+  coupling corrections.
+- [lhc/](machine_studies/lhc/README.md): collision optics and installed crossing
+  and separation knobs.
 
 ## benchmarks
 
