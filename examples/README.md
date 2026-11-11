@@ -454,6 +454,8 @@ package. Optional external engines require their own API and version checks.
 
 ### madng
 
+See the [MAD-NG interface examples](interfaces/madng/README.md) for the runnable route.
+
 - `001_madng_optics.py`
 - `002_resonance_driving_terms.py`
 
