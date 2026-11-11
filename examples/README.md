@@ -440,8 +440,7 @@ loss-location refinement.
 
 Execution contexts, arrays, buffers, shared storage and data movement.
 
-For an existing CPU-context and tracker-rebuild example, see
-[execution context](tracking/004_execution_context.py).
+See [contexts and memory](contexts_and_memory/README.md) for the runnable route.
 
 - `001_cpu_context_and_rebuilds.py`
 - `002_move_particles_between_contexts.py`
