@@ -414,8 +414,11 @@ selection and threading. Optics-matching procedures link to matching.
 - `003_closed_orbit_correction.py`
 - `004_trajectory_correction.py`
 - `005_micado_and_selected_correctors.py`
-- `006_custom_response.py`
+- `006_response_and_svd.py`
 - `007_threading.py`
+- `008_bpm_alignment.py`
+- `009_off_momentum_correction.py`
+- `010_corrector_limits.py`
 
 ## apertures
 
