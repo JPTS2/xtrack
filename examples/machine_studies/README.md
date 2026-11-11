@@ -6,11 +6,24 @@ Copyright (c) CERN, 2026.
 # Machine studies
 
 Carry a setting through several operations while keeping its model and physical
-assumptions explicit. These workflows connect the independent subject lessons.
+assumptions explicit. Start with the shared demonstration ring, then use the
+machine folders for workflows that depend on a particular geometry or operating
+point. Each folder explains its input model and what the calculation establishes.
 
 | Example | Lesson |
 | --- | --- |
 | [demo_ring_workflow.py](demo_ring_workflow.py) | Correct global chromaticities, inspect off-momentum IP optics and track common launches at the same operating point |
+| [elena/](elena/README.md) | Follow fitted dipole fields through strongly curved reference sections using `BFieldExpansion` |
+| [fcc_ee/](fcc_ee/README.md) | Compensate a tilted detector solenoid in an experimental insertion |
+| [lep/](lep/README.md) | Recover predicted equilibrium polarization with installed spin bumps and coupling corrections |
+| [lhc/](lhc/README.md) | Apply crossing and separation knobs and inspect the resulting collision optics and local orbit bumps |
+
+These are bounded studies using repository models, rather than current machine
+settings. The subject folders teach the individual APIs; these workflows show
+how the operations fit together. Other machine-specific lessons may be added
+when they contribute a distinct workflow.
+
+## Demonstration-ring workflow
 
 The workflow uses the shared 1 GeV/c electron demonstration ring. It retains an
 independent bare control and varies only the installed sextupole circuits.

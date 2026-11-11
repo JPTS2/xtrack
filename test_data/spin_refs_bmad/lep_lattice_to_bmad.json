@@ -9431,7 +9431,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc3.qs11.l2..2": {
    "__class__": "Drift",
@@ -9449,7 +9449,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc4.qs11.l2..2": {
    "__class__": "Drift",
@@ -9467,7 +9467,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc5.qs10.l2..2": {
    "__class__": "Drift",
@@ -9485,7 +9485,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc6.qs10.l2..2": {
    "__class__": "Drift",
@@ -9503,7 +9503,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc7.qs10.l2..2": {
    "__class__": "Drift",
@@ -9521,7 +9521,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc8.qs10.l2..2": {
    "__class__": "Drift",
@@ -9574,7 +9574,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc9.qs10.l2..2": {
    "__class__": "Drift",
@@ -9592,7 +9592,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc10.qs10.l2..2": {
    "__class__": "Drift",
@@ -9610,7 +9610,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc11.qs10.l2..2": {
    "__class__": "Drift",
@@ -9628,7 +9628,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc12.qs10.l2..2": {
    "__class__": "Drift",
@@ -9646,7 +9646,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc13.qs9.l2..2": {
    "__class__": "Drift",
@@ -9664,7 +9664,7 @@
    "__class__": "Cavity",
    "voltage": 12650000.0,
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc14.qs9.l2..2": {
    "__class__": "Drift",
@@ -9756,7 +9756,7 @@
   "rfsc.qs9.l2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs9.l2..2": {
    "__class__": "Drift",
@@ -9773,7 +9773,7 @@
   "rfsc1.qs8.l2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs8.l2..2": {
    "__class__": "Drift",
@@ -9864,7 +9864,7 @@
   "rfsc2.qs8.l2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs8.l2..2": {
    "__class__": "Drift",
@@ -9881,7 +9881,7 @@
   "rfsc.qs7.l2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs7.l2..2": {
    "__class__": "Drift",
@@ -10049,7 +10049,7 @@
   "rfsc.qs6.l2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs6.l2..2": {
    "__class__": "Drift",
@@ -10066,7 +10066,7 @@
   "rfsc1.qs5.l2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs5.l2..2": {
    "__class__": "Drift",
@@ -10145,7 +10145,7 @@
   "rfsc2.qs5.l2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs5.l2..2": {
    "__class__": "Drift",
@@ -10162,7 +10162,7 @@
   "rfsc.qs4.l2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs4.l2..2": {
    "__class__": "Drift",
@@ -10851,7 +10851,7 @@
   "rfsc.qs4.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs4.r2..2": {
    "__class__": "Drift",
@@ -10868,7 +10868,7 @@
   "rfsc1.qs5.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs5.r2..2": {
    "__class__": "Drift",
@@ -10947,7 +10947,7 @@
   "rfsc2.qs5.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs5.r2..2": {
    "__class__": "Drift",
@@ -10964,7 +10964,7 @@
   "rfsc.qs6.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs6.r2..2": {
    "__class__": "Drift",
@@ -11132,7 +11132,7 @@
   "rfsc.qs7.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs7.r2..2": {
    "__class__": "Drift",
@@ -11149,7 +11149,7 @@
   "rfsc2.qs8.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs8.r2..2": {
    "__class__": "Drift",
@@ -11240,7 +11240,7 @@
   "rfsc1.qs8.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs8.r2..2": {
    "__class__": "Drift",
@@ -11257,7 +11257,7 @@
   "rfsc.qs9.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs9.r2..2": {
    "__class__": "Drift",
@@ -11356,7 +11356,7 @@
   "rfc3.qs9.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc3.qs9.r2..2": {
    "__class__": "Drift",
@@ -11373,7 +11373,7 @@
   "rfc4.qs9.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc4.qs9.r2..2": {
    "__class__": "Drift",
@@ -11390,7 +11390,7 @@
   "rfc5.qs10.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc5.qs10.r2..2": {
    "__class__": "Drift",
@@ -11407,7 +11407,7 @@
   "rfc6.qs10.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc6.qs10.r2..2": {
    "__class__": "Drift",
@@ -11424,7 +11424,7 @@
   "rfc7.qs10.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc7.qs10.r2..2": {
    "__class__": "Drift",
@@ -11441,7 +11441,7 @@
   "rfc8.qs10.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc8.qs10.r2..2": {
    "__class__": "Drift",
@@ -11493,7 +11493,7 @@
   "rfc9.qs10.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc9.qs10.r2..2": {
    "__class__": "Drift",
@@ -11510,7 +11510,7 @@
   "rfc10.qs10.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc10.qs10.r2..2": {
    "__class__": "Drift",
@@ -11527,7 +11527,7 @@
   "rfc11.qs10.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc11.qs10.r2..2": {
    "__class__": "Drift",
@@ -11544,7 +11544,7 @@
   "rfc12.qs10.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc12.qs10.r2..2": {
    "__class__": "Drift",
@@ -11561,7 +11561,7 @@
   "rfc13.qs11.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc13.qs11.r2..2": {
    "__class__": "Drift",
@@ -11578,7 +11578,7 @@
   "rfc14.qs11.r2": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc14.qs11.r2..2": {
    "__class__": "Drift",
@@ -30078,7 +30078,7 @@
   "rfsc1.qs10.l4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs10.l4..2": {
    "__class__": "Drift",
@@ -30095,7 +30095,7 @@
   "rfsc.qs9.l4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs9.l4..2": {
    "__class__": "Drift",
@@ -30152,7 +30152,7 @@
   "rfsc1.qs9.l4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs9.l4..2": {
    "__class__": "Drift",
@@ -30169,7 +30169,7 @@
   "rfsc2.qs9.l4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs9.l4..2": {
    "__class__": "Drift",
@@ -30260,7 +30260,7 @@
   "rfsc.qs8.l4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs8.l4..2": {
    "__class__": "Drift",
@@ -30277,7 +30277,7 @@
   "rfsc1.qs7.l4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs7.l4..2": {
    "__class__": "Drift",
@@ -30369,7 +30369,7 @@
   "rfsc1.qs6.l4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs6.l4..2": {
    "__class__": "Drift",
@@ -30455,7 +30455,7 @@
   "rfsc2.qs6.l4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs6.l4..2": {
    "__class__": "Drift",
@@ -30472,7 +30472,7 @@
   "rfsc.qs5.l4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs5.l4..2": {
    "__class__": "Drift",
@@ -31274,7 +31274,7 @@
   "rfsc.qs5.r4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs5.r4..2": {
    "__class__": "Drift",
@@ -31291,7 +31291,7 @@
   "rfsc1.qs6.r4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs6.r4..2": {
    "__class__": "Drift",
@@ -31377,7 +31377,7 @@
   "rfsc2.qs6.r4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs6.r4..2": {
    "__class__": "Drift",
@@ -31469,7 +31469,7 @@
   "rfsc2.qs7.r4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs7.r4..2": {
    "__class__": "Drift",
@@ -31486,7 +31486,7 @@
   "rfsc.qs8.r4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs8.r4..2": {
    "__class__": "Drift",
@@ -31577,7 +31577,7 @@
   "rfsc1.qs9.r4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs9.r4..2": {
    "__class__": "Drift",
@@ -31594,7 +31594,7 @@
   "rfsc2.qs9.r4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs9.r4..2": {
    "__class__": "Drift",
@@ -31651,7 +31651,7 @@
   "rfsc.qs9.r4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs9.r4..2": {
    "__class__": "Drift",
@@ -31668,7 +31668,7 @@
   "rfsc1.qs10.r4": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs10.r4..2": {
    "__class__": "Drift",
@@ -50177,7 +50177,7 @@
   "rfc3.qs11.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc3.qs11.l6..2": {
    "__class__": "Drift",
@@ -50194,7 +50194,7 @@
   "rfc4.qs11.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc4.qs11.l6..2": {
    "__class__": "Drift",
@@ -50211,7 +50211,7 @@
   "rfc5.qs10.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc5.qs10.l6..2": {
    "__class__": "Drift",
@@ -50228,7 +50228,7 @@
   "rfc6.qs10.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc6.qs10.l6..2": {
    "__class__": "Drift",
@@ -50245,7 +50245,7 @@
   "rfc7.qs10.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc7.qs10.l6..2": {
    "__class__": "Drift",
@@ -50262,7 +50262,7 @@
   "rfc8.qs10.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc8.qs10.l6..2": {
    "__class__": "Drift",
@@ -50314,7 +50314,7 @@
   "rfc9.qs10.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc9.qs10.l6..2": {
    "__class__": "Drift",
@@ -50331,7 +50331,7 @@
   "rfc10.qs10.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc10.qs10.l6..2": {
    "__class__": "Drift",
@@ -50348,7 +50348,7 @@
   "rfc11.qs10.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc11.qs10.l6..2": {
    "__class__": "Drift",
@@ -50365,7 +50365,7 @@
   "rfc12.qs10.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc12.qs10.l6..2": {
    "__class__": "Drift",
@@ -50382,7 +50382,7 @@
   "rfc13.qs9.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc13.qs9.l6..2": {
    "__class__": "Drift",
@@ -50399,7 +50399,7 @@
   "rfc14.qs9.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc14.qs9.l6..2": {
    "__class__": "Drift",
@@ -50498,7 +50498,7 @@
   "rfsc.qs9.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs9.l6..2": {
    "__class__": "Drift",
@@ -50515,7 +50515,7 @@
   "rfsc1.qs8.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs8.l6..2": {
    "__class__": "Drift",
@@ -50606,7 +50606,7 @@
   "rfsc2.qs8.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs8.l6..2": {
    "__class__": "Drift",
@@ -50623,7 +50623,7 @@
   "rfsc.qs7.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs7.l6..2": {
    "__class__": "Drift",
@@ -50791,7 +50791,7 @@
   "rfsc.qs6.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs6.l6..2": {
    "__class__": "Drift",
@@ -50808,7 +50808,7 @@
   "rfsc1.qs5.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs5.l6..2": {
    "__class__": "Drift",
@@ -50887,7 +50887,7 @@
   "rfsc2.qs5.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs5.l6..2": {
    "__class__": "Drift",
@@ -50904,7 +50904,7 @@
   "rfsc.qs4.l6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs4.l6..2": {
    "__class__": "Drift",
@@ -51594,7 +51594,7 @@
   "rfsc.qs4.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs4.r6..2": {
    "__class__": "Drift",
@@ -51611,7 +51611,7 @@
   "rfsc1.qs5.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs5.r6..2": {
    "__class__": "Drift",
@@ -51690,7 +51690,7 @@
   "rfsc2.qs5.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs5.r6..2": {
    "__class__": "Drift",
@@ -51707,7 +51707,7 @@
   "rfsc.qs6.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs6.r6..2": {
    "__class__": "Drift",
@@ -51875,7 +51875,7 @@
   "rfsc.qs7.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs7.r6..2": {
    "__class__": "Drift",
@@ -51892,7 +51892,7 @@
   "rfsc1.qs8.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs8.r6..2": {
    "__class__": "Drift",
@@ -51983,7 +51983,7 @@
   "rfsc2.qs8.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs8.r6..2": {
    "__class__": "Drift",
@@ -52000,7 +52000,7 @@
   "rfsc.qs9.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs9.r6..2": {
    "__class__": "Drift",
@@ -52099,7 +52099,7 @@
   "rfc3.qs9.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc3.qs9.r6..2": {
    "__class__": "Drift",
@@ -52116,7 +52116,7 @@
   "rfc4.qs9.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc4.qs9.r6..2": {
    "__class__": "Drift",
@@ -52133,7 +52133,7 @@
   "rfc5.qs10.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc5.qs10.r6..2": {
    "__class__": "Drift",
@@ -52150,7 +52150,7 @@
   "rfc6.qs10.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc6.qs10.r6..2": {
    "__class__": "Drift",
@@ -52167,7 +52167,7 @@
   "rfc7.qs10.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc7.qs10.r6..2": {
    "__class__": "Drift",
@@ -52184,7 +52184,7 @@
   "rfc8.qs10.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc8.qs10.r6..2": {
    "__class__": "Drift",
@@ -52236,7 +52236,7 @@
   "rfc9.qs10.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc9.qs10.r6..2": {
    "__class__": "Drift",
@@ -52253,7 +52253,7 @@
   "rfc10.qs10.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc10.qs10.r6..2": {
    "__class__": "Drift",
@@ -52270,7 +52270,7 @@
   "rfc11.qs10.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc11.qs10.r6..2": {
    "__class__": "Drift",
@@ -52287,7 +52287,7 @@
   "rfc12.qs10.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc12.qs10.r6..2": {
    "__class__": "Drift",
@@ -52304,7 +52304,7 @@
   "rfc13.qs11.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc13.qs11.r6..2": {
    "__class__": "Drift",
@@ -52321,7 +52321,7 @@
   "rfc14.qs11.r6": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfc14.qs11.r6..2": {
    "__class__": "Drift",
@@ -70924,7 +70924,7 @@
   "rfsc1.qs10.l8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs10.l8..2": {
    "__class__": "Drift",
@@ -70941,7 +70941,7 @@
   "rfsc.qs9.l8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs9.l8..2": {
    "__class__": "Drift",
@@ -70998,7 +70998,7 @@
   "rfsc1.qs9.l8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs9.l8..2": {
    "__class__": "Drift",
@@ -71015,7 +71015,7 @@
   "rfsc2.qs9.l8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs9.l8..2": {
    "__class__": "Drift",
@@ -71106,7 +71106,7 @@
   "rfsc.qs8.l8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs8.l8..2": {
    "__class__": "Drift",
@@ -71123,7 +71123,7 @@
   "rfsc1.qs7.l8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs7.l8..2": {
    "__class__": "Drift",
@@ -71215,7 +71215,7 @@
   "rfsc1.qs6.l8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs6.l8..2": {
    "__class__": "Drift",
@@ -71301,7 +71301,7 @@
   "rfsc2.qs6.l8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs6.l8..2": {
    "__class__": "Drift",
@@ -71318,7 +71318,7 @@
   "rfsc.qs5.l8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs5.l8..2": {
    "__class__": "Drift",
@@ -72120,7 +72120,7 @@
   "rfsc.qs5.r8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs5.r8..2": {
    "__class__": "Drift",
@@ -72137,7 +72137,7 @@
   "rfsc1.qs6.r8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs6.r8..2": {
    "__class__": "Drift",
@@ -72223,7 +72223,7 @@
   "rfsc2.qs6.r8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs6.r8..2": {
    "__class__": "Drift",
@@ -72315,7 +72315,7 @@
   "rfsc2.qs7.r8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs7.r8..2": {
    "__class__": "Drift",
@@ -72332,7 +72332,7 @@
   "rfsc.qs8.r8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs8.r8..2": {
    "__class__": "Drift",
@@ -72423,7 +72423,7 @@
   "rfsc1.qs9.r8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs9.r8..2": {
    "__class__": "Drift",
@@ -72440,7 +72440,7 @@
   "rfsc2.qs9.r8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc2.qs9.r8..2": {
    "__class__": "Drift",
@@ -72497,7 +72497,7 @@
   "rfsc.qs9.r8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc.qs9.r8..2": {
    "__class__": "Drift",
@@ -72514,7 +72514,7 @@
   "rfsc1.qs10.r8": {
    "__class__": "Cavity",
    "frequency": 352209145.60023475,
-   "lag": 180.0
+   "phase": 3.141592653589793
   },
   "drift_rfsc1.qs10.r8..2": {
    "__class__": "Drift",
@@ -82100,7 +82100,7 @@
    ]
   },
   "solenoid": {
-   "__class__": "Solenoid",
+   "__class__": "UniformSolenoid",
    "knl": [
     0.0,
     0.0,
@@ -97553,48 +97553,48 @@
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc3.qs11.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc3.qs11.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc4.qs11.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc4.qs11.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc4.qs11.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc5.qs10.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc5.qs10.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc5.qs10.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc6.qs10.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc6.qs10.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc6.qs10.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc7.qs10.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc7.qs10.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc7.qs10.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc8.qs10.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc8.qs10.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc8.qs10.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs10.l2'].k1",
@@ -97605,48 +97605,48 @@
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc9.qs10.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc9.qs10.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc10.qs10.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc10.qs10.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc10.qs10.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc11.qs10.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc11.qs10.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc11.qs10.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc12.qs10.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc12.qs10.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc12.qs10.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc13.qs9.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc13.qs9.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc13.qs9.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc14.qs9.l2'].voltage",
    "((1.0 * vars['vrfc231']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc14.qs9.l2'].lag",
-   "(vars['lrfc231'] * 360)"
+   "element_refs['rfc14.qs9.l2'].phase",
+   "(vars['lrfc231'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs9.l2'].k1",
@@ -97665,16 +97665,16 @@
    "((1.0 * vars['vrfc232.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs9.l2'].lag",
-   "(vars['lrfc232.1'] * 360)"
+   "element_refs['rfsc.qs9.l2'].phase",
+   "(vars['lrfc232.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs8.l2'].voltage",
    "((1.0 * vars['vrfc232.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs8.l2'].lag",
-   "(vars['lrfc232.1'] * 360)"
+   "element_refs['rfsc1.qs8.l2'].phase",
+   "(vars['lrfc232.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs8.l2'].k1",
@@ -97693,16 +97693,16 @@
    "((1.0 * vars['vrfc232.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs8.l2'].lag",
-   "(vars['lrfc232.2'] * 360)"
+   "element_refs['rfsc2.qs8.l2'].phase",
+   "(vars['lrfc232.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs7.l2'].voltage",
    "((1.0 * vars['vrfc232.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs7.l2'].lag",
-   "(vars['lrfc232.2'] * 360)"
+   "element_refs['rfsc.qs7.l2'].phase",
+   "(vars['lrfc232.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs7.l2'].k1",
@@ -97729,16 +97729,16 @@
    "((1.0 * vars['vrfc233.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs6.l2'].lag",
-   "(vars['lrfc233.1'] * 360)"
+   "element_refs['rfsc.qs6.l2'].phase",
+   "(vars['lrfc233.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs5.l2'].voltage",
    "((1.0 * vars['vrfc233.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs5.l2'].lag",
-   "(vars['lrfc233.1'] * 360)"
+   "element_refs['rfsc1.qs5.l2'].phase",
+   "(vars['lrfc233.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs5.l2'].k1",
@@ -97753,16 +97753,16 @@
    "((1.0 * vars['vrfc233.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs5.l2'].lag",
-   "(vars['lrfc233.2'] * 360)"
+   "element_refs['rfsc2.qs5.l2'].phase",
+   "(vars['lrfc233.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs4.l2'].voltage",
    "((1.0 * vars['vrfc233.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs4.l2'].lag",
-   "(vars['lrfc233.2'] * 360)"
+   "element_refs['rfsc.qs4.l2'].phase",
+   "(vars['lrfc233.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs4.l2'].k1",
@@ -97865,16 +97865,16 @@
    "((1.0 * vars['vrfc273.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs4.r2'].lag",
-   "(vars['lrfc273.1'] * 360)"
+   "element_refs['rfsc.qs4.r2'].phase",
+   "(vars['lrfc273.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs5.r2'].voltage",
    "((1.0 * vars['vrfc273.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs5.r2'].lag",
-   "(vars['lrfc273.1'] * 360)"
+   "element_refs['rfsc1.qs5.r2'].phase",
+   "(vars['lrfc273.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['cha.qs5.r2'].knl[0]",
@@ -97889,16 +97889,16 @@
    "((1.0 * vars['vrfc273.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs5.r2'].lag",
-   "(vars['lrfc273.2'] * 360)"
+   "element_refs['rfsc2.qs5.r2'].phase",
+   "(vars['lrfc273.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs6.r2'].voltage",
    "((1.0 * vars['vrfc273.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs6.r2'].lag",
-   "(vars['lrfc273.2'] * 360)"
+   "element_refs['rfsc.qs6.r2'].phase",
+   "(vars['lrfc273.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs6.r2'].k1",
@@ -97925,16 +97925,16 @@
    "((1.0 * vars['vrfc272.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs7.r2'].lag",
-   "(vars['lrfc272.1'] * 360)"
+   "element_refs['rfsc.qs7.r2'].phase",
+   "(vars['lrfc272.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc2.qs8.r2'].voltage",
    "((1.0 * vars['vrfc272.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs8.r2'].lag",
-   "(vars['lrfc272.1'] * 360)"
+   "element_refs['rfsc2.qs8.r2'].phase",
+   "(vars['lrfc272.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt3.qs8.r2'].k1s",
@@ -97953,16 +97953,16 @@
    "((1.0 * vars['vrfc272.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs8.r2'].lag",
-   "(vars['lrfc272.2'] * 360)"
+   "element_refs['rfsc1.qs8.r2'].phase",
+   "(vars['lrfc272.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs9.r2'].voltage",
    "((1.0 * vars['vrfc272.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs9.r2'].lag",
-   "(vars['lrfc272.2'] * 360)"
+   "element_refs['rfsc.qs9.r2'].phase",
+   "(vars['lrfc272.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt4.qs9.r2'].k1s",
@@ -97981,48 +97981,48 @@
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc3.qs9.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc3.qs9.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc4.qs9.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc4.qs9.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc4.qs9.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc5.qs10.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc5.qs10.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc5.qs10.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc6.qs10.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc6.qs10.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc6.qs10.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc7.qs10.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc7.qs10.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc7.qs10.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc8.qs10.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc8.qs10.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc8.qs10.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs10.r2'].k1",
@@ -98033,48 +98033,48 @@
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc9.qs10.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc9.qs10.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc10.qs10.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc10.qs10.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc10.qs10.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc11.qs10.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc11.qs10.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc11.qs10.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc12.qs10.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc12.qs10.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc12.qs10.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc13.qs11.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc13.qs11.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc13.qs11.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc14.qs11.r2'].voltage",
    "((1.0 * vars['vrfc271']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc14.qs11.r2'].lag",
-   "(vars['lrfc271'] * 360)"
+   "element_refs['rfc14.qs11.r2'].phase",
+   "(vars['lrfc271'] * 6.283185307179586)"
   ],
   [
    "element_refs['cva.qs11.r2'].ksl[0]",
@@ -101577,16 +101577,16 @@
    "((1.0 * vars['vrfc431.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs10.l4'].lag",
-   "(vars['lrfc431.2'] * 360)"
+   "element_refs['rfsc1.qs10.l4'].phase",
+   "(vars['lrfc431.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs9.l4'].voltage",
    "((1.0 * vars['vrfc431.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs9.l4'].lag",
-   "(vars['lrfc431.2'] * 360)"
+   "element_refs['rfsc.qs9.l4'].phase",
+   "(vars['lrfc431.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs9.l4'].k1",
@@ -101601,16 +101601,16 @@
    "((1.0 * vars['vrfc432.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs9.l4'].lag",
-   "(vars['lrfc432.1'] * 360)"
+   "element_refs['rfsc1.qs9.l4'].phase",
+   "(vars['lrfc432.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc2.qs9.l4'].voltage",
    "((1.0 * vars['vrfc432.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs9.l4'].lag",
-   "(vars['lrfc432.1'] * 360)"
+   "element_refs['rfsc2.qs9.l4'].phase",
+   "(vars['lrfc432.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs8.l4'].k1",
@@ -101629,16 +101629,16 @@
    "((1.0 * vars['vrfc432.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs8.l4'].lag",
-   "(vars['lrfc432.2'] * 360)"
+   "element_refs['rfsc.qs8.l4'].phase",
+   "(vars['lrfc432.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs7.l4'].voltage",
    "((1.0 * vars['vrfc432.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs7.l4'].lag",
-   "(vars['lrfc432.2'] * 360)"
+   "element_refs['rfsc1.qs7.l4'].phase",
+   "(vars['lrfc432.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs7.l4'].k1",
@@ -101657,8 +101657,8 @@
    "((1.0 * vars['vrfc433.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs6.l4'].lag",
-   "(vars['lrfc433.1'] * 360)"
+   "element_refs['rfsc1.qs6.l4'].phase",
+   "(vars['lrfc433.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs6.l4'].k1",
@@ -101673,16 +101673,16 @@
    "((1.0 * vars['vrfc433.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs6.l4'].lag",
-   "(vars['lrfc433.2'] * 360)"
+   "element_refs['rfsc2.qs6.l4'].phase",
+   "(vars['lrfc433.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs5.l4'].voltage",
    "((1.0 * vars['vrfc433.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs5.l4'].lag",
-   "(vars['lrfc433.2'] * 360)"
+   "element_refs['rfsc.qs5.l4'].phase",
+   "(vars['lrfc433.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs5.l4'].k1",
@@ -101801,16 +101801,16 @@
    "((1.0 * vars['vrfc473.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs5.r4'].lag",
-   "(vars['lrfc473.1'] * 360)"
+   "element_refs['rfsc.qs5.r4'].phase",
+   "(vars['lrfc473.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs6.r4'].voltage",
    "((1.0 * vars['vrfc473.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs6.r4'].lag",
-   "(vars['lrfc473.1'] * 360)"
+   "element_refs['rfsc1.qs6.r4'].phase",
+   "(vars['lrfc473.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['cva.qs6.r4'].ksl[0]",
@@ -101825,8 +101825,8 @@
    "((1.0 * vars['vrfc473.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs6.r4'].lag",
-   "(vars['lrfc473.2'] * 360)"
+   "element_refs['rfsc2.qs6.r4'].phase",
+   "(vars['lrfc473.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt2.qs7.r4'].k1s",
@@ -101845,16 +101845,16 @@
    "((1.0 * vars['vrfc472.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs7.r4'].lag",
-   "(vars['lrfc472.1'] * 360)"
+   "element_refs['rfsc2.qs7.r4'].phase",
+   "(vars['lrfc472.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs8.r4'].voltage",
    "((1.0 * vars['vrfc472.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs8.r4'].lag",
-   "(vars['lrfc472.1'] * 360)"
+   "element_refs['rfsc.qs8.r4'].phase",
+   "(vars['lrfc472.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt3.qs8.r4'].k1s",
@@ -101873,16 +101873,16 @@
    "((1.0 * vars['vrfc472.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs9.r4'].lag",
-   "(vars['lrfc472.2'] * 360)"
+   "element_refs['rfsc1.qs9.r4'].phase",
+   "(vars['lrfc472.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc2.qs9.r4'].voltage",
    "((1.0 * vars['vrfc472.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs9.r4'].lag",
-   "(vars['lrfc472.2'] * 360)"
+   "element_refs['rfsc2.qs9.r4'].phase",
+   "(vars['lrfc472.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt4.qs9.r4'].k1s",
@@ -101897,16 +101897,16 @@
    "((1.0 * vars['vrfc471.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs9.r4'].lag",
-   "(vars['lrfc471.1'] * 360)"
+   "element_refs['rfsc.qs9.r4'].phase",
+   "(vars['lrfc471.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs10.r4'].voltage",
    "((1.0 * vars['vrfc471.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs10.r4'].lag",
-   "(vars['lrfc471.1'] * 360)"
+   "element_refs['rfsc1.qs10.r4'].phase",
+   "(vars['lrfc471.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['cva.qs10.r4'].ksl[0]",
@@ -105377,48 +105377,48 @@
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc3.qs11.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc3.qs11.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc4.qs11.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc4.qs11.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc4.qs11.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc5.qs10.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc5.qs10.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc5.qs10.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc6.qs10.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc6.qs10.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc6.qs10.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc7.qs10.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc7.qs10.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc7.qs10.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc8.qs10.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc8.qs10.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc8.qs10.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs10.l6'].k1",
@@ -105429,48 +105429,48 @@
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc9.qs10.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc9.qs10.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc10.qs10.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc10.qs10.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc10.qs10.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc11.qs10.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc11.qs10.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc11.qs10.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc12.qs10.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc12.qs10.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc12.qs10.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc13.qs9.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc13.qs9.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc13.qs9.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc14.qs9.l6'].voltage",
    "((1.0 * vars['vrfc631']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc14.qs9.l6'].lag",
-   "(vars['lrfc631'] * 360)"
+   "element_refs['rfc14.qs9.l6'].phase",
+   "(vars['lrfc631'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs9.l6'].k1",
@@ -105489,16 +105489,16 @@
    "((1.0 * vars['vrfc632.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs9.l6'].lag",
-   "(vars['lrfc632.1'] * 360)"
+   "element_refs['rfsc.qs9.l6'].phase",
+   "(vars['lrfc632.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs8.l6'].voltage",
    "((1.0 * vars['vrfc632.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs8.l6'].lag",
-   "(vars['lrfc632.1'] * 360)"
+   "element_refs['rfsc1.qs8.l6'].phase",
+   "(vars['lrfc632.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs8.l6'].k1",
@@ -105517,16 +105517,16 @@
    "((1.0 * vars['vrfc632.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs8.l6'].lag",
-   "(vars['lrfc632.2'] * 360)"
+   "element_refs['rfsc2.qs8.l6'].phase",
+   "(vars['lrfc632.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs7.l6'].voltage",
    "((1.0 * vars['vrfc632.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs7.l6'].lag",
-   "(vars['lrfc632.2'] * 360)"
+   "element_refs['rfsc.qs7.l6'].phase",
+   "(vars['lrfc632.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs7.l6'].k1",
@@ -105553,16 +105553,16 @@
    "((1.0 * vars['vrfc633.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs6.l6'].lag",
-   "(vars['lrfc633.1'] * 360)"
+   "element_refs['rfsc.qs6.l6'].phase",
+   "(vars['lrfc633.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs5.l6'].voltage",
    "((1.0 * vars['vrfc633.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs5.l6'].lag",
-   "(vars['lrfc633.1'] * 360)"
+   "element_refs['rfsc1.qs5.l6'].phase",
+   "(vars['lrfc633.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs5.l6'].k1",
@@ -105577,16 +105577,16 @@
    "((1.0 * vars['vrfc633.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs5.l6'].lag",
-   "(vars['lrfc633.2'] * 360)"
+   "element_refs['rfsc2.qs5.l6'].phase",
+   "(vars['lrfc633.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs4.l6'].voltage",
    "((1.0 * vars['vrfc633.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs4.l6'].lag",
-   "(vars['lrfc633.2'] * 360)"
+   "element_refs['rfsc.qs4.l6'].phase",
+   "(vars['lrfc633.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs4.l6'].k1",
@@ -105689,16 +105689,16 @@
    "((1.0 * vars['vrfc673.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs4.r6'].lag",
-   "(vars['lrfc673.1'] * 360)"
+   "element_refs['rfsc.qs4.r6'].phase",
+   "(vars['lrfc673.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs5.r6'].voltage",
    "((1.0 * vars['vrfc673.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs5.r6'].lag",
-   "(vars['lrfc673.1'] * 360)"
+   "element_refs['rfsc1.qs5.r6'].phase",
+   "(vars['lrfc673.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['cha.qs5.r6'].knl[0]",
@@ -105713,16 +105713,16 @@
    "((1.0 * vars['vrfc673.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs5.r6'].lag",
-   "(vars['lrfc673.2'] * 360)"
+   "element_refs['rfsc2.qs5.r6'].phase",
+   "(vars['lrfc673.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs6.r6'].voltage",
    "((1.0 * vars['vrfc673.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs6.r6'].lag",
-   "(vars['lrfc673.2'] * 360)"
+   "element_refs['rfsc.qs6.r6'].phase",
+   "(vars['lrfc673.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs6.r6'].k1",
@@ -105749,16 +105749,16 @@
    "((1.0 * vars['vrfc672.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs7.r6'].lag",
-   "(vars['lrfc672.1'] * 360)"
+   "element_refs['rfsc.qs7.r6'].phase",
+   "(vars['lrfc672.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs8.r6'].voltage",
    "((1.0 * vars['vrfc672.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs8.r6'].lag",
-   "(vars['lrfc672.1'] * 360)"
+   "element_refs['rfsc1.qs8.r6'].phase",
+   "(vars['lrfc672.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt3.qs8.r6'].k1s",
@@ -105777,16 +105777,16 @@
    "((1.0 * vars['vrfc672.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs8.r6'].lag",
-   "(vars['lrfc672.2'] * 360)"
+   "element_refs['rfsc2.qs8.r6'].phase",
+   "(vars['lrfc672.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs9.r6'].voltage",
    "((1.0 * vars['vrfc672.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs9.r6'].lag",
-   "(vars['lrfc672.2'] * 360)"
+   "element_refs['rfsc.qs9.r6'].phase",
+   "(vars['lrfc672.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt4.qs9.r6'].k1s",
@@ -105805,48 +105805,48 @@
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc3.qs9.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc3.qs9.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc4.qs9.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc4.qs9.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc4.qs9.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc5.qs10.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc5.qs10.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc5.qs10.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc6.qs10.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc6.qs10.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc6.qs10.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc7.qs10.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc7.qs10.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc7.qs10.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc8.qs10.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc8.qs10.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc8.qs10.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs10.r6'].k1",
@@ -105857,48 +105857,48 @@
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc9.qs10.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc9.qs10.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc10.qs10.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc10.qs10.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc10.qs10.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc11.qs10.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc11.qs10.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc11.qs10.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc12.qs10.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc12.qs10.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc12.qs10.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc13.qs11.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc13.qs11.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc13.qs11.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfc14.qs11.r6'].voltage",
    "((1.0 * vars['vrfc671']) * 1000000.0)"
   ],
   [
-   "element_refs['rfc14.qs11.r6'].lag",
-   "(vars['lrfc671'] * 360)"
+   "element_refs['rfc14.qs11.r6'].phase",
+   "(vars['lrfc671'] * 6.283185307179586)"
   ],
   [
    "element_refs['cva.qs11.r6'].ksl[0]",
@@ -109413,16 +109413,16 @@
    "((1.0 * vars['vrfc831.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs10.l8'].lag",
-   "(vars['lrfc831.2'] * 360)"
+   "element_refs['rfsc1.qs10.l8'].phase",
+   "(vars['lrfc831.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs9.l8'].voltage",
    "((1.0 * vars['vrfc831.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs9.l8'].lag",
-   "(vars['lrfc831.2'] * 360)"
+   "element_refs['rfsc.qs9.l8'].phase",
+   "(vars['lrfc831.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs9.l8'].k1",
@@ -109437,16 +109437,16 @@
    "((1.0 * vars['vrfc832.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs9.l8'].lag",
-   "(vars['lrfc832.1'] * 360)"
+   "element_refs['rfsc1.qs9.l8'].phase",
+   "(vars['lrfc832.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc2.qs9.l8'].voltage",
    "((1.0 * vars['vrfc832.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs9.l8'].lag",
-   "(vars['lrfc832.1'] * 360)"
+   "element_refs['rfsc2.qs9.l8'].phase",
+   "(vars['lrfc832.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs8.l8'].k1",
@@ -109465,16 +109465,16 @@
    "((1.0 * vars['vrfc832.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs8.l8'].lag",
-   "(vars['lrfc832.2'] * 360)"
+   "element_refs['rfsc.qs8.l8'].phase",
+   "(vars['lrfc832.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs7.l8'].voltage",
    "((1.0 * vars['vrfc832.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs7.l8'].lag",
-   "(vars['lrfc832.2'] * 360)"
+   "element_refs['rfsc1.qs7.l8'].phase",
+   "(vars['lrfc832.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs7.l8'].k1",
@@ -109493,8 +109493,8 @@
    "((1.0 * vars['vrfc833.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs6.l8'].lag",
-   "(vars['lrfc833.1'] * 360)"
+   "element_refs['rfsc1.qs6.l8'].phase",
+   "(vars['lrfc833.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs6.l8'].k1",
@@ -109509,16 +109509,16 @@
    "((1.0 * vars['vrfc833.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs6.l8'].lag",
-   "(vars['lrfc833.2'] * 360)"
+   "element_refs['rfsc2.qs6.l8'].phase",
+   "(vars['lrfc833.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs5.l8'].voltage",
    "((1.0 * vars['vrfc833.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs5.l8'].lag",
-   "(vars['lrfc833.2'] * 360)"
+   "element_refs['rfsc.qs5.l8'].phase",
+   "(vars['lrfc833.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qs5.l8'].k1",
@@ -109637,16 +109637,16 @@
    "((1.0 * vars['vrfc873.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs5.r8'].lag",
-   "(vars['lrfc873.1'] * 360)"
+   "element_refs['rfsc.qs5.r8'].phase",
+   "(vars['lrfc873.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs6.r8'].voltage",
    "((1.0 * vars['vrfc873.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs6.r8'].lag",
-   "(vars['lrfc873.1'] * 360)"
+   "element_refs['rfsc1.qs6.r8'].phase",
+   "(vars['lrfc873.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['cva.qs6.r8'].ksl[0]",
@@ -109661,8 +109661,8 @@
    "((1.0 * vars['vrfc873.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs6.r8'].lag",
-   "(vars['lrfc873.2'] * 360)"
+   "element_refs['rfsc2.qs6.r8'].phase",
+   "(vars['lrfc873.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt2.qs7.r8'].k1s",
@@ -109681,16 +109681,16 @@
    "((1.0 * vars['vrfc872.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs7.r8'].lag",
-   "(vars['lrfc872.1'] * 360)"
+   "element_refs['rfsc2.qs7.r8'].phase",
+   "(vars['lrfc872.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc.qs8.r8'].voltage",
    "((1.0 * vars['vrfc872.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs8.r8'].lag",
-   "(vars['lrfc872.1'] * 360)"
+   "element_refs['rfsc.qs8.r8'].phase",
+   "(vars['lrfc872.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt3.qs8.r8'].k1s",
@@ -109709,16 +109709,16 @@
    "((1.0 * vars['vrfc872.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs9.r8'].lag",
-   "(vars['lrfc872.2'] * 360)"
+   "element_refs['rfsc1.qs9.r8'].phase",
+   "(vars['lrfc872.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc2.qs9.r8'].voltage",
    "((1.0 * vars['vrfc872.2']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc2.qs9.r8'].lag",
-   "(vars['lrfc872.2'] * 360)"
+   "element_refs['rfsc2.qs9.r8'].phase",
+   "(vars['lrfc872.2'] * 6.283185307179586)"
   ],
   [
    "element_refs['qt4.qs9.r8'].k1s",
@@ -109733,16 +109733,16 @@
    "((1.0 * vars['vrfc871.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc.qs9.r8'].lag",
-   "(vars['lrfc871.1'] * 360)"
+   "element_refs['rfsc.qs9.r8'].phase",
+   "(vars['lrfc871.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['rfsc1.qs10.r8'].voltage",
    "((1.0 * vars['vrfc871.1']) * 1000000.0)"
   ],
   [
-   "element_refs['rfsc1.qs10.r8'].lag",
-   "(vars['lrfc871.1'] * 360)"
+   "element_refs['rfsc1.qs10.r8'].phase",
+   "(vars['lrfc871.1'] * 6.283185307179586)"
   ],
   [
    "element_refs['cva.qs10.r8'].ksl[0]",
