@@ -74,14 +74,18 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
     def rhs(z, state):
         x, y, ct, px, py, energy = state[:6]
         pz = np.sqrt(energy**2 - mass0**2 - px**2 - py**2)
-        h, dh, d2h = envelope(z)
+        h, dh, _ = envelope(z)
         u, w = k * ct - kz * z + phase, k * ct + kz * z + phase + chi
         W = F * np.cos(u) + B * np.cos(w)
         W_z = kz * (F * np.sin(u) - B * np.sin(w))
         W_ct = -k * (F * np.sin(u) + B * np.sin(w))
         r2 = x * x + y * y
-        # A wave slower than c is not linear in r even on a uniform envelope.
-        E_z = h * W - r2 / 4 * (d2h * W + 2 * dh * W_z + (k * k - kz * kz) * h * W)
+        # A wave slower than c is not linear in r even on a uniform envelope. The edge term
+        # -r^2/4 (h''W + 2h'W_z) enters integrated by parts along the orbit: the same kick
+        # as the ramp vanishes, without the 1/ramp^2 spike whose products have no limit.
+        along = W_z + W_ct * energy / pz
+        edge = dh / 4 * (2 * (x * px + y * py) / pz * W + r2 * (along - 2 * W_z))
+        E_z = h * W + edge - r2 / 4 * (k * k - kz * kz) * h * W
         E_r_over_r = -(dh * W + h * W_z) / 2
         cB_over_r = h * W_ct / 2
         v_z = pz / energy
