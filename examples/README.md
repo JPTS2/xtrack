@@ -402,6 +402,7 @@ Keep the physical configuration and related optics/tracking calculations togethe
 - `005_resonant_depolarization.py`
 - `006_equilibrium_polarization.py`
 - `007_radiative_depolarization.py`
+- `008_invariant_spin_field.py`
 
 ## errors_and_correction
 
