@@ -461,6 +461,8 @@ See the [MAD-NG interface examples](interfaces/madng/README.md) for the runnable
 
 ### rf_track
 
+See the [RF-Track interface examples](interfaces/rf_track/README.md) for the runnable route.
+
 - `001_track_an_external_element.py`
 - `002_rf_fieldmap_transport.py`
 
