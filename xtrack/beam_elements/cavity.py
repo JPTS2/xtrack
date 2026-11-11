@@ -601,6 +601,14 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         Their relative amplitudes c_m, as many as there are wave numbers.
     integrator, num_kicks
         As for Cavity's "_phase-resolved" model.
+    field_table_points : int or None
+        The field and its derivatives are tabulated over the element at this many
+        points and interpolated while tracking, which makes the cost per step
+        independent of the number of harmonics; quintic Hermite interpolation of
+        each derivative matches the summed harmonics to about 1e-9. None
+        (default) takes 20 points per shortest harmonic wavelength, at least 64;
+        0 sums the harmonics at every evaluation instead. The table follows `amplitudes`; after a change
+        of `length` or of `wave_numbers` the harmonics are summed directly.
     '''
 
     isthick = True
@@ -621,6 +629,10 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         'wave_numbers': xo.Float64[:],
         'amplitudes_re': xo.Float64[:],
         'amplitudes_im': xo.Float64[:],
+        'field_table': xo.Float64[:],
+        'field_table_z0': xo.Float64,
+        'field_table_dz': xo.Float64,
+        'field_table_key': xo.Float64,
         'absolute_time': xo.Int64,
         'num_kicks': xo.Int64,
         'model': xo.Int64,
@@ -662,11 +674,20 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         if wave_numbers.ndim != 1 or amplitudes.shape != wave_numbers.shape or not len(wave_numbers):
             raise ValueError('wave_numbers and amplitudes must be equal-length, '
                              'non-empty one-dimensional arrays')
+        points = kwargs.pop('field_table_points', None)
+        length = float(kwargs.get('length', 0.))
+        if points is None:
+            shortest = 2 * np.pi / max(np.max(np.abs(wave_numbers)), 1e-300)
+            points = max(64, int(np.ceil(20 * length / shortest)) + 1) if length > 0. else 0
+        if points == 1 or points < 0:
+            raise ValueError('field_table_points must be 0 or at least 2')
         kwargs.setdefault('calibration_beta', 1.)
         kwargs['wave_numbers'] = wave_numbers
         kwargs['amplitudes_re'] = amplitudes.real.copy()
         kwargs['amplitudes_im'] = amplitudes.imag.copy()
+        kwargs['field_table'] = 16 * points
         self.xoinitialize(**kwargs)
+        self._build_field_table()
         self.model = model
         if integrator is not None:
             self.integrator = integrator
@@ -745,6 +766,33 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
             raise ValueError('amplitudes must have one value per wave number')
         self.amplitudes_re[:] = value.real
         self.amplitudes_im[:] = value.imag
+        self._build_field_table()
+
+    def _build_field_table(self):
+        """Tabulate jets 0 to 7 of the unit-amplitude field over the element."""
+        points = len(self.field_table) // 16
+        if points < 2:
+            return
+        context = self._context
+        wave_numbers = context.nparray_from_context_array(self.wave_numbers)
+        amplitudes = self.amplitudes
+        z = np.linspace(-self.length / 2, self.length / 2, points)
+        table = np.empty((points, 16))
+        for start in range(0, points, 4096):
+            phasors = amplitudes * np.exp(1j * np.outer(z[start:start + 4096], wave_numbers))
+            for order in range(8):
+                jet = (phasors * (1j * wave_numbers)**order).sum(axis=1)
+                table[start:start + 4096, order] = jet.real
+                table[start:start + 4096, 8 + order] = jet.imag
+        self.field_table[:] = context.nparray_to_context_array(table.ravel())
+        self.field_table_z0 = -self.length / 2
+        self.field_table_dz = self.length / (points - 1)
+        # Matched in track_cavity_single_particle: the table applies only while
+        # the harmonics and length are those it was built from.
+        key = 11. * self.length
+        for m, (k, a) in enumerate(zip(wave_numbers, amplitudes)):
+            key += (m + 1) * (k + 3. * a.real + 7. * a.imag)
+        self.field_table_key = key
 
     def to_dict(self, **kwargs):
         result = super().to_dict(**kwargs)
@@ -755,6 +803,10 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         for name in ('wave_numbers', 'amplitudes_re', 'amplitudes_im'):
             result[name] = self._context.nparray_from_context_array(
                 getattr(self, name)).tolist()
+        # The table is derived; from_dict rebuilds it from its size.
+        for name in ('field_table', 'field_table_z0', 'field_table_dz', 'field_table_key'):
+            result.pop(name, None)
+        result['field_table_points'] = len(self.field_table) // 16
         return result
 
     @property

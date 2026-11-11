@@ -64,6 +64,12 @@ typedef struct RFModelFields_s {
     int64_t rf_profile;
     int64_t num_harmonics;
     GPUGLMEM const double *harmonic_wave_number, *harmonic_re, *harmonic_im;
+    // The harmonics' jets tabulated over the element (FieldExpansionCavity):
+    // NULL, or table_points rows from table_z0 [m] in steps table_dz, valid
+    // while table_key matches the harmonics and length it was built from.
+    int64_t table_points;
+    double table_z0, table_dz, table_key;
+    GPUGLMEM const double *table;
     int64_t edge_entry_active, edge_exit_active;
     xt_float_or_tpsa ks;
     int64_t order, knl_len, ksl_len;
@@ -104,6 +110,8 @@ typedef struct RFModelFields_s {
     (f)->edge_exit_active=DATA##_get_edge_exit_active(el); \
     (f)->num_harmonics=0; (f)->harmonic_wave_number=NULL; \
     (f)->harmonic_re=NULL; (f)->harmonic_im=NULL; \
+    (f)->table_points=0; (f)->table_z0=0.; (f)->table_dz=0.; (f)->table_key=0.; \
+    (f)->table=NULL; \
 } while (0)
 
 // The space harmonics of a FieldExpansionCavity.
@@ -117,6 +125,11 @@ typedef struct RFModelFields_s {
     (f)->harmonic_wave_number=DATA##_getp1_wave_numbers(el,0); \
     (f)->harmonic_re=DATA##_getp1_amplitudes_re(el,0); \
     (f)->harmonic_im=DATA##_getp1_amplitudes_im(el,0); \
+    (f)->table_points=DATA##_len_field_table(el)/16; \
+    (f)->table_z0=DATA##_get_field_table_z0(el); \
+    (f)->table_dz=DATA##_get_field_table_dz(el); \
+    (f)->table_key=DATA##_get_field_table_key(el); \
+    (f)->table=(f)->table_points>1 ? DATA##_getp1_field_table(el,0) : NULL; \
 } while (0)
 
 // An element without static fields: a Cavity.

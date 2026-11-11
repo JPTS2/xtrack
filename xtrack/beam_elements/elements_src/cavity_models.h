@@ -45,6 +45,10 @@ typedef struct {
     // on the element; kz_m in rad/m.
     int64_t num_harmonics;
     GPUGLMEM const double *harmonic_wave_number, *harmonic_re, *harmonic_im;
+    // Optional table of the unit-amplitude jets in physical z (track_rf.h).
+    int64_t table_points;
+    double table_z0, table_dz;
+    GPUGLMEM const double *table;
     double reference_charge, reference_beta;
     int freeze_energy, freeze_zeta;
     int freeze_x, freeze_px, freeze_y, freeze_py;
@@ -146,6 +150,7 @@ int CavityModel_prepare(
     source->rf_profile=0;
     source->num_harmonics=0;source->harmonic_wave_number=NULL;
     source->harmonic_re=NULL;source->harmonic_im=NULL;
+    source->table_points=0;source->table_z0=0.;source->table_dz=0.;source->table=NULL;
     source->freeze_energy=0; source->freeze_zeta=0;
     source->freeze_x=0; source->freeze_px=0;
     source->freeze_y=0; source->freeze_py=0;
@@ -197,11 +202,40 @@ void CavityModel_source_envelope(xt_float_or_tpsa_arg z,
     p[0]=1.;for(int i=1;i<5;++i)p[i]=0.;
 }
 
+// Jets 0..orders-1 of the harmonic profile in the normalized Z = k z from the
+// table, by quintic Hermite interpolation of each jet with the next two as its
+// derivatives: 16 doubles per row, the real then imaginary parts of jets 0..7
+// of the unit-amplitude field in metres. Returns 0 where the table does not apply.
+GPUFUN
+int CavityModel_table_jets(xt_float_or_tpsa_arg z, const CavityModelSource *source,
+        xt_float_or_tpsa real[], xt_float_or_tpsa imag[], int orders) {
+    if (!source->table) return 0;
+    const xt_float_or_tpsa t=(z/source->k-source->table_z0)/source->table_dz;
+    const double t0=xt_float_or_tpsa_const_part(t);
+    if (!(t0>=0.) || t0>(double)(source->table_points-1)) return 0;
+    int64_t n=(int64_t)floor(t0);
+    if (n>source->table_points-2) n=source->table_points-2;
+    const xt_float_or_tpsa u=t-(double)n, u2=u*u, u3=u2*u, u4=u3*u, u5=u4*u;
+    const double h=source->table_dz, hh=h*h;
+    const xt_float_or_tpsa w0=1.-10.*u3+15.*u4-6.*u5, w1=h*(u-6.*u3+8.*u4-3.*u5);
+    const xt_float_or_tpsa w2=hh*(.5*u2-1.5*u3+1.5*u4-.5*u5), w3=10.*u3-15.*u4+6.*u5;
+    const xt_float_or_tpsa w4=h*(-4.*u3+7.*u4-3.*u5), w5=hh*(.5*u3-u4+.5*u5);
+    GPUGLMEM const double *a=source->table+16*n, *b=a+16;
+    xt_float_or_tpsa scale=source->forward;
+    for (int j=0;j<orders;++j) {
+        real[j]=scale*(w0*a[j]+w1*a[j+1]+w2*a[j+2]+w3*b[j]+w4*b[j+1]+w5*b[j+2]);
+        imag[j]=scale*(w0*a[8+j]+w1*a[9+j]+w2*a[10+j]+w3*b[8+j]+w4*b[9+j]+w5*b[10+j]);
+        scale=scale/source->k;
+    }
+    return 1;
+}
+
 GPUFUN
 void CavityModel_profile(xt_float_or_tpsa_arg z,
         const CavityModelSource *source, xt_float_or_tpsa real[5],
         xt_float_or_tpsa imag[5]) {
     if (source->rf_profile==1) {
+        if (CavityModel_table_jets(z,source,real,imag,5)) return;
         for (int j=0;j<5;++j) { real[j]=0.;imag[j]=0.; }
         for (int64_t m=0;m<source->num_harmonics;++m) {
             const xt_float_or_tpsa kappa=source->harmonic_wave_number[m]/source->k;
@@ -542,6 +576,15 @@ int CavityModel_effects_profile(double T,double z,const CavityModelSource *sourc
         const double k=xt_float_or_tpsa_const_part(source->k);
         for(int n=0;n<6;++n){S[n]=0.;C[n]=0.;}
         if(fabs(z)>H)return CAVITY_MODEL_OK;
+        double jet_re[6],jet_im[6];
+        if(CavityModel_table_jets(z,source,jet_re,jet_im,6)) {
+            for(int n=0;n<6;++n) {
+                C[n]=cos(T)*jet_re[n]+sin(T)*jet_im[n];
+                S[n]=sin(T)*jet_re[n]-cos(T)*jet_im[n];
+                if(!isfinite(S[n])||!isfinite(C[n]))return CAVITY_MODEL_NONFINITE;
+            }
+            return CAVITY_MODEL_OK;
+        }
         for(int64_t m=0;m<source->num_harmonics;++m) {
             const double kappa=source->harmonic_wave_number[m]/k;
             const double c=cos(kappa*z),s=sin(kappa*z);

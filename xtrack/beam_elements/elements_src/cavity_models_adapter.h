@@ -347,6 +347,18 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
         status=CavityModel_prepare_harmonics(frequency,voltage,length,phase,calibration_beta,
                 mass0,q0,el->num_harmonics,el->harmonic_wave_number,
                 el->harmonic_re,el->harmonic_im,&source);
+        if (status==CAVITY_MODEL_OK && el->table) {
+            // The table is used only for the harmonics and length it was built
+            // from (FieldExpansionCavity._field_table_key); else the direct sum.
+            double key=11.*el->length;
+            for (int64_t m=0;m<el->num_harmonics;++m)
+                key+=(double)(m+1)*(el->harmonic_wave_number[m]+3.*el->harmonic_re[m]
+                                    +7.*el->harmonic_im[m]);
+            if (fabs(key-el->table_key)<=1e-12*(fabs(key)+1.)) {
+                source.table=el->table; source.table_points=el->table_points;
+                source.table_z0=el->table_z0; source.table_dz=el->table_dz;
+            }
+        }
     } else if (status==CAVITY_MODEL_OK) {
         status=CavityModel_prepare(frequency,
                 model==CAVITY_MODEL_FROZEN?0.:voltage,
