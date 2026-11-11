@@ -56,10 +56,10 @@ For trajectories, beam sizes and recorded observations, continue with
 
 The [examples index](../README.md#tracking) also lays out time-dependent,
 nonlinear and collective tracking. CPU/GPU contexts and
-memory ownership belong to [contexts and memory](../README.md#contexts_and_memory).
+memory ownership belong to [contexts and memory](../contexts_and_memory/README.md).
 
 For selecting a CPU context and retaining it through a tracker rebuild, see
-[execution context](004_execution_context.py).
+[CPU context and rebuilding](../contexts_and_memory/001_cpu_context_and_rebuilds.py).
 
 For clock-driven machine settings and sampled transverse drives, continue with
 [time-dependent tracking](time_dependent/README.md).
