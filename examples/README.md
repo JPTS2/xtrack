@@ -422,10 +422,12 @@ selection and threading. Optics-matching procedures link to matching.
 
 ## apertures
 
+See the [aperture examples](apertures/README.md) for the runnable route.
+
 Chamber shapes, profiles and pipes, geometry, clearance, tracking limits and
 loss-location refinement.
 
-- `001_aperture_shapes.py`
+- `001_tracking_apertures.py`
 - `002_profiles_and_pipes.py`
 - `003_place_and_transform_pipes.py`
 - `004_interpolate_profiles_on_curves.py`
