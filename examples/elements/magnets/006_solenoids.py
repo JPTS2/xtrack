@@ -21,6 +21,8 @@ P0C             = 1.0e9                 # Proton reference p0*c [eV]
 BS              = 0.5                   # Peak longitudinal field [T]
 BODY_LENGTH     = 1.0                   # Uniform body length [m]
 FRINGE_LENGTH   = 0.1                   # Each linear field ramp [m]
+AXIS_X          = 0.3e-3                # Solenoid field-axis offset [m]
+AXIS_Y          = -0.2e-3               # [m]
 
 ########################################
 # Numerical settings
@@ -93,6 +95,17 @@ print('Uniform length [m] and integral(ks ds):',
 print('Ramped length [m] and integral(ks ds):',
       tapered.get_length(), ks * (BODY_LENGTH + FRINGE_LENGTH))
 
+########################################
+# Match the magnetic integral and exterior planes
+########################################
+# Replace each linear ramp by equal lengths of drift and uniform field.
+# Equal integral and exterior planes do not imply identical fringe focusing.
+sharp_equivalent = xt.Line(elements = [
+    xt.Drift(length = FRINGE_LENGTH / 2),
+    xt.UniformSolenoid(length = BODY_LENGTH + FRINGE_LENGTH, ks = ks),
+    xt.Drift(length = FRINGE_LENGTH / 2),
+])
+
 ################################################################################
 # Inspect transverse coupling
 ################################################################################
@@ -105,7 +118,8 @@ lines = {
     'field off':        field_off,
     'uniform':          uniform,
     'reversed uniform': reversed_field,
-    'ramped':           tapered}
+    'ramped':           tapered,
+    'matched sharp':    sharp_equivalent}
 outputs = {}
 for label, line in lines.items():
     particles = initial.copy()
@@ -113,6 +127,8 @@ for label, line in lines.items():
     outputs[label] = particles
     print(label, 'exit y [mm]:', particles.y * 1e3)
     print(label, 'exit P_y/p0:', particles.py)
+print('Ramped minus matched sharp exit y [nm]:',
+      (outputs['ramped'].y - outputs['matched sharp'].y) * 1e9)
 
 ########################################
 # Plot the cross-plane response
@@ -127,4 +143,36 @@ ax.set_title('Solenoid coupling from a horizontal launch')
 ax.legend()
 ax.grid()
 fig.tight_layout()
+
+################################################################################
+# Move the solenoid field axis
+################################################################################
+
+########################################
+# Compare field offsets with a whole-element shift
+########################################
+# For a pure uniform solenoid these describe the same translated field.
+# x0/y0 move its field axis; shift_x/shift_y move the whole element, including
+# any embedded multipoles. Do not equate them for combined elements.
+axis_offset = xt.Line(elements = [xt.UniformSolenoid(
+    length  = BODY_LENGTH,
+    ks      = ks,
+    x0      = AXIS_X,
+    y0      = AXIS_Y,
+)])
+element_shift = xt.Line(elements = [xt.UniformSolenoid(
+    length  = BODY_LENGTH,
+    ks      = ks,
+    shift_x = AXIS_X,
+    shift_y = AXIS_Y,
+)])
+axis_particles = initial.copy()
+shift_particles = initial.copy()
+axis_offset.track(axis_particles)
+element_shift.track(shift_particles)
+print('Field-axis and whole-element shifts: exit x differences [m]:',
+      axis_particles.x - shift_particles.x)
+print('Field-axis and whole-element shifts: exit y differences [m]:',
+      axis_particles.y - shift_particles.y)
+
 plt.show()

@@ -82,6 +82,75 @@ for label, line in representations.items():
           'integrated k1l [m^-1]:', sum(table.k1l))
 
 ################################################################################
+# Select slicing rules and inspect inherited attributes
+################################################################################
+
+########################################
+# Combine a default, class rules and name overrides
+########################################
+# The last matching rule wins. A None scheme deliberately leaves a magnet
+# unsliced; occurrence names distinguish two uses of the same definition.
+selection_env = xt.Environment()
+# Absolute integrated error arrays add to the distributed normal/skew fields.
+selection_env.new(
+    'q', xt.Quadrupole,
+    length      = QUAD_LENGTH,
+    k1          = K1,
+    k1s         = 0.05,
+    knl         = [0.0, 0.02, 0.03],
+    ksl         = [0.0, 0.01, 0.02],
+    shift_x     = 1e-3,
+    rot_s_rad   = 2e-3,
+)
+selection_env.new('keep', xt.Quadrupole, length = QUAD_LENGTH, k1 = -K1)
+selection_env.new(
+    's', xt.Sextupole,
+    length      = QUAD_LENGTH,
+    k2          = 0.6,
+    k2s         = 0.1,
+    shift_y     = 2e-3,
+)
+selected = selection_env.new_line(components = ['q', 'q', 'keep', 's'])
+print('Before applying the slicing rules:')
+selected.get_table(attr = True).cols['name element_type k1l k1sl k2l'].show()
+selected.slice_thick_elements(
+    slicing_strategies  = [
+        xt.Strategy(slicing = None),
+        xt.Strategy(xt.Teapot(2), element_type = xt.Quadrupole),
+        xt.Strategy(xt.Teapot(2), element_type = xt.Sextupole),
+        xt.Strategy(xt.Teapot(3, mode = 'thick'), name = 'q::1'),
+        xt.Strategy(slicing = None, name = 'keep'),
+    ],
+)
+
+########################################
+# Inspect strengths and misalignments inherited from parents
+########################################
+selection_table = selected.get_table(attr = True)
+selection_table.cols[
+    'name element_type parent_name weight k1l k1sl k2l k2sl'].show()
+selection_table.cols['name shift_x shift_y rot_s_rad'].show()
+print('Sliced sequence length [m]:', selected.get_length())
+print('Normal/skew quadrupole integrals [m^-1]:',
+      sum(selection_table.k1l), sum(selection_table.k1sl))
+print('Normal/skew sextupole integrals [m^-2]:',
+      sum(selection_table.k2l), sum(selection_table.k2sl))
+
+########################################
+# Compare parent settings with both sliced occurrences
+########################################
+parent_knl, parent_ksl = selection_env['q'].get_total_knl_ksl()
+q_slices = selection_table.rows[selection_table.parent_name == 'q']
+print('Two q parents: expected normal/skew quadrupole integrals [m^-1]:',
+      2 * parent_knl[1], 2 * parent_ksl[1])
+print('Two q parents: summed slice integrals [m^-1]:',
+      sum(q_slices.k1l), sum(q_slices.k1sl))
+print('Two q parents: expected normal/skew sextupole errors [m^-2]:',
+      2 * parent_knl[2], 2 * parent_ksl[2])
+print('Two q parents: summed slice error integrals [m^-2]:',
+      sum(q_slices.k2l), sum(q_slices.k2sl))
+
+################################################################################
 # Track identical entrance particles once through each representation
 ################################################################################
 
