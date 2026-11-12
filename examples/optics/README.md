@@ -14,7 +14,7 @@ belongs with matching.
 | --- | --- |
 | [Transverse optics](transverse/README.md) | Twiss, covariance, coupling, boundaries, closed orbits, transfer maps, calculation settings and persistence |
 | [Longitudinal optics](longitudinal/README.md) | Synchronous 6D optics, longitudinal covariance and revolution periods |
-| [Nonlinear optics](nonlinear/README.md) | Chromaticity, amplitude detuning, multi-turn island optics and stability diagrams |
+| [Nonlinear optics](nonlinear/README.md) | Chromaticity, amplitude detuning, island optics, native RDTs and stability diagrams |
 | [Collective-element handling](collective/README.md) | Prescribed frozen-field optics and default skipping of updating collective forces |
 
 See the [full optics structure](../README.md#optics) for the recipe index.

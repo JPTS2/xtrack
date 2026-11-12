@@ -71,6 +71,30 @@ with_strengths.rows[['arc.s1.c1.qf.in', 'arc.s1.c1.qd', 'arc.s1.c1.b1']].cols[
 # k0l and bend angle are dimensionless; k1l is in m^-1.
 
 ################################################################################
+# Mask internal rows of thin-element groups
+################################################################################
+
+########################################
+# Retain the names and positions while hiding intermediate optics
+########################################
+# Co-located thin elements can change coordinates at the same s. This option
+# replaces intermediate row values by NaN; it does not delete table rows.
+hidden = line.twiss(hide_thin_groups = True)
+masked = np.isnan(hidden.betx)
+print('Rows before and after hiding thin groups:',
+      len(baseline.name), len(hidden.name))
+print('Masked beta rows:', np.count_nonzero(masked))
+hidden.rows[masked].cols['name s x betx bety'].show(maxrows = 12)
+
+########################################
+# Select usable values for numerical analysis
+########################################
+finite = np.isfinite(hidden.betx)
+print('Largest beta difference at retained rows [m]:',
+      np.max(np.abs(hidden.betx[finite] - baseline.betx[finite])))
+print('Tune differences:', hidden.qx - baseline.qx, hidden.qy - baseline.qy)
+
+################################################################################
 # Compare numerical step choices
 ################################################################################
 
@@ -93,3 +117,15 @@ print('Largest relative beta changes (x, y):',
 
 # This stable, smooth model should give consistent optics over these small
 # step changes. Numerical convergence needs its own check for other models.
+
+################################################################################
+# Clear the defaults on this line
+################################################################################
+line.twiss_default.clear()
+print('Cleared defaults:', line.twiss_default)
+# RF is off, so keep requesting 4D optics explicitly. Chromatic derivatives
+# are now included by default, after removing the earlier chrom=False setting.
+explicit = line.twiss(method = '4d')
+print('Chromatic derivatives after clearing defaults:',
+      'dqx' in explicit.keys())
+print('Explicit 4D tunes:', explicit.qx, explicit.qy)

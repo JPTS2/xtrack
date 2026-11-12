@@ -12,19 +12,19 @@ this route, followed by inspecting results, beam covariance and coupled optics.
 | --- | --- |
 | [001_periodic_twiss.py](001_periodic_twiss.py) | Solve periodic transverse optics and compare boundary conditions and phase advances |
 | [002_open_twiss.py](002_open_twiss.py) | Propagate specified entrance beta, alpha and dispersion through a transport line |
-| [003_inspect_twiss.py](003_inspect_twiss.py) | Access global results, scalar entries, column arrays and selected rows |
+| [003_inspect_twiss.py](003_inspect_twiss.py) | Access results, select rows and reuse axes with native Twiss plotting |
 | [004_beam_covariance.py](004_beam_covariance.py) | Convert emittances to covariance, inspect an x-px block and include independent momentum spread |
 | [005_coupled_mode_optics.py](005_coupled_mode_optics.py) | Resolve both normal modes in each plane and combine mode emittances into projected sizes |
 | [006_edwards_teng.py](006_edwards_teng.py) | Read Edwards-Teng optics and use the coupling matrix to decouple the transverse one-turn map |
-| [007_twiss_initial_conditions.py](007_twiss_initial_conditions.py) | Reuse a complete Twiss state at upstream or downstream boundaries of a subrange |
+| [007_twiss_initial_conditions.py](007_twiss_initial_conditions.py) | Supply upstream, downstream or interior conditions, including particle and W matrix |
 | [008_periodic_cells.py](008_periodic_cells.py) | Solve a repeated cell and compare its optics and phase advances with the full ring |
 | [009_change_starting_point.py](009_change_starting_point.py) | Distinguish a wrapped calculation, coordinate zeros and cycling the line |
 | [010_reverse_reference_frame.py](010_reverse_reference_frame.py) | Transform orbit and optical quantities into the opposite local reference frame |
 | [011_closed_orbit_search.py](011_closed_orbit_search.py) | Find and track a transverse fixed point, reuse it for optics and choose a search location |
 | [012_closed_orbit_dispersion.py](012_closed_orbit_dispersion.py) | Differentiate off-momentum closed orbits and compare their shifts with dispersion |
-| [013_transfer_matrices.py](013_transfer_matrices.py) | Compose entrance-to-entrance maps and compare Twiss, finite differences and displaced-particle tracking |
-| [014_twiss_settings.py](014_twiss_settings.py) | Choose result content and line defaults, then check finite-difference step sensitivity |
-| [015_save_and_load_twiss.py](015_save_and_load_twiss.py) | Save a complete Twiss result and continue analysis after loading it |
+| [013_transfer_matrices.py](013_transfer_matrices.py) | Compose 4D/6D maps, transport mode shapes and compare tracked linearization |
+| [014_twiss_settings.py](014_twiss_settings.py) | Choose output content, mask thin groups, clear defaults and compare numerical steps |
+| [015_save_and_load_twiss.py](015_save_and_load_twiss.py) | Preserve native Twiss snapshots and distinguish TFS layouts from convention conversion |
 
 Most lessons use the [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
 with its 1 GeV/c electron reference and 1.5 km circumference. RF voltage and
@@ -67,7 +67,10 @@ Constructing coupling bumps and knobs belongs with matching.
 `007` propagates a complete `TwissInit`, including orbit, dispersion and phase
 origins. A zero-length marker defines its downstream boundary. A ranged
 calculation includes its final element; its `_end_point` is
-that element's exit, which need not be the full line's final exit.
+that element's exit, which need not be the full line's final exit. An interior
+marker supports propagation in both directions. The same local particle and
+W matrix can supply explicit boundary conditions; this does not assert that an
+arbitrary optical matrix is a matched periodic normal form.
 
 `008` solves the reusable `arc.cell`, with a 15-degree geometric bend and
 90-degree betatron phase advance in each plane. The straight sections match
@@ -104,14 +107,24 @@ Matching chromaticity belongs with matching.
 the fixed-momentum transverse block. Map endpoints are element entrances;
 tracking excludes its stop element to use that same plane. Predictions describe
 displacements from the reference trajectory, with nonlinear and numerical
-residuals. Transfer-matrix entries carry coordinate-dependent units.
+residuals. Transfer-matrix entries carry coordinate-dependent units. A separate RF-on
+DEMO section composes full 6D maps and compares propagated mode shapes using
+pairs of W columns; these outer products remove arbitrary normal-mode phase.
+The same-data reconstruction is an algebraic check, distinct from comparison
+with the independently tracked one-turn matrix.
 
 `014` sets defaults only on its freshly loaded line and compares requested
 outputs and finite-difference steps. Its numerical check is qualified for this
 smooth model; step-size convergence depends on the lattice and amplitudes.
+`hide_thin_groups` masks selected intermediate values with NaN while retaining
+all rows. Clearing `line.twiss_default` is explicit and only affects that load.
 
-`015` writes `outputs/twiss.json` beside the script. The result includes optical
-matrices, phase advances and reference-particle data for subsequent analysis.
+`015` writes native JSON, CSV and HDF5 results under `outputs/`. These retain
+optical matrices, phase advances and reference-particle data for later analysis.
+HDF5 needs `h5py`; reading the selected TFS output needs `tfs-pandas`. A TFS
+preset selects a layout; the complete forward, on-momentum periodic 4D
+conversion separately changes entry to exit samples and delta derivatives to
+ptau derivatives. The selected TFS fields do not preserve a complete snapshot.
 It is distinct from saving the associated line or environment, covered in
 [environment persistence](../../line_construction/015_save_and_load_environment.py).
 Other table formats and column selection are covered in [tables](../../tables/).
@@ -120,3 +133,7 @@ For normalized launches and bunch preparation, see [particles](../../particles/)
 For measured beam envelopes with `ONE_TURN_EBE`, see
 [element-by-element monitoring](../../monitors/particle_records/002_element_by_element.py).
 For general table operations, see [tables](../../tables/).
+
+`003` uses Xtrack's native Matplotlib Twiss plot and reuses supplied axes; it
+requires no Xplt installation. Twiss plotting and table selection do not alter
+the model or recompute optics.

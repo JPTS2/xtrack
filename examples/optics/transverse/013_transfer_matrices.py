@@ -32,6 +32,13 @@ BETY            = 1.0                   # [m]
 DISPLACEMENT    = np.array([1e-6, 2e-7, -2e-6, 1e-7])
 # Coordinates are x [m], px [1], y [m], py [1], at delta = 0.
 
+########################################
+# Periodic 6D comparison
+########################################
+RING_FILE       = 'test_data/example_lattices/demo_ring/lattice.py'
+RF_VOLTAGE      = 1e5                    # [V]
+RING_MIDDLE     = 'bpm.s4.f'
+
 ################################################################################
 # Load the line and calculate open 4D optics
 ################################################################################
@@ -131,3 +138,45 @@ result      = xt.Table(
 # at its entrance.
 result.show(maxwidth = 'full')
 print('Particle stopping indices:', particles.at_element)
+
+################################################################################
+# Compose full 6D maps with RF focusing
+################################################################################
+
+########################################
+# Solve three periodic modes in an independent ring
+########################################
+# The shared ring has a 1 GeV/c electron reference and no radiation.
+ring_env = xt.load(repo_root / RING_FILE)
+ring = ring_env['demo']
+ring_env['voltage_rf'] = RF_VOLTAGE
+tw6 = ring.twiss6d()
+ring_start = ring.element_names[0]
+r6_direct = tw6.get_R_matrix(start = ring_start, end = '_end_point')
+r6_first = tw6.get_R_matrix(start = ring_start, end = RING_MIDDLE)
+r6_second = tw6.get_R_matrix(start = RING_MIDDLE, end = '_end_point')
+print('6D matrix composition residual:',
+      np.max(np.abs(r6_second @ r6_first - r6_direct)))
+print('One-turn reconstruction versus tracked linearization:',
+      np.max(np.abs(r6_direct - tw6.R_matrix)))
+
+########################################
+# Transport mode shapes without comparing arbitrary phase origins
+########################################
+# W uses (x, px, y, py, zeta, pzeta), with three pairs of mode columns.
+# Propagated columns acquire phase rotations. Their pairwise outer products
+# remove that phase, so compare mode shapes instead of raw W eigenvectors.
+# These are unit-action shapes, not an emittance-weighted beam covariance.
+w_start = tw6.W_matrix[0]
+w_end = tw6.W_matrix[-1]
+mode_shapes = []
+for mode in range(3):
+    propagated = r6_direct @ w_start[:, 2 * mode:2 * mode + 2]
+    target = w_end[:, 2 * mode:2 * mode + 2]
+    shape_propagated = propagated @ propagated.T
+    shape_target = target @ target.T
+    mode_shapes.append((shape_propagated, shape_target))
+    print('Mode', mode + 1, 'maximum shape-entry residual:',
+          np.max(np.abs(shape_propagated - shape_target)))
+# Shape entries have coordinate-product units; this maximum is a numerical
+# comparison in the stated coordinate convention, not a physical norm.

@@ -8,6 +8,7 @@
 ################################################################################
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import xtrack as xt
 
@@ -65,3 +66,31 @@ tw.rows[r'bpm\..*'].cols[
 # a ranged line.twiss call instead calculates optics through selected elements.
 tw.rows[RANGE_START:RANGE_END].cols[
     'name s betx alfx bety alfy dx dpx mux muy'].show(maxwidth = 'full')
+
+################################################################################
+# Plot optics on existing Matplotlib axes
+################################################################################
+
+########################################
+# Reuse axes for native Twiss plots
+########################################
+fig, axes = plt.subplots(2, 1, sharex = True, figsize = (9, 6))
+beta_plot = tw.plot(
+    yl      = 'betx bety',
+    yr      = '',
+    lattice = False,
+    ax      = axes[0])
+phase_plot = tw.plot(
+    yl      = 'mux muy',
+    yr      = '',
+    lattice = False,
+    ax      = axes[1])
+
+########################################
+# Keep both native legends inside the figure
+########################################
+beta_plot.move_legend(1.02, 1.0)
+phase_plot.move_legend(1.02, 1.0)
+axes[0].set_title('Beta functions and accumulated phase advances')
+fig.tight_layout(rect = (0, 0, 0.85, 1))
+plt.show()

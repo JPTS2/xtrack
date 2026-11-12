@@ -11,7 +11,7 @@ Read in order; every script runs independently.
 
 | Example | Lesson |
 | --- | --- |
-| [001_six_dimensional_twiss.py](001_six_dimensional_twiss.py) | Solve periodic 6D optics and verify the synchronous particle returns in all six coordinates |
+| [001_six_dimensional_twiss.py](001_six_dimensional_twiss.py) | Solve periodic 6D optics, verify closure and compare crab responses with open/closed boundaries |
 | [002_longitudinal_covariance.py](002_longitudinal_covariance.py) | Set a longitudinal mode emittance, inspect correlations and draw a covariance contour |
 | [003_revolution_period.py](003_revolution_period.py) | Compare reference and searched periods, then measure momentum-dependent periods without RF |
 
@@ -50,3 +50,12 @@ qualify a momentum-acceptance interval.
 
 For tracked oscillations, RF separatrices and changing RF conditions, continue
 with [longitudinal dynamics](../../rf/dynamics/README.md).
+
+The final sections of `001` add one weak native `CrabCavity` to a fresh copy of
+the same 1 GeV/c electron ring. No species change or additional machine model is
+needed. A 1 kV deflector at the native RF frequency illustrates the response;
+it does not construct a matched crossing scheme. Conditional 4D fixed-zeta
+closed-orbit derivatives are checked against centered probes, while the 6D
+response includes coupled longitudinal motion. RF/crab toggles and imposed open
+entrance conditions distinguish the boundary problems. Canonical inputs remain
+unchanged; machine-specific crab workflows belong with their machines.
