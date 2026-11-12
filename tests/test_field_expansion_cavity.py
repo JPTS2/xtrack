@@ -27,12 +27,14 @@ COORDINATES = ('x', 'px', 'y', 'py', 'zeta', 'delta', 'spin_x', 'spin_y', 'spin_
     (xt.PROTON_MASS_EV, 1.5, 5, .5, .7, 1.2),
     (xt.ELECTRON_MASS_EV, 40., 9, 1., 0., .3),
     (xt.ELECTRON_MASS_EV, 40., 7, .3, -2., 2.1)])
-def test_cavity_is_the_two_harmonic_case(mass0, gamma, n_cells, ratio, counter_phase, phase):
+@pytest.mark.parametrize('radial_order', [4, 8])
+def test_cavity_is_the_two_harmonic_case(mass0, gamma, n_cells, ratio, counter_phase, phase,
+                                         radial_order):
     frequency = 704.4e6
     length = n_cells * np.sqrt(1 - 1 / gamma**2) * clight / frequency / 2
     wave_number = np.pi * n_cells / length
     common = dict(length=length, voltage=3e6 * length, frequency=frequency, phase=phase,
-                  num_kicks=16 * n_cells, shift_x=1e-4, rot_s_rad=.1)
+                  num_kicks=16 * n_cells, shift_x=1e-4, rot_s_rad=.1, radial_order=radial_order)
     cavity = xt.Cavity(model='_phase-resolved', n_cells=n_cells,
                        counter_wave_amplitude=ratio, counter_wave_phase=counter_phase, **common)
     expansion = xt.FieldExpansionCavity(
@@ -145,7 +147,8 @@ def _spin_end(element, gamma, phase_offset=.5):
 
 
 @pytest.mark.parametrize('seed', [1, 2, 3])
-def test_field_table_follows_the_harmonic_sum(seed):
+@pytest.mark.parametrize('radial_order', [4, 8])
+def test_field_table_follows_the_harmonic_sum(seed, radial_order):
     """Any field: the tabulated jets give the map of the summed harmonics."""
     rng = np.random.default_rng(seed)
     count = int(rng.integers(5, 40))
@@ -156,7 +159,8 @@ def test_field_table_follows_the_harmonic_sum(seed):
     wave_numbers = np.append(rng.uniform(-3., 3., count) * k, k)
     amplitudes = np.append(.3 * (rng.normal(size=count) + 1j * rng.normal(size=count)), 3.)
     common = dict(wave_numbers=wave_numbers, amplitudes=amplitudes, length=rng.uniform(.3, 1.5),
-                  frequency=frequency, voltage=5e6, phase=np.pi / 2, num_kicks=256)
+                  frequency=frequency, voltage=5e6, phase=np.pi / 2, num_kicks=256,
+                  radial_order=radial_order)
     table = _spin_end(xt.FieldExpansionCavity(**common), 40.)
     direct = _spin_end(xt.FieldExpansionCavity(field_table_points=0, **common), 40.)
     launch = np.array([1e-3, 1e-4, -5e-4, 0., 0., 0., .6, 0., .8])

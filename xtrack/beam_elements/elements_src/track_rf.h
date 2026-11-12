@@ -62,6 +62,8 @@ typedef struct RFModelFields_s {
     xt_float_or_tpsa nominal_energy_gain;
     int64_t nominal_energy_gain_from_rf;
     int64_t rf_profile;
+    // Power of r to which the phase-resolved map keeps E_z: 2, 4, 6 or 8.
+    int64_t radial_order;
     int64_t num_harmonics;
     GPUGLMEM const double *harmonic_wave_number, *harmonic_re, *harmonic_im;
     // The harmonics' jets tabulated over the element (FieldExpansionCavity):
@@ -105,7 +107,7 @@ typedef struct RFModelFields_s {
     (f)->n_cells=DATA##_get_n_cells(el); (f)->calibration_beta=1.; \
     (f)->nominal_energy_gain=DATA##_get_nominal_energy_gain(el); \
     (f)->nominal_energy_gain_from_rf=DATA##_get_nominal_energy_gain_from_rf(el); \
-    (f)->rf_profile=0; \
+    (f)->rf_profile=0; (f)->radial_order=DATA##_get_radial_order(el); \
     (f)->edge_entry_active=DATA##_get_edge_entry_active(el); \
     (f)->edge_exit_active=DATA##_get_edge_exit_active(el); \
     (f)->num_harmonics=0; (f)->harmonic_wave_number=NULL; \
@@ -119,13 +121,13 @@ typedef struct RFModelFields_s {
     (f)->counter_wave_amplitude=0.; (f)->counter_wave_phase=0.; (f)->n_cells=0; \
     (f)->calibration_beta=DATA##_get_calibration_beta(el); \
     (f)->nominal_energy_gain=0.; (f)->nominal_energy_gain_from_rf=1; \
-    (f)->rf_profile=1; \
+    (f)->rf_profile=1; (f)->radial_order=DATA##_get_radial_order(el); \
     (f)->edge_entry_active=1; (f)->edge_exit_active=1; \
     (f)->num_harmonics=DATA##_len_wave_numbers(el); \
     (f)->harmonic_wave_number=DATA##_getp1_wave_numbers(el,0); \
     (f)->harmonic_re=DATA##_getp1_amplitudes_re(el,0); \
     (f)->harmonic_im=DATA##_getp1_amplitudes_im(el,0); \
-    (f)->table_points=DATA##_len_field_table(el)/16; \
+    (f)->table_points=DATA##_len_field_table(el)/CAVITY_MODEL_TABLE_ROW; \
     (f)->table_z0=DATA##_get_field_table_z0(el); \
     (f)->table_dz=DATA##_get_field_table_dz(el); \
     (f)->table_key=DATA##_get_field_table_key(el); \

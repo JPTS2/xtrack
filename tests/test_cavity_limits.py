@@ -230,6 +230,7 @@ int static_case(const double *q,double Q,double scale,int model,double *out){
  s.k=.9;s.omega=299792458.*s.k;s.length=.43;s.half_span=.7;
  s.carrier=1.1;s.counter_phase=.3;s.forward=0.;s.backward=0.;
  s.magnetic_scale=scale;s.ks=.17;s.order=3;s.knl=normal;s.ksl=skew;
+ s.radial_order=4;
  int status=CavityModel_potential(q,.02,&s,model,out);
  if(status!=1)return status;
  return CavityModel_flow(q,.02,Q,&s,model,out+4);
@@ -241,7 +242,7 @@ int mixed_case(const double *q,double Q,int model,double *out){
  s.k=.9;s.omega=299792458.*s.k;s.length=.43;
  s.half_span=s.k*s.length*.5;s.carrier=1.1;s.counter_phase=.3;
  s.forward=.04;s.backward=.017;s.magnetic_scale=.7;s.ks=.17;
- s.order=3;s.knl=normal;s.ksl=skew;
+ s.order=3;s.knl=normal;s.ksl=skew;s.radial_order=4;
  const double z=.17*s.half_span;
  int status=CavityModel_physical_potential(q,z,&s,model,out);
  if(status!=1)return status;

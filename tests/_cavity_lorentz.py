@@ -2,8 +2,11 @@
 
 An independent reference for the cavity maps: the field is written directly from
 the wave equation and integrated with a general ODE solver, using none of the maps'
-generators, gauges or factors. `lorentz_end` keeps a force linear in r.
+generators, gauges or factors. `lorentz_end` keeps a force linear in r, or the
+near-axis series to a higher `radial_order`.
 """
+from math import factorial
+
 import numpy as np
 from scipy.constants import c as clight
 from scipy.integrate import quad, solve_ivp
@@ -58,14 +61,16 @@ def calibrated_waves(voltage, frequency, length, phase, ratio, envelope,
 
 
 def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=None, tolerance=1e-12,
-                magnet=None, ramp=None):
+                magnet=None, ramp=None, radial_order=2):
     """Coordinates at the exit plane, from those at the entry plane, for a field-free
     outside: Xtrack's x, px, y, py, zeta, delta relative to p0c. With `anomaly`, the
     launch's spin_x, spin_y, spin_z follow the Thomas-BMT equation in the same fields.
     `magnet(z)` adds static fields: c B_z, its derivative, and the quadrupole gradient
     c dB_y/dx, in eV/m and eV/m^2 per unit charge. With `ramp`, the length of the
     envelope's end ramps, each ramp is integrated as its own segment in steps that
-    resolve it."""
+    resolve it. `radial_order` n keeps E_z to r^n and E_r, c B_phi to r^(n-1); both waves
+    share kappa^2 = k^2 - k_z^2, so each series is one in kappa^2 r^2, and beyond the
+    leading terms the envelope enters only through h, as in the maps."""
     k, kz, phase = waves['k'], waves['wave_number'], waves['phase']
     F, B, chi = waves['forward'], waves['backward'], waves['counter_phase']
     beta0 = p0c / np.hypot(p0c, mass0)
@@ -80,14 +85,17 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
         W_z = kz * (F * np.sin(u) - B * np.sin(w))
         W_ct = -k * (F * np.sin(u) + B * np.sin(w))
         r2 = x * x + y * y
+        u2 = -(k * k - kz * kz) * r2 / 4
+        axial = sum(u2**n / factorial(n)**2 for n in range(radial_order // 2 + 1))
+        radial = sum(u2**n / (factorial(n) * factorial(n + 1)) for n in range(radial_order // 2))
         # A wave slower than c is not linear in r even on a uniform envelope. The edge term
         # -r^2/4 (h''W + 2h'W_z) enters integrated by parts along the orbit: the same kick
         # as the ramp vanishes, without the 1/ramp^2 spike whose products have no limit.
         along = W_z + W_ct * energy / pz
         edge = dh / 4 * (2 * (x * px + y * py) / pz * W + r2 * (along - 2 * W_z))
-        E_z = h * W + edge - r2 / 4 * (k * k - kz * kz) * h * W
-        E_r_over_r = -(dh * W + h * W_z) / 2
-        cB_over_r = h * W_ct / 2
+        E_z = h * W * axial + edge
+        E_r_over_r = -(dh * W + h * W_z * radial) / 2
+        cB_over_r = h * W_ct * radial / 2
         v_z = pz / energy
         fx = charge * (E_r_over_r - v_z * cB_over_r) * x
         fy = charge * (E_r_over_r - v_z * cB_over_r) * y

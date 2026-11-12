@@ -201,6 +201,31 @@ def test_low_beta_protons_follow_the_orbit_through_synchronous_cells(context, mo
     assert _errors(ends, truth, p0c, gradient * length)[1] < 1e-3
 
 
+@pytest.mark.parametrize('radial_order', [2, 4, 6, 8])
+def test_each_radial_order_follows_the_orbit_in_its_own_series(context, radial_order):
+    """Protons at gamma 1.1 through five standing-wave cells, 10 mm off axis, where the
+    series to r^2, r^4 and r^6 part from r^8 by 1e-2, 6e-5 and 1e-7 of the kick."""
+    n_cells, gradient, gamma, phase = 5, 5e6, 1.1, 1.2
+    launch = dict(x=1e-2, px=0., y=-4e-3, py=0., zeta=0., delta=0.)
+    beta = np.sqrt(1 - 1 / gamma**2)
+    length = n_cells * beta * _HALF_WAVE
+    mass0 = xt.PROTON_MASS_EV
+    p0c = mass0 * np.sqrt(gamma**2 - 1)
+    cavity = xt.Cavity(model='_phase-resolved', frequency=_FREQUENCY, length=length,
+                       voltage=gradient * length, phase=phase, counter_wave_amplitude=1.,
+                       n_cells=n_cells, num_kicks=1024, radial_order=radial_order)
+    particles = xt.Particles(_context=context, p0c=p0c, mass0=mass0, **launch)
+    cavity.track(particles)
+    waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, 1., hard_edge,
+                             n_cells=n_cells)
+    # A hard edge is the limit of vanishing ramps, linear in the ramp's length.
+    coarse, fine = (lorentz_end(launch, waves, length, ramped(length, ramp), p0c, mass0,
+                                ramp=ramp, radial_order=radial_order) for ramp in (1e-3, 5e-4))
+    truth = {name: 2 * fine[name] - coarse[name] for name in ('px', 'py')}
+    kick = np.hypot(truth['px'], truth['py'])
+    assert np.hypot(particles.px[0] - truth['px'], particles.py[0] - truth['py']) < 1e-5 * kick
+
+
 @pytest.mark.parametrize('gamma', [1.5, 2., 5.])
 def test_phase_averaged_follows_the_orbit_through_synchronous_cells(context, gamma):
     """The forward wave's radial force carries the cells' wave number, nu E/p - 1."""

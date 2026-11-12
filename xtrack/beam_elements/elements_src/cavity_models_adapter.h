@@ -243,21 +243,34 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
 
 
 // Gauge transformation between the phase-resolved temporal RF potential and
-// the field-free-outside gauge of the end-plane impulse. The gauge
-// function Lambda = (r^2/4) S1 - (r^4/64)(S1+S3) gives the temporal A_perp =
-// grad Lambda and the outside gauge's phi = d_T Lambda; to_temporal applies
-// P += Q grad Lambda, E -= Q d_T Lambda, otherwise the inverse.
+// the field-free-outside gauge of the end-plane impulse. The gauge function
+// Lambda = sum_{n<M} (-1/4)^n/(4 n!(n+1)!(n+1)) r^(2n+2) P_n', with
+// P_n = (1 + d_Z^2)^n S (at M = 2, (r^2/4) S1 - (r^4/64)(S1+S3)), gives the
+// temporal A_perp = grad Lambda and the outside gauge's phi = d_T Lambda;
+// to_temporal applies P += Q grad Lambda, E -= Q d_T Lambda, otherwise the
+// inverse.
 GPUFUN
 void CavityModels_rf_gauge(xt_float_or_tpsa q[6], const CavityModelSource *source,
                            xt_float_or_tpsa_arg Q, xt_float_or_tpsa_arg z, int to_temporal) {
-    xt_float_or_tpsa real[5], imag[5];
-    CavityModel_profile(z, source, real, imag);
+    const int M=(int)(source->radial_order/2), jets=2*M;
+    xt_float_or_tpsa real[CAVITY_MODEL_JETS], imag[CAVITY_MODEL_JETS];
+    xt_float_or_tpsa S[CAVITY_MODEL_JETS], C[CAVITY_MODEL_JETS];
+    CavityModel_profile(z, source, real, imag, jets);
     const xt_float_or_tpsa c=cos(q[2]), s=sin(q[2]);
-    const xt_float_or_tpsa S1=real[1]*s-imag[1]*c, S3=real[3]*s-imag[3]*c;
-    const xt_float_or_tpsa C1=real[1]*c+imag[1]*s, C3=real[3]*c+imag[3]*s;
+    for (int j=0; j<jets; ++j) {
+        S[j]=real[j]*s-imag[j]*c;
+        C[j]=real[j]*c+imag[j]*s;
+    }
     const xt_float_or_tpsa r2=q[0]*q[0]+q[1]*q[1];
-    const xt_float_or_tpsa radial=S1*.5-r2*(S1+S3)/16.;
-    const xt_float_or_tpsa scalar=r2*C1/4.-r2*r2*(C1+C3)/64.;
+    xt_float_or_tpsa radial=0., scalar=0., power=1.;
+    double beta=.5;
+    for (int n=0; n<M; ++n) {
+        radial+=beta*power*S[1];
+        power=power*r2;
+        scalar+=beta/(2.*(n+1.))*power*C[1];
+        for (int j=0; j+2<jets-2*n; ++j) { S[j]+=S[j+2]; C[j]+=C[j+2]; }
+        beta*=-.25/((n+1.)*(n+2.));
+    }
     xt_float_or_tpsa charge=Q;
     if (!to_temporal) charge=-Q;
     q[3]+=charge*q[0]*radial;
@@ -369,6 +382,7 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     xt_float_or_tpsa z=0., h=0.;
     if (status==CAVITY_MODEL_OK) {
         source.ks=el->ks;
+        source.radial_order=el->radial_order;
         if (model==CAVITY_MODEL_FROZEN)
             source.voltage_norm=voltage/mass0;
         source.magnetic_scale=LocalParticle_get_p0c(part)/(q0*mass0);

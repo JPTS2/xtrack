@@ -168,6 +168,33 @@ def test_phase_averaged_is_symplectic(model, amplitude):
     assert np.abs(matrix.T @ form @ matrix - form).max() < 1e-7
 
 
+@pytest.mark.parametrize('radial_order', [2, 4, 6, 8])
+def test_phase_resolved_is_symplectic_at_each_radial_order(radial_order):
+    """Protons in five slow standing-wave cells, 10 mm off axis, where every order counts."""
+    names = ('x', 'px', 'y', 'py', 'zeta', 'pzeta')
+    gamma, n_cells, frequency = 1.25, 5, 704.42e6
+    length = n_cells * np.sqrt(1 - 1 / gamma**2) * clight / frequency / 2
+    rf = xt.Cavity(model='_phase-resolved', length=length, voltage=5e6 * length,
+                   frequency=frequency, phase=1.2, n_cells=n_cells, num_kicks=160,
+                   radial_order=radial_order)
+    step = 1e-7
+    matrix = np.zeros((6, 6))
+    for column, name in enumerate(names):
+        ends = []
+        for sign in (1, -1):
+            probe = xt.Particles(p0c=xt.PROTON_MASS_EV*np.sqrt(gamma**2 - 1),
+                mass0=xt.PROTON_MASS_EV, x=1e-2, px=2e-4, y=-6e-3, py=1e-4,
+                zeta=1e-3, pzeta=1e-4)
+            setattr(probe, name, getattr(probe, name) + sign*step)
+            rf.track(probe)
+            ends.append(np.array([getattr(probe, n)[0] for n in names]))
+        matrix[:, column] = (ends[0] - ends[1]) / (2*step)
+    form = np.zeros((6, 6))
+    for i in range(3):
+        form[2*i, 2*i+1], form[2*i+1, 2*i] = 1, -1
+    assert np.abs(matrix.T @ form @ matrix - form).max() < 1e-7
+
+
 @pytest.mark.parametrize('model', ['_phase-averaged', '_phase-resolved-paraxial'])
 def test_phase_averaged_reverses_and_slices_exactly(model):
     names = ('x', 'px', 'y', 'py', 'zeta', 'delta')

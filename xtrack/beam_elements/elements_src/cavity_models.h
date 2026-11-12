@@ -26,6 +26,15 @@ enum CavityModelStatus {
     CAVITY_MODEL_ARGUMENT = -4
 };
 
+// The phase-resolved map keeps E_z to r^radial_order, M = radial_order/2
+// terms in r^2, from the profile jets 0..2M (2M+1 for the effect fields). The
+// field table holds jets 0..TABLE_JETS-1: each interpolated jet takes the next
+// two as its derivatives.
+#define CAVITY_MODEL_MAX_RADIAL_ORDER 8
+#define CAVITY_MODEL_JETS (CAVITY_MODEL_MAX_RADIAL_ORDER+2)
+#define CAVITY_MODEL_TABLE_JETS (CAVITY_MODEL_JETS+2)
+#define CAVITY_MODEL_TABLE_ROW (2*CAVITY_MODEL_TABLE_JETS)
+
 enum CavityPhysicalModel {
     CAVITY_MODEL_FULL = 10,
     CAVITY_MODEL_AVERAGED = 11,
@@ -41,6 +50,7 @@ typedef struct {
     xt_float_or_tpsa voltage_norm, phase, dc_gradient;
     // RF field: 0 uniform envelope with the two waves, 1 space harmonics.
     int rf_profile;
+    int64_t radial_order;
     // Space harmonics: P(Z) = sum_m (re_m + i im_m) exp(i kz_m Z/k), times forward,
     // on the element; kz_m in rad/m.
     int64_t num_harmonics;
@@ -148,6 +158,7 @@ int CavityModel_prepare(
     source->reference_charge=q0;
     source->reference_beta=1.;
     source->rf_profile=0;
+    source->radial_order=4;
     source->num_harmonics=0;source->harmonic_wave_number=NULL;
     source->harmonic_re=NULL;source->harmonic_im=NULL;
     source->table_points=0;source->table_z0=0.;source->table_dz=0.;source->table=NULL;
@@ -204,8 +215,9 @@ void CavityModel_source_envelope(xt_float_or_tpsa_arg z,
 
 // Jets 0..orders-1 of the harmonic profile in the normalized Z = k z from the
 // table, by quintic Hermite interpolation of each jet with the next two as its
-// derivatives: 16 doubles per row, the real then imaginary parts of jets 0..7
-// of the unit-amplitude field in metres. Returns 0 where the table does not apply.
+// derivatives: CAVITY_MODEL_TABLE_ROW doubles per row, the real then imaginary
+// parts of jets 0..CAVITY_MODEL_TABLE_JETS-1 of the unit-amplitude field in
+// metres. Returns 0 where the table does not apply.
 GPUFUN
 int CavityModel_table_jets(xt_float_or_tpsa_arg z, const CavityModelSource *source,
         xt_float_or_tpsa real[], xt_float_or_tpsa imag[], int orders) {
@@ -220,11 +232,13 @@ int CavityModel_table_jets(xt_float_or_tpsa_arg z, const CavityModelSource *sour
     const xt_float_or_tpsa w0=1.-10.*u3+15.*u4-6.*u5, w1=h*(u-6.*u3+8.*u4-3.*u5);
     const xt_float_or_tpsa w2=hh*(.5*u2-1.5*u3+1.5*u4-.5*u5), w3=10.*u3-15.*u4+6.*u5;
     const xt_float_or_tpsa w4=h*(-4.*u3+7.*u4-3.*u5), w5=hh*(.5*u3-u4+.5*u5);
-    GPUGLMEM const double *a=source->table+16*n, *b=a+16;
+    GPUGLMEM const double *a=source->table+CAVITY_MODEL_TABLE_ROW*n;
+    GPUGLMEM const double *b=a+CAVITY_MODEL_TABLE_ROW;
+    GPUGLMEM const double *c=a+CAVITY_MODEL_TABLE_JETS, *d=b+CAVITY_MODEL_TABLE_JETS;
     xt_float_or_tpsa scale=source->forward;
     for (int j=0;j<orders;++j) {
         real[j]=scale*(w0*a[j]+w1*a[j+1]+w2*a[j+2]+w3*b[j]+w4*b[j+1]+w5*b[j+2]);
-        imag[j]=scale*(w0*a[8+j]+w1*a[9+j]+w2*a[10+j]+w3*b[8+j]+w4*b[9+j]+w5*b[10+j]);
+        imag[j]=scale*(w0*c[j]+w1*c[j+1]+w2*c[j+2]+w3*d[j]+w4*d[j+1]+w5*d[j+2]);
         scale=scale/source->k;
     }
     return 1;
@@ -232,11 +246,11 @@ int CavityModel_table_jets(xt_float_or_tpsa_arg z, const CavityModelSource *sour
 
 GPUFUN
 void CavityModel_profile(xt_float_or_tpsa_arg z,
-        const CavityModelSource *source, xt_float_or_tpsa real[5],
-        xt_float_or_tpsa imag[5]) {
+        const CavityModelSource *source, xt_float_or_tpsa real[],
+        xt_float_or_tpsa imag[], int orders) {
     if (source->rf_profile==1) {
-        if (CavityModel_table_jets(z,source,real,imag,5)) return;
-        for (int j=0;j<5;++j) { real[j]=0.;imag[j]=0.; }
+        if (CavityModel_table_jets(z,source,real,imag,orders)) return;
+        for (int j=0;j<orders;++j) { real[j]=0.;imag[j]=0.; }
         for (int64_t m=0;m<source->num_harmonics;++m) {
             const xt_float_or_tpsa kappa=source->harmonic_wave_number[m]/source->k;
             const xt_float_or_tpsa c=cos(kappa*z), s=sin(kappa*z);
@@ -244,7 +258,7 @@ void CavityModel_profile(xt_float_or_tpsa_arg z,
             // (i kappa)^j a e^{i kappa Z}: each derivative turns the phasor by i.
             xt_float_or_tpsa term_re=source->forward*(re*c-im*s);
             xt_float_or_tpsa term_im=source->forward*(re*s+im*c);
-            for (int j=0;j<5;++j) {
+            for (int j=0;j<orders;++j) {
                 real[j]+=term_re; imag[j]+=term_im;
                 const xt_float_or_tpsa turned=term_re;
                 term_re=-kappa*term_im; term_im=kappa*turned;
@@ -255,14 +269,14 @@ void CavityModel_profile(xt_float_or_tpsa_arg z,
     xt_float_or_tpsa phases[2]={source->carrier*z,
                                -source->carrier*z-source->counter_phase};
     xt_float_or_tpsa strengths[2]={source->forward,source->backward};
-    for (int j=0;j<5;++j) { real[j]=0.;imag[j]=0.; }
+    for (int j=0;j<orders;++j) { real[j]=0.;imag[j]=0.; }
     for (int wave=0;wave<2;++wave) {
         xt_float_or_tpsa nu=source->carrier;
         if (wave) nu=-nu;
         // (i nu)^j strength e^{i phase}: each derivative turns the phasor by i.
         xt_float_or_tpsa term_re=strengths[wave]*cos(phases[wave]);
         xt_float_or_tpsa term_im=strengths[wave]*sin(phases[wave]);
-        for (int j=0;j<5;++j) {
+        for (int j=0;j<orders;++j) {
             real[j]+=term_re; imag[j]+=term_im;
             const xt_float_or_tpsa turned=term_re;
             term_re=-nu*term_im; term_im=nu*turned;
@@ -270,17 +284,22 @@ void CavityModel_profile(xt_float_or_tpsa_arg z,
     }
 }
 
-// Retained M2 temporal-gauge RF potential and its exact first derivatives.
-// This is the compact form of native_rf_source()['potentials']; no force
-// fit or independent radial-focusing coefficient is introduced.
+// Retained temporal-gauge RF potential to M = radial_order/2 terms in r^2 and
+// its exact first derivatives, with P_n = (1 + d_Z^2)^n of the phase profile:
+// A_z = -sum_{n<=M} (-1/4)^n/n!^2 r^2n P_n, A_perp = r_perp sum_{n<M}
+// (-1/4)^n/(2 n!(n+1)!) r^2n P_n'. M = 2 is the compact form of
+// native_rf_source()['potentials']; no force fit or independent
+// radial-focusing coefficient is introduced.
 GPUFUN
 void CavityModel_rf_potential(const xt_float_or_tpsa q[6],
         xt_float_or_tpsa_arg z, const CavityModelSource *source,
         int model, CavityModelPotential *potential) {
-    xt_float_or_tpsa real[5],imag[5],S[5],C[5];
-    CavityModel_profile(z,source,real,imag);
+    const int M=(int)(source->radial_order/2), jets=2*M+1;
+    xt_float_or_tpsa real[CAVITY_MODEL_JETS],imag[CAVITY_MODEL_JETS];
+    xt_float_or_tpsa S[CAVITY_MODEL_JETS],C[CAVITY_MODEL_JETS];
+    CavityModel_profile(z,source,real,imag,jets);
     xt_float_or_tpsa sine=sin(q[2]),cosine=cos(q[2]);
-    for (int j=0;j<5;++j) {
+    for (int j=0;j<jets;++j) {
         S[j]=real[j]*sine-imag[j]*cosine;
         C[j]=real[j]*cosine+imag[j]*sine;
     }
@@ -293,23 +312,34 @@ void CavityModel_rf_potential(const xt_float_or_tpsa q[6],
     if (model==CAVITY_MODEL_FROZEN || model==CAVITY_MODEL_AVERAGED
         || model==CAVITY_MODEL_PARAXIAL) return;
     xt_float_or_tpsa X=q[0],Y=q[1],r2=X*X+Y*Y;
-    xt_float_or_tpsa radial=S[1]*.5-r2*(S[1]+S[3])/16.;
-    xt_float_or_tpsa radial_T=C[1]*.5-r2*(C[1]+C[3])/16.;
-    xt_float_or_tpsa radial_r2=-(S[1]+S[3])/16.;
-    xt_float_or_tpsa axial_r2=(S[0]+S[2])/4.;
-    xt_float_or_tpsa axial_r4=-(S[0]+2.*S[2]+S[4])/64.;
+    // Sums and their r^2 derivatives; S, C turn into P_n in place, P_n
+    // keeping jets 0..2(M-n).
+    xt_float_or_tpsa axial=0.,axial_T=0.,axial_r2=0.;
+    xt_float_or_tpsa radial=0.,radial_T=0.,radial_r2=0.;
+    xt_float_or_tpsa power=1.,slope=0.;
+    double alpha=1.,beta=.5;
+    for (int n=0;n<=M;++n) {
+        axial+=alpha*power*S[0]; axial_T+=alpha*power*C[0];
+        axial_r2+=alpha*slope*S[0];
+        if (n<M) {
+            radial+=beta*power*S[1]; radial_T+=beta*power*C[1];
+            radial_r2+=beta*slope*S[1];
+        }
+        for (int j=0;j+2<jets-2*n;++j) { S[j]+=S[j+2]; C[j]+=C[j+2]; }
+        slope=(double)(n+1)*power; power=power*r2;
+        alpha*=-.25/((n+1.)*(n+1.)); beta*=-.25/((n+1.)*(n+2.));
+    }
     potential->a[0]=X*radial; potential->a[1]=Y*radial;
-    potential->a[2]=-S[0]+r2*axial_r2+r2*r2*axial_r4;
+    potential->a[2]=-axial;
     potential->d[0][0]=radial+2.*X*X*radial_r2;
     potential->d[0][1]=2.*X*Y*radial_r2;
     potential->d[0][2]=X*radial_T;
     potential->d[1][0]=potential->d[0][1];
     potential->d[1][1]=radial+2.*Y*Y*radial_r2;
     potential->d[1][2]=Y*radial_T;
-    potential->d[2][0]=2.*X*(axial_r2+2.*r2*axial_r4);
-    potential->d[2][1]=2.*Y*(axial_r2+2.*r2*axial_r4);
-    potential->d[2][2]=-C[0]+r2*(C[0]+C[2])/4.
-                           -r2*r2*(C[0]+2.*C[2]+C[4])/64.;
+    potential->d[2][0]=-2.*X*axial_r2;
+    potential->d[2][1]=-2.*Y*axial_r2;
+    potential->d[2][2]=-axial_T;
 }
 
 // Straight static multipoles and uniform solenoid in the same potential.
@@ -566,7 +596,7 @@ void CavityModel_effects_cross(const double a[3],const double b[3],double c[3]) 
 }
 GPUFUN
 int CavityModel_effects_profile(double T,double z,const CavityModelSource *source,
-                               double S[6],double C[6]) {
+                               int jets,double S[],double C[]) {
     const double H=xt_float_or_tpsa_const_part(source->half_span);
     if(source->rf_profile<0||source->rf_profile>1 || !(H>0.) || !isfinite(H))
         return CAVITY_MODEL_ARGUMENT;
@@ -574,11 +604,11 @@ int CavityModel_effects_profile(double T,double z,const CavityModelSource *sourc
         // C + iS is e^{iT} conj(P^(n)), as for the two waves below.
         const double forward=xt_float_or_tpsa_const_part(source->forward);
         const double k=xt_float_or_tpsa_const_part(source->k);
-        for(int n=0;n<6;++n){S[n]=0.;C[n]=0.;}
+        for(int n=0;n<jets;++n){S[n]=0.;C[n]=0.;}
         if(fabs(z)>H)return CAVITY_MODEL_OK;
-        double jet_re[6],jet_im[6];
-        if(CavityModel_table_jets(z,source,jet_re,jet_im,6)) {
-            for(int n=0;n<6;++n) {
+        double jet_re[CAVITY_MODEL_JETS],jet_im[CAVITY_MODEL_JETS];
+        if(CavityModel_table_jets(z,source,jet_re,jet_im,jets)) {
+            for(int n=0;n<jets;++n) {
                 C[n]=cos(T)*jet_re[n]+sin(T)*jet_im[n];
                 S[n]=sin(T)*jet_re[n]-cos(T)*jet_im[n];
                 if(!isfinite(S[n])||!isfinite(C[n]))return CAVITY_MODEL_NONFINITE;
@@ -590,16 +620,16 @@ int CavityModel_effects_profile(double T,double z,const CavityModelSource *sourc
             const double c=cos(kappa*z),s=sin(kappa*z);
             double p_re=forward*(source->harmonic_re[m]*c-source->harmonic_im[m]*s);
             double p_im=forward*(source->harmonic_re[m]*s+source->harmonic_im[m]*c);
-            for(int n=0;n<6;++n) {
+            for(int n=0;n<jets;++n) {
                 C[n]+=cos(T)*p_re+sin(T)*p_im;
                 S[n]+=sin(T)*p_re-cos(T)*p_im;
                 const double turned=p_re;p_re=-kappa*p_im;p_im=kappa*turned;
             }
         }
-        for(int n=0;n<6;++n)if(!isfinite(S[n])||!isfinite(C[n]))return CAVITY_MODEL_NONFINITE;
+        for(int n=0;n<jets;++n)if(!isfinite(S[n])||!isfinite(C[n]))return CAVITY_MODEL_NONFINITE;
         return CAVITY_MODEL_OK;
     }
-    double f[6]={0.,0.,0.,0.,0.,0.};
+    double f[CAVITY_MODEL_JETS]={0.};
     if(fabs(z)<=H)f[0]=1.;
     const double nu=xt_float_or_tpsa_const_part(source->carrier);
     const double amp[2]={xt_float_or_tpsa_const_part(source->forward),
@@ -614,7 +644,7 @@ int CavityModel_effects_profile(double T,double z,const CavityModelSource *sourc
         sine[wave]=sinT*cs+cosT*ss;
         cosine[wave]=cosT*cs-sinT*ss;
     }
-    for(int n=0;n<6;++n) {S[n]=0.;C[n]=0.;
+    for(int n=0;n<jets;++n) {S[n]=0.;C[n]=0.;
         for(int wave=0;wave<2;++wave) {
             const double w=wave?nu:-nu;
             double choose=1.;
@@ -661,31 +691,54 @@ int CavityModel_effects_static_components(const CavityModelSource *source,
     return isfinite(*b)&&isfinite(*gn)&&isfinite(*gs)
         ?CAVITY_MODEL_OK:CAVITY_MODEL_NONFINITE;
 }
+// The radial sums of the effect fields from jets 0..2M of a phase profile F,
+// with P_n = (1 + d_Z^2)^n F: E_z's sum_{n<=M} (-1/4)^n/n!^2 r^2n P_n, then
+// sum_{n<M} (-1/4)^n/(2 n!(n+1)!) r^2n of P_n and of P_n', each followed by
+// its r^2 derivative.
+GPUFUN
+void CavityModel_effects_series(const double F[],int M,double r2,double sums[6]) {
+    double P[CAVITY_MODEL_JETS];
+    for(int j=0;j<=2*M;++j)P[j]=F[j];
+    for(int i=0;i<6;++i)sums[i]=0.;
+    double power=1.,slope=0.,alpha=1.,beta=.5;
+    for(int n=0;n<=M;++n) {
+        sums[0]+=alpha*power*P[0];sums[1]+=alpha*slope*P[0];
+        if(n<M) {
+            sums[2]+=beta*power*P[0];sums[3]+=beta*slope*P[0];
+            sums[4]+=beta*power*P[1];sums[5]+=beta*slope*P[1];
+        }
+        for(int j=0;j+2<=2*(M-n);++j)P[j]+=P[j+2];
+        slope=(double)(n+1)*power;power*=r2;
+        alpha*=-.25/((n+1.)*(n+1.));beta*=-.25/((n+1.)*(n+2.));
+    }
+}
 GPUFUN
 int CavityModel_effects_fields(const double q[6],double z,
         const CavityModelSource *source,CavityModelEffectsField *field) {
-    double S[6],C[6];int status=CavityModel_effects_profile(q[2],z,source,S,C);
+    const int M=(int)(source->radial_order/2);
+    double S[CAVITY_MODEL_JETS],C[CAVITY_MODEL_JETS];
+    int status=CavityModel_effects_profile(q[2],z,source,2*M+2,S,C);
     if(status!=CAVITY_MODEL_OK)return status;
-    const double x=q[0],y=q[1],r2=x*x+y*y,r4=r2*r2;
-    const double K=C[1]/2.-r2*(C[1]+C[3])/16.;
-    const double L=S[0]/2.-r2*(S[0]+S[2])/16.;
+    const double x=q[0],y=q[1],r2=x*x+y*y;
+    double sine[6],cosine[6];
+    CavityModel_effects_series(S,M,r2,sine);CavityModel_effects_series(C,M,r2,cosine);
+    const double K=cosine[4],L=sine[2];
     field->E[0]=-x*K;field->E[1]=-y*K;
-    field->E[2]=C[0]-r2*(C[0]+C[2])/4.
-               +r4*(C[0]+2.*C[2]+C[4])/64.
-               +xt_float_or_tpsa_const_part(source->dc_gradient);
+    field->E[2]=cosine[0]+xt_float_or_tpsa_const_part(source->dc_gradient);
     field->B[0]=y*L;field->B[1]=-x*L;field->B[2]=0.;
     for(int axis=0;axis<4;++axis) {
         const double dx=axis==1,dy=axis==2,dr=2.*(x*dx+y*dy);
-        double ds[5]={0.},dc[5]={0.};
-        for(int j=0;j<5;++j) {
+        double ds[CAVITY_MODEL_JETS]={0.},dc[CAVITY_MODEL_JETS]={0.};
+        for(int j=0;j<=2*M;++j) {
             if(axis==0){ds[j]=C[j];dc[j]=-S[j];}
             if(axis==3){ds[j]=S[j+1];dc[j]=C[j+1];}
         }
-        const double dK=dc[1]/2.-(dr*(C[1]+C[3])+r2*(dc[1]+dc[3]))/16.;
-        const double dL=ds[0]/2.-(dr*(S[0]+S[2])+r2*(ds[0]+ds[2]))/16.;
+        double dsine[6],dcosine[6];
+        CavityModel_effects_series(ds,M,r2,dsine);
+        CavityModel_effects_series(dc,M,r2,dcosine);
+        const double dK=dr*cosine[5]+dcosine[4],dL=dr*sine[3]+dsine[2];
         field->dE[axis][0]=-dx*K-x*dK;field->dE[axis][1]=-dy*K-y*dK;
-        field->dE[axis][2]=dc[0]-(dr*(C[0]+C[2])+r2*(dc[0]+dc[2]))/4.
-            +(2.*r2*dr*(C[0]+2.*C[2]+C[4])+r4*(dc[0]+2.*dc[2]+dc[4]))/64.;
+        field->dE[axis][2]=dr*cosine[1]+dcosine[0];
         field->dB[axis][0]=dy*L+y*dL;field->dB[axis][1]=-dx*L-x*dL;
         field->dB[axis][2]=0.;
     }
