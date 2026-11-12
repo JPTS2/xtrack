@@ -33,6 +33,12 @@ THETA0          = 0.3                    # Horizontal orientation [rad]
 PHI0            = 0.0                    # Elevation [rad]
 PSI0            = 0.0                    # Roll [rad]
 
+########################################
+# Off-momentum closed orbit
+########################################
+DELTA0          = 1.0e-4                 # Constant relative momentum offset
+ORBIT_SCALE     = 10000                  # Floor-plot displacement magnification
+
 ################################################################################
 # Place a selected entrance at the assigned pose
 ################################################################################
@@ -87,6 +93,34 @@ print('Entrance to selected BPM, default placement [m]:', reference_distance)
 print('Ring entrance to selected BPM, assigned placement [m]:', placed_distance)
 
 ################################################################################
+# Put the same local closed orbit in both global frames
+################################################################################
+
+########################################
+# Calculate the orbit at the surveyed entrances
+########################################
+# The demo ring has RF and radiation off. Its off-momentum orbit is periodic
+# in the transverse planes, with a fixed delta; this is a 4D optics solution.
+tw = line.twiss(method = '4d', delta0 = DELTA0)
+orbit_reference = (reference.XYZ + tw.x[:, None] * reference.ex
+                   + tw.y[:, None] * reference.ey)
+orbit_placed = (placed.XYZ + tw.x[:, None] * placed.ex
+                + tw.y[:, None] * placed.ey)
+print('Maximum closed-orbit |x| and |y| [mm]:',
+      np.max(np.abs(tw.x)) * 1e3, np.max(np.abs(tw.y)) * 1e3)
+
+########################################
+# Compare with the rigid change of global placement
+########################################
+rotation = (placed.E_matrix[origin_index]
+            @ reference.E_matrix[origin_index].T)
+orbit_transformed = (
+    (orbit_reference - reference.XYZ[origin_index]) @ rotation.T
+    + placed.XYZ[origin_index])
+print('Maximum global-orbit placement difference [m]:',
+      np.max(np.linalg.norm(orbit_placed - orbit_transformed, axis = 1)))
+
+################################################################################
 # Plot the assigned placement and entrance tangent
 ################################################################################
 # This default pose is planar. The polyline joins element boundaries; bend
@@ -94,6 +128,10 @@ print('Ring entrance to selected BPM, assigned placement [m]:', placed_distance)
 tangent = placed.E_matrix[origin_index, :, 2]
 fig, ax = plt.subplots(figsize = (7, 6))
 ax.plot(placed.Z, placed.X, '.-', label = 'Placed reference path')
+# Magnify only displacement from the reference, not the reference geometry.
+orbit_display = placed.XYZ + ORBIT_SCALE * (orbit_placed - placed.XYZ)
+ax.plot(orbit_display[:, 2], orbit_display[:, 0],
+        label = f'Closed-orbit displacement x {ORBIT_SCALE}')
 ax.plot(Z0, X0, 'o', label = SURVEY_ORIGIN)
 ax.quiver(
     Z0, X0, tangent[2], tangent[0],
@@ -107,4 +145,17 @@ ax.set_aspect('equal', adjustable = 'datalim')
 ax.grid()
 ax.legend()
 fig.tight_layout()
+
+################################################################################
+# Inspect the physical closed-orbit displacement
+################################################################################
+fig_orbit, ax_orbit = plt.subplots(figsize = (8, 4))
+ax_orbit.plot(tw.s, tw.x * 1e3, label = 'x')
+ax_orbit.plot(tw.s, tw.y * 1e3, label = 'y')
+ax_orbit.set_xlabel('Reference path length s [m]')
+ax_orbit.set_ylabel('Local closed-orbit displacement [mm]')
+ax_orbit.set_title(f'Off-momentum orbit, delta = {DELTA0:g}')
+ax_orbit.grid()
+ax_orbit.legend()
+fig_orbit.tight_layout()
 plt.show()

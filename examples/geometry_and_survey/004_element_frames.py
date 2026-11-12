@@ -6,9 +6,12 @@
 ################################################################################
 # Required packages
 ################################################################################
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import xtrack as xt
+from xtrack.survey import SurveyTable
 
 ################################################################################
 # User parameters
@@ -20,6 +23,7 @@ import xtrack as xt
 LINE_LENGTH     = 4.0                    # [m]
 QUAD_START      = 1.0                    # Entrance s [m]
 QUAD_LENGTH     = 2.0                    # [m]
+N_SLICES        = 4
 
 ########################################
 # Element alignment and local point
@@ -28,6 +32,11 @@ ANCHOR_S        = 0.75                   # Pivot distance from entry [m]
 SHIFT_X         = 0.10                   # Horizontal translation [m]
 YAW             = 0.20                   # Rotation about local y [rad]
 LOCAL_POINT     = np.array([0.02, 0.0, 0.5])  # Local (x, y, s) [m]
+
+########################################
+# Output file
+########################################
+SAVE_FILE       = 'outputs/element_frames.json'
 
 ################################################################################
 # Build a straight reference line with a displaced, yawed quadrupole
@@ -101,6 +110,52 @@ elem_start_ccs = elem_start.to_ccs()
 print('Actual entrance in CCS:', elem_start_ccs)
 
 ################################################################################
+# Preserve the element frames through thick slicing
+################################################################################
+
+########################################
+# Slice a separate copy of the same aligned element
+########################################
+sliced = line.copy()
+sliced.slice_thick_elements([
+    xt.Strategy(xt.Uniform(N_SLICES, mode = 'thick'), name = 'q'),
+])
+sliced_survey = sliced.survey(include_element_frames = True)
+slice_names = [name for name in sliced.element_names
+               if isinstance(sliced.get(name), xt.ThickSliceQuadrupole)]
+first_slice = sliced_survey.get_all_frames(slice_names[0])
+last_slice  = sliced_survey.get_all_frames(slice_names[-1])
+sliced_survey.rows[slice_names].cols[
+    'name s X_elem_start Z_elem_start X_elem_end Z_elem_end'].show()
+
+########################################
+# Compare the physical entrance and exit frames
+########################################
+for label, parent_frame, slice_frame in [
+    ('Entrance', elem_start, first_slice['elem_start']),
+    ('Exit', elem_end, last_slice['elem_end']),
+]:
+    print(label, 'sliced minus parent position [m]:',
+          slice_frame.XYZ - parent_frame.XYZ)
+    print(label, 'largest basis difference:',
+          np.max(np.abs(slice_frame.E_matrix - parent_frame.E_matrix)))
+
+################################################################################
+# Save and reload the surveyed frames
+################################################################################
+# Native JSON preserves frame arrays and names; save the model separately.
+save_path = Path(__file__).resolve().parent / SAVE_FILE
+save_path.parent.mkdir(parents = True, exist_ok = True)
+survey.to_json(save_path, exclude = 'line')
+loaded = SurveyTable.from_json(save_path)
+loaded_frame = loaded.get_all_frames('q')['elem_start']
+print('Saved survey:', save_path)
+print('Reloaded actual entrance minus original [m]:',
+      loaded_frame.XYZ - elem_start.XYZ)
+print('Reloaded entrance basis difference:',
+      np.max(np.abs(loaded_frame.E_matrix - elem_start.E_matrix)))
+
+################################################################################
 # Plot the reference placement, actual element and pivots
 ################################################################################
 fig, ax = plt.subplots(figsize = (8, 5))
@@ -118,6 +173,11 @@ for start, end, label, color in [
 ax.plot(reference_pivot[2], reference_pivot[0], 'o', label = 'Reference pivot')
 ax.plot(actual_pivot[2], actual_pivot[0], 'x', label = 'Shifted pivot')
 ax.plot(global_point[2], global_point[0], 'k+', label = 'Local point in global')
+slice_boundaries = np.array([
+    sliced_survey.get_all_frames(name)['elem_start'].XYZ
+    for name in slice_names] + [last_slice['elem_end'].XYZ])
+ax.plot(slice_boundaries[:, 2], slice_boundaries[:, 0], 'k|',
+        markersize = 12, label = 'Thick-slice boundaries')
 ax.set_xlabel('Z [m]')
 ax.set_ylabel('X [m]')
 ax.axis('equal')

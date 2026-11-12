@@ -15,8 +15,8 @@ plot to `xplt.FloorPlot`.
 | --- | --- |
 | [001_survey_a_line.py](001_survey_a_line.py) | Read positions and angles and draw the native transport line |
 | [002_ring_closure.py](002_ring_closure.py) | Check ring closure in position and orientation |
-| [003_survey_from_a_selected_point.py](003_survey_from_a_selected_point.py) | Assign global coordinates and angles at a chosen entrance without cycling the line |
-| [004_element_frames.py](004_element_frames.py) | Compare reference and actual element frames and transform local coordinates |
+| [003_survey_from_a_selected_point.py](003_survey_from_a_selected_point.py) | Assign a global pose and reconstruct the same local closed orbit in two placements |
+| [004_element_frames.py](004_element_frames.py) | Compare reference/actual frames, preserve thick-slice endpoints and save a survey snapshot |
 
 `001` uses the native transport line; `002` and `003` use the
 [shared demo ring](../../test_data/example_lattices/demo_ring/README.md).
@@ -33,6 +33,12 @@ upstream of that entrance, remain in their original line order. The example's
 horizontal plot is a projection if you change the elevation or roll.
 Its orientation angles are unwrapped along the original line, so the selected
 entrance's theta can differ from its assigned value by a multiple of `2*pi`.
+The 4D closed orbit has fixed `delta = 1e-4`, with RF and radiation off. Its
+positions are reconstructed on the surveyed transverse planes using the local
+`ex` and `ey` axes. The floor plot magnifies only the orbit displacement by the
+labelled factor; a separate plot shows the physical displacement in millimetres.
+Changing the global pose rotates/translates the result without changing that
+local orbit.
 
 `004` uses a small inline quadrupole line. `rot_shift_anchor` is a distance in
 metres from the element entrance. It compares the reference and actual element
@@ -40,6 +46,16 @@ frames, transforms the same local point to global coordinates, then expresses
 the actual frame in CCS conventions. CCS conversion changes the coordinate
 basis; it does not locate the model geographically at CERN. Its azimuth is
 reported in gon while the other survey angles retain radians.
+Thick slices of a separate copy preserve this quadrupole's physical entrance
+and exit frames. The native JSON snapshot retains the surveyed frame arrays,
+without embedding a live line; save the model separately for new calculations.
+The example writes `outputs/element_frames.json` beside the script.
+
+CCS basis conversion is distinct from interpreting GEODE displacement reports.
+It does not choose radial/RST displacement signs, a socket pivot or a policy for
+missing endpoint measurements. The retained [machine survey workflow](../survey_ccs/)
+still uses a private geodesy helper and machine inputs; those contracts must be
+settled before it becomes a recommended native example.
 
 For placement and shared objects, see [line construction](../line_construction/).
 For particle coordinate transformations, see
