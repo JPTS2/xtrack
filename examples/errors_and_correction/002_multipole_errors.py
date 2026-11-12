@@ -28,7 +28,8 @@ SEXT_RMS        = 0.02                  # Sextupole/quadrupole ratio [m^-1]
 # Fixed absolute error and a main-family change
 ########################################
 ABS_K2L         = 1e-3                  # Additive integrated sextupole [m^-2]
-STRENGTH_FACTOR = 1.1                   # Multiply the main family strength
+STRENGTH_FACTOR = 1.1                   # Main-strength and coefficient changes
+SKEW_K1S        = 0.02                  # Isolated comparison magnet [m^-2]
 
 ################################################################################
 # Select six quadrupoles and allocate their relative error arrays
@@ -41,7 +42,8 @@ rng         = np.random.default_rng(SEED)
 line.extend_knl_rel_ksl_rel(order = 2, element_names = quad_names)
 
 # Quadrupoles use main_strength = k1*length by default. Setting main_is_skew
-# would select k1s*length instead. This example keeps the normal reference.
+# would select k1s*length instead. The ring keeps the normal reference;
+# an isolated copy below demonstrates that alternative.
 
 ################################################################################
 # Add random relative errors and a fixed absolute sextupole component
@@ -100,3 +102,70 @@ print('Skew quadrupole integral before/after [m^-1]:',
       ksl_before[1], ksl_after[1])
 line.get_table(attr = True).rows[quad_names].cols[
     'name k1l k1sl k2l'].show(maxwidth = 'full')
+
+################################################################################
+# Replace random arrays with a common expression-based error pattern
+################################################################################
+
+########################################
+# Apply one live coefficient scale to all selected quadrupoles
+########################################
+# This alternative intentionally replaces the previous random relative arrays.
+# Absolute knl remains separate. The arrays already have three entries from
+# extend_knl_rel_ksl_rel above; env.set requires that matching array length.
+env['systematic_scale'] = 1.0
+env.set(
+    quad_names,
+    knl_rel = [0.0, env.ref['systematic_scale'] * NORMAL_RMS,
+               env.ref['systematic_scale'] * SEXT_RMS],
+    ksl_rel = [0.0, env.ref['systematic_scale'] * SKEW_RMS, 0.0],
+)
+print('Shared relative sextupole coefficient expression:',
+      env.ref[quad_names[0]].knl_rel[2].xdeps.expr)
+# Only the coefficient graph is wired here. Native main_strength supplies the
+# signed main-field integral automatically, including after family changes.
+
+########################################
+# Change the common coefficient without changing any main magnet strength
+########################################
+bulk_before = line[quad_names[0]].get_total_knl_ksl()
+env['systematic_scale'] = STRENGTH_FACTOR
+bulk_after  = line[quad_names[0]].get_total_knl_ksl()
+print('Relative sextupole integral before/after coefficient change [m^-2]:',
+      bulk_before[0][2] - ABS_K2L, bulk_after[0][2] - ABS_K2L)
+line.get_table(attr = True).rows[quad_names].cols[
+    'name k1l k1sl k2l'].show(maxwidth = 'full')
+
+################################################################################
+# Choose the signed normal or skew main component as the error reference
+################################################################################
+
+########################################
+# Compare both choices on one independent magnet outside the ring
+########################################
+# Keep both body components fixed while changing which one scales the errors.
+# main_is_skew does not rotate the magnet or remove its normal body field.
+# The copy shares coefficient knobs but is not inserted into the ring.
+env['reference_k1s']    = SKEW_K1S
+env.new('reference.quad', quad_names[0], k1s = 'reference_k1s')
+reference_magnet    = env['reference.quad']
+reference_totals    = {}
+for label, use_skew in [('Normal main', False), ('Skew main', True)]:
+    env.set('reference.quad', main_is_skew = use_skew)
+    normal, skew    = reference_magnet.get_total_knl_ksl()
+    reference_totals[label] = (normal, skew)
+    print(label, 'signed main integral [m^-1]:', reference_magnet.main_strength)
+    print('Body k1 / k1s [m^-2]:', reference_magnet.k1, reference_magnet.k1s)
+    print('Relative sextupole integral [m^-2]:', normal[2] - ABS_K2L)
+
+########################################
+# Change the skew excitation with the skew reference selected
+########################################
+skew_main_before    = reference_magnet.main_strength
+env['reference_k1s'] *= STRENGTH_FACTOR
+skew_powered        = reference_magnet.get_total_knl_ksl()
+print('Signed skew main integral before/after [m^-1]:',
+      skew_main_before, reference_magnet.main_strength)
+print('Relative sextupole integral before/after skew excitation [m^-2]:',
+      reference_totals['Skew main'][0][2] - ABS_K2L,
+      skew_powered[0][2] - ABS_K2L)
