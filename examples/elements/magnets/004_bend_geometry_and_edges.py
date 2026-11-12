@@ -58,7 +58,7 @@ print('Changed chord and arc lengths [m]:',
 print('Changed analytic arc length [m]:',
       CHORD_LENGTH / np.sinc(CHANGED_ANGLE / (2 * np.pi)))
 print('Changed reference curvature and field k0 [m^-1]:',
-      CHANGED_ANGLE / changed.length)
+      changed.h, changed.h)
 
 ################################################################################
 # Inspect edge focusing at the original geometry
@@ -93,3 +93,69 @@ for label, magnet in [('sector', sector), ('rectangular', rectangular)]:
         print(label, 'edges active:', edges_active,
               'exit y [mm]:', particles.y[0] * 1e3,
               'exit P_y/p0 [1e-6]:', particles.py[0] * 1e6)
+
+################################################################################
+# Distinguish geometric curvature from the powered field
+################################################################################
+
+########################################
+# Keep the field fixed while changing reference geometry
+########################################
+powered = rectangular.copy()
+powered.k0 = rectangular.h
+powered.angle = CHANGED_ANGLE
+print('Geometry-following flag, h and effective k0 [m^-1]:',
+      changed.k0_from_h, changed.h, changed.h)
+print('Independently powered k0_from_h, h and k0 [m^-1]:',
+      powered.k0_from_h, powered.h, powered.k0)
+
+########################################
+# Set geometry in either order and restore both bend types
+########################################
+angle_first = xt.RBend(angle = BEND_ANGLE)
+angle_first.length_straight = CHORD_LENGTH
+length_first = xt.RBend(length_straight = CHORD_LENGTH)
+length_first.angle = BEND_ANGLE
+print('Angle-first and length-first reference arcs [m]:',
+      angle_first.length, length_first.length)
+for magnet in [sector, rectangular, powered]:
+    restored = type(magnet).from_dict(magnet.to_dict())
+    print(type(magnet).__name__, 'restored arc, h, k0 setting, k0_from_h:',
+          restored.length, restored.h, restored.k0, restored.k0_from_h)
+
+################################################################################
+# Compare rectangular body models at common reference frames
+################################################################################
+
+########################################
+# Track the same off-axis launch through each model
+########################################
+# Full edge maps are used here, unlike the linear-edge illustration above.
+# The geometry and field are identical; rbend_model selects the body map.
+body_outputs = {}
+for body in ['curved-body', 'straight-body']:
+    magnet = rectangular.copy()
+    magnet.rbend_model = body
+    magnet.edge_entry_model = 'full'
+    magnet.edge_exit_model = 'full'
+    model_line = xt.Line(elements = {'bend': magnet})
+    model_line.set_particle_ref('proton', p0c = P0C)
+    probe = model_line.build_particles(x = 1e-3, y = Y_START, delta = 1e-3)
+    model_line.track(probe)
+    body_outputs[body] = probe
+    survey = model_line.survey(include_element_frames = True)
+    exit_frame = survey.get_all_frames('bend')['ref_end']
+    global_exit = (exit_frame.XYZ + probe.x[0] * exit_frame.ex
+                   + probe.y[0] * exit_frame.ey)
+    print(body, 'exit (x, px, y, py):',
+          probe.x[0], probe.px[0], probe.y[0], probe.py[0])
+    print(body, 'global exit (X, Y, Z) [m]:', global_exit)
+    print(body, 'reference exit tangent:', exit_frame.es)
+
+########################################
+# Inspect the body-model difference
+########################################
+for coordinate in ['x', 'px', 'y', 'py']:
+    difference = (getattr(body_outputs['straight-body'], coordinate)
+                  - getattr(body_outputs['curved-body'], coordinate))
+    print('Straight minus curved body', coordinate, ':', difference[0])

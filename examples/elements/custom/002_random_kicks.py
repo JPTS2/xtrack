@@ -17,18 +17,18 @@ P0C             = 1e9             # Reference momentum [eV/c], proton
 SIGMA_PX        = 1e-6            # RMS normalized horizontal kick per passage
 NUM_PARTICLES   = 4096
 NUM_PASSAGES    = 16
-SEED_OFFSET     = 1234            # Each particle receives its own nonzero seed
 
 ################################################################################
-# Define independent Gaussian kicks
+# Define Gaussian and bounded-uniform kicks
 ################################################################################
 
 ########################################
 # Include the Xtrack random generator
 ########################################
-class GaussianKick(xt.BeamElement):
-    _xofields   = {'sigma_px': xo.Float64}
-    _depends_on = [xt.RandomNormal]
+class RandomKick(xt.BeamElement):
+    _xofields   = {'sigma_px': xo.Float64, 'use_uniform': xo.Int64}
+    _depends_on = [xt.RandomNormal, xt.RandomUniform]
+    needs_rng   = True
 
     ########################################
     # Draw from the current particle's stream
@@ -37,18 +37,26 @@ class GaussianKick(xt.BeamElement):
         #include "xtrack/headers/track.h"
 
         GPUFUN
-        void GaussianKick_track_local_particle(
-                GaussianKickData el, LocalParticle* part0) {
-            double sigma = GaussianKickData_get_sigma_px(el);
+        void RandomKick_track_local_particle(
+                RandomKickData el, LocalParticle* part0) {
+            double sigma = RandomKickData_get_sigma_px(el);
+            int use_uniform = RandomKickData_get_use_uniform(el);
             START_PER_PARTICLE_BLOCK(part0, part);
-                double kick = sigma * RandomNormal_generate(part);
+                double kick;
+                if (use_uniform) {
+                    // Uniform[-sqrt(3)*sigma, sqrt(3)*sigma] has RMS sigma.
+                    kick = sigma * sqrt(12.)
+                        * (RandomUniform_generate(part) - 0.5);
+                } else {
+                    kick = sigma * RandomNormal_generate(part);
+                }
                 LocalParticle_add_to_px(part, kick);
             END_PER_PARTICLE_BLOCK;
         }
     ''']
 
 ################################################################################
-# Seed the streams and track the ensemble
+# Initialize the streams and track the ensemble
 ################################################################################
 
 ########################################
@@ -56,15 +64,20 @@ class GaussianKick(xt.BeamElement):
 ########################################
 context = xo.ContextCpu()
 context.allow_kernel_compilation = True
-element = GaussianKick(_context = context, sigma_px = SIGMA_PX)
+element = RandomKick(
+    _context    = context,
+    sigma_px    = SIGMA_PX,
+    use_uniform = False)
 initial = xt.Particles(
     _context    = context,
     p0c         = P0C,
     x           = np.zeros(NUM_PARTICLES))
-seeds = SEED_OFFSET + np.arange(NUM_PARTICLES, dtype = np.uint32)
-# Xtrack currently exposes explicit per-particle seeding through this
-# underscored initializer. Copying Particles also copies their RNG states.
-initial._init_random_number_generator(seeds = seeds)
+# Public sampling initializes the particle-local streams without changing px.
+# Copying the particles then preserves the RNG state for exact replay.
+samples = xt.RandomNormal(_context = context).generate(
+    n_samples   = NUM_PARTICLES,
+    particles   = initial)
+print('Initial standard-normal sample RMS:', np.std(samples))
 particles = initial.copy()
 replayed  = initial.copy()
 
@@ -86,3 +99,36 @@ print('Measured RMS px:', np.std(particles.px))
 print('Mean px:', np.mean(particles.px))
 print('Maximum replay difference:',
       np.max(np.abs(particles.px - replayed.px)))
+
+################################################################################
+# Change the single-passage distribution
+################################################################################
+
+########################################
+# Keep the same RMS with bounded-uniform kicks
+########################################
+uniform_element = RandomKick(
+    _context    = context,
+    sigma_px    = SIGMA_PX,
+    use_uniform = True)
+uniform_particles = initial.copy()
+uniform_element.track(uniform_particles)
+print('Uniform single-passage expected RMS:', SIGMA_PX)
+print('Uniform single-passage measured RMS:', np.std(uniform_particles.px))
+print('Uniform kick bounds:', -np.sqrt(3) * SIGMA_PX,
+      np.sqrt(3) * SIGMA_PX)
+print('Observed minimum and maximum:',
+      np.min(uniform_particles.px), np.max(uniform_particles.px))
+
+########################################
+# Distinguish the generator contracts
+########################################
+# RandomUniformAccurate gives finer unit-interval resolution. The exponential
+# distribution is positive with unit mean, rather than zero mean and unit RMS.
+for generator in [xt.RandomUniformAccurate, xt.RandomExponential]:
+    samples = generator(_context = context).generate(
+        n_samples   = NUM_PARTICLES,
+        particles   = initial.copy())
+    print(generator.__name__, 'mean / std:', np.mean(samples), np.std(samples))
+# Rutherford scattering needs its own physical parameters; see its studies in
+# examples/random_number_generator/ rather than treating it as generic noise.

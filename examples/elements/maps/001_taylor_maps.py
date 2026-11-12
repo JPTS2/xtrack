@@ -6,6 +6,8 @@
 ################################################################################
 # Required packages
 ################################################################################
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import xtrack as xt
@@ -36,6 +38,13 @@ PY_PER_Y        = -0.01                 # P_y/p0 per metre of entrance y
 ########################################
 ZETA_PROBE      = 0.01                  # [m]
 DELTA_PROBE     = 1.0e-4                # (p - p0) / p0
+
+########################################
+# Ring reduction
+########################################
+LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
+SPLIT_AT        = ['ip.1', 'bpm.s2.f', 'bpm.s4.f']
+RING_AMPLITUDES = np.geomspace(1e-6, 1e-3, 7)  # Entrance x [m]
 
 ################################################################################
 # Build the known nonlinear reference map
@@ -169,4 +178,60 @@ ax.set_title('Taylor approximations to the same drift and multipole map')
 ax.legend()
 ax.grid(which = 'major')
 fig.tight_layout()
+
+################################################################################
+# Replace ring segments by local quadratic maps
+################################################################################
+
+########################################
+# Retain named observation planes
+########################################
+repo_root = Path(__file__).resolve().parents[3]
+ring = xt.load(repo_root / LATTICE_FILE)['demo']
+# The demo ring has RF off. Map extraction uses this periodic 4D solution.
+ring.twiss_default['method'] = '4d'
+reduced = ring.get_line_with_second_order_maps(split_at = SPLIT_AT)
+reduced.get_table().cols['name s_start s_end element_type'].show()
+
+########################################
+# Compare the expansion orbit and linear optics
+########################################
+tw_ring = ring.twiss()
+tw_reduced = reduced.twiss(method = '4d')
+print('Original and reduced fractional tunes:')
+print(np.array([tw_ring.qx, tw_ring.qy]) % 1,
+      np.array([tw_reduced.qx, tw_reduced.qy]) % 1)
+print('Largest split-plane horizontal orbit difference [m]:',
+      np.max(np.abs(tw_ring.rows[SPLIT_AT].x
+                    - tw_reduced.rows[SPLIT_AT].x)))
+print('Largest relative split-plane beta difference:')
+for coordinate in ['betx', 'bety']:
+    original = tw_ring.rows[SPLIT_AT][coordinate]
+    mapped = tw_reduced.rows[SPLIT_AT][coordinate]
+    print(coordinate, np.max(np.abs(mapped / original - 1)))
+
+########################################
+# Check finite-amplitude transport independently
+########################################
+ring_initial = ring.build_particles(
+    x       = RING_AMPLITUDES,
+    y       = Y_OVER_X * RING_AMPLITUDES,
+)
+ring_particles = ring_initial.copy()
+map_particles = ring_initial.copy()
+ring.track(ring_particles)
+reduced.track(map_particles)
+ring_error = np.hypot(map_particles.px - ring_particles.px,
+                      map_particles.py - ring_particles.py)
+print('Ring reduction momentum residuals:', ring_error)
+
+# This is a local expansion, not a global replacement for nonlinear tracking.
+# A changed lattice requires extracting new maps about its new reference orbit.
+fig_ring, ax_ring = plt.subplots(figsize = (8, 4))
+ax_ring.loglog(RING_AMPLITUDES * 1e3, ring_error, 'o-')
+ax_ring.set_xlabel('Entrance x amplitude [mm]')
+ax_ring.set_ylabel('One-turn transverse momentum residual [1]')
+ax_ring.set_title('Demo ring reduced at three named observation planes')
+ax_ring.grid(which = 'major')
+fig_ring.tight_layout()
 plt.show()

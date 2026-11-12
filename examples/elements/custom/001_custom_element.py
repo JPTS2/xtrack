@@ -84,3 +84,35 @@ xt.Table(
         'py_custom':     particles.py,
         'py_builtin':    built_in.py},
     index   = 'particle_id').show(maxwidth = 'full')
+
+################################################################################
+# Use a Python tracking object
+################################################################################
+
+########################################
+# Apply the same kick in a CPU callback
+########################################
+# A Python object with track(particles) is scheduled outside compiled sections.
+# This CPU recipe handles live reference-species particles only.
+class PythonQuadrupole:
+    def __init__(self, k1l):
+        self.k1l = k1l
+
+    def track(self, particles):
+        live = particles.state > 0
+        particles.px[live] -= self.k1l * particles.x[live]
+        particles.py[live] += self.k1l * particles.y[live]
+
+
+########################################
+# Register the object and track a fresh launch
+########################################
+line = xt.Line(elements = [xt.Marker()])
+line.append('python_quad', PythonQuadrupole(K1L))
+line.build_tracker(_context = context)
+python_particles = xt.Particles(_context = context, p0c = P0C, x = X, y = Y)
+line.track(python_particles)
+print('Maximum Python/compiled px difference:',
+      np.max(np.abs(python_particles.px - particles.px)))
+print('Maximum Python/compiled py difference:',
+      np.max(np.abs(python_particles.py - particles.py)))
