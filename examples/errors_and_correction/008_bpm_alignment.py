@@ -40,9 +40,8 @@ repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env['demo']
 line.twiss_default['method']    = '4d'      # RF voltage is zero.
-tw_ref      = line.twiss4d()
+tw_before      = line.twiss4d()
 bpms        = line.steering_monitors_x
-tw_before   = tw_ref
 
 ########################################
 # Supply BPM calibration geometry to the correction object
@@ -58,7 +57,7 @@ alignment   = {
 # These offsets are readout centres, not a subtraction that recovers the design
 # orbit. The correction tries to centre the beam in the displaced BPM frames.
 correction  = line.correct_trajectory(
-    twiss_table         = tw_ref,
+    twiss_table         = tw_before,
     monitor_alignment   = alignment,
     rcond               = RCOND,
     run                 = False,

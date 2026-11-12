@@ -19,8 +19,11 @@ import xtrack as xt
 ########################################
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 LINE_NAME       = 'demo'
-QX_TARGET       = 8.760                  # Full tunes, including integer part
+QX_TARGET       = 8.760                 # Full tunes, including integer part
 QY_TARGET       = 10.020
+PHASE_START     = 'bpm.s1.f'
+PHASE_END       = 'bpm.s2.f'
+PHASE_INCREMENT = 1e-4                   # Relative phase increment [turns]
 
 ########################################
 # Solver settings
@@ -89,6 +92,9 @@ opt.step(MANUAL_STEPS)
 print('After the manually requested steps:')
 opt.target_status()
 opt.vary_status()
+print('Original strengths from iteration 0:',
+      opt.get_knob_values(iteration = 0))
+print('Current strengths:', opt.get_knob_values())
 print('Iteration history:')
 opt.log().show(maxwidth = 'full')
 
@@ -146,3 +152,38 @@ for name in ['kqf', 'kqd']:
     strength = env[name]
     print(f'{name} = {strength:.10f} m^-2; '
           f'within bounds: {K1_MIN <= strength <= K1_MAX}')
+
+################################################################################
+# Clone the optimizer and add a local phase constraint
+################################################################################
+
+########################################
+# Free one tune to bound a relative phase
+########################################
+# The clone operates on the same ring. It has its own target definitions,
+# but changing its strengths also changes the original optimizer's model.
+phase_ref   = tw['mux', PHASE_END] - tw['mux', PHASE_START]
+phase_goal  = phase_ref + PHASE_INCREMENT
+phase_opt   = opt.clone(add_targets = xt.TargetRelPhaseAdvance(
+    'mux',
+    value   = xt.GreaterThan(phase_goal),
+    start   = PHASE_START,
+    end     = PHASE_END,
+    tol     = TUNE_TOL,
+))
+# Use both families to satisfy the phase bound while retaining Qy; release Qx.
+phase_opt.disable(target = 'horizontal')
+phase_opt.solve()
+phase_twiss = line.twiss4d()
+print('Lower bound / achieved phase advance [turns]:', phase_goal,
+      phase_twiss['mux', PHASE_END] - phase_twiss['mux', PHASE_START])
+print('Retained Qy:', phase_twiss.qy)
+print('Unconstrained Qx:', phase_twiss.qx)
+phase_opt.target_status()
+
+########################################
+# Restore the original two-tune solution
+########################################
+opt.reload(tag = 'two_tunes_matched')
+restored = line.twiss4d()
+print('Restored Qx/Qy:', restored.qx, restored.qy)
