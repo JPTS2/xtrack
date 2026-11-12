@@ -35,6 +35,13 @@ DELTA_RMS       = 1e-4                  # Relative momentum excursion
 N_SIGMAS        = 6.0                   # Requested betatron envelope scale
 N_RAYS          = 64                    # Directions for the clearance estimate
 
+########################################
+# Mechanical and closed-orbit uncertainty margins
+########################################
+TOL_R           = 50e-6                 # Profile radial tolerance [m]
+TOL_X           = 100e-6                # Pipe horizontal tolerance [m]
+TOL_CO          = 50e-6                 # Closed-orbit uncertainty [m]
+
 ################################################################################
 # Install the chamber geometry without changing the magnetic lattice
 ################################################################################
@@ -76,7 +83,7 @@ line.aperture.halo_params.update({
     'delta_rms': 0.0,
 })
 # The default halo ratios give an ellipse in normalized betatron coordinates.
-# Closed-orbit and mechanical tolerances remain zero.
+# Closed-orbit and mechanical tolerances are initially zero.
 
 ################################################################################
 # Compare monoenergetic and dispersive beam envelopes
@@ -91,7 +98,7 @@ monoenergetic, sampled      = line.aperture.get_aperture_sigmas_at_s(
     num_rays    = N_RAYS,
 )
 line.aperture.halo_params['delta_rms']  = DELTA_RMS
-clearance       = line.aperture.get_aperture_sigmas_for_twiss(
+clearance                   = line.aperture.get_aperture_sigmas_for_twiss(
     sampled,
     method                  = 'rays',
     num_rays                = N_RAYS,
@@ -105,10 +112,32 @@ clearance.cols['s n1 x y'].show(maxwidth = 'full')
 # the Gaussian RMS size obtained by adding dispersion in quadrature.
 
 ########################################
+# Reserve mechanical and orbit margins without shrinking the drawn chamber
+########################################
+sections_before     = line.aperture.get_cross_sections_at_s(sample_s)
+for position in pipe:
+    position.tol_r  = TOL_R
+line.aperture.pipe_positions['installed.chamber'].tol_x = TOL_X
+line.aperture.halo_params['tol_co'] = TOL_CO
+line.aperture.build_model()
+with_margins        = line.aperture.get_aperture_sigmas_for_twiss(
+    sampled,
+    method      = 'rays',
+    num_rays    = N_RAYS,
+)
+sections_after      = line.aperture.get_cross_sections_at_s(sample_s)
+sections_after.cols['s tol_x tol_y tol_r'].show(maxwidth = 'full')
+print('Maximum chamber-polygon change after adding margins [m]:',
+      np.max(np.abs(sections_after.cross_section
+                    - sections_before.cross_section)))
+# Mechanical tolerances belong to placements, not profile shapes. Their
+# budgets and tol_co reduce usable clearance; the nominal chamber stays put.
+
+########################################
 # Inspect directional margins at the smallest sampled clearance
 ########################################
-worst       = int(np.argmin(clearance.n1))
-print('Smallest sampled clearance n1:', clearance.n1[worst])
+worst       = int(np.argmin(with_margins.n1))
+print('Smallest sampled clearance n1 with margins:', with_margins.n1[worst])
 print('Location in quadrupole [m]:', clearance.s[worst] - start_s)
 directional, _  = line.aperture.get_hvd_aperture_sigmas_at_s(
     [clearance.s[worst]])
@@ -129,6 +158,10 @@ axes[0].plot(
 axes[0].plot(
     sample_s - start_s, clearance.n1, 's-',
     label   = 'With momentum band',
+)
+axes[0].plot(
+    sample_s - start_s, with_margins.n1, '^-',
+    label   = 'Momentum band and margins',
 )
 axes[0].axhline(
     N_SIGMAS,

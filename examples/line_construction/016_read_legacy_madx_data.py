@@ -22,9 +22,13 @@ import xtrack as xt
 # Keep the small legacy inputs visible here. The example writes local copies
 # before loading them; no MAD-X process or macro is executed.
 LEGACY_DATA = """
+chamber: marker, apertype="polygon",
+    aper_vx={-0.012, 0.012, 0.012, -0.012},
+    aper_vy={-0.008, -0.008, 0.008, 0.008};
 qf: quadrupole, l=0.4, k1:=kq;
 qd: quadrupole, l=0.4, k1:=-kq;
 transport: sequence, l=3.0, refer=centre;
+    chamber, at=0.1;
     qf, at=0.7;
     qd, at=2.3;
 endsequence;
@@ -33,7 +37,7 @@ return_path: sequence, l=3.0, refer=centre;
     qd, at=2.3;
 endsequence;
 """
-LEGACY_STRENGTHS = """
+LEGACY_STRENGTHS    = """
 kq = 0.2;
 """
 LINE_NAME   = 'transport'
@@ -52,18 +56,18 @@ SAVE_FILE   = 'outputs/converted_legacy_environment.json'
 ########################################
 # Load separate lattice and strength files
 ########################################
-output_dir = Path(__file__).resolve().parent / 'outputs'
+output_dir      = Path(__file__).resolve().parent / 'outputs'
 output_dir.mkdir(parents = True, exist_ok = True)
 lattice_path    = output_dir / 'legacy_transport.madx'
 strengths_path  = output_dir / 'legacy_strengths.madx'
 lattice_path.write_text(LEGACY_DATA)
 strengths_path.write_text(LEGACY_STRENGTHS)
-env = xt.load(
+env         = xt.load(
     file            = [lattice_path, strengths_path],
     format          = 'madx',
     reverse_lines   = ['return_path'],
 )
-line = env[LINE_NAME]
+line        = env[LINE_NAME]
 
 ########################################
 # Inspect geometry and expressions
@@ -75,6 +79,20 @@ print('Imported length [m]:', line.get_length())
 print('Imported qf and qd k1 [m^-2]:',
       line['qf/transport'].k1, line['qd/transport'].k1)
 env.info('qf/transport')
+
+########################################
+# Inspect the polygon limit created from stored aperture data
+########################################
+limits      = line.get_table().rows['.*_aper.*']
+limits.cols['name s element_type'].show()
+aperture    = line.get(limits.name[0])
+print('Imported polygon vertices x / y [m]:',
+      aperture.x_vertices, aperture.y_vertices)
+probes      = xt.Particles('electron', p0c = 1e9, x = [0.0, 0.020])
+aperture.track(probes)
+probes.sort(interleave_lost_particles = True)
+print('Inside / outside probe states:', probes.state)
+# These are native tracking limits; loading stored geometry does not run MAD-X.
 
 ########################################
 # Inspect the reversed stored beam definition
@@ -93,14 +111,14 @@ print('Forward and reversed lengths [m]:',
 ########################################
 # Change an imported variable
 ########################################
-env['kq'] = KQ_AFTER
+env['kq']   = KQ_AFTER
 print('After changing kq [m^-2]:',
       line['qf/transport'].k1, line['qd/transport'].k1)
 
 ########################################
 # Save and reload native JSON
 ########################################
-save_path = Path(__file__).resolve().parent / SAVE_FILE
+save_path       = Path(__file__).resolve().parent / SAVE_FILE
 save_path.parent.mkdir(parents = True, exist_ok = True)
 
 env.to_json(save_path)
