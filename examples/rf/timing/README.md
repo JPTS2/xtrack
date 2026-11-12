@@ -14,7 +14,7 @@ the tracking clock. Each script runs independently.
 | [002_time_delays_off_momentum.py](002_time_delays_off_momentum.py) | Apply a native time delay and find the resulting off-momentum synchronous orbit |
 | [003_rf_frequency_steering.py](003_rf_frequency_steering.py) | Find the synchronous momentum and orbit after a small RF frequency change |
 | [004_frequency_ramps_and_phase.py](004_frequency_ramps_and_phase.py) | Integrate a frequency program into a continuous RF phase |
-| [005_synchronized_time_frames.py](005_synchronized_time_frames.py) | Advance a shared frame clock while particles complete different numbers of revolutions |
+| [005_synchronized_time_frames.py](005_synchronized_time_frames.py) | Advance shared frames and measure differing revolution frequencies at a native pickup |
 
 Positive `zeta` means earlier arrival at a fixed location. The laboratory
 arrival time represented by a particle is
@@ -40,6 +40,16 @@ they do not form a simultaneous laboratory snapshot at `time_s`.
 Negative synchronization states represent waiting,
 rather than losses. The frame window must move faster than every particle;
 this example uses the CPU controller.
+
+The final acquisition continues the same probes across 128 additional frames.
+Three native coasting `BeamStatsMonitor` pickups separate the momentum classes
+by particle ID and bin their actual passage times. `time_centers` supplies the
+local pickup clock; its constant flight-time offset cancels in intervals.
+Frequencies come from more than 100 detected passages per probe, rather than
+from the stored frame counters. Endpoint-bin widths give a deterministic
+frequency bound, not a statistical error bar or an FFT resolution claim.
+The speed comparison `beta*c/C` applies to this fixed-path model; a magnetic
+ring also changes orbit length with momentum.
 
 For fixed-frequency motion and slipping RF systems, see
 [longitudinal dynamics](../dynamics/README.md). For the single-element kick
