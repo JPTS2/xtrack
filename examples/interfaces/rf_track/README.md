@@ -51,5 +51,12 @@ scope. For native synchronized RF clocks and acceleration, see
 [RF timing](../../rf/timing/README.md) and
 [acceleration](../../rf/acceleration/README.md).
 
-The older [RF-Track examples](../../rf_track/) retain magnetic volumes,
-solenoids, loss and ring-comparison workflows.
+The [ring-comparison study](../../rf_track/003_analysis.py) consumes three
+separate producers: [native Xtrack](../../rf_track/000_toy_ring_xt.py),
+[RF-Track magnetic volumes](../../rf_track/001_toy_ring_rft_volume.py) and
+[RF-Track bend elements](../../rf_track/002_toy_ring_rft_element.py).
+Their field/reference geometry and output-file contract are distinct from the
+drift comparison here. The retained [external FODO](../../rf_track/200_fodo_cell.py),
+[solenoid](../../rf_track/300_solenoid.py) and
+[loss-handling](../../rf_track/100_particle_losses.py) studies also require
+separate qualification of those broader bridge configurations.
