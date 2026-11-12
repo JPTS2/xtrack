@@ -51,6 +51,17 @@ quadrupoles = table.rows[table.element_type == 'Quadrupole']
 print('\nQuadrupoles:')
 quadrupoles.cols['name s_start s_end'].show(maxrows = 12)
 
+########################################
+# Attribute arrays in tracking order
+########################################
+# Arrays contain one value per element, without the table's final endpoint.
+attributes = [name for name in line.attr.keys() if not name.startswith('_')]
+print('\nAvailable public attributes:', attributes)
+lengths = line.attr['length']
+k1l     = line.attr['k1l']
+print('First 12 element lengths [m]:', lengths[:12])
+print('First 12 integrated quadrupole strengths [m^-1]:', k1l[:12])
+
 ################################################################################
 # Inspect the reference and strength variables
 ################################################################################
