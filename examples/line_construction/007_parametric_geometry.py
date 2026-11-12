@@ -69,3 +69,32 @@ table = line.get_table()
 print('After regenerating:')
 table.cols['name s_start s_end'].show()
 print(f'Length: {table_before.s[-1]:.3f} -> {table.s[-1]:.3f} m')
+
+################################################################################
+# Compose reversed and repeated sublines
+################################################################################
+
+########################################
+# Combine the retained geometry
+########################################
+# Minus reverses the element order; it is not a beam-direction transformation.
+composite = env.new_line(
+    name        = 'composite',
+    compose     = True,
+    components  = [line, -line, 2 * line],
+)
+composite.end_compose()
+print('Forward, reversed, then two forward sublines:')
+composite.get_table().cols['name s_start s_end'].show()
+
+########################################
+# Restore and regenerate the placed subline
+########################################
+restored = xt.Line.from_dict(line.to_dict())
+restored['scale'] = SCALE_START
+restored.regenerate_from_composer()
+restored.end_compose()
+print('Restored placed subline after resetting the scale:')
+restored.get_table().cols['name s_start s_end'].show()
+print('Original and restored subline lengths [m]:',
+      line.get_length(), restored.get_length())

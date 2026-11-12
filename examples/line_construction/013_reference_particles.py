@@ -13,6 +13,7 @@ import xtrack as xt
 ################################################################################
 P0C_START   = 1.0e9                     # Proton reference p0*c [eV]
 P0C_AFTER   = 2.0e9                     # [eV]
+P0C_OBJECT  = 0.5e9                     # Independent reference p0*c [eV]
 B_FIELD     = 0.2                       # Signed field parameter B_y [T]
 LENGTH      = 1.0                       # [m]
 
@@ -76,3 +77,40 @@ print('Changed reference p0*c [GeV]:', line.particle_ref.p0c[0] * 1e-9)
 print('Changed k0 [m^-1]:', line['spectrometer'].k0)
 print('B_y recovered from k0 * rigidity0 [T]:',
       line['spectrometer'].k0 * line.particle_ref.rigidity0[0])
+
+################################################################################
+# Use an independent reference object
+################################################################################
+
+########################################
+# Copy the particle values into a separate line
+########################################
+# A copied particle object carries values, not the named particle's expression.
+independent = xt.Line(
+    elements        = [xt.Drift(length = LENGTH)],
+    particle_ref    = line.particle_ref.copy(),
+)
+env['p0c'] = P0C_START
+print('Named and copied reference p0*c [GeV]:',
+      line.particle_ref.p0c[0] * 1e-9,
+      independent.particle_ref.p0c[0] * 1e-9)
+
+########################################
+# Change only the independent reference
+########################################
+independent.particle_ref.p0c = P0C_OBJECT
+print('After changing only the independent reference [GeV]:',
+      line.particle_ref.p0c[0] * 1e-9,
+      independent.particle_ref.p0c[0] * 1e-9)
+
+########################################
+# Restore the independent reference values
+########################################
+restored = xt.Line.from_dict(independent.to_dict())
+print('Independent and restored reference p0*c [GeV]:',
+      independent.particle_ref.p0c[0] * 1e-9,
+      restored.particle_ref.p0c[0] * 1e-9)
+restored.particle_ref.p0c = P0C_AFTER
+print('After changing only the restored reference [GeV]:',
+      independent.particle_ref.p0c[0] * 1e-9,
+      restored.particle_ref.p0c[0] * 1e-9)
