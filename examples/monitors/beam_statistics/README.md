@@ -16,7 +16,7 @@ are small and explicitly prepared, without an RF-equilibrium assumption.
 | [003_bunch_statistics.py](003_bunch_statistics.py) | Select physical slots, distinguish an empty slot and pool weighted moments |
 | [004_slice_statistics.py](004_slice_statistics.py) | Record longitudinal slices and understand recorded-window reductions |
 | [005_coasting_statistics.py](005_coasting_statistics.py) | Interpret periodic full-turn acquisition bins and the local arrival-time grid |
-| [006_beam_profiles.py](006_beam_profiles.py) | Compare weighted histograms, population moments and conditional profile density |
+| [006_beam_profiles.py](006_beam_profiles.py) | Compare weighted histograms, conditional density and consecutive acquisitions |
 
 All moments use `particles.weight`. `num_particles` is the sum of weights,
 not a macroparticle count. RMS widths are population moments about the weighted
@@ -39,9 +39,9 @@ rotates an independent copy and measures it again. Its covariance and projected
 emittances are the lesson; no intervening ring transport is needed. The prepared
 longitudinal spread gives full-rank covariance without an RF-equilibrium claim.
 
-`003`, `004` and `006` acquire one explicitly prepared snapshot directly, without
-lattice transport. Their slot, slice and profile semantics do not require a
-matched bunch, a machine model or an RF system. Slot j is centered at
+`003`, `004` and the first part of `006` acquire an explicitly prepared snapshot
+directly, without lattice transport. Their slot, slice and profile semantics do
+not require a matched bunch, a machine model or an RF system. Slot j is centered at
 `zeta=-j*bunch_spacing_zeta`; this spacing is not automatically an RF bucket.
 Only configured selected slots enter beam reductions. `003` includes a selected
 but empty slot, as distinct from a slot excluded by the filling pattern.
@@ -63,7 +63,12 @@ coherent pattern is not asserted to be a collective eigenmode.
 outside a profile's coordinate range still contribute to accepted scalar
 statistics and other profiles. Histogram counts sum particle weights; density
 normalization is an explicit operation. The plotted density is conditional on
-the recorded range and does not reconstruct its tails.
+the recorded range and does not reconstruct its tails. Its final section records
+three consecutive passages through a drift-only line, starting at absolute turn
+label 10. `record_index` maps each label to a profile row. The horizontal profile
+moves and changes its in-range weight, while delta and the whole population
+stay constant. This separates profile truncation from beam loss; the repeated
+drift passages are transport steps, without a periodic-optics assumption.
 
 For persistence and chunked acquisition, see
 [storage](../storage/README.md). For individual particle trajectories,

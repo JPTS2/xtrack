@@ -30,6 +30,14 @@ N_BINS          = 24
 SIGMA_X         = 0.8e-3                # [m]; tails extend beyond X_RANGE
 SIGMA_DELTA     = 2e-5                  # Prepared spread, without RF matching
 
+########################################
+# Consecutive drift passages
+########################################
+FIRST_TURN      = 10                   # Absolute acquisition label
+N_ACQUISITIONS  = 3
+DRIFT_LENGTH    = 0.5                  # Length per passage [m]
+PX_HISTORY      = 5e-4                 # Canonical px = Px/p0
+
 ################################################################################
 # Record weighted profiles and whole-population moments in one acquisition
 ################################################################################
@@ -110,6 +118,85 @@ axes[1].stairs(density / 1e3, 1e3 * edges)
 axes[0].set_ylabel('Sum of particle weights')
 axes[1].set_ylabel('Conditional density [mm^-1]')
 axes[1].set_xlabel('x [mm]')
+for axis in axes:
+    axis.grid()
+fig.tight_layout()
+
+################################################################################
+# Acquire consecutive profiles during transport
+################################################################################
+
+########################################
+# Record three passages through a drift-only line
+########################################
+history = xt.BeamStatsMonitor(
+    start_at_turn   = FIRST_TURN,
+    stop_at_turn    = FIRST_TURN + N_ACQUISITIONS,
+    stats           = ['num_particles'],
+    profiles        = {
+        'x': {'range': X_RANGE, 'num_bins': N_BINS},
+        'delta': {'range': DELTA_RANGE, 'num_bins': N_BINS},
+    },
+)
+history_line = xt.Line(
+    elements        = [history, xt.Drift(length = DRIFT_LENGTH)],
+    element_names   = ['profiles', 'drift'],
+)
+history_line.set_particle_ref('electron', p0c = P0C)
+history_particles           = particles.copy()
+history_particles.px        = PX_HISTORY
+history_particles.at_turn   = FIRST_TURN
+history_line.track(history_particles, num_turns = N_ACQUISITIONS)
+# Each passage is recorded before its drift. The line's turn counter labels
+# repeated transport steps; this is not a periodic ring or an equilibrium beam.
+
+########################################
+# Select profile rows using absolute turn labels
+########################################
+print('Recorded absolute turns:', history.turns)
+print('Turn / row / scalar weight / x profile weight / delta profile weight:')
+for turn in history.turns:
+    row = history.record_index(turn)
+    print(turn, row, history.num_particles[row],
+          np.sum(history.profiles['x'][row]),
+          np.sum(history.profiles['delta'][row]))
+print('Maximum delta-profile change from the first acquisition:',
+      np.max(np.abs(history.profiles['delta'] - history.profiles['delta'][0])))
+# Drift changes x but preserves delta. Fewer particles inside X_RANGE means
+# profile truncation, not beam loss; all live particles still enter the moments.
+
+################################################################################
+# Compare profile motion with the population inside each range
+################################################################################
+
+########################################
+# Normalize each horizontal acquisition to its own in-range weight
+########################################
+history_edges   = history.profile_bin_edges['x']
+x_weights       = np.sum(history.profiles['x'], axis = 1)
+delta_weights   = np.sum(history.profiles['delta'], axis = 1)
+fig, axes = plt.subplots(1, 2, figsize = (11, 4))
+for turn in history.turns:
+    row         = history.record_index(turn)
+    row_density = history.profiles['x'][row] / (
+        x_weights[row] * np.diff(history_edges))
+    axes[0].stairs(row_density / 1e3, history_edges * 1e3,
+                   label = f'Turn {turn}')
+axes[0].set_xlabel('x [mm]')
+axes[0].set_ylabel('Conditional density [mm^-1]')
+axes[0].legend()
+
+########################################
+# Show the weight excluded by the horizontal range
+########################################
+axes[1].plot(history.turns, history.num_particles, 'k-',
+              label = 'Whole population')
+axes[1].plot(history.turns, delta_weights, 'x', label = 'Inside delta range')
+axes[1].plot(history.turns, x_weights, 'o-', label = 'Inside x range')
+axes[1].set_xlabel('Absolute turn label')
+axes[1].set_xticks(history.turns)
+axes[1].set_ylabel('Sum of particle weights')
+axes[1].legend()
 for axis in axes:
     axis.grid()
 fig.tight_layout()
