@@ -169,8 +169,10 @@ def track(field, x, px, y, py, zeta, pzeta, p0c, mass0, q0=1., order=None,
     order=None uses the exact Bessel field, an even integer the near-axis
     series. rtol is relative; atol_position [m] and atol_momentum (in units of
     p0c for momenta and energy, and for spin) are absolute. max_step [m]
-    defaults to a sixteenth of the RF wavelength; the error control sets the
-    steps within. Returns a dict of numpy arrays x, px, y, py, zeta, pzeta.
+    defaults to 1/160 of the RF wavelength: close to the axis the kick nears
+    atol, where the error control alone would accept a relative error far
+    above rtol (3e-7 at 1 um on CLEAR with 1/16). Returns a dict of numpy
+    arrays x, px, y, py, zeta, pzeta.
 
     By default the field is cut abruptly at the ends. `ramps`, a sequence of
     ramp lengths, instead tracks the field times a sin^2 envelope h(z) rising
@@ -241,7 +243,7 @@ def track(field, x, px, y, py, zeta, pzeta, p0c, mass0, q0=1., order=None,
     components = len(coordinates)
     atol = np.repeat([atol_position] * 3 + [atol_momentum * p0c] * 3
                      + [atol_momentum] * (components - 6), count)
-    step = max_step or np.pi / field.k / 8
+    step = max_step or np.pi / field.k / 80
     ends = []
     if backend not in ('python', 'c'):
         raise ValueError('backend must be "python" or "c"')

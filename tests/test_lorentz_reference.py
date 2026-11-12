@@ -182,3 +182,17 @@ def test_c_engine_follows_the_python_engine(order):
     for name in ends[0]:
         assert np.max(abs(ends[1][name] - ends[0][name])) < 1e-12
 
+
+
+@pytest.mark.parametrize('backend', ['python', 'c'])
+def test_a_kick_near_the_axis_is_resolved_to_rtol(backend):
+    """1 um off axis the kick nears the absolute tolerance; the default steps still give
+    it to the relative tolerance, as ten times finer steps confirm."""
+    rng = np.random.default_rng(5)
+    count = 40
+    field = HarmonicField(_K * rng.uniform(-9., 9., count), rng.normal(size=count) + 1j * rng.normal(size=count),
+                          _FREQUENCY, 2.)
+    p0c = xt.ELECTRON_MASS_EV * np.sqrt(10.**2 - 1)
+    ends = [track(field, 1e-6, 0., 0., 0., 0., 0., p0c, xt.ELECTRON_MASS_EV, backend=backend, max_step=step)['px'][0]
+            for step in (None, np.pi / _K / 800)]
+    assert abs(ends[0] - ends[1]) < 1e-10 * abs(ends[1])
