@@ -89,6 +89,18 @@ print('Reference p0*c [eV], a*gamma, native fractional spin tune:',
 print('Native max |partial n / partial delta|:', np.max(np.sqrt(
     tw.spin_dn_ddelta_x**2 + tw.spin_dn_ddelta_y**2 + tw.spin_dn_ddelta_z**2)))
 
+########################################
+# Compare the analytical component time with the observation window
+########################################
+window_s    = N_TURNS * tw.t_rev0
+depol_time  = tw.spin_t_depol_component_s
+print('Native analytical depolarization-component time [s]:', depol_time)
+print('Tracking window [s] / fraction of that component time:',
+      window_s, window_s / depol_time)
+# The analytical rate assumes a stationary orbital distribution. These cold
+# closed-orbit probes instead acquire their momentum spread during tracking.
+# Their transient coherence is not an estimator of that analytical time.
+
 ################################################################################
 # Compare deterministic mean transport with quantum-orbit-driven spin dispersion
 ################################################################################
@@ -107,19 +119,24 @@ for model in ['mean', 'quantum']:
     ########################################
     # Measure ensemble coherence separately from individual spin length
     ########################################
-    record      = tracked.record_last_track
-    spins       = np.stack(
+    record          = tracked.record_last_track
+    spins           = np.stack(
         [record.spin_x, record.spin_y, record.spin_z], axis = -1)
-    final_spins = np.column_stack(
+    final_spins     = np.column_stack(
         [particles.spin_x, particles.spin_y, particles.spin_z])
-    mean_spin   = np.vstack([np.mean(spins, axis = 0),
-                             np.mean(final_spins, axis = 0)])
-    coherence   = np.linalg.norm(mean_spin, axis = 1)
-    norm_error  = max(
-        np.max(np.abs(np.linalg.norm(spins, axis = 2) - 1)),
-        np.max(np.abs(np.linalg.norm(final_spins, axis = 1) - 1)))
-    sigma_delta = np.r_[np.std(record.delta, axis = 0), np.std(particles.delta)]
-    survivors   = np.count_nonzero(particles.state > 0)
+    spins           = np.concatenate([spins, final_spins[:, None, :]], axis = 1)
+    live            = np.column_stack([record.state > 0, particles.state > 0])
+    live_count      = np.sum(live, axis = 0)
+    if np.any(live_count == 0):
+        raise RuntimeError('No live spin probes at one or more observations.')
+    # All probes have equal weight. Exclude lost particles at each observation.
+    mean_spin       = np.sum(np.where(live[:, :, None], spins, 0.0), axis = 0)
+    mean_spin      /= live_count[:, None]
+    coherence       = np.linalg.norm(mean_spin, axis = 1)
+    norm_error      = np.max(np.abs(np.linalg.norm(spins, axis = 2)[live] - 1))
+    delta_history   = np.column_stack([record.delta, particles.delta])
+    sigma_delta     = np.nanstd(np.where(live, delta_history, np.nan), axis = 0)
+    survivors       = np.count_nonzero(particles.state > 0)
     print(model, 'surviving particles:', survivors, '/', N_PARTICLES)
     print('Final |mean spin| / maximum individual spin-length error:',
           coherence[-1], norm_error)
@@ -128,8 +145,8 @@ for model in ['mean', 'quantum']:
 
 # Photon recoil changes the orbits, so BMT rotations differ among particles.
 # Individual spins retain unit length. This is ensemble dephasing, not spin-flip
-# tracking or Sokolov-Ternov build-up. Interpret it while all probes survive;
-# this short stochastic sample does not determine a depolarization lifetime.
+# tracking or Sokolov-Ternov build-up. Survivor selection can also change the
+# ensemble mean; inspect the reported population. No lifetime is fitted.
 
 ################################################################################
 # Display the finite-window loss of polarization coherence
