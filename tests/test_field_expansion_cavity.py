@@ -183,3 +183,27 @@ def test_field_table_follows_the_amplitudes_and_not_a_changed_length():
     np.testing.assert_array_equal(_spin_end(element, 20.), _spin_end(direct, 20.))
     rebuilt = xt.FieldExpansionCavity.from_dict(element.to_dict())
     assert len(rebuilt.field_table) == len(element.field_table)
+
+
+def test_samples_that_vanish_at_the_ends_give_a_field_that_vanishes_there():
+    """A travelling wave under a half-sine envelope: zero at the ends with a nonzero
+    slope, which a truncated series misses by O(1/N). The fit keeps the end value, so
+    the hard-edge faces see no field and the map follows the standalone reference
+    through the same field cut abruptly."""
+    from xtrack._temp.lorentz_reference import HarmonicField, track
+    frequency, length, voltage, phase, gamma = 3e9, .8, 5e6, 1.1, 20.
+    k = 2 * np.pi * frequency / clight
+    z = np.linspace(-length / 2, length / 2, 4001)
+    samples = np.cos(np.pi * z / length) * np.exp(1j * k * z)
+    beta0 = np.sqrt(1 - 1 / gamma**2)
+    cavity = xt.FieldExpansionCavity.from_samples(samples, num_harmonics=60, length=length,
+        frequency=frequency, voltage=voltage, phase=phase, calibration_beta=beta0, num_kicks=4096)
+    ends = np.exp(1j * np.outer([-length / 2, length / 2], cavity.wave_numbers)) @ cavity.amplitudes
+    assert np.max(abs(ends)) < 1e-13 * np.max(abs(cavity.amplitudes))
+    p0c = xt.ELECTRON_MASS_EV * np.sqrt(gamma**2 - 1)
+    particles = xt.Particles(p0c=p0c, mass0=xt.ELECTRON_MASS_EV, x=[1e-3, 3e-3])
+    cavity.track(particles)
+    field = HarmonicField.from_voltage(cavity.wave_numbers, cavity.amplitudes, frequency, length, voltage, phase,
+                                       beta0)
+    truth = track(field, [1e-3, 3e-3], 0., 0., 0., 0., 0., p0c, xt.ELECTRON_MASS_EV, order=4)
+    assert np.all(abs(particles.px - truth['px']) < 1e-6 * abs(truth['px']))

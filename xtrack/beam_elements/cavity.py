@@ -740,7 +740,9 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         """The space harmonics of a field sampled at equal steps over the element,
         both ends included: real values are a standing wave's profile, complex
         ones the phasor G. The field is read as periodic over the element, so it
-        should vanish, or match, at both ends."""
+        should vanish, or match, at both ends. The truncated series is corrected
+        to take the samples' end value exactly: otherwise it misses it by O(1/N),
+        and the hard-edge faces kick on the difference."""
         values = np.asarray(values)
         if values.ndim != 1 or len(values) < 3:
             raise ValueError('values must be at least three samples')
@@ -752,6 +754,11 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         k = 2 * np.pi * m / length
         amplitudes = np.trapezoid(values[None, :] * np.exp(-1j * k[:, None] * z[None, :]),
                                   z, axis=1) / length
+        # Both ends are one point of the period, where harmonic m is (-1)^m: the
+        # least change meeting the end value is alternating and equal in size.
+        sign = (-1.) ** m
+        miss = sign @ amplitudes - (values[0] + values[-1]) / 2
+        amplitudes = amplitudes - miss * sign / len(m)
         return cls(wave_numbers=k, amplitudes=amplitudes, **kwargs)
 
     def _check_physical_model(self, tracking=False):
