@@ -487,8 +487,9 @@ The machine folders connect operations around a particular physical problem:
 Runtime, convergence and statistical studies, excluded from ordinary example
 execution.
 
-- `field_tracking_convergence.py`
-- `integrator_convergence.py`
-- `optics_runtime.py`
-- `radiation_statistics.py`
-- `tracking_backends.py`
+- [performance/](benchmarks/performance/README.md): construction and I/O,
+  tracking throughput, optics, optimization, radiation cost and TPSA scaling.
+- [convergence/](benchmarks/convergence/README.md): magnet integrators, field
+  integration and segmentation, radiation slicing and ring-optics resolution.
+- [statistics/](benchmarks/statistics/README.md): sample precision and native
+  stochastic-radiation distribution comparisons.
