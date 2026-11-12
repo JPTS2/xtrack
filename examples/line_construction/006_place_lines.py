@@ -13,12 +13,16 @@ import xtrack as xt
 ################################################################################
 QUAD_LENGTH = 0.4                       # [m]
 CELL_LENGTH = 3.0                       # [m]
+KQ_START    = 0.2                       # [m^-2]
+KQ_AFTER    = 0.3                       # [m^-2]
+CLONE_TILT  = 1.0e-3                    # [rad]
 CELL_START  = 2.0                       # [m]
 
 ################################################################################
 # Build a reusable subline
 ################################################################################
 env = xt.Environment()
+env['kq'] = KQ_START
 cell = env.new_line(
     name        = 'cell',
     length      = CELL_LENGTH,
@@ -27,13 +31,13 @@ cell = env.new_line(
         env.new(
             'qf', xt.Quadrupole,
             length  = QUAD_LENGTH,
-            k1      = 0.2,
+            k1      = 'kq',
             at      = 0.0,
         ),
         env.new(
             'qd', xt.Quadrupole,
             length  = QUAD_LENGTH,
-            k1      = -0.2,
+            k1      = '-kq',
             at      = CELL_LENGTH - QUAD_LENGTH,
         ),
     ],
@@ -106,3 +110,23 @@ line = env.new_line(
 # Inspect the combined line
 ########################################
 line.get_table().cols['name s_start s_end isreplica'].show()
+
+################################################################################
+# Clone a subline with independent magnet attributes
+################################################################################
+
+########################################
+# Give the clone its own alignment
+########################################
+cloned_cell = cell.clone(suffix = 'cloned')
+cloned_cell['qf.cloned'].rot_s_rad = CLONE_TILT
+print('Original and cloned qf tilts [rad]:',
+      cell['qf'].rot_s_rad, cloned_cell['qf.cloned'].rot_s_rad)
+
+########################################
+# Change the shared family expression
+########################################
+env['kq'] = KQ_AFTER
+print('Original and cloned qf strengths [m^-2]:',
+      cell['qf'].k1, cloned_cell['qf.cloned'].k1)
+cloned_cell.get_table().cols['name s_start s_end'].show()

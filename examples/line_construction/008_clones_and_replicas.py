@@ -11,11 +11,13 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-KQ_START    = 0.2                       # [m^-2]
-KQ_AFTER    = 0.3                       # [m^-2]
-TILT_START  = 1.0e-3                    # [rad]
-TILT_AFTER  = 2.0e-3                    # [rad]
-TILT_SINGLE = 3.0e-3                    # One converted occurrence [rad]
+KQ_START        = 0.2                   # [m^-2]
+KQ_AFTER        = 0.3                   # [m^-2]
+TILT_START      = 1.0e-3                # [rad]
+TILT_AFTER      = 2.0e-3                # [rad]
+DRIFT_LENGTH    = 3.0                   # [m]
+DRIFT_AFTER     = 4.0                   # [m]
+TILT_SINGLE     = 3.0e-3                # One converted occurrence [rad]
 
 ################################################################################
 # Create repeated elements, a replica and a clone
@@ -92,3 +94,41 @@ line.get_table(attr = True).cols['name s k1l rot_s_rad isreplica'].show()
 env['kq'] = KQ_START
 print('The converted elements still follow the shared strength variable:')
 line.get_table(attr = True).cols['name k1l rot_s_rad'].show()
+
+################################################################################
+# Choose whether generated drifts become independent
+################################################################################
+
+########################################
+# Compare default and explicit drift conversion
+########################################
+# Equal gaps reuse one generated drift. Start from separate environments so
+# changing either converted line cannot change the other comparison.
+gaps = env.new_line(
+    length      = 3 * DRIFT_LENGTH,
+    components  = [
+        env.new('marker', xt.Marker, at = DRIFT_LENGTH),
+        env.place('marker', at = 2 * DRIFT_LENGTH),
+    ],
+)
+shared_drifts = gaps.copy()
+separate_drifts = gaps.copy()
+shared_drifts.replace_all_repeated_elements()
+separate_drifts.replace_all_repeated_elements(replace_generated_drifts = True)
+print('Default conversion retains shared generated drifts:')
+shared_drifts.get_table().cols['name env_name s_start s_end'].show()
+print('Explicit conversion gives each gap its own drift:')
+separate_drifts.get_table().cols['name env_name s_start s_end'].show()
+
+########################################
+# Change one independent drift
+########################################
+first_drift = separate_drifts.element_names[0]
+separate_drifts[first_drift].length = DRIFT_AFTER
+print('Default first and second gaps share an object:',
+      shared_drifts.get(shared_drifts.element_names[0])
+      is shared_drifts.get(shared_drifts.element_names[2]))
+print('Converted first and second gaps share an object:',
+      separate_drifts.get(separate_drifts.element_names[0])
+      is separate_drifts.get(separate_drifts.element_names[2]))
+separate_drifts.get_table().cols['name s_start s_end'].show()
