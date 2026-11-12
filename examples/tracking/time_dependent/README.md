@@ -10,7 +10,7 @@ Each script loads a fresh model and runs independently.
 
 | Example | Lesson |
 | --- | --- |
-| [001_time_dependent_knobs.py](001_time_dependent_knobs.py) | Drive a live strength expression from the simulation clock and inspect the applied settings |
+| [001_time_dependent_knobs.py](001_time_dependent_knobs.py) | Drive live strengths from the clock, scale a closed bump, and compare bulk numeric updates |
 | [002_excitation.py](002_excitation.py) | Apply a sampled transverse excitation with a defined turn and arrival-time convention |
 
 Both use the [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
@@ -30,6 +30,22 @@ The 0.5% focusing-family ramp uses a small momentum offset `delta=1e-5`.
 Its sampled optics remain stable; the bare ring's large chromaticity and nearby
 vertical integer make larger offsets unsuitable for this ramp. This launch
 does not measure momentum acceptance.
+
+A fresh nominal ring then supplies a four-corrector horizontal bump: the three
+installed correctors plus one example-local corrector at 230 m. Matching sets
+100 micrometres at the IP, zero canonical slope, and closure outside 160–250 m.
+A single scale multiplies all four matched kicks. The finite piecewise pulse
+and its sinusoidally modulated version change the time waveform while retaining
+the same spatial cancellation. Static optics at sampled times report external
+closure; three tracked probes compare the turn-sampled IP motion with that
+prediction. The on-axis probe remains on axis outside the bump. This relies on
+the qualified small-amplitude, fixed-optics model, rather than slow variation.
+
+The final section introduces `MultiSetter.get_values` and `set_values` on
+independent numeric copies of the focusing quadrupoles. It applies one sampled
+relative ripple cycle and restores the copied baseline. Bulk buffer writes do
+not update expression dependencies; the original ring therefore retains its
+live family expressions and is not modified by this separate demonstration.
 
 `002` uses a different mechanism. `Exciter` selects waveform samples from
 `(at_turn - start_turn)/frev - zeta/(beta0*c)` at the element. It does not need

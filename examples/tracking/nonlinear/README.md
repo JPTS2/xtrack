@@ -10,7 +10,7 @@ Each script loads a fresh model and runs independently.
 
 | Example | Lesson |
 | --- | --- |
-| [001_tune_footprint.py](001_tune_footprint.py) | Track normalized-amplitude launches and extract a transverse tune footprint |
+| [001_tune_footprint.py](001_tune_footprint.py) | Track on/off-momentum footprints and check a local strength extrapolation |
 | [002_dynamic_aperture.py](002_dynamic_aperture.py) | Map surviving and lost launches over a stated tracking horizon |
 
 Both use the installed octupole circuits in the
@@ -28,6 +28,21 @@ a field-off control.
 dominant frequencies folded into `[0, 0.5]` cycles per turn. The small-amplitude
 nominal tunes near `Qx=8.7548`, `Qy=10.0175` therefore appear near
 `0.2452`, `0.0175`.
+
+`001` also repeats the grid at fixed `delta=1e-4` and compares small-amplitude
+Twiss tune shifts with the linear chromatic prediction. The horizontal FFT alias
+moves with the opposite sign to the full horizontal tune. Finite-amplitude
+footprint shifts include momentum-dependent detuning; finite-offset reference
+shifts include higher-order chromaticity, which is visible vertically here.
+Neither is automatically a chromaticity derivative.
+
+Native `LinearRescale` tracks at `k3lf=2e4` and `2.5e4 m^-3`, then extrapolates
+the frequencies to the current `3e4 m^-3`. The example compares this result
+against actual tracking at that setting and plots the residual relative to the
+FFT grid spacing. This is a local approximation on a surviving grid, not a
+prediction of stability or losses at stronger fields. The original field setting
+is preserved by the helper.
+
 These results do not recover integer tunes or automatically identify modes and
 resonance harmonics. Increasing the zero-padded FFT length refines the frequency
 grid; it does not add tracked information or establish tune convergence.
