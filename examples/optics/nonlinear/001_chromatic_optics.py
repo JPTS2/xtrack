@@ -22,6 +22,7 @@ import xtrack as xt
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 LINE_NAME       = 'demo'
 OBSERVATION     = 'arc.s1.c1.qf.in'
+SECTION_END     = 'bpm.s4.f'
 
 ########################################
 # Momentum offsets for derivatives and a small tune scan
@@ -113,4 +114,82 @@ for ax, values, tune0, chromaticity, plane in [
     ax.legend()
 axes[-1].set_xlabel('delta [1e-3]')
 fig.tight_layout()
+
+################################################################################
+# Propagate chromatic conditions through an open section
+################################################################################
+
+########################################
+# Retain the periodic boundary response
+########################################
+periodic_init = nominal.get_twiss_init(OBSERVATION)
+inherited = line.twiss4d(
+    start       = OBSERVATION,
+    end         = SECTION_END,
+    init        = periodic_init,
+    chrom       = True,
+    delta_chrom = CHROM_STEP)
+
+########################################
+# Impose zero chromatic beta and alpha response at the entrance
+########################################
+# Keep the same nominal optics and dispersion, but change the chromatic
+# boundary conditions. This open solution need not close around the ring.
+zero_init = nominal.get_twiss_init(OBSERVATION)
+zero_init.ax_chrom  = 0.0
+zero_init.bx_chrom  = 0.0
+zero_init.ay_chrom  = 0.0
+zero_init.by_chrom  = 0.0
+zero_boundary = line.twiss4d(
+    start       = OBSERVATION,
+    end         = SECTION_END,
+    init        = zero_init,
+    chrom       = True,
+    delta_chrom = CHROM_STEP)
+
+########################################
+# Propagate zero chromatic response from the downstream boundary
+########################################
+end_init = nominal.get_twiss_init(SECTION_END)
+end_init.ax_chrom   = 0.0
+end_init.bx_chrom   = 0.0
+end_init.ay_chrom   = 0.0
+end_init.by_chrom   = 0.0
+zero_at_end = line.twiss4d(
+    start       = OBSERVATION,
+    end         = SECTION_END,
+    init        = end_init,
+    chrom       = True,
+    delta_chrom = CHROM_STEP)
+for label, optics in [('Periodic boundary', inherited),
+                       ('Zero entrance', zero_boundary),
+                       ('Zero exit', zero_at_end)]:
+    print(label, 'section phase derivatives d(mu_x,y)/d(delta):',
+          optics.dmux[-1] - optics.dmux[0],
+          optics.dmuy[-1] - optics.dmuy[0])
+# These depend on the imposed boundary response; they are not an invariant
+# partition of the ring chromaticity or a local matching/correction scheme.
+
+########################################
+# Check the differentiation step and display the boundary dependence
+########################################
+refined = line.twiss4d(
+    start       = OBSERVATION,
+    end         = SECTION_END,
+    init        = zero_init,
+    chrom       = True,
+    delta_chrom = CHROM_STEP / 2)
+print('Largest W_x,y change after halving delta_chrom:',
+      np.max(np.abs(refined.wx_chrom - zero_boundary.wx_chrom)),
+      np.max(np.abs(refined.wy_chrom - zero_boundary.wy_chrom)))
+fig_open, axes_open = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
+for ax, column, plane in zip(axes_open, ['wx_chrom', 'wy_chrom'], ['x', 'y']):
+    ax.plot(inherited.s, inherited[column], label = 'Periodic boundary')
+    ax.plot(zero_boundary.s, zero_boundary[column], label = 'Zero entrance')
+    ax.plot(zero_at_end.s, zero_at_end[column], label = 'Zero exit boundary')
+    ax.set_ylabel(f'W_{plane}')
+    ax.grid()
+    ax.legend()
+axes_open[-1].set_xlabel('s [m]')
+fig_open.tight_layout()
 plt.show()

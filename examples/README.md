@@ -230,6 +230,7 @@ Begin with the [chromatic optics lessons](optics/nonlinear/README.md).
 - `003_amplitude_detuning.py`
 - `004_multiturn_optics.py`
 - `005_stability_diagram.py`
+- `006_native_resonance_driving_terms.py`
 
 ### collective
 

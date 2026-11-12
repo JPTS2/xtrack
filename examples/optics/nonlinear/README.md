@@ -20,6 +20,7 @@ higher-order chromaticity together gives the subject one learning sequence.
 | [003_amplitude_detuning.py](003_amplitude_detuning.py) | Measure four action-detuning coefficients and compare tracked phases with the action-frequency relation |
 | [004_multiturn_optics.py](004_multiturn_optics.py) | Find a nonzero four-turn island orbit, compute its local optics and compare it with tracking |
 | [005_stability_diagram.py](005_stability_diagram.py) | Build a tracked action footprint and evaluate the Gaussian dispersion integral |
+| [006_native_resonance_driving_terms.py](006_native_resonance_driving_terms.py) | Calculate perturbative native RDTs, inspect feed-down and compare weak-coupling optics |
 
 `001` and `002` use the [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
 with a 1 GeV/c electron reference. Reference momentum and magnet strengths stay
@@ -80,3 +81,20 @@ with matching.
 
 For a footprint from nonlinear magnetic fields and finite-turn survival scans,
 see [nonlinear tracking](../../tracking/nonlinear/README.md).
+
+`001` also propagates chromatic initial conditions through an open section.
+Periodic boundary derivatives reproduce the physical ring response; zero
+chromatic beta/alpha derivatives define another open boundary problem. Section
+phase derivatives depend on that choice. A half-step comparison exposes finite-
+difference sensitivity. Local chromatic correction is a matching task, using
+independent controls rather than interpreting these curves as a unique partition
+of the global chromaticity.
+
+`006` installs one weak, vertically displaced thin sextupole in an independent
+DEMO load with other nonlinear families off. Native first-order RDTs use the
+unperturbed optics, actual strengths and actual perturbed orbit explicitly.
+They distinguish sextupole terms from skew-quadrupole feed-down and compare the
+same observation plane/phase convention with native Edwards–Teng coupling.
+The thin-source sampling convention produces a jump. Half-strength scaling is
+checked without claiming higher-order normal-form or finite-amplitude stability
+validation. External-code comparisons remain in interfaces and retained studies.

@@ -19,11 +19,13 @@ import xtrack as xt
 ########################################
 # Model and selected range
 ########################################
-LATTICE_FILE    = 'test_data/example_lattices/transport/lattice.py'
-LINE_NAME       = 'transport'
-START_ELEMENT   = 'b1.1'
-END_ELEMENT     = 'optics_end'
-BOUNDARY_AT     = 'qf.2@start'
+LATTICE_FILE        = 'test_data/example_lattices/transport/lattice.py'
+LINE_NAME           = 'transport'
+START_ELEMENT       = 'b1.1'
+END_ELEMENT         = 'optics_end'
+INTERIOR_ELEMENT    = 'optics_middle'
+INTERIOR_AT         = 'qd.1@start'
+BOUNDARY_AT         = 'qf.2@start'
 
 ########################################
 # Entrance optics
@@ -42,6 +44,9 @@ line        = env[LINE_NAME]
 # A zero-length marker identifies the downstream optical plane unambiguously.
 env.new(END_ELEMENT, xt.Marker)
 line.insert(env.place(END_ELEMENT, at = BOUNDARY_AT))
+# Interior initialization uses a marker plane, as required by this API.
+env.new(INTERIOR_ELEMENT, xt.Marker)
+line.insert(env.place(INTERIOR_ELEMENT, at = INTERIOR_AT))
 
 ################################################################################
 # Calculate the full open-line solution
@@ -94,6 +99,43 @@ print('Subrange optics: s, beta and dx [m]; alpha dimensionless:')
 tw_part.cols['name s betx bety alfx alfy dx'].show(maxwidth = 'full')
 
 ################################################################################
+# Supply the optics at an interior element
+################################################################################
+
+########################################
+# Propagate from the interior toward both boundaries
+########################################
+# A table plus init_at selects its complete state at the named entrance.
+tw_from_interior = line.twiss(
+    method  = '4d',
+    start   = START_ELEMENT,
+    end     = END_ELEMENT,
+    init    = tw_full,
+    init_at = INTERIOR_ELEMENT)
+
+########################################
+# Supply the particle and optical matrix explicitly
+########################################
+# This is an imposed open-line boundary, not a periodic normal form.
+interior = tw_full.get_twiss_init(INTERIOR_ELEMENT)
+explicit_init = xt.TwissInit(
+    particle_on_co  = interior.particle_on_co.copy(),
+    W_matrix        = interior.W_matrix.copy(),
+    element_name    = INTERIOR_ELEMENT,
+    mux             = interior.mux,
+    muy             = interior.muy,
+    muzeta          = interior.muzeta,
+    reference_frame = interior.reference_frame)
+tw_from_matrix = line.twiss(
+    method  = '4d',
+    start   = START_ELEMENT,
+    end     = END_ELEMENT,
+    init    = explicit_init)
+print('Interior entrance and both range boundaries:')
+tw_from_matrix.rows[[START_ELEMENT, INTERIOR_ELEMENT, END_ELEMENT]].cols[
+    'name s betx bety alfx alfy dx'].show(maxwidth = 'full')
+
+################################################################################
 # Compare with the original solution
 ################################################################################
 
@@ -114,6 +156,13 @@ for column, unit in [
         tw_from_downstream[column][:-1] - tw_reference[column]))
     print(f'{column}: max differences from upstream/downstream init '
           f'{difference:.3e}, {difference_downstream:.3e} {unit}')
+    for label, optics in [
+        ('Interior table', tw_from_interior),
+        ('Explicit matrix', tw_from_matrix),
+    ]:
+        residual = np.max(np.abs(
+            optics[column][:-1] - tw_reference[column]))
+        print(f'  {label}: {residual:.3e} {unit}')
 
 ########################################
 # Overlay the full and propagated optics
