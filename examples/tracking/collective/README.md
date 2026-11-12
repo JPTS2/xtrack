@@ -46,3 +46,12 @@ are Xfields physics. No MPI scaling or Gaussian-model accuracy is established.
 These two-population interactions differ from tracking several particle species
 inside one container. For linearization and collective-element selection in
 Twiss, see [collective optics](../../optics/collective/).
+
+For distributed frozen, quasi-frozen and PIC space charge, follow the
+[Xsuite collective-effects guide](https://xsuite.readthedocs.io/en/latest/collective.html#space-charge)
+and the [Xfields space-charge examples](https://github.com/xsuite/xfields/tree/main/examples/001_spacecharge).
+These cover different physical models from the single thin Gaussian source in
+`001`. For wakes, dampers and collective-instability studies, use the
+[Xwakes examples](https://github.com/xsuite/xwakes/tree/main/examples).
+The companion packages own those physics workflows; this folder teaches how
+Xtrack schedules their collective interactions.

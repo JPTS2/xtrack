@@ -13,7 +13,7 @@ Start with complete turns, then select partial paths and reverse them.
 | [001_track_line.py](001_track_line.py) | Propagate particles and interpret the final element, turn and position |
 | [002_partial_tracking.py](002_partial_tracking.py) | Stop, resume, cross the line end and count elements or turns |
 | [003_backtrack.py](003_backtrack.py) | Invert full turns and partial paths; inspect coordinate residuals |
-| [004_freeze_longitudinal.py](004_freeze_longitudinal.py) | Temporarily freeze longitudinal coordinates, then resume their evolution |
+| [004_freeze_longitudinal.py](004_freeze_longitudinal.py) | Compare per-call, persistent and context freezing, then 4D/6D RF optics |
 | [005_optimize_for_tracking.py](005_optimize_for_tracking.py) | Use optimize_for_tracking on an independent copy and inspect the resulting changes |
 
 `001` inspects the final particle state, rather than recording its history.
@@ -28,7 +28,11 @@ not model a beam travelling in the opposite direction through the fields.
 configuration may need a new kernel. It requires a working C compiler.
 Freezing is a numerical constraint, not longitudinal confinement. In this
 static magnetic ring delta is conserved even without freezing; zeta evolves
-again after the frozen call. Equal transverse endpoints are specific to this
+again after the frozen call. Persistent freezing lasts until explicitly disabled;
+the context manager restores the preceding configuration when it exits. The
+last section enables RF and contrasts numerical freezing with choosing 4D
+rather than 6D optics. Equal transverse endpoints in the RF-off comparison are
+specific to this
 model, whose transverse maps depend on delta but not on zeta.
 The demonstrated momentum offsets are within `+/-1e-4`; this is a tested
 launch sample, not a momentum-acceptance measurement. The bare demonstration
@@ -45,7 +49,7 @@ model and launch, without a tracking-throughput claim.
 
 Except for the transparent proton drift line in `002`, the examples use the
 [shared demonstration ring](../../test_data/example_lattices/demo_ring/README.md)
-with its 1 GeV/c electron reference and 1.5 km circumference. RF voltage and
+with its 1 GeV/c electron reference and 1.5 km circumference. Except for the final RF comparison in004, RF voltage and
 nonlinear strengths are zero; radiation and collective forces are absent.
 Backtracking inverts deterministic maps; it does not undo losses or stochastic
 processes.
