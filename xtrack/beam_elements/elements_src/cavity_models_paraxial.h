@@ -363,6 +363,8 @@ int CavityMagnus_edge(xt_float_or_tpsa q[6], const CavityModelSource *source,
           -xt_float_or_tpsa_const_part(amplitude.im)*sin(mid[2]));
     CavitySpin_rotate(spin->spin, mid[1]*rho, -mid[0]*rho,
                       (mid[0]*mid[4]-mid[1]*mid[3])/E*rho/beta);
+    CavitySpin_energy(spin, mid[3], mid[4], before[5],
+                      xt_float_or_tpsa_const_part(q[5])-before[5]);
     return CAVITY_MODEL_OK;
 }
 

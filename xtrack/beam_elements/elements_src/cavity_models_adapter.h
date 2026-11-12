@@ -248,10 +248,12 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
 // P_n = (1 + d_Z^2)^n S (at M = 2, (r^2/4) S1 - (r^4/64)(S1+S3)), gives the
 // temporal A_perp = grad Lambda and the outside gauge's phi = d_T Lambda;
 // to_temporal applies P += Q grad Lambda, E -= Q d_T Lambda, otherwise the
-// inverse.
+// inverse. The energy change is the face's r^2 impulse of E_z, which turns
+// the spin through the transverse velocity.
 GPUFUN
 void CavityModels_rf_gauge(xt_float_or_tpsa q[6], const CavityModelSource *source,
-                           xt_float_or_tpsa_arg Q, xt_float_or_tpsa_arg z, int to_temporal) {
+                           xt_float_or_tpsa_arg Q, xt_float_or_tpsa_arg z, int to_temporal,
+                           const CavitySpin *spin) {
     const int M=(int)(source->radial_order/2), jets=2*M;
     xt_float_or_tpsa real[CAVITY_MODEL_JETS], imag[CAVITY_MODEL_JETS];
     xt_float_or_tpsa S[CAVITY_MODEL_JETS], C[CAVITY_MODEL_JETS];
@@ -273,9 +275,19 @@ void CavityModels_rf_gauge(xt_float_or_tpsa q[6], const CavityModelSource *sourc
     }
     xt_float_or_tpsa charge=Q;
     if (!to_temporal) charge=-Q;
+    double kinetic[2]={xt_float_or_tpsa_const_part(q[3]),xt_float_or_tpsa_const_part(q[4])};
     q[3]+=charge*q[0]*radial;
     q[4]+=charge*q[1]*radial;
-    if (!source->freeze_energy) q[5]-=charge*scalar;
+    if (!to_temporal) {
+        kinetic[0]=xt_float_or_tpsa_const_part(q[3]);
+        kinetic[1]=xt_float_or_tpsa_const_part(q[4]);
+    }
+    if (!source->freeze_energy) {
+        const double energy=xt_float_or_tpsa_const_part(q[5]);
+        q[5]-=charge*scalar;
+        CavitySpin_energy(spin, kinetic[0], kinetic[1], energy,
+                          xt_float_or_tpsa_const_part(q[5])-energy);
+    }
 }
 
 // The physical models for one particle, shared by the Cavity and its slices.
@@ -508,7 +520,7 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
         CavityModel_source_envelope(z, &source, envelope);
         CavitySpin edge_spin={spin_tracking ? spin : NULL, anomaly};
         status=CavityMagnus_edge(q, &source, Q, z, direction*envelope[0], direction, &edge_spin);
-        if (status==CAVITY_MODEL_OK) CavityModels_rf_gauge(q, &source, Q, z, 1);
+        if (status==CAVITY_MODEL_OK) CavityModels_rf_gauge(q, &source, Q, z, 1, &edge_spin);
     }
     // Composition of the fourth-order Gauss cell: yoshida-6 is one
     // triple jump, yoshida-8 two; geometric grades the cell lengths.
@@ -561,8 +573,8 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
         if (model==CAVITY_MODEL_FULL && physical_outer) {
             xt_float_or_tpsa envelope[5];
             CavityModel_source_envelope(z, &source, envelope);
-            CavityModels_rf_gauge(q, &source, Q, z, 0);
             CavitySpin edge_spin={spin_tracking ? spin : NULL, anomaly};
+            CavityModels_rf_gauge(q, &source, Q, z, 0, &edge_spin);
             status=CavityMagnus_edge(q, &source, Q, z, -direction*envelope[0], direction, &edge_spin);
             field_source.forward=0.; field_source.backward=0.;
         }
