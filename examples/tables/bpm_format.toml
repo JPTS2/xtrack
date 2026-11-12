@@ -1,0 +1,11 @@
+version = "1"
+float_format = ".16e"
+
+columns = [
+    {name = "NAME", source_name = "name", type = "string"},
+    {name = "ORBIT_X", source_name = "x", type = "float", format = ".9f"},
+]
+
+scalars = [
+    {name = "DATASET", source_name = "title", type = "string"},
+]
