@@ -6,21 +6,23 @@ Copyright (c) CERN, 2026.
 # Errors and correction
 
 Introduce alignment and field errors, then steer injected trajectories and
-closed orbits with the native response-based correction tools. Each script runs
-independently on the shared [demonstration ring](../../test_data/example_lattices/demo_ring/README.md).
+closed orbits with the native response-based correction tools. The ring examples
+use the shared [demonstration ring](../../test_data/example_lattices/demo_ring/README.md);
+`011` isolates 3D alignment on one bend. Each script runs independently.
 
 | Example | Lesson |
 | --- | --- |
 | [001_alignment_errors.py](001_alignment_errors.py) | Apply transverse magnet offsets and rolls; inspect orbit changes, coupled modes and surveyed element frames |
-| [002_multipole_errors.py](002_multipole_errors.py) | Set normal and skew relative multipoles; distinguish fixed errors from errors that follow the main strength |
+| [002_multipole_errors.py](002_multipole_errors.py) | Set random or shared expression-based relative multipoles; distinguish absolute errors, live coefficients and normal/skew main-strength references |
 | [003_closed_orbit_correction.py](003_closed_orbit_correction.py) | Steer the periodic orbit at named BPMs and inspect the applied kicks |
 | [004_trajectory_correction.py](004_trajectory_correction.py) | Steer a ring section as a transport line, keeping entrance coordinates fixed |
 | [005_micado_and_selected_correctors.py](005_micado_and_selected_correctors.py) | Compare automatic sparse corrector selection with restricting the available hardware |
 | [006_response_and_svd.py](006_response_and_svd.py) | Inspect the response spectrum and compare singular-value truncations |
 | [007_threading.py](007_threading.py) | Extend a corrected injected pass through the ring, then refine the periodic orbit |
-| [008_bpm_alignment.py](008_bpm_alignment.py) | Distinguish the physical orbit from readings in shifted and rolled BPM frames |
+| [008_bpm_alignment.py](008_bpm_alignment.py) | Distinguish physical positions from shifted and rolled BPM readings, including steering reset and threading |
 | [009_off_momentum_correction.py](009_off_momentum_correction.py) | Correct one fixed momentum offset and inspect the on-momentum tradeoff |
 | [010_corrector_limits.py](010_corrector_limits.py) | Apply accumulated steering bounds and compare the residual with an unbounded solve |
+| [011_three_dimensional_alignment.py](011_three_dimensional_alignment.py) | Apply shifts and rotations about an anchor on a bend; connect native survey frames with exit coordinates and arrival time |
 
 The reference is a 1 GeV/c electron. RF voltage and radiation are zero; correction
 uses 4D optics with fixed momentum. Each correction response is calculated before
@@ -44,6 +46,17 @@ They are not reference-radius harmonic coefficients; their units depend on
 multipole order. `002` inspects integrated strengths and their scaling, rather
 than fringe-map effects. Field integrals and fringe activation are separate
 settings.
+
+In `002`, relative coefficients can be driven by shared expressions without
+building expressions for the main-field integrals. Selecting `main_is_skew`
+changes the reference strength; it does not rotate the magnet. The comparison
+uses an independent copy, leaving the ring's main-field convention unchanged.
+
+`011` applies all six alignment coordinates at an anchor measured in metres
+along the reference arc. Its pure alignment roll leaves the reference geometry
+unchanged. Native survey frames locate the displaced element; tracking shows
+the corresponding exit-coordinate and arrival-time changes. Accumulated `s`
+remains the design coordinate, rather than the actual distance travelled.
 
 Threading imposes an injected entrance condition, not periodic closure. BPM
 alignment changes the coordinates being steered towards zero. Correcting one
