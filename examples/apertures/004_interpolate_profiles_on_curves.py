@@ -25,10 +25,12 @@ BEND_NAME       = 'arc.s1.c1.b1'
 ########################################
 # Circular profiles and sampling
 ########################################
-RADIUS_START        = 0.020                 # Entrance radius [m]
-RADIUS_END          = 0.012                 # Exit radius [m]
-N_SAMPLES           = 21
-N_PROFILE_POINTS    = 128               # Points per profile polygon
+RADIUS_START            = 0.020         # Entrance radius [m]
+RADIUS_END              = 0.012         # Exit radius [m]
+N_SAMPLES               = 21
+N_PROFILE_POINTS        = 128           # Points per profile polygon
+SAMPLE_MARGIN           = 0.05          # Stay inside both end profiles [m]
+PIPE_CURVATURE_FACTOR   = 0.98          # Second case / reference curvature
 
 ################################################################################
 # Match the pipe axis to the surveyed bend
@@ -66,40 +68,72 @@ line.aperture.build_model()
 ################################################################################
 # Interpolate cross-sections in the changing local survey frames
 ################################################################################
-
-########################################
-# Obtain native polygons and axis intersections at requested positions
-########################################
-s_samples   = s_start + np.linspace(0, length, N_SAMPLES)
+s_samples   = s_start + np.linspace(
+    SAMPLE_MARGIN, length - SAMPLE_MARGIN, N_SAMPLES)
 sections    = line.aperture.get_cross_sections_at_s(s_samples, extents = True)
 sections.cols['s min_x max_x min_y max_y'].show(maxwidth = 'full')
 # Each cross_section is in its own local transverse survey plane. The pose
 # column maps that plane into global coordinates. Do not overlay all polygons
 # in one global plane while ignoring the changing poses.
 
+################################################################################
+# Change only the chamber curvature and retain the same survey query planes
+################################################################################
+
 ########################################
-# Plot the curved placement and several local cross-sections
+# Draw the matched placement before editing its live pipe definition
 ########################################
-fig, axes   = plt.subplots(1, 2, figsize = (11, 4))
+fig, axes   = plt.subplots(1, 3, figsize = (15, 5))
 line.aperture.plot_floor_projection(
     ax      = axes[0],
     origin  = 'bend.chamber',
     s_range = (0, length),
     aspect  = 'auto',
 )
-axes[0].set_title('Curved chamber: unequal axis scales')
-# Unequal scales resolve both the chamber width and the survey curvature.
-for index in [0, N_SAMPLES // 2, N_SAMPLES - 1]:
-    polygon = sections.cross_section[index]
-    axes[1].plot(
-        1e3 * polygon[:, 0], 1e3 * polygon[:, 1],
-        label   = f's from bend entrance = {s_samples[index] - s_start:g} m',
-    )
-axes[1].set_xlabel('Local survey x [mm]')
-axes[1].set_ylabel('Local survey y [mm]')
-axes[1].set_title('Cross-sections in their own local planes')
-axes[1].set_aspect('equal')
-axes[1].grid()
-axes[1].legend()
-fig.tight_layout()
+axes[0].set_title('Pipe curvature = reference curvature')
+
+########################################
+# Rebuild the native geometry after changing the pipe axis
+########################################
+pipe.curvature      = PIPE_CURVATURE_FACTOR * curvature
+line.aperture.build_model()
+different_sections  = line.aperture.get_cross_sections_at_s(
+    s_samples, extents = True)
+print('Reference / changed pipe curvature [m^-1]:', curvature, pipe.curvature)
+different_sections.cols['s min_x max_x min_y max_y'].show(maxwidth = 'full')
+print('Maximum change in queried survey poses:',
+      np.max(np.abs(different_sections.pose - sections.pose)))
+# Editing the chamber does not move the reference trajectory. Its centres
+# and transverse axes now differ from those of the survey along the bend.
+# Interior queries avoid incomplete cuts at the tilted terminal profile:
+# the chamber wall ends at that profile; an end cap is not supplied.
+line.aperture.plot_floor_projection(
+    ax      = axes[1],
+    origin  = 'bend.chamber',
+    s_range = (0, length),
+    aspect  = 'auto',
+)
+axes[1].set_title(f'Pipe curvature = {PIPE_CURVATURE_FACTOR:g} × reference')
+# Both floor projections use unequal scales to resolve widths and curvature.
+
+########################################
+# Compare matched and mismatched cuts in the same local planes
+########################################
+for color, index in enumerate([0, N_SAMPLES // 2, N_SAMPLES - 1]):
+    for label, table, style in [
+        ('Matched', sections, '--'),
+        ('Different', different_sections, '-'),
+    ]:
+        polygon = table.cross_section[index]
+        axes[2].plot(polygon[:, 0] * 1e3, polygon[:, 1] * 1e3, style,
+                      color = f'C{color}',
+                      label = f'{label}, s = {s_samples[index] - s_start:g} m')
+axes[2].set_xlabel('Local survey x [mm]')
+axes[2].set_ylabel('Local survey y [mm]')
+axes[2].set_title('Each pair uses the same survey plane')
+axes[2].set_aspect('equal')
+axes[2].grid()
+fig.legend(*axes[2].get_legend_handles_labels(),
+           loc = 'lower center', ncol = 3, fontsize = 8)
+fig.tight_layout(rect = (0, 0.13, 1, 1))
 plt.show()
