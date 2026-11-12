@@ -158,7 +158,7 @@ int CavityModel_prepare(
     source->reference_charge=q0;
     source->reference_beta=1.;
     source->rf_profile=0;
-    source->radial_order=4;
+    source->radial_order=6;
     source->num_harmonics=0;source->harmonic_wave_number=NULL;
     source->harmonic_re=NULL;source->harmonic_im=NULL;
     source->table_points=0;source->table_z0=0.;source->table_dz=0.;source->table=NULL;

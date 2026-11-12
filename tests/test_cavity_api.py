@@ -112,7 +112,7 @@ def test_serialization_writes_only_non_default_fields():
     assert set(legacy) == {'__class__', 'voltage', 'frequency', 'phase'}
     # Explicit zeros of nonzero defaults, and explicit zero carriers, survive.
     explicit = dict(model='_phase-resolved', counter_wave_amplitude=0., n_cells=3,
-        edge_entry_active=0, edge_exit_active=0, order=2, radial_order=6,
+        edge_entry_active=0, edge_exit_active=0, order=2, radial_order=4,
         knl=[0., .1, 0.], nominal_energy_gain=0.)
     data = xt.MagnetOverlappedCavity(**explicit).to_dict()
     assert set(data) == {'__class__', *explicit}
@@ -493,7 +493,7 @@ def test_teapot_refused_for_phase_resolved():
 @pytest.mark.parametrize('kind', [xt.Cavity, xt.FieldExpansionCavity])
 def test_radial_order_is_phase_resolved_only(kind):
     fields = {} if kind is xt.Cavity else dict(wave_numbers=[1.], amplitudes=[1.])
-    assert kind(model='_phase-resolved', length=.1, **fields).radial_order == 4
+    assert kind(model='_phase-resolved', length=.1, **fields).radial_order == 6
     with pytest.raises(ValueError, match='radial_order must be one of'):
         kind(model='_phase-resolved', length=.1, radial_order=5, **fields)
     restored = kind.from_dict(kind(model='_phase-resolved', length=.1, radial_order=8,
@@ -503,7 +503,7 @@ def test_radial_order_is_phase_resolved_only(kind):
         for model in ('_phase-averaged', '_phase-resolved-paraxial', '_phase-resolved-frozen',
                       'adaptive'):
             with pytest.raises(ValueError, match='"_phase-resolved" only'):
-                xt.Cavity(model=model, length=.1, counter_wave_amplitude=0., radial_order=6)
+                xt.Cavity(model=model, length=.1, counter_wave_amplitude=0., radial_order=4)
 
 
 def _averaged_cavity(model='_phase-averaged', **changes):

@@ -205,5 +205,5 @@ def test_samples_that_vanish_at_the_ends_give_a_field_that_vanishes_there():
     cavity.track(particles)
     field = HarmonicField.from_voltage(cavity.wave_numbers, cavity.amplitudes, frequency, length, voltage, phase,
                                        beta0)
-    truth = track(field, [1e-3, 3e-3], 0., 0., 0., 0., 0., p0c, xt.ELECTRON_MASS_EV, order=4)
+    truth = track(field, [1e-3, 3e-3], 0., 0., 0., 0., 0., p0c, xt.ELECTRON_MASS_EV, order=cavity.radial_order)
     assert np.all(abs(particles.px - truth['px']) < 1e-6 * abs(truth['px']))
