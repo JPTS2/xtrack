@@ -25,7 +25,7 @@ KNOB_NAMES      = ['local_kqf', 'local_kqd']
 ########################################
 # Explicit perturbation and matching precision
 ########################################
-STRENGTH_FACTOR = [1.0002, 0.9998]           # Applied to these two magnets only
+STRENGTH_FACTOR = [1.0002, 0.9998]      # Applied to these two magnets only
 K1_STEP         = 1e-5                  # Finite-difference strength step [m^-2]
 BETA_TOL        = 1e-8                  # [m]
 ALPHA_TOL       = 1e-9                  # Dimensionless
@@ -48,6 +48,7 @@ for name, knob in zip(QUAD_NAMES, KNOB_NAMES):
     env[knob] = line[name].k1
     env.set(name, k1 = knob)
 reference   = line.twiss4d()
+reference_k1 = [env[knob] for knob in KNOB_NAMES]
 
 ########################################
 # Apply a stated perturbation after saving the reference
@@ -57,29 +58,50 @@ for knob, factor in zip(KNOB_NAMES, STRENGTH_FACTOR):
 perturbed   = line.twiss4d()
 
 ################################################################################
-# Restore selected local optics using values from the Twiss table
+# Combine Twiss, variable and element-field targets
 ################################################################################
-# Passing the table as value selects the named quantity at the named location;
-# it does not compare entire tables. This restores horizontal beta and alpha,
-# rather than the two global tunes matched in the first lesson.
+
+########################################
+# Select values from a Twiss table at a named location
+########################################
+# These targets reevaluate Twiss, but retain the saved reference values.
+twiss_targets = [
+    reference.target('betx', at = OBSERVATION, tol = BETA_TOL),
+    reference.target('alfx', at = OBSERVATION, tol = ALPHA_TOL)]
+
+########################################
+# Bound the variable and the field controlled by the same varied knobs
+########################################
+# Each bound allows one quarter of the applied perturbation. The restored
+# reference satisfies both; the perturbed strengths violate both.
+upper_k1 = [value + 0.25 * abs(value * (factor - 1))
+            for value, factor in zip(reference_k1, STRENGTH_FACTOR)]
+variable_target = env.vars.target(
+    KNOB_NAMES[0],
+    value   = xt.LessThan(upper_k1[0]),
+    tol     = 1e-10)
+field_target = line.target(
+    lambda ll: ll[QUAD_NAMES[1]].k1,
+    value   = xt.LessThan(upper_k1[1]),
+    tol     = 1e-10)
+
+########################################
+# Inspect what each action evaluates and solve the combined problem
+########################################
+# The variable and field actions read the current model without calling Twiss.
+# All targets depend on the same two independent magnet-strength variables.
 opt = line.match(
     method  = '4d',
+    solve   = False,
     vary    = xt.VaryList(KNOB_NAMES, step = K1_STEP),
-    targets = [
-        xt.Target(
-            'betx',
-            at      = OBSERVATION,
-            value   = reference,
-            tol     = BETA_TOL,
-        ),
-        xt.Target(
-            'alfx',
-            at      = OBSERVATION,
-            value   = reference,
-            tol     = ALPHA_TOL,
-        ),
-    ],
-)
+    targets = twiss_targets + [variable_target, field_target])
+for target in opt.targets:
+    print('Target action:', type(target.action).__name__)
+print('Before matching:')
+opt.target_status()
+opt.solve()
+print('After matching:')
+opt.target_status()
 restored    = line.twiss4d()
 
 ################################################################################
@@ -103,5 +125,6 @@ print('betx has units m; alfx is dimensionless.')
 for name, knob in zip(QUAD_NAMES, KNOB_NAMES):
     print(name, knob, 'restored k1 [m^-2]:', env[knob])
 
-# The target set constrains only two local observables. Equality of unrequested
-# quantities, or the complete reference lattice, is not an optimizer condition.
+print('Variable upper bound [m^-2]:', upper_k1[0])
+print('Field upper bound [m^-2]:', upper_k1[1])
+# Restoring these local observables does not target the entire Twiss table.

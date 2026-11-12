@@ -23,6 +23,8 @@ LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 RF_VOLTAGE      = 1e5                   # Initial cavity voltage [V]
 DELTA_TARGET    = 1e-4                  # (p-p0)/p0, not relative total energy
 ZETA_TARGET     = 3e-3                  # zeta=s-beta0*c*t at entrance [m]
+BPM_OBSERVATION = 'bpm.s1.d'            # Nonzero horizontal dispersion
+ORBIT_TOL       = 1e-9                  # Horizontal position tolerance [m]
 
 ########################################
 # Matching and revolution-period search precision
@@ -86,8 +88,8 @@ reference = line.twiss(
 ########################################
 # Start from the linear slip-factor estimate
 ########################################
-# Delta f/f approximately equals -eta*delta for small offsets. Use a uniform-slip
-# estimate to seed the phase; the matched orbit supplies the final value.
+# Delta f/f approximately equals -eta*delta for small offsets.
+# A uniform-slip estimate seeds the phase; the match supplies the final value.
 env['rf_relative_frequency'] = -reference.slip_factor * DELTA_TARGET
 frequency_guess         = frequency0 * (1 + env['rf_relative_frequency'])
 period_guess            = harmonic / frequency_guess
@@ -181,3 +183,51 @@ print('Final particle state:', particle.state)
 
 # No energy loss is included; the stable synchronous RF phase has zero net
 # energy kick. Numerical matching/closed-orbit tolerances limit these checks.
+
+################################################################################
+# Infer a frequency trim from a horizontal orbit measurement
+################################################################################
+
+########################################
+# Generate a known signal and forget its frequency setting
+########################################
+# This synthetic measurement has no noise or alignment errors. Keep the RF
+# phase fixed, so one dispersive position determines the one unknown trim.
+# A zero-dispersion BPM would not identify its sign near the reference orbit.
+known_trim = env['rf_relative_frequency']
+measured_x = matched['x', BPM_OBSERVATION]
+env['rf_relative_frequency'] = 0.0
+print('Synthetic BPM x [m]:', BPM_OBSERVATION, measured_x)
+print('Reference horizontal dispersion at the BPM [m]:',
+      reference['dx', BPM_OBSERVATION])
+
+########################################
+# Fit the actual periodic orbit using the frequency control
+########################################
+inverse = line.match(
+    method                      = '6d',
+    search_for_t_rev            = True,
+    num_turns_search_t_rev       = SEARCH_TURNS,
+    vary                        = [
+        xt.Vary('rf_relative_frequency', step = FREQUENCY_STEP),
+    ],
+    targets                     = [
+        xt.Target(
+            'x',
+            at      = BPM_OBSERVATION,
+            value   = measured_x,
+            tol     = ORBIT_TOL,
+        ),
+    ],
+)
+recovered = line.twiss(
+    method                      = '6d',
+    search_for_t_rev            = True,
+    num_turns_search_t_rev       = SEARCH_TURNS,
+)
+print('Known / inferred relative frequency trims:',
+      known_trim, env['rf_relative_frequency'])
+print('Recovered BPM residual [m]:',
+      recovered['x', BPM_OBSERVATION] - measured_x)
+print('Known / recovered synchronous momentum offsets:',
+      matched.delta[0], recovered.delta[0])

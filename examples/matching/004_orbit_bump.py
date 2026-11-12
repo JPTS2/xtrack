@@ -17,135 +17,181 @@ import xtrack as xt
 ################################################################################
 
 ########################################
-# Native ring and local bump geometry
+# Ring, bump and deliberately offset aperture
 ########################################
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 START_S         = 160.0                 # Upstream boundary [m]
-CORRECTORS      = ['cor.ip.1', 'cor.ip.2', 'cor.ip.3']
-MID_S           = 205.0                 # IP between correctors 2/3 [m]
-END_S           = 250.0                 # Boundary after the last corrector [m]
-BUMP_HEIGHT     = 1e-4                  # Displacement at MID_S [m]
+END_S           = 250.0                 # Downstream boundary [m]
+EXTRA_COR_S     = 230.0                 # Fourth corrector in this example [m]
+BUMP_HEIGHT     = 1e-4                  # Horizontal displacement at ip.1 [m]
+BUMP_SLOPE      = 2e-6                  # Canonical px at ip.1, delta=0
+APERTURE_MIN_X  = 0.5e-4                # Offset horizontal opening [m]
+APERTURE_MAX_X  = 1.5e-4                # [m]
 
 ########################################
-# Solver precision
+# Matching precision
 ########################################
 KICK_STEP       = 1e-6                  # Normalized momentum-kick step
 X_TOL           = 1e-10                 # Position tolerance [m]
-PX_TOL          = 1e-10                 # Normalized canonical px tolerance
+PX_TOL          = 1e-10                 # Canonical momentum tolerance
 
 ################################################################################
-# Add independent steering knobs and zero-length boundary markers
+# Prepare a physical line and a shared optics twin
 ################################################################################
 
 ########################################
-# Bind the three existing insertion correctors
+# Bind four independent horizontal correctors
 ########################################
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env['demo']
-# The 1500 m electron ring has p0*c=1 GeV, with RF voltage zero and
-# radiation off; delta=0.
-knobs = []
-for index, name in enumerate(CORRECTORS):
-    knob    = f'bump_kick_{index}'
+# Add one zero-length corrector to this copy of the DEMO insertion.
+line.insert('bump.cor.4', xt.Multipole(knl = [0.0]), at = EXTRA_COR_S)
+correctors  = ['cor.ip.1', 'cor.ip.2', 'cor.ip.3', 'bump.cor.4']
+knobs       = [f'bump_kick_{index}' for index in range(4)]
+for name, knob in zip(correctors, knobs):
     env[knob] = 0.0
-    # Multipole Delta px=-knl[0]: the knob is the positive horizontal kick.
+    # Multipole Delta px=-knl[0]; positive knob means positive kick.
     env.set(name, knl = ['-' + knob])
-    knobs.append(knob)
-
-########################################
-# Record the clean periodic orbit at named marker boundaries
-########################################
-for name, position in [('bump.start', START_S), ('bump.mid', MID_S),
-                       ('bump.end', END_S)]:
+for name, position in [('bump.start', START_S), ('bump.end', END_S)]:
     line.insert(name, xt.Marker(), at = position)
-tw_ref      = line.twiss4d()
-init        = tw_ref.get_twiss_init(at_element = 'bump.start')
+
+########################################
+# Keep the offset opening in tracking, replace it only for optics
+########################################
+line.insert(
+    'bump.aperture',
+    xt.LimitRect(min_x = APERTURE_MIN_X, max_x = APERTURE_MAX_X),
+    at      = 'ip.1')
+optics = line.copy(shallow = True)
+env.new('bump.aperture.marker', xt.Marker)
+optics.replace('bump.aperture', 'bump.aperture.marker')
+reference   = optics.twiss4d()
+initial     = line.build_particles()
+line.track(initial)
+print('Unsteered particle state at the offset aperture:', initial.state)
 
 ################################################################################
-# Match the local trajectory with its entrance state fixed
+# Match the same bump with four choices of boundary data
 ################################################################################
-# Three variables control three conditions: height at the middle observation
-# and restoration of x AND px downstream. Closure of position alone is not a
-# closed bump. The fixed entrance state supplies the upstream boundary.
-opt = line.match(
+
+########################################
+# Fix the entrance and constrain IP position, slope and downstream closure
+########################################
+ip_targets = [
+    xt.Target('x', at = 'ip.1', value = BUMP_HEIGHT, tol = X_TOL),
+    xt.Target('px', at = 'ip.1', value = BUMP_SLOPE, tol = PX_TOL),
+]
+start_targets = [
+    xt.Target('x', at = xt.START, value = reference, tol = X_TOL),
+    xt.Target('px', at = xt.START, value = reference, tol = PX_TOL),
+]
+end_targets = [
+    xt.Target('x', at = xt.END, value = reference, tol = X_TOL),
+    xt.Target('px', at = xt.END, value = reference, tol = PX_TOL),
+]
+common = dict(
     method  = '4d',
     start   = 'bump.start',
     end     = 'bump.end',
-    init    = init,
-    vary    = xt.VaryList(knobs, step = KICK_STEP),
-    targets = [
-        xt.Target(
-            'x',
-            at      = 'bump.mid',
-            value   = tw_ref['x', 'bump.mid'] + BUMP_HEIGHT,
-            tol     = X_TOL,
-        ),
-        xt.Target(
-            'x',
-            at      = 'bump.end',
-            value   = tw_ref['x', 'bump.end'],
-            tol     = X_TOL,
-        ),
-        xt.Target(
-            'px',
-            at      = 'bump.end',
-            value   = tw_ref['px', 'bump.end'],
-            tol     = PX_TOL,
-        ),
-    ],
-)
-
-################################################################################
-# Verify the resulting full-ring periodic orbit
-################################################################################
+    vary    = xt.VaryList(knobs, step = KICK_STEP))
+solutions = {}
+opt = optics.match(
+    **common,
+    init    = reference.get_twiss_init(at_element = 'bump.start'),
+    targets = ip_targets + end_targets)
+solutions['Entrance'] = [env[knob] for knob in knobs]
 
 ########################################
-# Inspect the target, boundary and external orbit deviations
+# Fix downstream conditions and close the orbit upstream
 ########################################
-tw_after    = line.twiss4d()
-for name in ['bump.start', 'bump.mid', 'bump.end']:
-    print(name, 'x difference [m], px difference [normalized to p0]:',
-          tw_after['x', name] - tw_ref['x', name],
-          tw_after['px', name] - tw_ref['px', name])
-outside = (tw_after.s < START_S) | (tw_after.s > END_S)
-for coordinate, unit in [('x', 'm'), ('px', 'dimensionless')]:
-    print('Maximum outside-bump', coordinate, 'difference', f'[{unit}]:',
-          np.max(np.abs((tw_after[coordinate] - tw_ref[coordinate])[outside])))
 for knob in knobs:
-    print(knob, 'normalized horizontal kick:', env[knob])
-
-# At delta=0 these normalized kicks are paraxial angles [rad]. This confines
-# the orbit deviation; it does not constrain beta functions or other optics.
+    env[knob] = 0.0
+opt = optics.match(
+    **common,
+    init    = reference.get_twiss_init(at_element = 'bump.end'),
+    init_at = xt.END,
+    targets = ip_targets + start_targets)
+solutions['Exit'] = [env[knob] for knob in knobs]
 
 ########################################
-# Resolve the insertion shape and the selected IP displacement
+# Fix the IP trajectory and close both external boundaries
+########################################
+for knob in knobs:
+    env[knob] = 0.0
+ip_init     = reference.get_twiss_init(at_element = 'ip.1')
+ip_init.x   = BUMP_HEIGHT
+ip_init.px  = BUMP_SLOPE
+opt = optics.match(
+    **common,
+    init    = ip_init,
+    init_at = 'ip.1',
+    targets = start_targets + end_targets)
+solutions['Interior'] = [env[knob] for knob in knobs]
+
+########################################
+# Extract downstream conditions and upstream targets from a Twiss table
+########################################
+for knob in knobs:
+    env[knob] = 0.0
+opt = optics.match(
+    **common,
+    init    = reference,
+    init_at = xt.END,
+    targets = ip_targets + start_targets)
+solutions['Table'] = [env[knob] for knob in knobs]
+
+################################################################################
+# Independently recompute the full periodic orbit and physical transmission
+################################################################################
+
+########################################
+# Compare fresh-start solutions and expose orbit leakage outside the bump
 ########################################
 fig, axes = plt.subplots(2, 1, figsize = (9, 7))
-axes[0].plot(tw_after.s, 1e3 * (tw_after.x - tw_ref.x), '.-')
-axes[0].axhline(0, color = 'k', linestyle = '--')
-axes[0].plot(MID_S, 1e3 * BUMP_HEIGHT, 'rx', label = 'IP displacement target')
-axes[0].axvline(MID_S, color = '0.5', linestyle = ':')
-axes[0].set_xlim(START_S - 5, END_S + 5)
-axes[0].set_xticks([START_S, MID_S, END_S],
-                   labels   = ['bump.start', 'ip.1', 'bump.end'])
-axes[0].set_ylabel('x - clean orbit [mm]')
-axes[0].set_title('Insertion detail: target displacement is not the peak')
-axes[0].legend()
+for label, values in solutions.items():
+    for knob, value in zip(knobs, values):
+        env[knob] = value
+    tw = optics.twiss4d()
+    outside = (tw.s < START_S) | (tw.s > END_S)
+    print(label, 'IP x [m], px:', tw['x', 'ip.1'], tw['px', 'ip.1'])
+    print('  Maximum external |x| [m], |px|:',
+          np.max(np.abs(tw.x[outside])), np.max(np.abs(tw.px[outside])))
+    print('  Corrector kicks:', values)
+    axes[0].plot(tw.s, 1e3 * tw.x, '.-', label = label)
+    axes[1].plot(tw.s, 1e6 * tw.px, '.-', label = label)
+# All cases start from zero kicks; none inherits a previously solved bump.
+# Closure is orbital: beta functions and nonlinear response are unconstrained.
 
 ########################################
-# Retain the full-ring view to expose any external orbit leakage
+# Track through the unchanged physical aperture using the shared kicks
 ########################################
-axes[1].plot(tw_after.s, 1e3 * (tw_after.x - tw_ref.x), '.-',
-             label  = 'Matched bump')
-axes[1].axhline(0, color = 'k', linestyle = '--',
-                label   = 'Clean orbit deviation')
-axes[1].axvspan(START_S, END_S, alpha = 0.1, color = 'C0')
+particle = line.build_particles()
+line.track(particle)
+print('Steered particle state after one physical turn:', particle.state)
+print('Physical aperture:',
+      line.get_table()['element_type', 'bump.aperture'])
+print('Optics replacement:',
+      optics.get_table()['element_type', 'bump.aperture.marker'])
+
+########################################
+# Resolve both coordinates throughout the insertion
+########################################
+axes[0].plot(
+    [reference['s', 'ip.1']] * 2,
+    1e3 * np.array([APERTURE_MIN_X, APERTURE_MAX_X]),
+    color = '0.7', linewidth = 8, label = 'Aperture opening', zorder = 0)
+axes[0].plot(reference['s', 'ip.1'], 1e3 * BUMP_HEIGHT, 'kx')
+axes[1].plot(reference['s', 'ip.1'], 1e6 * BUMP_SLOPE, 'kx')
+axes[0].set_ylabel('x [mm]')
+axes[1].set_ylabel('px [1e-6]')
 axes[1].set_xlabel('s [m]')
-axes[1].set_ylabel('x - clean orbit [mm]')
-axes[1].set_title('Full ring: closure outside the insertion')
-axes[1].legend()
 for axis in axes:
+    axis.set_xlim(START_S - 5, END_S + 5)
+    axis.axhline(0, color = 'k', linestyle = '--')
+    axis.axvline(reference['s', 'ip.1'], color = '0.5', linestyle = ':')
     axis.grid()
+    axis.legend()
+fig.suptitle('Four-corrector bump: independent height and slope')
 fig.tight_layout()
 plt.show()

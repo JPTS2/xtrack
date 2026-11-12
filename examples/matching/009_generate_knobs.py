@@ -17,11 +17,13 @@ import xtrack as xt
 ################################################################################
 
 ########################################
-# Ring and requested horizontal tune-offset knob
+# Ring and physical tune knobs
 ########################################
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
-KNOB_NAME       = 'horizontal_tune_offset'
-KNOB_END        = 0.002                  # Matched endpoint Qx offset
+KNOB_NAME       = 'horizontal_tune'
+VERTICAL_KNOB   = 'vertical_tune'
+QX_INCREMENT    = 0.002                 # Matched endpoint Qx increment
+QY_INCREMENT    = 0.001                 # Matched endpoint Qy increment
 N_SAMPLES       = 5
 
 ########################################
@@ -54,13 +56,13 @@ k1_start    = {name: env[name] for name in ['kqf', 'kqd']}
 # run=False lets us solve them before binding their values to the new knob.
 opt = line.match_knob(
     knob_name           = KNOB_NAME,
-    knob_value_start    = 0.0,
-    knob_value_end      = KNOB_END,
+    knob_value_start    = reference.qx,
+    knob_value_end      = reference.qx + QX_INCREMENT,
     run                 = False,
     method              = '4d',
     vary                = xt.VaryList(['kqf', 'kqd'], step = K1_STEP),
     targets             = xt.TargetSet(
-        qx      = reference.qx + KNOB_END,
+        qx      = reference.qx + QX_INCREMENT,
         qy      = reference.qy,
         tol     = TUNE_TOL,
     ),
@@ -76,27 +78,88 @@ for name, strength in k1_start.items():
     print(name, strength, env[name])
 
 ################################################################################
+# Compose a second knob on the same quadrupole families
+################################################################################
+
+########################################
+# Match a vertical-tune endpoint at the horizontal origin
+########################################
+vertical_opt = line.match_knob(
+    knob_name           = VERTICAL_KNOB,
+    knob_value_start    = reference.qy,
+    knob_value_end      = reference.qy + QY_INCREMENT,
+    run                 = False,
+    method              = '4d',
+    vary                = xt.VaryList(['kqf', 'kqd'], step = K1_STEP),
+    targets             = xt.TargetSet(
+        qx      = reference.qx,
+        qy      = reference.qy + QY_INCREMENT,
+        tol     = TUNE_TOL,
+    ),
+)
+vertical_opt.solve()
+vertical_opt.generate_knob()
+
+########################################
+# Inspect the composed strength expressions
+########################################
+# Both knobs have physical, nonzero origins. Each correction vanishes at its
+# own origin, so the two generated corrections add to the saved strengths.
+for name in k1_start:
+    print(name, env.vars.get_expr(name))
+    for knob_name in [KNOB_NAME, VERTICAL_KNOB]:
+        correction = f'{name}_from_{knob_name}'
+        print(correction, env.vars.get_expr(correction))
+print('Horizontal/vertical origins:', env[KNOB_NAME], env[VERTICAL_KNOB])
+
+################################################################################
 # Recompute the physical optics at endpoints and intermediate settings
 ################################################################################
 # Strengths interpolate linearly; tunes generally do not. Only the end setting
 # was matched. Intermediate Qx error and Qy leakage quantify this finite-range
 # approximation. No hardware limits or safe extrapolation range are established.
-settings    = np.linspace(0, KNOB_END, N_SAMPLES)
+settings    = np.linspace(0, QX_INCREMENT, N_SAMPLES)
 qx_values   = []
 qy_values   = []
-print(f'{"Knob":>10} {"Qx offset":>14} {"Qx error":>14} {"Qy leakage":>14}')
+print(f'{"Qx increment":>14} {"Qx offset":>14}'
+      f' {"Qx error":>14} {"Qy leakage":>14}')
 for value in settings:
-    env[KNOB_NAME] = value
+    env[KNOB_NAME] = reference.qx + value
     tw = line.twiss4d()
     qx_values.append(tw.qx)
     qy_values.append(tw.qy)
-    print(f'{value:10.6f} {tw.qx - reference.qx:14.9f}'
+    print(f'{value:14.6f} {tw.qx - reference.qx:14.9f}'
           f' {tw.qx - reference.qx - value:14.3e}'
           f' {tw.qy - reference.qy:14.3e}')
 qx_values   = np.array(qx_values)
 qy_values   = np.array(qy_values)
 qx_error    = qx_values - reference.qx - settings
 qy_leakage  = qy_values - reference.qy
+
+################################################################################
+# Check separate endpoints, a mixed setting, and the common origin
+################################################################################
+
+########################################
+# Set both physical tune values and recompute the optics
+########################################
+# The two endpoints were matched separately. Their simultaneous use need not
+# give exact tune addition because optics is nonlinear in quadrupole strengths.
+for dx, dy in [(QX_INCREMENT, 0), (0, QY_INCREMENT),
+               (QX_INCREMENT, QY_INCREMENT), (0, 0)]:
+    env[KNOB_NAME]       = reference.qx + dx
+    env[VERTICAL_KNOB]   = reference.qy + dy
+    checked = line.twiss4d()
+    print('Requested Qx/Qy:', env[KNOB_NAME], env[VERTICAL_KNOB])
+    print('Recomputed Qx/Qy:', checked.qx, checked.qy)
+    print('Calibration residuals:', checked.qx - env[KNOB_NAME],
+          checked.qy - env[VERTICAL_KNOB])
+
+########################################
+# Verify the reset recovers the original family strengths
+########################################
+for name, value in k1_start.items():
+    print(name, 'reset residual [m^-2]:', env[name] - value)
 
 ################################################################################
 # Plot the tune response and its departure from the ideal calibration
@@ -113,7 +176,7 @@ axes[1].axhspan(-TUNE_TOL, TUNE_TOL, color = '0.8', alpha = 0.4,
 axes[1].plot(settings, qx_error, 'o-', label = 'Qx calibration error')
 axes[1].plot(settings, qy_leakage, 's-', label = 'Qy leakage')
 axes[1].set_ylabel('Tune residual')
-axes[1].set_xlabel('Generated knob value (requested Qx offset)')
+axes[1].set_xlabel('Horizontal tune knob increment from its origin')
 axes[1].legend()
 for axis in axes:
     axis.grid()
