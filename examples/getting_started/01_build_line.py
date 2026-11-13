@@ -17,14 +17,15 @@ import xtrack as xt
 ########################################
 # Reference particle
 ########################################
-P0C             = 1.0e9                 # Electron reference p0*c [eV]
+P0C             = 1.0e9                 # Reference momentum times c [eV]
 
 ########################################
 # Elements
 ########################################
 QUAD_LENGTH     = 0.25                  # [m]
 DRIFT_LENGTH    = 1.0                   # [m]
-KQ              = 0.8                   # Quadrupole k1 magnitude [m^-2]
+KQ              = 0.8                   # Initial k1 magnitude [m^-2]
+KQ_AFTER        = 0.7                   # Updated k1 magnitude [m^-2]
 
 ################################################################################
 # Build the line
@@ -45,10 +46,12 @@ line.set_particle_ref('electron', p0c = P0C)
 ################################################################################
 # Inspect the result
 ################################################################################
+print('Element table [m]\n-----------------')
 # s is measured at element entrances, in metres.
 line.get_table().cols['name s_start s_end element_type'].show(maxrows = 12)
-print(f'Line length: {line.get_length():.3f} m')
-print(f'Reference p0*c: {line.particle_ref.p0c[0] * 1e-9:.3f} GeV')
+print('\nLine and reference\n------------------')
+print(f'Line length [m]: {line.get_length():.3f}')
+print(f'Reference momentum [GeV/c]: {line.particle_ref.p0c[0] * 1e-9:.3f}')
 
 ################################################################################
 # Change the quadrupole strengths
@@ -57,8 +60,9 @@ k1f_before = line['qf'].k1
 k1d_before = line['qd'].k1
 
 # Both strengths are expressions of kq, so changing it updates both magnets.
-env['kq'] = 1.1 * KQ
+env['kq'] = KQ_AFTER
 
-print('\nQuadrupole k1 [m^-2]       Before       After')
+print('\nChange the strength variable\n----------------------------')
+print('Quadrupole k1 [m^-2]       Before       After')
 print(f'qf                  {k1f_before:12.3f} {line["qf"].k1:11.3f}')
 print(f'qd                  {k1d_before:12.3f} {line["qd"].k1:11.3f}')

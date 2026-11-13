@@ -11,9 +11,11 @@ import xtrack as xt
 ################################################################################
 # Model parameters
 ################################################################################
-P0C = 1.0e9                              # Reference p0*c [eV]
-KQF = 0.35                               # Focusing quadrupole k1 [m^-2]
-KQD = -0.30                              # Defocusing quadrupole k1 [m^-2]
+P0C             = 1.0e9                  # Reference momentum times c [eV]
+KQF             = 1.8                    # Focusing quadrupole k1 [m^-2]
+KQD             = -1.8                   # Defocusing quadrupole k1 [m^-2]
+CELL_LENGTH     = 6.1                    # [m]
+N_CELLS         = 3
 
 ################################################################################
 # Elements and strength variables
@@ -36,16 +38,20 @@ env.new(
 ################################################################################
 # Transport-line layout
 ################################################################################
+components = []
+for cell in range(N_CELLS):
+    offset = cell * CELL_LENGTH
+    components.extend([
+        env.new(f'qf.{cell + 1}', 'qf', at = offset),
+        env.new(f'b1.{cell + 1}', 'b1', at = offset + 1.0),
+        env.new(f'qd.{cell + 1}', 'qd', at = offset + 3.05),
+        env.new(f'b2.{cell + 1}', 'b2', at = offset + 4.05),
+    ])
+
 transport = env.new_line(
     name       = 'transport',
-    length     = 7.1,
+    length     = N_CELLS * CELL_LENGTH,
     refer      = 'start',
-    components = [
-        env.new('qf.1', 'qf', at = 0.0),
-        env.new('b1.1', 'b1', at = 1.0),
-        env.new('qd.1', 'qd', at = 3.05),
-        env.new('b2.1', 'b2', at = 4.05),
-        env.new('qf.2', 'qf', at = 6.1),
-    ],
+    components = components,
 )
 transport.set_particle_ref('electron', p0c = P0C)

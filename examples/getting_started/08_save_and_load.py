@@ -50,12 +50,14 @@ save_path = Path(__file__).resolve().parent / SAVE_FILE
 save_path.parent.mkdir(parents = True, exist_ok = True)
 
 # Save the environment, including its strength expressions.
+print('Save the environment\n--------------------')
 env.to_json(save_path)
 print(f'Saved environment: {save_path}')
 
 ################################################################################
 # Reload the environment
 ################################################################################
+print('\nReload the environment\n----------------------')
 env_loaded  = xt.load(save_path)
 line_loaded = env_loaded[LINE_NAME]
 tw_loaded   = line_loaded.twiss(method = '4d')
@@ -64,15 +66,22 @@ print(f'Original tunes: Qx = {tw0.qx:.6f}, '
       f'Qy = {tw0.qy:.6f}')
 print(f'Reloaded tunes: Qx = {tw_loaded.qx:.6f}, '
       f'Qy = {tw_loaded.qy:.6f}')
+print(f'Original arc.s1.c1.qf.in k1 [m^-2]: {line["arc.s1.c1.qf.in"].k1:.9f}')
+print(f'Reloaded arc.s1.c1.qf.in k1 [m^-2]: '
+      f'{line_loaded["arc.s1.c1.qf.in"].k1:.9f}')
 
 ################################################################################
 # Change a knob in the loaded copy
 ################################################################################
 # The restored expressions still link the arc QF magnets to kqf. The original
 # environment is independent and keeps its starting strengths.
+print('\nChange a strength in the loaded copy'
+      '\n------------------------------------')
+print(f'kqf scale factor: {KQF_SCALE:g}')
 env_loaded['kqf'] *= KQF_SCALE
-print(f'Original arc.s1.c1.qf.in k1: {line["arc.s1.c1.qf.in"].k1:.9f} m^-2')
-print('Loaded arc.s1.c1.qf.in k1 [m^-2]:', line_loaded['arc.s1.c1.qf.in'].k1)
+print(f'Unchanged original k1 [m^-2]: {line["arc.s1.c1.qf.in"].k1:.9f}')
+print(f'Modified copy k1 [m^-2]: '
+      f'{line_loaded["arc.s1.c1.qf.in"].k1:.9f}')
 
 tw = line_loaded.twiss(method = '4d')
 print(f'Changed-copy tunes: Qx = {tw.qx:.6f}, '

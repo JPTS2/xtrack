@@ -82,29 +82,64 @@ record = line.record_last_track
 # Rows identify particles; columns identify recorded turns. For this simple
 # scan there are no losses or reordering. In general, use particle_id/state
 # in the record rather than assuming final particle-array order is unchanged.
-print(f'Turn-by-turn x record shape: {record.x.shape}')
+print('Tracking record\n---------------')
+print(f'Turn-by-turn x record shape (particles, turns): {record.x.shape}')
 print(f'Surviving particles: {np.count_nonzero(particles.state > 0)} '
       f'of {len(X_NORM)}')
 
 ################################################################################
+# Interpret the turn-by-turn sampling
+################################################################################
+# The fractional tunes set the phase advances between turn-by-turn samples.
+# Sampling once per turn aliases Qx = 8.7548 to about -0.2452 cycles/turn.
+# The small vertical fractional tune gives a much slower sampled oscillation.
+# All particles share y_n = 0.5, so their vertical traces largely overlap.
+tw          = line.twiss(method = '4d')
+qx_sample   = abs(tw.qx - np.rint(tw.qx))
+qy_sample   = abs(tw.qy - np.rint(tw.qy))
+
+print('\nTurn-by-turn sampling\n--------------------')
+print('Turn-by-turn motion depends on the fractional part of each tune.')
+print(f'Fractional tunes: Qx = {tw.qx % 1:.6f}, Qy = {tw.qy % 1:.6f}')
+print('At one sample per turn, the horizontal motion aliases to '
+      f'{tw.qx - np.rint(tw.qx):.6f} cycles/turn.')
+print(f'Sampled periods [turns]: x = {1 / qx_sample:.1f}, '
+      f'y = {1 / qy_sample:.1f}')
+print(f'The vertical traces overlap: all particles have y_n = {Y_NORM:g}.')
+
+################################################################################
 # Plot the transverse motion
 ################################################################################
-# All launches have the same vertical amplitude, so their y curves largely
-# coincide in this uncoupled lattice.
 fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
 for particle_index, amplitude in enumerate(X_NORM):
     alive = record.state[particle_index] > 0
     turns = record.at_turn[particle_index, alive]
     axes[0].plot(
         turns, record.x[particle_index, alive] * 1e3,
-        label = f'x_norm = {amplitude:g}', marker = '.', markersize = 3,
+        label = f'({amplitude:.1f}, {Y_NORM:.1f})',
+        marker = '.', markersize = 3,
     )
-    axes[1].plot(turns, record.y[particle_index, alive] * 1e3)
+    axes[1].plot(
+        turns, record.y[particle_index, alive] * 1e3,
+        marker = '.', markersize = 3,
+    )
+
+for ax, plane, tune in zip(axes, ['x', 'y'], [tw.qx, tw.qy]):
+    ax.margins(y = 0.15)
+    ax.text(
+        0.98, 0.96, rf'$Q_{plane} = {tune:.4f}$',
+        transform = ax.transAxes, ha = 'right', va = 'top',
+        bbox = dict(facecolor = 'white', edgecolor = 'none', alpha = 0.85),
+    )
 
 axes[0].set_ylabel('x [mm]')
-axes[0].legend(ncol = 2)
+fig.legend(
+    *axes[0].get_legend_handles_labels(),
+    loc = 'upper center', bbox_to_anchor = (0.5, 0.95), ncol = 4,
+    title = r'Launch coordinates $(x_n, y_n)$',
+)
 axes[1].set_ylabel('y [mm]')
 axes[1].set_xlabel('Turn (recorded at the ring entrance)')
 fig.suptitle('Transverse tracking at fixed reference momentum')
-fig.tight_layout()
+fig.tight_layout(rect = (0, 0, 1, 0.90))
 plt.show()
