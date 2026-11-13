@@ -17,12 +17,12 @@ import xtrack as xt
 ########################################
 # Thin octupole followed by a linear normal-form rotation
 ########################################
-QX              = 0.255
-QY              = 0.31
-BETA            = 1.0                   # Both rotation-map beta functions [m]
-K3L             = -1e5                  # Integrated normal octupole [m^-3]
-P0C             = 7e12                  # Proton reference p0*c [eV]
-MAP_LENGTH      = 1.0                   # Abstract turn length [m]
+QX          = 0.255
+QY          = 0.31
+BETA        = 1.0                   # Both rotation-map beta functions [m]
+K3L         = -1e5                  # Integrated normal octupole [m^-3]
+P0C         = 7e12                  # Proton reference p0*c [eV]
+MAP_LENGTH  = 1.0                   # Abstract turn length [m]
 
 ########################################
 # Periodic orbit and tracking check
@@ -68,8 +68,8 @@ px_seed     = (1 + np.cos(mu)) * amplitude / (BETA * np.sin(mu))
 ########################################
 # Compute and inspect the periodic optics
 ########################################
-core        = line.twiss4d(chrom = False)
-island      = line.twiss4d(
+core    = line.twiss4d(chrom = False)
+island  = line.twiss4d(
     num_turns   = N_TURNS,
     co_guess    = {'x': amplitude, 'px': px_seed},
     chrom       = False,

@@ -19,18 +19,20 @@ import xtrack as xt
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 RF_VOLTAGE      = 1e5                   # [V], stable longitudinal focusing
 N_REPEATS       = 7
+RADIATION_P0C   = 10e9                  # Separate radiating setting [eV]
+RADIATION_RF    = 50e6                  # [V], above mean radiation loss
 OPEN_START      = 'arc.s1.c1.qf.in'
 OPEN_END        = 'straight.s1.start'
 
 ################################################################################
 # Set a common RF-on operating point and retain entrance optics
 ################################################################################
-repo_root   = Path(__file__).resolve().parents[3]
-env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['demo']
-env['voltage_rf']       = RF_VOLTAGE
-reference   = line.twiss4d(chrom = False)
-initial     = reference.get_twiss_init(OPEN_START)
+repo_root           = Path(__file__).resolve().parents[3]
+env                 = xt.load(repo_root / LATTICE_FILE)
+line                = env['demo']
+env['voltage_rf']   = RF_VOLTAGE
+reference           = line.twiss4d(chrom = False)
+initial             = reference.get_twiss_init(OPEN_START)
 print('Python / Xtrack:', platform.python_version(), xt.__version__)
 print('Platform:', platform.platform())
 print('Ring elements / length [m]:',
@@ -68,6 +70,38 @@ for label, options in cases:
     rows.append((label, len(tw.name), tw.s[-1] - tw.s[0],
                  *np.percentile(samples, [50, 25, 75])))
     print(label, 'entrance/exit beta_x [m]:', tw.betx[0], tw.betx[-1])
+
+################################################################################
+# Measure radiation optics and equilibrium analysis separately
+################################################################################
+radiation_env           = xt.load(repo_root / LATTICE_FILE)
+radiation_line          = radiation_env['demo']
+radiation_env['p0c']    = RADIATION_P0C
+radiation_line.set_particle_ref('electron', p0c = RADIATION_P0C)
+radiation_env['frequency_rf']   = 0.0
+radiation_line['rf.1'].harmonic = radiation_env['harmonic_rf']
+radiation_env['voltage_rf']     = RADIATION_RF
+radiation_line.configure_radiation(model = 'mean')
+radiation_line.compensate_radiation_energy_loss()
+# Model loading, compensation and an operation-specific warmup are excluded.
+# Both rows below use exactly these same compensated, tapered fields.
+for label, analyze in [('mean_radiation_6d', False),
+                        ('mean_radiation_equilibrium', True)]:
+    options = dict(method = '6d', chrom = False,
+                   radiation_method = 'full', radiation_analysis = analyze)
+    radiation_line.twiss(**options)
+    samples = []
+    for repeat in range(N_REPEATS):
+        started = perf_counter()
+        tw      = radiation_line.twiss(**options)
+        samples.append(perf_counter() - started)
+    rows.append((label, len(tw.name), tw.s[-1] - tw.s[0],
+                 *np.percentile(samples, [50, 25, 75])))
+    if analyze:
+        print('Radiation setting U0 [MeV/turn], equilibrium eps_x [m]:',
+              tw.energy_loss * 1e-6, tw.eq_gemitt_x)
+# The nonradiating rows retain their 1 GeV/c setting. Comparing their cost with
+# these 10 GeV/c rows is workload accounting, not equal-physics acceleration.
 
 ################################################################################
 # Report the complete calculation cost

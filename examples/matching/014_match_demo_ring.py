@@ -19,16 +19,16 @@ import xtrack as xt
 ########################################
 # Reference and arc-cell phase advance
 ########################################
-GEOMETRY_FILE       = 'test_data/example_lattices/demo_ring/geometry.py'
-OUTPUT_FILE         = 'outputs/matched_strengths.json'
-P0C                 = 1e9               # Electron reference p0*c [eV]
-HARMONIC            = 200
-CELL_QX             = 0.25
-CELL_QY             = 0.25
-ARC_SEED            = np.sqrt(2) / 20    # Opposite initial k1 values [m^-2]
-ARC_STEP            = 1e-6              # Finite-difference strength step [m^-2]
-ARC_LIMITS          = (-0.2, 0.2)        # Illustrative numerical bounds [m^-2]
-ARC_TOL             = 1e-11
+GEOMETRY_FILE   = 'test_data/example_lattices/demo_ring/geometry.py'
+OUTPUT_FILE     = 'outputs/matched_strengths.json'
+P0C             = 1e9               # Electron reference p0*c [eV]
+HARMONIC        = 200
+CELL_QX         = 0.25
+CELL_QY         = 0.25
+ARC_SEED        = np.sqrt(2) / 20    # Opposite initial k1 values [m^-2]
+ARC_STEP        = 1e-6              # Finite-difference strength step [m^-2]
+ARC_LIMITS      = (-0.2, 0.2)        # Illustrative numerical bounds [m^-2]
+ARC_TOL         = 1e-11
 
 ########################################
 # Outward half-straights and a bounded vertical squeeze
@@ -64,8 +64,8 @@ for line in [arc, ff, utility]:
 ########################################
 # Solve the two-family arc problem
 ########################################
-env['kqf'] = ARC_SEED
-env['kqd'] = -ARC_SEED
+env['kqf']  = ARC_SEED
+env['kqd']  = -ARC_SEED
 arc.match(
     method  = '4d',
     chrom   = False,
@@ -231,8 +231,8 @@ ring = replayed.new_line(
     ],
 )
 ring.set_particle_ref('electron', p0c = P0C)
-replayed['phase_rf'] = np.pi
-replayed['frequency_rf'] = (
+replayed['phase_rf']        = np.pi
+replayed['frequency_rf']    = (
     HARMONIC * ring.particle_ref.beta0[0] * c / ring.get_length()
 )
 

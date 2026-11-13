@@ -27,19 +27,19 @@ SHIFT_Y         = 0.02e-3               # Vertical quad offset [m]
 ########################################
 # Search conditions
 ########################################
-DELTA0          = 0.0                    # Fixed relative momentum deviation
-GUESS_X         = 0.2e-3                 # Initial horizontal guess [m]
-GUESS_Y         = -0.1e-3                # Initial vertical guess [m]
-SEARCH_AT       = 'bpm.s4.d'                # Alternative search location
+DELTA0      = 0.0                    # Fixed relative momentum deviation
+GUESS_X     = 0.2e-3                 # Initial horizontal guess [m]
+GUESS_Y     = -0.1e-3                # Initial vertical guess [m]
+SEARCH_AT   = 'bpm.s4.d'                # Alternative search location
 
 ################################################################################
 # Build a model with a nonzero closed orbit
 ################################################################################
-repo_root   = Path(__file__).resolve().parents[3]
-env         = xt.load(repo_root / LATTICE_FILE)
-line        = env[LINE_NAME]
-env['arc.s1.c1.qf.in'].shift_x = SHIFT_X
-env['arc.s2.c2.qd'].shift_y = SHIFT_Y
+repo_root                       = Path(__file__).resolve().parents[3]
+env                             = xt.load(repo_root / LATTICE_FILE)
+line                            = env[LINE_NAME]
+env['arc.s1.c1.qf.in'].shift_x  = SHIFT_X
+env['arc.s2.c2.qd'].shift_y     = SHIFT_Y
 line.build_tracker()
 
 ################################################################################

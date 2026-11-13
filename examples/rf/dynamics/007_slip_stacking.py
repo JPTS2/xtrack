@@ -9,6 +9,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.constants import c
+import xpart as xp
 import xtrack as xt
 
 ################################################################################
@@ -18,20 +19,22 @@ import xtrack as xt
 ########################################
 # Ideal proton ring and two RF systems
 ########################################
-P0C                     = 26e9       # Proton reference p0*c [eV]
-CIRCUMFERENCE           = 1000.0     # [m]
-MOMENTUM_COMPACTION     = 0.02
-HARMONIC                = 100
-VOLTAGE                 = 1e4        # [V] per RF system
-FREQUENCY_OFFSET        = 500.0     # [Hz] on either side of h*f_rev0
+P0C                 = 26e9       # Proton reference p0*c [eV]
+CIRCUMFERENCE       = 1000.0     # [m]
+MOMENTUM_COMPACTION = 0.02
+HARMONIC            = 100
+VOLTAGE             = 1e4        # [V] per RF system
+FREQUENCY_OFFSET    = 500.0     # [Hz] on either side of h*f_rev0
 
 ########################################
-# Two small prescribed populations, not matched bunch distributions
+# Two isolated-system matched bunch trains
 ########################################
-N_PER_POPULATION    = 9
-ZETA_AMPLITUDE      = 0.2        # [m]; positive zeta means earlier arrival
-DELTA_AMPLITUDE     = 5e-6       # (p-p0)/p0
-N_TURNS             = 512
+N_PER_BUNCH = 128
+N_BUNCHES   = 3
+BUCKET_GAP  = 2                     # Bunch spacing in RF buckets
+SIGMA_Z     = 0.15                  # RMS bunch length [m]
+SEED        = 857
+N_TURNS     = 512
 
 ################################################################################
 # Construct a ring that isolates longitudinal RF slipping
@@ -51,7 +54,7 @@ f_rf0       = HARMONIC / t_rev0
 ########################################
 # Put both absolute-time cavities at the common entrance
 ########################################
-line    = xt.Line(
+line                = xt.Line(
     elements        = [
         xt.Cavity(
             voltage         = VOLTAGE,
@@ -93,9 +96,9 @@ line.particle_ref   = reference
 ########################################
 synchronous = {}
 for name in ['rf_high', 'rf_low']:
-    line['rf_high'].voltage     = VOLTAGE if name == 'rf_high' else 0
-    line['rf_low'].voltage      = VOLTAGE if name == 'rf_low' else 0
-    synchronous[name]           = line.twiss(
+    line['rf_high'].voltage = VOLTAGE if name == 'rf_high' else 0
+    line['rf_low'].voltage  = VOLTAGE if name == 'rf_low' else 0
+    synchronous[name]       = line.twiss(
         method                  = '6d',
         search_for_t_rev        = True,
         num_turns_search_t_rev  = 4,
@@ -129,29 +132,47 @@ print('Each isolated RF makes', HARMONIC, 'cycles per synchronous turn.')
 ################################################################################
 
 ########################################
-# Launch the same small ellipse around each isolated synchronous center
+# Match each train with only its own RF system powered
 ########################################
-angle       = 2 * np.pi * np.arange(N_PER_POPULATION) / N_PER_POPULATION
+np.random.seed(SEED)
+line.twiss_default['search_for_t_rev'] = True
+line.twiss_default['num_turns_search_t_rev'] = 4
+filling = np.zeros((N_BUNCHES - 1) * BUCKET_GAP + 1, dtype = int)
+filling[::BUCKET_GAP] = 1
 populations = []
-for tw in synchronous.values():
-    populations.append(line.build_particles(
-        zeta    = tw.zeta[0] + ZETA_AMPLITUDE * np.cos(angle),
-        delta   = tw.delta[0] + DELTA_AMPLITUDE * np.sin(angle),
-    ))
+for name in names:
+    line['rf_high'].voltage = VOLTAGE if name == 'rf_high' else 0
+    line['rf_low'].voltage  = VOLTAGE if name == 'rf_low' else 0
+    bucket_length           = beta0 * c / line[name].frequency
+    train                   = xp.generate_matched_gaussian_multibunch_beam(
+        line                        = line,
+        filling_scheme              = filling,
+        bunch_num_particles         = N_PER_BUNCH,
+        bunch_intensity_particles   = 1e10,
+        bucket_length               = bucket_length,
+        engine                      = 'linear',
+        nemitt_x                    = 0,
+        nemitt_y                    = 0,
+        sigma_z                     = SIGMA_Z,
+    )
+    populations.append(train)
 particles       = xt.Particles.merge(populations)
-population_ids  = particles.particle_id.copy().reshape(2, N_PER_POPULATION)
+population_ids  = particles.particle_id.copy().reshape(
+    2, N_BUNCHES * N_PER_BUNCH)
 
 ########################################
 # Record the entrance coordinates once per reference turn
 ########################################
-line['rf_high'].voltage     = VOLTAGE
-line['rf_low'].voltage      = VOLTAGE
+line['rf_high'].voltage = VOLTAGE
+line['rf_low'].voltage  = VOLTAGE
 line.track(particles, num_turns = N_TURNS, turn_by_turn_monitor = True)
 record  = line.record_last_track
-print('Final states:', particles.state)
+print('Final states / counts:',
+      np.unique(particles.state, return_counts = True))
 
 # Single-system centers are references, not joint fixed points of the two RFs.
-# This finite study demonstrates slipping, not final capture or stacking yield.
+# Each train is matched only to its isolated RF; both active systems create
+# a time-dependent potential. No final recapture or stacking yield is modelled.
 
 ################################################################################
 # Compare population motion with the two RF clocks
@@ -169,12 +190,13 @@ for ids, tw in zip(population_ids, synchronous.values()):
     rows    = np.isin(record.particle_id[:, 0], ids)
     mean_zeta.append(np.mean(record.zeta[rows], axis = 0))
     mean_delta.append(np.mean(record.delta[rows], axis = 0))
-    slip_reference.append(tw.zeta[0] + beta0 * c * (t_rev0 - tw.t_rev) * turns)
+    slip_reference.append(
+        mean_zeta[-1][0] + beta0 * c * (t_rev0 - tw.t_rev) * turns)
 
 frequency_difference    = line['rf_high'].frequency - line['rf_low'].frequency
 rf_beat_cycles          = frequency_difference * clock_s
-rf_spacing      = CIRCUMFERENCE / HARMONIC
-relative_slip   = ((mean_zeta[0] - mean_zeta[1])
+rf_spacing              = CIRCUMFERENCE / HARMONIC
+relative_slip           = ((mean_zeta[0] - mean_zeta[1])
                    - (mean_zeta[0][0] - mean_zeta[1][0])) / rf_spacing
 print('Final common-clock RF phase difference [cycles]:', rf_beat_cycles[-1])
 print('Final centroid separation change [nominal RF periods]:',
@@ -202,6 +224,17 @@ axes[2].plot(1e3 * clock_s, rf_beat_cycles, ls = '--',
 axes[2].set_ylabel('Nominal RF periods / cycles')
 axes[2].set_xlabel('Reference clock time [ms]')
 axes[2].legend()
-fig.suptitle('Two RF systems: slipping energy-separated proton populations')
+fig.suptitle('Two RF systems: slipping energy-separated proton trains')
 fig.tight_layout()
+fig, axes = plt.subplots(1, 2, figsize = (11, 4), layout = 'constrained')
+for ids, name in zip(population_ids, names):
+    rows = np.isin(record.particle_id[:, 0], ids)
+    for axis, turn in zip(axes, [0, N_TURNS - 1]):
+        axis.scatter(record.zeta[rows, turn], record.delta[rows, turn],
+                     s = 3, alpha = 0.4, label = name)
+        axis.set(title = f'Entrance record, turn {turn}',
+                 xlabel = 'zeta [m]', ylabel = 'delta')
+for axis in axes:
+    axis.grid()
+    axis.legend()
 plt.show()

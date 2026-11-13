@@ -74,13 +74,13 @@ tw.rows[RANGE_START:RANGE_END].cols[
 ########################################
 # Reuse axes for native Twiss plots
 ########################################
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (9, 6))
-beta_plot = tw.plot(
+fig, axes   = plt.subplots(2, 1, sharex = True, figsize = (9, 6))
+beta_plot   = tw.plot(
     yl      = 'betx bety',
     yr      = '',
     lattice = False,
     ax      = axes[0])
-phase_plot = tw.plot(
+phase_plot  = tw.plot(
     yl      = 'mux muy',
     yr      = '',
     lattice = False,

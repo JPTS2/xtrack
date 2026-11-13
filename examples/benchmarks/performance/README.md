@@ -14,7 +14,7 @@ spread; no fixed speedup is an acceptance condition. Plotting uses Matplotlib.
 | [001_line_construction.py](001_line_construction.py) | Resolve anchored placements, then measure appends versus initial line size and in the stored HL-LHC model |
 | [002_model_io.py](002_model_io.py) | Save/load one environment as JSON or gzip JSON, and rebuild it from its native Python input |
 | [003_tracking_throughput.py](003_tracking_throughput.py) | Scan bounded particle counts at a fixed tracking horizon and execution context |
-| [004_optics_runtime.py](004_optics_runtime.py) | Compare complete periodic 4D, chromatic 4D, periodic 6D and supplied-initial-condition open optics calculations |
+| [004_optics_runtime.py](004_optics_runtime.py) | Compare periodic/open optics, then time mean-radiation optics and equilibrium analysis on identical compensated fields |
 | [005_tracking_optimization.py](005_tracking_optimization.py) | Compare an independent optimized snapshot with the source, including physical-coordinate agreement |
 | [006_radiation_cost.py](006_radiation_cost.py) | Compare four radiation modes with the same RF, tapered fields and entrance particles |
 | [007_tpsa_scaling.py](007_tpsa_scaling.py) | Separate input setup from scalar/TPSA tracking and scan map order on one nonlinear cell |

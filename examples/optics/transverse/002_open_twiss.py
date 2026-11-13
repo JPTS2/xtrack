@@ -25,12 +25,12 @@ LINE_NAME       = 'transport'
 ########################################
 # Entrance optics
 ########################################
-BETX_START      = 2.0                   # [m]
-BETY_START      = 3.0                   # [m]
-ALFX_START      = 0.2
-ALFY_START      = -0.1
-DX_START        = 0.1                   # Horizontal dispersion [m]
-DPX_START       = 0.01                  # d(px)/d(delta)
+BETX_START  = 2.0                   # [m]
+BETY_START  = 3.0                   # [m]
+ALFX_START  = 0.2
+ALFY_START  = -0.1
+DX_START    = 0.1                   # Horizontal dispersion [m]
+DPX_START   = 0.01                  # d(px)/d(delta)
 
 ################################################################################
 # Load the model

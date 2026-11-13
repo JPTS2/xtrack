@@ -25,11 +25,11 @@ DQY_TARGET      = 2.0                   # dQy/d(delta), dimensionless
 ########################################
 # Sextupole controls and numerical precision
 ########################################
-K2L_STEP        = 1.0e-4                # Integrated k2 variation step [m^-2]
-K2L_LIMITS      = [-1.0, 1.0]            # Numerical search bounds [m^-2]
-CHROM_TOL       = 1.0e-6
-DELTA_STEP      = 2.0e-6                # Chromaticity computation step
-DELTA_CHECK     = 1.0e-6                # Independent centered difference step
+K2L_STEP    = 1.0e-4                # Integrated k2 variation step [m^-2]
+K2L_LIMITS  = [-1.0, 1.0]            # Numerical search bounds [m^-2]
+CHROM_TOL   = 1.0e-6
+DELTA_STEP  = 2.0e-6                # Chromaticity computation step
+DELTA_CHECK = 1.0e-6                # Independent centered difference step
 
 ########################################
 # Local IP chromatic response
@@ -133,10 +133,10 @@ print('On-momentum tunes before/after:',
 # different phases control four local IP quantities and two global derivatives.
 local_knobs = []
 for name in LOCAL_SEXTUPOLES:
-    knob        = f'local_trim_{name}'
-    family      = 'k2lf' if name.endswith('.sf') else 'k2ld'
-    env[knob]   = 0.0
-    env.ref[name].knl[2] = env.ref[family] + env.ref[knob]
+    knob                    = f'local_trim_{name}'
+    family                  = 'k2lf' if name.endswith('.sf') else 'k2ld'
+    env[knob]               = 0.0
+    env.ref[name].knl[2]    = env.ref[family] + env.ref[knob]
     local_knobs.append(knob)
 
 ########################################

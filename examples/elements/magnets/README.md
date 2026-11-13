@@ -11,7 +11,7 @@ independently.
 
 | Example | Lesson |
 | --- | --- |
-| [001_fields_and_strengths.py](001_fields_and_strengths.py) | Reference rigidity, multipole conventions and a non-polynomial elliptic lens |
+| [001_fields_and_strengths.py](001_fields_and_strengths.py) | Reference rigidity, distributed strengths and integrated multipole conventions |
 | [002_models_and_integrators.py](002_models_and_integrators.py) | Query model choices and apply class, family and individual settings |
 | [003_thin_and_thick_slices.py](003_thin_and_thick_slices.py) | Choose slicing rules and occurrences; inspect inherited strengths/alignment and exit maps |
 | [004_bend_geometry_and_edges.py](004_bend_geometry_and_edges.py) | Separate bend geometry, powered fields, edge maps and rectangular body models |
@@ -19,15 +19,19 @@ independently.
 | [006_solenoids.py](006_solenoids.py) | Uniform/ramped solenoids, equal-integral comparison and field-axis offsets |
 | [007_spline_fields.py](007_spline_fields.py) | Supply derivative profiles, propagate open optics and compare a rotated uniform field |
 | [008_field_expansion.py](008_field_expansion.py) | Combine polynomial fields, live strengths and scaling; retain parents through slicing |
+| [009_elliptic_nonlinear_lens.py](009_elliptic_nonlinear_lens.py) | Compare a non-polynomial elliptic lens with its exact axis derivative and linear limit |
+| [010_callable_magnetic_field.py](010_callable_magnetic_field.py) | Supply a physical three-component field to the public spatial Boris interface |
+| [011_smooth_dipole_fringes.py](011_smooth_dipole_fringes.py) | Compare hard edges and smooth on-axis dipole ramps at equal integral and exterior planes |
+| [012_solenoid_field_axes.py](012_solenoid_field_axes.py) | Distinguish solenoid/embedded-multipole axes and check translated variable-field radiation transport |
 
 `001` uses a positive-charge proton reference with `p0c = 1e9` eV. Physical
 fields are normalized to its signed rigidity. Distributed normal strengths
 `k_n` have units m^(-n-1); `knl[n]` is their longitudinal integral, in m^(-n).
 The multipole polynomial includes `1/n!`; the stored coefficient does not.
 The thin-kick comparison uses the reference species at `delta = 0` and `y = 0`.
-The final section uses `NonLinearLens` within its regular domain and compares
-the finite-amplitude horizontal kick with the exact horizontal-axis potential derivative.
-It is not a finite multipole expansion.
+The separate `009` lesson uses `NonLinearLens` within its regular domain and
+compares the finite-amplitude horizontal kick with the exact axis derivative.
+It is a non-polynomial potential rather than a finite multipole expansion.
 
 `002` uses the [shared demo ring](../../../test_data/example_lattices/demo_ring/README.md)
 with its 1 GeV/c electron reference and 4D periodic optics. It changes body
@@ -107,3 +111,26 @@ Retained advanced studies are available under [solenoids](../../solenoid/),
 [field expansions](../../bfieldexpansion/). These include machine applications,
 field fitting and numerical comparisons. Consult their local inputs and
 requirements before running them.
+
+## Callable fields, dipole profiles and solenoid axes
+
+`010` supplies a vectorized `(Bx, By, Bz)` callable in tesla, using a near-axis
+solenoid profile with divergence-free linear transverse terms. The spatial
+Boris coordinates are Cartesian and its momenta are kinetic. Zero endpoint
+fields make them agree with exterior canonical momenta. A sampled native
+`VariableSolenoid` line supplies an independent finite representation. Doubling
+Boris steps checks that discretization alone; it does not certify an exact
+finite-coil field or the sampled profile's convergence.
+
+`011` uses a straight reference for both powered dipole models. C2 quintic
+ramps shorten the plateau so the on-axis field integral and the field-free
+exterior planes match the hard-edge case. A small vertical scan shows different
+fringe focusing. The profile is chosen analytically, not fitted to a measured
+magnet; ramp-step refinement is distinct from changing the physical profile.
+
+`012` keeps an embedded quadrupole fixed while moving only the solenoid axis,
+then moves the whole combined element. These are different fields. A separate
+variable-field comparison translates both the ray and field axis and checks
+mean-radiation energy loss at equal relative coordinates. It is open transport,
+without RF compensation or an equilibrium claim. Neither lesson needs a private
+field-fitting or finite-coil helper.

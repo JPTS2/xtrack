@@ -24,11 +24,11 @@ NEXT_CELL_START = 'arc.s1.c2.qf.in'
 # Load the reusable cell and the assembled ring
 ################################################################################
 
-repo_root   = Path(__file__).resolve().parents[3]
-env         = xt.load(repo_root / LATTICE_FILE)
-line        = env[LINE_NAME]
-cell        = env[CELL_NAME]
-cell.particle_ref = line.particle_ref.copy()
+repo_root           = Path(__file__).resolve().parents[3]
+env                 = xt.load(repo_root / LATTICE_FILE)
+line                = env[LINE_NAME]
+cell                = env[CELL_NAME]
+cell.particle_ref   = line.particle_ref.copy()
 cell.get_table().cols['name s'].show(maxwidth = 'full')
 
 ################################################################################
@@ -53,6 +53,21 @@ print('Full ring tunes, including straight sections:', tw_ring.qx, tw_ring.qy)
 # Four cells form each arc, but the insertion and utility sections contribute
 # additional phase. Multiplying cell phases is not a calculation of ring tunes.
 # The four-cell transverse identity alone does not select unique periodic beta.
+
+################################################################################
+# Impose periodicity only on a selected range of the assembled line
+################################################################################
+# The final boundary is a zero-length marker, so its entrance/exit coincide.
+# init='periodic' solves this range as its own optical period rather than
+# importing the full-ring dispersion or other boundary conditions.
+tw_range = line.twiss4d(
+    start   = CELL_START,
+    end     = NEXT_CELL_START,
+    init    = 'periodic',
+)
+print('Selected-range/cell periodic entrance betx,bety,dx:')
+print(tw_range.betx[0], tw_cell.betx[0], tw_range.bety[0], tw_cell.bety[0],
+      tw_range.dx[0], tw_cell.dx[0])
 
 ################################################################################
 # Compare the first cell with its use in the ring

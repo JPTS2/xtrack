@@ -22,8 +22,12 @@ independently. Chamber geometry and particle tracking limits are distinct object
 | [009_shifted_aperture_refinement.py](009_shifted_aperture_refinement.py) | Refine between transformed checks across a supported thick element |
 | [010_query_overlapping_profiles.py](010_query_overlapping_profiles.py) | Inspect survey planes that intersect several tilted profiles |
 | [011_ring_wrapped_pipes.py](011_ring_wrapped_pipes.py) | Query a chamber crossing the ring seam |
-| [012_inspect_installed_limits.py](012_inspect_installed_limits.py) | Inspect co-located tracking cuts and reconstruct chamber profiles from installed limits |
+| [012_inspect_installed_limits.py](012_inspect_installed_limits.py) | Inspect installed tracking cuts and import installed or magnet-associated aperture data |
 | [013_global_tracking_cutoff.py](013_global_tracking_cutoff.py) | Distinguish the numerical transverse guard from physical chamber limits |
+
+The reading routes are profiles/geometry (`002`–`004`, then `010`–`011`),
+tracking-data conversion (`005` and `012`), losses (`001`, `008`–`009`, `013`),
+and clearance/persistence (`006`–`007`).
 
 This route draws on [Szymon Łopaciuk's aperture-model tutorial](https://github.com/xsuite/aperture-model-tutorial),
 particularly its reusable pipe definitions, per-line placements, native geometry
@@ -46,7 +50,11 @@ into tracking elements.
 `012` follows the reverse route, starting from existing limits. The axis cuts
 reported by `get_aperture_table` are sampled estimates; its interpolated columns
 are distinct from reconstructed two-dimensional chamber sections. Co-located
-checks retain their separate discrete values. Transition-aware sampling adds offsets
+checks retain their separate discrete values. The same lesson imports
+magnet-associated shape definitions: those pipes span their magnets, without
+inventing walls across the gaps. Association metadata and a chamber container
+do not themselves install particle-removing elements.
+Transition-aware sampling adds offsets
 around profile bounds, restricted to the requested longitudinal range. For polygon apertures stored in
 legacy MAD-X-format data, see the
 [native data parser](../line_construction/016_read_legacy_madx_data.py).
@@ -69,6 +77,12 @@ checks, so a particle may have crossed the assumed wall earlier. `008` uses
 native loss refinement to estimate that intersection; it does not reconstruct
 an unknown chamber. Its CPU calculation has finite longitudinal, radial and
 polygon resolutions.
+
+Refinement backtracks deterministically between checks. Sections containing
+`BeamInteraction` are skipped: an interaction and its newly created particles
+cannot be reconstructed by reversing an ordinary field map. Keep their discrete
+loss locations. The [custom interaction lesson](../elements/custom/004_python_interaction_process.py)
+explains the Xtrack callback contract; material-process models belong with Xcoll.
 
 `013` has no chamber or `Limit` elements. It shows the separate global x/y
 safety threshold and its discrete loss station after a drift. That numerical

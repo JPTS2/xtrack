@@ -25,8 +25,8 @@ QY_TARGET       = 10.020
 ########################################
 # Matching precision and variable step
 ########################################
-TUNE_TOL        = 1e-8                   # Absolute tune tolerance
-K1_STEP         = 1e-5                   # Finite-difference k1 step [m^-2]
+TUNE_TOL    = 1e-8                   # Absolute tune tolerance
+K1_STEP     = 1e-5                   # Finite-difference k1 step [m^-2]
 
 ################################################################################
 # Inspect the initial periodic optics
@@ -46,7 +46,7 @@ k1_before   = {name: env[name] for name in ['kqf', 'kqd']}
 # kqf and kqd drive the focusing and defocusing ARC quadrupoles.
 # Final-focus and utility-straight strengths remain fixed.
 # match() solves immediately by default and leaves the changed strengths live.
-opt = line.match(
+opt         = line.match(
     method  = '4d',
     vary    = xt.VaryList(['kqf', 'kqd'], step = K1_STEP),
     targets = xt.TargetSet(qx = QX_TARGET, qy = QY_TARGET, tol = TUNE_TOL),

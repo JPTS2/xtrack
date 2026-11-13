@@ -7,7 +7,7 @@ Copyright (c) CERN, 2026.
 
 Learn the table operations used by line descriptions, surveys, Twiss results
 and measurement records. These examples use small synthetic BPM readings, with
-positions and offsets in metres. The final example also constructs a short line
+positions and offsets in metres. The TFS example also constructs a short line
 to export element types and reference quantities; none calculates optics.
 Each script runs independently.
 
@@ -16,7 +16,8 @@ Each script runs independently.
 | [001_create_and_access_tables.py](001_create_and_access_tables.py) | Create named rows, read columns and cells, exchange columns with pandas |
 | [002_select_and_calculate.py](002_select_and_calculate.py) | Select names, ranges, labels and conditions; calculate columns and edit a copy |
 | [003_save_and_load_tables.py](003_save_and_load_tables.py) | Preserve columns and scalar metadata through dictionaries, JSON and Xtrack CSV |
-| [004_hdf5_and_tfs_tables.py](004_hdf5_and_tfs_tables.py) | Store HDF5; tailor TFS presets, use JSON/TOML layouts and export physical-reference headers |
+| [004_tfs_tables.py](004_tfs_tables.py) | Tailor TFS presets, use JSON/TOML layouts and export physical-reference headers |
+| [005_hdf5_tables.py](005_hdf5_tables.py) | Store columns and scalar metadata in a named HDF5 group |
 
 The first two examples use NumPy and Xtrack, whose table implementation also
 uses pandas. HDF5 requires `h5py`; reading TFS requires `tfs-pandas` (imported

@@ -26,9 +26,9 @@ OBSERVATION     = 'bpm.s1.d'
 ########################################
 # Beam emittances and independent momentum spread
 ########################################
-NEMITT_X        = 1e-6                    # Normalized rms emittance [m rad]
-NEMITT_Y        = 2e-6                    # [m rad]
-SIGMA_DELTA     = 1e-5                    # Relative momentum rms, same species
+NEMITT_X    = 1e-6                    # Normalized rms emittance [m rad]
+NEMITT_Y    = 2e-6                    # [m rad]
+SIGMA_DELTA = 1e-5                    # Relative momentum rms, same species
 
 ################################################################################
 # Calculate the periodic 4D optics

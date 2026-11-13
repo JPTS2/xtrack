@@ -96,8 +96,8 @@ for real_factor, imag_factor in CASE_FACTORS:
     requested_re    = CALIBRATION * real_factor
     requested_im    = CALIBRATION * imag_factor
 
-    env['coupling_real']        = requested_re
-    env['coupling_imag']        = requested_im
+    env['coupling_real']    = requested_re
+    env['coupling_imag']    = requested_im
 
     tw          = line.twiss4d(chrom = False)
     measured    = np.array([tw.c_minus_re_0, tw.c_minus_im_0])
@@ -118,9 +118,9 @@ for real_factor, imag_factor in CASE_FACTORS:
 ########################################
 # Add an independent error term while retaining the original control
 ########################################
-env['coupling_real']        = 0.0
-env['coupling_imag']        = 0.0
-env['skew_error']           = ERROR_K1S
+env['coupling_real']    = 0.0
+env['coupling_imag']    = 0.0
+env['skew_error']       = ERROR_K1S
 env.set(ERROR_ELEMENT, k1s = 'ks_s2 + skew_error')
 perturbed   = line.twiss4d(chrom = False)
 

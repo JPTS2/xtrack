@@ -65,12 +65,12 @@ print('Loaded type:', type(restored).__name__)
 ########################################
 # These are Xtrack result formats, including reference and normal-mode data.
 # A plain column-only CSV from another application has no such guarantee.
-csv_path  = Path(__file__).resolve().parent / CSV_FILE
-hdf5_path = Path(__file__).resolve().parent / HDF5_FILE
+csv_path    = Path(__file__).resolve().parent / CSV_FILE
+hdf5_path   = Path(__file__).resolve().parent / HDF5_FILE
 tw.to_csv(csv_path)
 tw.to_hdf5(hdf5_path)
-from_csv  = xt.load(csv_path)
-from_hdf5 = xt.load(hdf5_path)
+from_csv    = xt.load(csv_path)
+from_hdf5   = xt.load(hdf5_path)
 
 ################################################################################
 # Inspect preserved optics and reference data
@@ -132,12 +132,12 @@ for name in ['dx', 'dy', 'dpx', 'dpy']:
     data[name] /= tw.beta0
 for field in spec['scalars']:
     if 'source_name' in field:
-        name = field['source_name']
-        data[name] = tw[name]
+        name        = field['source_name']
+        data[name]  = tw[name]
 data['dqx'] /= tw.beta0
 data['dqy'] /= tw.beta0
-exit_optics = xt.Table(data = data, col_names = columns)
-conventions_path = Path(__file__).resolve().parent / TFS_CONVENTIONS
+exit_optics         = xt.Table(data = data, col_names = columns)
+conventions_path    = Path(__file__).resolve().parent / TFS_CONVENTIONS
 exit_optics.to_tfs(conventions_path, format_spec = spec)
 
 ########################################

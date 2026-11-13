@@ -21,7 +21,7 @@ script runs independently. Begin with the
 | [006_place_lines.py](006_place_lines.py) | Subline anchors, relative placement and independent clones |
 | [007_parametric_geometry.py](007_parametric_geometry.py) | Retain, combine, restore and regenerate placement expressions |
 | [008_clones_and_replicas.py](008_clones_and_replicas.py) | Repeated objects, named replicas, clones and generated drifts |
-| [009_edit_line.py](009_edit_line.py) | Single/batch/subline insertion, removal and appending with explicit geometry |
+| [009_insert_remove_and_append.py](009_insert_remove_and_append.py) | Insert, replace, remove and append individual elements, batches or sublines |
 | [010_replace_elements.py](010_replace_elements.py) | Replace one magnet, every use of a name, or names matching a pattern |
 | [011_shared_lines.py](011_shared_lines.py) | Shared selections versus independent environment copies |
 | [012_import_line.py](012_import_line.py) | Import between environments: variable conflicts, independence and slice parents |
@@ -30,6 +30,8 @@ script runs independently. Begin with the
 | [015_save_and_load_environment.py](015_save_and_load_environment.py) | Save shared lines, slice parents, named references and live expressions |
 | [016_read_legacy_madx_data.py](016_read_legacy_madx_data.py) | Load separate legacy lattice/strength files and reverse a stored line |
 | [017_build_demo_ring.py](017_build_demo_ring.py) | Build an instrumented ring with a low-beta IP and live machine controls |
+| [018_insert_inside_magnets.py](018_insert_inside_magnets.py) | Cover all or part of a thick magnet and inspect the remaining parent-linked slices |
+| [019_import_independent_sliced_models.py](019_import_independent_sliced_models.py) | Combine independently authored sliced models with colliding element names |
 
 `005_line_algebra.py` combines already assembled element sequences.
 `007_parametric_geometry.py` uses `compose = True` to retain placement expressions
@@ -43,19 +45,20 @@ for element strengths. Parametric placements are covered in
 tracking are developed with those subjects.
 
 `012_import_line.py` transfers a line's elements and variable dependencies into
-a destination environment, including the parents of sliced elements. It then
-imports two sliced lines with the same element names and shows how their
-parents are renamed. Separate knob changes expose which source or imported
-line responds.
+a destination environment, including the parents of sliced elements. The advanced `019` imports two
+independently authored sliced models with common element names. Renamed parents
+and separate knob changes expose the resulting ownership; it is not a required
+step for ordinary imports.
 
 `010_replace_elements.py` answers: how do I replace just the second magnet when
 several positions share the same element? It then replaces every use of a name
 and both screens selected by a pattern. All replacements preserve length.
 
-The small inline lattices in `001`–`016` teach geometry and object ownership;
+The small inline construction/import recipes teach geometry and object ownership;
 no periodic optics or closed-ring geometry is implied for those definitions.
 Lengths and positions are in metres, quadrupole `k1` in m^-2, and rotations in
-radians. These recipes do not track. `013_reference_particles.py` uses a proton
+radians. `016` also checks two probes against an imported aperture limit.
+`013_reference_particles.py` uses a proton
 reference and relates a signed magnetic field to its rigidity.
 `015` also preserves a named proton reference through copying and reload.
 The other small recipes need no reference particle.

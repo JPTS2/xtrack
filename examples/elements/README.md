@@ -13,7 +13,7 @@ For assembling these elements into a model, use
 | --- | --- |
 | [Magnets](magnets/README.md) | Fields and strengths, models/integrators, slicing, bends, fringes, solenoids and field-based tracking |
 | [Cavities](cavities/README.md) | Energy and transverse RF kicks, finite-length transport and numerical map choices |
-| [Maps](maps/README.md) | Taylor approximations and assigned segment optics |
+| [Maps](maps/README.md) | Taylor approximations, assigned segment optics, prescribed noise and RF-array controls |
 | [Spatial transformations](transformations/README.md) | Coordinate frames, ordered rotations and element misalignment attributes |
 | [Electron cooler](electron_cooler.py) | Apply one native friction kick and compare powered and zero-current particles |
 | [Custom elements](custom/README.md) | Tracking kernels, particle random streams, event records and Python interaction processes |

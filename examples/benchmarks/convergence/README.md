@@ -11,13 +11,14 @@ from model approximations or measurement resolution. Plotting uses Matplotlib.
 
 | Example | Lesson |
 | --- | --- |
-| [001_magnet_integrators.py](001_magnet_integrators.py) | Compare integration orders with a pure-bend control and a nonlinear combined-field magnet |
+| [001_magnet_integrators.py](001_magnet_integrators.py) | Compare integrators and distinguish tiny-launch integration bias from response cancellation |
 | [002_accuracy_vs_runtime.py](002_accuracy_vs_runtime.py) | Compare warmed tracking costs at stated scaled errors, including an approximation floor |
 | [003_field_integration.py](003_field_integration.py) | Separate RK4 step refinement from transverse field-expansion order |
 | [004_field_segmentation.py](004_field_segmentation.py) | Separate longitudinal cubic fitting, off-axis field reconstruction and canonical/kinetic interfaces |
 | [005_radiation_slicing.py](005_radiation_slicing.py) | Refine native mean-radiation kicks and inspect both energy loss and trajectory convergence |
 | [006_ring_optics.py](006_ring_optics.py) | Propagate integration differences into tunes, beta functions and finite-difference chromaticities |
 | [007_field_accuracy_vs_runtime.py](007_field_accuracy_vs_runtime.py) | Compare native RK4 and spline-Boris transport at matched exit accuracy in the same field |
+| [008_canonical_symplecticity.py](008_canonical_symplecticity.py) | Use native six-dimensional Jacobians to separate RK4 map defects from finite-difference error |
 
 Errors involving positions and momenta use explicit coordinate scales. Relative
 error is not formed by dividing by a coordinate that may vanish. More slices can
@@ -27,8 +28,10 @@ converge to the same model. Order estimates apply to the resolved range shown.
 Field examples distinguish kinetic and canonical momenta at interfaces.
 `BFieldExpansion` uses classical RK4: preserving canonical momentum at interfaces
 does not make its finite-step map exactly symplectic. Convergence of an on-axis
-fit also does not guarantee off-axis field convergence. These studies do not
-establish long-term stability or a general symplecticity audit.
+fit also does not guarantee off-axis field convergence. The canonical-Jacobian study compares the full symplectic-form defect with
+determinants in straight/curved dipoles and a solenoid. It retains canonical
+interfaces and refines both RK4 steps and the native finite-difference probes.
+These bounded local studies do not establish long-term stability.
 
 The matched-field study uses an independent SciPy DOP853 integration of the
 stated analytical field. Its fixed-energy proton probes, boundary-momentum

@@ -47,8 +47,8 @@ line        = env['demo']
 for name, knob in zip(QUAD_NAMES, KNOB_NAMES):
     env[knob] = line[name].k1
     env.set(name, k1 = knob)
-reference   = line.twiss4d()
-reference_k1 = [env[knob] for knob in KNOB_NAMES]
+reference       = line.twiss4d()
+reference_k1    = [env[knob] for knob in KNOB_NAMES]
 
 ########################################
 # Apply a stated perturbation after saving the reference
@@ -74,13 +74,13 @@ twiss_targets = [
 ########################################
 # Each bound allows one quarter of the applied perturbation. The restored
 # reference satisfies both; the perturbed strengths violate both.
-upper_k1 = [value + 0.25 * abs(value * (factor - 1))
+upper_k1        = [value + 0.25 * abs(value * (factor - 1))
             for value, factor in zip(reference_k1, STRENGTH_FACTOR)]
 variable_target = env.vars.target(
     KNOB_NAMES[0],
     value   = xt.LessThan(upper_k1[0]),
     tol     = 1e-10)
-field_target = line.target(
+field_target    = line.target(
     lambda ll: ll[QUAD_NAMES[1]].k1,
     value   = xt.LessThan(upper_k1[1]),
     tol     = 1e-10)

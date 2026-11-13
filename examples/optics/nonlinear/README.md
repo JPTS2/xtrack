@@ -21,6 +21,7 @@ higher-order chromaticity together gives the subject one learning sequence.
 | [004_multiturn_optics.py](004_multiturn_optics.py) | Find a nonzero four-turn island orbit, compute its local optics and compare it with tracking |
 | [005_stability_diagram.py](005_stability_diagram.py) | Build a tracked action footprint and evaluate the Gaussian dispersion integral |
 | [006_native_resonance_driving_terms.py](006_native_resonance_driving_terms.py) | Calculate perturbative native RDTs, inspect feed-down and compare weak-coupling optics |
+| [007_six_dimensional_chromatic_response.py](007_six_dimensional_chromatic_response.py) | Differentiate RF-on 6D optics under an explicit one-turn slippage closure |
 
 `001` and `002` use the [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
 with a 1 GeV/c electron reference. Reference momentum and magnet strengths stay
@@ -98,3 +99,11 @@ same observation plane/phase convention with native Edwards–Teng coupling.
 The thin-source sampling convention produces a jump. Half-strength scaling is
 checked without claiming higher-order normal-form or finite-amplitude stability
 validation. External-code comparisons remain in interfaces and retained studies.
+
+`002` also propagates second-order dispersion forward and backward through an
+open section using the complete chromatic `TwissInit`; quadratic polynomial
+coefficients are half the second derivative. `007` retains RF and imposes
+`zeta_shift` in the closed-orbit search. This auxiliary one-turn slippage is not
+a physical frequency change or acceleration programme. Global tune fits use
+measured mean momentum; orbit derivatives use momentum at their observation
+plane. Window-sensitivity checks qualify the finite derivative estimates.

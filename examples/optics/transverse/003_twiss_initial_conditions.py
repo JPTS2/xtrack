@@ -30,10 +30,10 @@ BOUNDARY_AT         = 'qf.2@start'
 ########################################
 # Entrance optics
 ########################################
-BETX_START      = 2.0                   # [m]
-BETY_START      = 3.0                   # [m]
-ALFX_START      = 0.2                   # Dimensionless
-ALFY_START      = -0.1                  # Dimensionless
+BETX_START  = 2.0                   # [m]
+BETY_START  = 3.0                   # [m]
+ALFX_START  = 0.2                   # Dimensionless
+ALFY_START  = -0.1                  # Dimensionless
 
 ################################################################################
 # Load the transport line
@@ -117,8 +117,8 @@ tw_from_interior = line.twiss(
 # Supply the particle and optical matrix explicitly
 ########################################
 # This is an imposed open-line boundary, not a periodic normal form.
-interior = tw_full.get_twiss_init(INTERIOR_ELEMENT)
-explicit_init = xt.TwissInit(
+interior        = tw_full.get_twiss_init(INTERIOR_ELEMENT)
+explicit_init   = xt.TwissInit(
     particle_on_co  = interior.particle_on_co.copy(),
     W_matrix        = interior.W_matrix.copy(),
     element_name    = INTERIOR_ELEMENT,
@@ -126,7 +126,7 @@ explicit_init = xt.TwissInit(
     muy             = interior.muy,
     muzeta          = interior.muzeta,
     reference_frame = interior.reference_frame)
-tw_from_matrix = line.twiss(
+tw_from_matrix  = line.twiss(
     method  = '4d',
     start   = START_ELEMENT,
     end     = END_ELEMENT,

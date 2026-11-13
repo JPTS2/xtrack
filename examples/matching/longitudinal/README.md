@@ -11,9 +11,10 @@ script loads a fresh model and runs independently.
 | Example | Lesson |
 | --- | --- |
 | [001_match_synchrotron_tune.py](001_match_synchrotron_tune.py) | Match the positive synchrotron tune using cavity voltage |
-| [002_match_phase_and_energy.py](002_match_phase_and_energy.py) | Match a synchronous state, then infer a frequency trim from a dispersive BPM orbit |
+| [002_match_phase_and_energy.py](002_match_phase_and_energy.py) | Match a prescribed synchronous momentum and arrival coordinate |
+| [003_infer_rf_frequency_from_orbit.py](003_infer_rf_frequency_from_orbit.py) | Infer one frequency trim from a synthetic dispersive BPM measurement |
 
-Both load the [demonstration ring](../../../test_data/example_lattices/demo_ring/):
+All three load the [demonstration ring](../../../test_data/example_lattices/demo_ring/):
 a 1500 m ring with a 1 GeV/c electron reference and a thin cavity `rf.1` at
 s=250 m, harmonic 200. Each enables 100 kV at the stable phase pi before
 matching. The public cavity convention uses `abs(q0)`.
@@ -32,7 +33,7 @@ actual cavity position, not the circumference. Reference momentum stays fixed.
 This is a static equilibrium with zero net energy gain per turn, rather than
 an acceleration programme.
 
-The final section uses a synthetic horizontal position at `bpm.s1.d` to infer
+`003` uses a synthetic horizontal position at `bpm.s1.d` to infer
 the known frequency trim, holding RF phase fixed. This BPM has nonzero horizontal
 dispersion, which makes the small trim identifiable; a zero-dispersion position
 can leave its sign ambiguous. The recovered trim, orbit residual and synchronous

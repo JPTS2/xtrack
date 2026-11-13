@@ -25,12 +25,12 @@ QX_HALF_WIDTH   = 0.01                  # Allowed interval around reference Qx
 ########################################
 # Numerical matching settings
 ########################################
-K1_STEP         = 1.0e-5                # Finite-difference step [m^-2]
-KQF_LIMITS      = [0.06, 0.08]          # Numerical bounds [m^-2]
-KQD_LIMITS      = [-0.08, -0.06]        # Numerical bounds [m^-2]
-TUNE_TOL        = 1.0e-8
-QF_WEIGHTS      = [1.0, 10.0]           # Relative control scale
-RATIO_TOL       = 1.0e-8                # Dimensionless
+K1_STEP     = 1.0e-5                # Finite-difference step [m^-2]
+KQF_LIMITS  = [0.06, 0.08]          # Numerical bounds [m^-2]
+KQD_LIMITS  = [-0.08, -0.06]        # Numerical bounds [m^-2]
+TUNE_TOL    = 1.0e-8
+QF_WEIGHTS  = [1.0, 10.0]           # Relative control scale
+RATIO_TOL   = 1.0e-8                # Dimensionless
 
 ################################################################################
 # Capture the reference and define a tune interval
@@ -120,8 +120,8 @@ opt.solve()
 # Check the achieved tune interval and beta ratio
 ########################################
 opt.target_status()
-after           = line.twiss4d()
-ratio_after     = after['betx', OBSERVATION] / after['bety', OBSERVATION]
+after       = line.twiss4d()
+ratio_after = after['betx', OBSERVATION] / after['bety', OBSERVATION]
 print(f'After: Qx = {after.qx:.10f}, betx/bety = {ratio_after:.10f}')
 print(f'Ratio residual: {ratio_after - ratio_ref:+.3e}')
 print('Distances from lower/upper Qx limits:',
@@ -150,7 +150,7 @@ initial_strengths = opt.get_knob_values(iteration = 0)
 for qf_weight in QF_WEIGHTS:
     for name, value in initial_strengths.items():
         env[name] = value
-    weighted = line.match(
+    weighted    = line.match(
         method  = '4d',
         vary    = [
             xt.Vary(
@@ -183,7 +183,7 @@ for qf_weight in QF_WEIGHTS:
             ),
         ],
     )
-    checked = line.twiss4d()
+    checked     = line.twiss4d()
     print('Focusing-family weight:', qf_weight)
     for name, value in initial_strengths.items():
         print(name, 'change [m^-2]:', env[name] - value)

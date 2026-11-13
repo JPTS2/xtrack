@@ -38,7 +38,8 @@ magnet exits, and label positions in millimetres and `s` in metres. `px` and
 `py` are dimensionless canonical momenta normalized to reference momentum.
 
 For model placement, see [line construction](../../line_construction/README.md).
-Reference-path geometry is covered by the retained [survey examples](../../survey/).
+Reference paths, actual element frames and nonplanar reconstructions are
+covered by [geometry and survey](../../geometry_and_survey/README.md).
 More extensive alignment applications remain under
 [element transformations](../../element_transformations/) and
 [misalignments](../../misalignments/), with their own inputs and requirements.
