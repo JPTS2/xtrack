@@ -401,6 +401,36 @@ def test_spin_through_the_face_impulses_matches_the_reference(context, amplitude
     assert np.linalg.norm(end - truth) < 5e-8 * np.linalg.norm(truth - spin)
 
 
+@pytest.mark.parametrize('integrator, num_kicks', [('uniform', 1024), ('yoshida-6', 256),
+                                                   ('yoshida-8', 256)])
+@pytest.mark.parametrize('amplitude', [0., .5, 1.])
+def test_spin_of_every_composition_matches_the_reference(context, integrator, num_kicks, amplitude):
+    """The compositions' substeps reach past the faces, where the spin must see the
+    same continued field as the orbit; a field cut there left yoshida-8 first order."""
+    from xtrack._temp.lorentz_reference import HarmonicField, track as reference_track
+    gamma, gradient, phase, anomaly, half_waves = 40., 5e6, 1.2, 0.00115965218, 15
+    spin = np.array([.6, 0., .8])
+    length = half_waves * _HALF_WAVE
+    k = np.pi / _HALF_WAVE
+    p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
+    end = _spin_end(context, '_phase-resolved', gamma, half_waves, gradient, amplitude, phase,
+                    anomaly, spin, num_kicks=num_kicks, integrator=integrator,
+                    n_cells=half_waves if amplitude > 0. else None)
+    field = HarmonicField.from_voltage([k, -k], [1., amplitude], _FREQUENCY, length,
+                                       gradient * length, phase, 1.)
+    beta0 = np.sqrt(1 - 1 / gamma**2)
+    field = HarmonicField(field.wave_numbers,
+                          field.amplitudes * np.exp(1j * k * length / 2 * (1 - 1 / beta0)),
+                          _FREQUENCY, length)
+    launch = xt.Particles(p0c=p0c, mass0=_ELECTRON, **_LAUNCHES[0])
+    truth = reference_track(field, launch.x, launch.px, launch.y, launch.py, launch.zeta,
+                            launch.pzeta, p0c, _ELECTRON, anomaly=anomaly, spin=spin[:, None],
+                            ramps=(5e-4, 2.5e-4, 1.25e-4), backend='c', rtol=1e-13,
+                            atol_position=1e-16, atol_momentum=1e-16)
+    truth = np.array([truth[name][0] for name in ('spin_x', 'spin_y', 'spin_z')])
+    assert np.linalg.norm(end - truth) < 1e-7 * np.linalg.norm(truth - spin)
+
+
 @pytest.mark.parametrize('model, gamma, gradient, tolerance', [
     ('_phase-resolved', 40., 5e6, 2e-3), ('_phase-resolved', 400., 20e6, 2e-3),
     # Sagan's edge and energy-kick spin rules, shared with Bmad, have this known error.

@@ -604,8 +604,9 @@ int CavityModel_effects_profile(double T,double z,const CavityModelSource *sourc
         // C + iS is e^{iT} conj(P^(n)), as for the two waves below.
         const double forward=xt_float_or_tpsa_const_part(source->forward);
         const double k=xt_float_or_tpsa_const_part(source->k);
+        // The field continues past the faces as in the orbit's profile: the
+        // compositions' substeps reach beyond them, and the faces are impulses.
         for(int n=0;n<jets;++n){S[n]=0.;C[n]=0.;}
-        if(fabs(z)>H)return CAVITY_MODEL_OK;
         double jet_re[CAVITY_MODEL_JETS],jet_im[CAVITY_MODEL_JETS];
         if(CavityModel_table_jets(z,source,jet_re,jet_im,jets)) {
             for(int n=0;n<jets;++n) {
@@ -630,7 +631,7 @@ int CavityModel_effects_profile(double T,double z,const CavityModelSource *sourc
         return CAVITY_MODEL_OK;
     }
     double f[CAVITY_MODEL_JETS]={0.};
-    if(fabs(z)<=H)f[0]=1.;
+    f[0]=1.;
     const double nu=xt_float_or_tpsa_const_part(source->carrier);
     const double amp[2]={xt_float_or_tpsa_const_part(source->forward),
                          xt_float_or_tpsa_const_part(source->backward)};
