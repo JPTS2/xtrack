@@ -39,8 +39,8 @@ repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
 # These defaults apply to this line object, not to other loads or installations.
-line.twiss_default['method'] = '4d'
-line.twiss_default['chrom']  = False
+line.twiss_default['method']    = '4d'
+line.twiss_default['chrom']     = False
 
 ################################################################################
 # Request the results needed for the calculation
@@ -79,8 +79,8 @@ with_strengths.rows[['arc.s1.c1.qf.in', 'arc.s1.c1.qd', 'arc.s1.c1.b1']].cols[
 ########################################
 # Co-located thin elements can change coordinates at the same s. This option
 # replaces intermediate row values by NaN; it does not delete table rows.
-hidden = line.twiss(hide_thin_groups = True)
-masked = np.isnan(hidden.betx)
+hidden  = line.twiss(hide_thin_groups = True)
+masked  = np.isnan(hidden.betx)
 print('Rows before and after hiding thin groups:',
       len(baseline.name), len(hidden.name))
 print('Masked beta rows:', np.count_nonzero(masked))

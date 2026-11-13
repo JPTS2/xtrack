@@ -6,14 +6,16 @@ Copyright (c) CERN, 2026.
 # Maps
 
 Represent transport directly, either by a local Taylor approximation to a known
-line or by assigning an idealized segment's optics and phase advances. Both
-examples run independently. The small maps use a 1 GeV/c proton reference;
+line or by assigning an idealized segment's optics and phase advances. Each
+example runs independently. The small maps use a 1 GeV/c proton reference;
 the ring-reduction section loads the shared 1 GeV/c electron demo ring.
 
 | Example | Lesson |
 | --- | --- |
 | [001_taylor_maps.py](001_taylor_maps.py) | Extract local Taylor maps, compare amplitude errors, and reduce a ring between named observation planes |
-| [002_line_segment_map.py](002_line_segment_map.py) | Assign optics/orbit endpoints, rotations, repeated RF buckets and phenomenological damping/excitation |
+| [002_line_segment_map.py](002_line_segment_map.py) | Assign deterministic optics/orbit endpoints, rotations and repeated RF buckets |
+| [003_prescribed_damping_and_excitation.py](003_prescribed_damping_and_excitation.py) | Compare an assigned stochastic map with its discrete transient/stationary variance |
+| [004_clock_driven_rf_array.py](004_clock_driven_rf_array.py) | Bind a live clock function to one allocated RF-voltage array entry |
 
 `001` uses an exact drift followed by a thin quadrupole/sextupole/octupole kick
 as the reference. Open-line Twiss conditions identify the on-axis expansion
@@ -59,7 +61,7 @@ rotation around consecutive bucket centres; it has no nonlinear separatrix.
 The proton reference is below transition for the chosen momentum compaction,
 so `eta` and the derived longitudinal beta are negative.
 
-Finally, assigned damping and Gaussian excitation produce the discrete process
+In `003`, assigned damping and Gaussian excitation produce the discrete process
 `x[n+1] = (1-rate)*x[n] + noise`. Native `RandomNormal.generate` samples and
 initializes particle-local streams before stochastic map tracking. The plotted
 RMS is compared with the exact discrete variance. These coefficients are
@@ -72,3 +74,10 @@ longitudinal modes and acceleration
 belong with the [RF learning routes](../../README.md#rf).
 Retained larger studies are under [Taylor maps](../../taylor_map/) and
 [segment maps](../../transfer_matrix/), with their own inputs and requirements.
+
+`004` isolates an array-entry dependency: a native piecewise-linear clock
+function controls `voltage_rf[0]` through an expression. Changing `t_turn_s`
+updates the value without recreating the element. It only inspects that
+programmed voltage; it does not track acceleration or establish a bucket.
+For actual time-dependent tracking, continue with
+[clock-driven tracking](../../tracking/time_dependent/README.md).

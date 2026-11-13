@@ -27,10 +27,10 @@ OBSERVATION     = 'arc.s1.c1.qf.in'
 ########################################
 # Momentum scan and polynomial fits
 ########################################
-DELTA_MAX       = 2e-5
-NUM_DELTA       = 13                     # More samples than fit coefficients
-FIT_ORDER       = 3                      # At least 2; leave room for order + 1
-LOCAL_STEP      = 1e-5                   # Local Twiss derivative step
+DELTA_MAX   = 2e-5
+NUM_DELTA   = 13                     # More samples than fit coefficients
+FIT_ORDER   = 3                      # At least 2; leave room for order + 1
+LOCAL_STEP  = 1e-5                   # Local Twiss derivative step
 # The bare vertical tune is near an integer; use a small stable fit window.
 
 ################################################################################
@@ -103,6 +103,42 @@ x_coeff     = np.polynomial.polynomial.polyfit(
 print('Second-order dispersion at', OBSERVATION, '[m]:')
 print('Local Twiss ddx:', local['ddx', OBSERVATION])
 print('Twice the quadratic orbit coefficient:', 2 * x_coeff[2])
+
+################################################################################
+# Propagate second-order dispersion with complete chromatic boundary data
+################################################################################
+
+########################################
+# Extract the same physical endpoints from the periodic solution
+########################################
+start       = 'bpm.s1.f'
+end         = 'bpm.s2.f'
+forward     = line.twiss4d(
+    start   = start,
+    end     = end,
+    init    = local.get_twiss_init(start),
+    chrom   = True,
+    delta_chrom = LOCAL_STEP,
+)
+backward    = line.twiss4d(
+    start   = start,
+    end     = end,
+    init    = local.get_twiss_init(end),
+    init_at = end,
+    chrom   = True,
+    delta_chrom = LOCAL_STEP,
+)
+
+########################################
+# Compare derivative conventions and both propagation directions
+########################################
+for field in ['dx', 'dpx', 'ddx', 'ddpx']:
+    reference = local.rows[list(forward.name[:-1])][field]
+    print(field, 'maximum forward/backward differences:',
+          np.max(np.abs(forward[field][:-1] - reference)),
+          np.max(np.abs(backward[field][:-1] - reference)))
+# ddx is d²x/d(delta)², not the quadratic polynomial coefficient. TwissInit
+# carries the second-order dispersion and chromatic beta/alpha boundary data.
 
 ################################################################################
 # Test fit-window and polynomial-order sensitivity

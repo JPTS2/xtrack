@@ -29,8 +29,8 @@ N_SAMPLES       = 5
 ########################################
 # Matching precision
 ########################################
-K1_STEP         = 1e-5                  # Strength finite-difference step [m^-2]
-TUNE_TOL        = 1e-8
+K1_STEP     = 1e-5                  # Strength finite-difference step [m^-2]
+TUNE_TOL    = 1e-8
 
 ################################################################################
 # Match the endpoint correction and generate its expression dependencies
@@ -124,8 +124,8 @@ qy_values   = []
 print(f'{"Qx increment":>14} {"Qx offset":>14}'
       f' {"Qx error":>14} {"Qy leakage":>14}')
 for value in settings:
-    env[KNOB_NAME] = reference.qx + value
-    tw = line.twiss4d()
+    env[KNOB_NAME]  = reference.qx + value
+    tw              = line.twiss4d()
     qx_values.append(tw.qx)
     qy_values.append(tw.qy)
     print(f'{value:14.6f} {tw.qx - reference.qx:14.9f}'
@@ -147,9 +147,9 @@ qy_leakage  = qy_values - reference.qy
 # give exact tune addition because optics is nonlinear in quadrupole strengths.
 for dx, dy in [(QX_INCREMENT, 0), (0, QY_INCREMENT),
                (QX_INCREMENT, QY_INCREMENT), (0, 0)]:
-    env[KNOB_NAME]       = reference.qx + dx
-    env[VERTICAL_KNOB]   = reference.qy + dy
-    checked = line.twiss4d()
+    env[KNOB_NAME]      = reference.qx + dx
+    env[VERTICAL_KNOB]  = reference.qy + dy
+    checked             = line.twiss4d()
     print('Requested Qx/Qy:', env[KNOB_NAME], env[VERTICAL_KNOB])
     print('Recomputed Qx/Qy:', checked.qx, checked.qy)
     print('Calibration residuals:', checked.qx - env[KNOB_NAME],

@@ -23,8 +23,6 @@ LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 RF_VOLTAGE      = 1e5                   # Initial cavity voltage [V]
 DELTA_TARGET    = 1e-4                  # (p-p0)/p0, not relative total energy
 ZETA_TARGET     = 3e-3                  # zeta=s-beta0*c*t at entrance [m]
-BPM_OBSERVATION = 'bpm.s1.d'            # Nonzero horizontal dispersion
-ORBIT_TOL       = 1e-9                  # Horizontal position tolerance [m]
 
 ########################################
 # Matching and revolution-period search precision
@@ -42,19 +40,19 @@ SEARCH_TURNS    = 4
 ########################################
 # Load the fixed-reference ring and define two independent controls
 ########################################
-repo_root   = Path(__file__).resolve().parents[3]
-env         = xt.load(repo_root / LATTICE_FILE)
-line        = env['demo']
-p0c         = float(line.particle_ref.p0c[0])
-beta0       = float(line.particle_ref.beta0[0])
-period0     = line.get_length() / (beta0 * c)
-frequency0  = float(line['rf.1'].frequency)
-harmonic    = round(frequency0 * period0)
-cavity_s    = float(line.get_table()['s', 'rf.1'])
-cavity_time = cavity_s / (beta0 * c)
-env['voltage_rf'] = RF_VOLTAGE
-env['rf_relative_frequency'] = 0.0
-env['rf_phase_trim'] = 0.0
+repo_root                       = Path(__file__).resolve().parents[3]
+env                             = xt.load(repo_root / LATTICE_FILE)
+line                            = env['demo']
+p0c                             = float(line.particle_ref.p0c[0])
+beta0                           = float(line.particle_ref.beta0[0])
+period0                         = line.get_length() / (beta0 * c)
+frequency0                      = float(line['rf.1'].frequency)
+harmonic                        = round(frequency0 * period0)
+cavity_s                        = float(line.get_table()['s', 'rf.1'])
+cavity_time                     = cavity_s / (beta0 * c)
+env['voltage_rf']               = RF_VOLTAGE
+env['rf_relative_frequency']    = 0.0
+env['rf_phase_trim']            = 0.0
 # The native 1500 m ring has a 1 GeV/c electron reference and no radiation.
 # Relative-time RF alone would not select an off-reference revolution period.
 # absolute_time uses phase at lab t=0. Subtract omega*s_rf/(beta0*c)
@@ -103,7 +101,7 @@ env['rf_phase_trim'] = 2 * np.pi * frequency_guess * zeta_at_cavity_guess / (
 ########################################
 # Solve for the actual six-dimensional synchronous state
 ########################################
-opt = line.match(
+opt     = line.match(
     method                      = '6d',
     search_for_t_rev            = True,
     num_turns_search_t_rev      = SEARCH_TURNS,
@@ -148,7 +146,7 @@ print('Matched/linearized relative frequency offsets:',
 ########################################
 # Check closure in the RF-synchronous frame, not the reference clock
 ########################################
-particle = line.build_particles(
+particle    = line.build_particles(
     x       = matched.x[0],
     px      = matched.px[0],
     y       = matched.y[0],
@@ -156,7 +154,7 @@ particle = line.build_particles(
     zeta    = matched.zeta[0],
     delta   = matched.delta[0],
 )
-initial = particle.copy()
+initial     = particle.copy()
 line.track(particle)
 expected_zeta_slip = beta0 * c * (period0 - harmonic / line['rf.1'].frequency)
 print('One-turn coordinate changes; zeta includes reference-clock slip:')
@@ -183,51 +181,3 @@ print('Final particle state:', particle.state)
 
 # No energy loss is included; the stable synchronous RF phase has zero net
 # energy kick. Numerical matching/closed-orbit tolerances limit these checks.
-
-################################################################################
-# Infer a frequency trim from a horizontal orbit measurement
-################################################################################
-
-########################################
-# Generate a known signal and forget its frequency setting
-########################################
-# This synthetic measurement has no noise or alignment errors. Keep the RF
-# phase fixed, so one dispersive position determines the one unknown trim.
-# A zero-dispersion BPM would not identify its sign near the reference orbit.
-known_trim = env['rf_relative_frequency']
-measured_x = matched['x', BPM_OBSERVATION]
-env['rf_relative_frequency'] = 0.0
-print('Synthetic BPM x [m]:', BPM_OBSERVATION, measured_x)
-print('Reference horizontal dispersion at the BPM [m]:',
-      reference['dx', BPM_OBSERVATION])
-
-########################################
-# Fit the actual periodic orbit using the frequency control
-########################################
-inverse = line.match(
-    method                      = '6d',
-    search_for_t_rev            = True,
-    num_turns_search_t_rev       = SEARCH_TURNS,
-    vary                        = [
-        xt.Vary('rf_relative_frequency', step = FREQUENCY_STEP),
-    ],
-    targets                     = [
-        xt.Target(
-            'x',
-            at      = BPM_OBSERVATION,
-            value   = measured_x,
-            tol     = ORBIT_TOL,
-        ),
-    ],
-)
-recovered = line.twiss(
-    method                      = '6d',
-    search_for_t_rev            = True,
-    num_turns_search_t_rev       = SEARCH_TURNS,
-)
-print('Known / inferred relative frequency trims:',
-      known_trim, env['rf_relative_frequency'])
-print('Recovered BPM residual [m]:',
-      recovered['x', BPM_OBSERVATION] - measured_x)
-print('Known / recovered synchronous momentum offsets:',
-      matched.delta[0], recovered.delta[0])

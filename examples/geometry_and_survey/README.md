@@ -17,6 +17,8 @@ plot to `xplt.FloorPlot`.
 | [002_ring_closure.py](002_ring_closure.py) | Check ring closure in position and orientation |
 | [003_survey_from_a_selected_point.py](003_survey_from_a_selected_point.py) | Assign a global pose and reconstruct the same local closed orbit in two placements |
 | [004_element_frames.py](004_element_frames.py) | Compare reference/actual frames, preserve thick-slice endpoints and save a survey snapshot |
+| [005_nonplanar_coordinate_bump.py](005_nonplanar_coordinate_bump.py) | Reconstruct a straight physical ray through nonplanar reference-frame changes |
+| [006_rectangular_bend_frames.py](006_rectangular_bend_frames.py) | Relate horizontal/vertical rectangular-bend faces, sliced reference paths and physical rays |
 
 `001` uses the native transport line; `002` and `003` use the
 [shared demo ring](../../test_data/example_lattices/demo_ring/README.md).
@@ -62,3 +64,19 @@ For particle coordinate transformations, see
 [spatial transformations](../elements/transformations/README.md).
 Signed open geometries and machine-specific alignment workflows remain in the
 [survey examples](../survey/).
+
+## Nonplanar coordinates and rectangular magnets
+
+`005` interleaves yaw, pitch and roll changes. Local transverse coordinates
+make excursions while their global reconstruction stays on one field-free
+straight ray. A passive change of coordinate plane is not a magnetic kick or
+a physical closed-orbit bump. Global Z and the reference bookkeeping s need not
+coincide at the differently oriented planes.
+
+`006` rotates the same rectangular magnet into horizontal and vertical bending
+planes, then compares straight-body and curved-body representations with thick
+slices. The field setting and chord/angle are fixed. Straight-body face maps
+carry the reference-angle changes at their boundaries; curved-body slices
+carry distributed curvature. Local coordinates can differ despite the same
+global exit ray. Tables and plots expose this geometry; the comparison is not
+a proof that all finite-amplitude maps or coarse slice counts are equivalent.

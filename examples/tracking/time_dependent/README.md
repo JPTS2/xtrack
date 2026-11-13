@@ -10,10 +10,12 @@ Each script loads a fresh model and runs independently.
 
 | Example | Lesson |
 | --- | --- |
-| [001_time_dependent_knobs.py](001_time_dependent_knobs.py) | Drive live strengths from the clock, scale a closed bump, and compare bulk numeric updates |
+| [001_time_dependent_knobs.py](001_time_dependent_knobs.py) | Drive live focusing strengths from the reference clock and inspect applied settings |
 | [002_excitation.py](002_excitation.py) | Apply a sampled transverse excitation with a defined turn and arrival-time convention |
+| [003_closed_orbit_bump.py](003_closed_orbit_bump.py) | Scale a spatially closed bump with a pulse and modulated waveform; compare optics and tracking |
+| [004_numeric_family_updates.py](004_numeric_family_updates.py) | Update independent numeric element buffers with MultiSetter and restore the baseline |
 
-Both use the [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
+These use the [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
 with its 1.5 km circumference and 1 GeV/c electron reference. Reference momentum
 and geometry stay fixed. RF voltage and nonlinear strengths are zero; radiation
 and collective forces are absent.
@@ -31,7 +33,7 @@ Its sampled optics remain stable; the bare ring's large chromaticity and nearby
 vertical integer make larger offsets unsuitable for this ramp. This launch
 does not measure momentum acceptance.
 
-A fresh nominal ring then supplies a four-corrector horizontal bump: the three
+`003` uses a fresh nominal ring to supply a four-corrector horizontal bump: the three
 installed correctors plus one example-local corrector at 230 m. Matching sets
 100 micrometres at the IP, zero canonical slope, and closure outside 160–250 m.
 A single scale multiplies all four matched kicks. The finite piecewise pulse
@@ -41,7 +43,7 @@ closure; three tracked probes compare the turn-sampled IP motion with that
 prediction. The on-axis probe remains on axis outside the bump. This relies on
 the qualified small-amplitude, fixed-optics model, rather than slow variation.
 
-The final section introduces `MultiSetter.get_values` and `set_values` on
+`004` introduces `MultiSetter.get_values` and `set_values` on
 independent numeric copies of the focusing quadrupoles. It applies one sampled
 relative ripple cycle and restores the copied baseline. Bulk buffer writes do
 not update expression dependencies; the original ring therefore retains its

@@ -27,8 +27,8 @@ K1S_S5          = -0.8e-3                # Sector-5 cell-2 skew k1 [m^-2]
 ########################################
 # Independent normal-mode populations
 ########################################
-NEMITT_1        = 1e-6                    # Mode 1 normalized rms emittance [m]
-NEMITT_2        = 2e-6                    # Mode 2 normalized rms emittance [m]
+NEMITT_1    = 1e-6                    # Mode 1 normalized rms emittance [m]
+NEMITT_2    = 2e-6                    # Mode 2 normalized rms emittance [m]
 
 ################################################################################
 # Calculate the uncoupled and coupled optics
@@ -47,9 +47,9 @@ uncoupled   = line.twiss4d()
 ########################################
 # These are gradient components of existing 1 m quadrupoles, not integrated
 # strengths. Each fresh load is independent of the native model on disk.
-env['ks_s2'] = K1S_S2
-env['ks_s5'] = K1S_S5
-tw = line.twiss4d()
+env['ks_s2']    = K1S_S2
+env['ks_s5']    = K1S_S5
+tw              = line.twiss4d()
 
 ################################################################################
 # Inspect the two normal modes in both physical planes

@@ -17,14 +17,14 @@ import xtrack as xt
 ########################################
 # Integrable detuning map and Gaussian emittances
 ########################################
-P0C             = 7e12                  # Proton reference p0*c [eV]
-QX              = 0.28
-QY              = 0.31
-DET_XX          = 1e6                   # dQx/dJx [m^-1]
-DET_XY          = -5e5                  # dQx/dJy = dQy/dJx [m^-1]
-DET_YY          = 1.2e6                 # dQy/dJy [m^-1]
-NEMITT_X        = 2.5e-6                # Normalized rms emittance [m]
-NEMITT_Y        = 4.5e-6                # [m]
+P0C         = 7e12                  # Proton reference p0*c [eV]
+QX          = 0.28
+QY          = 0.31
+DET_XX      = 1e6                   # dQx/dJx [m^-1]
+DET_XY      = -5e5                  # dQx/dJy = dQy/dJx [m^-1]
+DET_YY      = 1.2e6                 # dQy/dJy [m^-1]
+NEMITT_X    = 2.5e-6                # Normalized rms emittance [m]
+NEMITT_Y    = 4.5e-6                # [m]
 
 ########################################
 # Finite sampling and dispersion-integral regularization

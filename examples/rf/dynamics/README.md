@@ -5,60 +5,53 @@ Copyright (c) CERN, 2026.
 
 # Longitudinal dynamics
 
-Follow oscillating particles, inspect the RF bucket, then explore freely
-circulating probes and changing RF conditions. Each script runs independently.
+Follow synchrotron motion, inspect RF buckets under distinct operating
+conditions, then study arrival delays, transition crossing and slipping trains.
+Every script is independently runnable.
 
 | Example | Lesson |
 | --- | --- |
-| [001_synchrotron_motion.py](001_synchrotron_motion.py) | Track small longitudinal oscillations and compare with the linear synchrotron tune |
-| [002_rf_bucket_and_separatrix.py](002_rf_bucket_and_separatrix.py) | Compare stationary, accelerating and radiating buckets with native matching |
-| [003_coasting_arrival_times.py](003_coasting_arrival_times.py) | Distinguish the shared clock from momentum-dependent particle arrival times |
-| [004_transition_crossing.py](004_transition_crossing.py) | Change the accelerating RF phase branch as the slip factor changes sign |
-| [005_slip_stacking.py](005_slip_stacking.py) | Follow two populations associated with different absolute-time RF frequencies |
+| [001_synchrotron_motion.py](001_synchrotron_motion.py) | Compare small longitudinal oscillations with the linear synchrotron tune |
+| [002_rf_bucket_and_separatrix.py](002_rf_bucket_and_separatrix.py) | Compare librating and circulating trajectories with a stationary separatrix |
+| [003_accelerating_bucket.py](003_accelerating_bucket.py) | Explain the tilted accelerating bucket and prepare a native matched sample |
+| [004_radiating_bucket.py](004_radiating_bucket.py) | Inspect an effective bucket around a compensated radiating closed orbit |
+| [005_coasting_arrival_times.py](005_coasting_arrival_times.py) | Distinguish reference clock and momentum-dependent particle arrival |
+| [006_transition_crossing.py](006_transition_crossing.py) | Change the accelerating RF phase branch as the slip factor changes sign |
+| [007_slip_stacking.py](007_slip_stacking.py) | Prepare two small-amplitude matched bunch trains and follow their slipping under both RF systems |
 
-`001` and `003` use the shared 1 GeV/c electron
+`001` and `005` use the shared 1 GeV/c electron
 [demonstration ring](../../../test_data/example_lattices/demo_ring/README.md).
-`001` powers its RF cavity; `003` leaves RF voltage zero and launches transverse
-closed orbits at small fixed momentum offsets. Those samples do not establish
-the bare ring's momentum acceptance. Positive zeta means arrival before the
-reference at a fixed observation plane.
+The first powers RF; the coasting example leaves it off and launches small
+fixed momentum offsets. Those samples do not establish momentum acceptance.
+Positive zeta means earlier arrival at a fixed observation plane.
 
-`002` uses an explicit nonlinear `LineSegmentMap` and the public Xpart helper
-`xp.longitudinal.get_bucket`. Its stationary conservative bucket describes that
-ideal model, rather than a full lattice's transverse stability.
+## Buckets
 
-The second case gives the same ideal map a 50 keV/turn reference gain, shifts
-the RF phase and prepares a finite-length bunch using native nonlinear matching.
-The effective force and entrance Hamiltonian explain the tilted bucket. Its
-64-turn check does not assume that the entrance bucket is an exact invariant
-of the accelerating discrete map, whose reference changes each turn.
+`002` and `003` use an explicit nonlinear `LineSegmentMap` and the public
+Xpart bucket entry point. The stationary model has a symmetric conservative
+bucket; its outside-bucket particles slip in RF phase without being removed.
+The accelerating model supplies 50 keV per turn to the reference, shifts the
+RF phase and prepares a finite-length native matched sample. Its entrance
+Hamiltonian is not assumed invariant under the accelerating discrete map.
 
-The final case loads the shared ring at an illustrative 10 GeV/c electron
-reference with 50 MV RF, compensates actual mean radiation and applies native
-tapering. The resulting effective bucket has an asymmetric zeta range and a
-nonzero entrance momentum centre `dp0`, compared with the radiating closed
-orbit. Native Gaussian-bunch generation prepares a short distribution using
-linear optics around that fixed point. Its effective Hamiltonian includes mean
-energy loss; it is not conserved along damped trajectories, and the prepared
-bunch is not a quantum-radiation equilibrium. The plot resolves the short sample
-separately from the full separatrix. This snapshot does not qualify transverse
-acceptance or stored-beam lifetime.
+`004` loads the shared ring at 10 GeV/c, powers 50 MV RF, compensates mean
+radiation and applies native tapering. The effective bucket has an asymmetric
+zeta range and shifted momentum centre. A short matched sample is shown on
+both the full bucket scale and a local zoom. It is not a quantum-radiation
+equilibrium distribution; damping prevents Hamiltonian conservation.
+For compensation, see [radiation](../../radiation/README.md).
 
-The example requires **Xpart** for bucket construction and bunch generation.
-For compensation and the energy sawtooth, see
-[radiation](../../radiation/002_compensate_radiation_and_taper.py).
+## Changing RF conditions
 
-`004` uses an accelerating proton turn map with a prescribed transition gamma.
-The native reference-energy increment changes the reference momentum; the RF
-settings select the appropriate phase branch. The comparison describes a finite
-tracking experiment, without an adiabatic-capture or laboratory-clock claim.
+`006` is an ideal proton turn map with prescribed transition gamma and native
+reference-energy gain. It shows the focusing phase branch on either side,
+without claiming an adiabatic capture or real-machine acceleration programme.
 
-`005` uses two absolute-time cavities and an RF-free map for momentum-dependent
-slip, with a 26 GeV/c proton reference. Each RF system's synchronous period and
-momentum are found separately, then both fields act on two small prescribed
-populations. The isolated operating points are references, not fixed points of
-the combined time-dependent system. The example shows relative slipping,
-without a capture sequence or stacking-yield claim.
+`007` uses a 26 GeV/c proton reference, two absolute-time cavities and an RF-free
+map with momentum-dependent slip. Each train has three small Gaussian bunches,
+linearly matched with only its own RF powered. Native multibunch generation
+uses that system's bucket spacing; both RF systems then act on both trains. These isolated matches are not equilibria of the combined time-dependent
+potential. No final recapture, acceptance or stacking yield is modelled.
 
-For RF element parameters, linear optics and matching, return to
-[RF and longitudinal motion](../README.md).
+Xpart provides native bucket construction and longitudinal matching. Return to
+[RF and longitudinal motion](../README.md) for clocks, acceleration and optics.

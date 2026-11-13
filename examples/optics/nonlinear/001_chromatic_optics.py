@@ -27,8 +27,8 @@ SECTION_END     = 'bpm.s4.f'
 ########################################
 # Momentum offsets for derivatives and a small tune scan
 ########################################
-CHROM_STEP      = 1e-5                    # Symmetric delta increment
-DELTA_SCAN      = np.linspace(-5e-5, 5e-5, 9)
+CHROM_STEP  = 1e-5                    # Symmetric delta increment
+DELTA_SCAN  = np.linspace(-5e-5, 5e-5, 9)
 # The bare vertical tune is near an integer: this is a local optical sample,
 # not a momentum-acceptance scan. Curvature is visible even in this window.
 
@@ -96,8 +96,8 @@ print('Largest x-plane derivative differences (b, a):',
 qx_scan = np.zeros(len(DELTA_SCAN))
 qy_scan = np.zeros(len(DELTA_SCAN))
 for i, delta in enumerate(DELTA_SCAN):
-    optics = line.twiss4d(delta0 = delta, chrom = False)
-    qx_scan[i], qy_scan[i] = optics.qx, optics.qy
+    optics                  = line.twiss4d(delta0 = delta, chrom = False)
+    qx_scan[i], qy_scan[i]  = optics.qx, optics.qy
 
 ########################################
 # Compare with the first-order tune shifts
@@ -122,8 +122,8 @@ fig.tight_layout()
 ########################################
 # Retain the periodic boundary response
 ########################################
-periodic_init = nominal.get_twiss_init(OBSERVATION)
-inherited = line.twiss4d(
+periodic_init   = nominal.get_twiss_init(OBSERVATION)
+inherited       = line.twiss4d(
     start       = OBSERVATION,
     end         = SECTION_END,
     init        = periodic_init,
@@ -135,12 +135,12 @@ inherited = line.twiss4d(
 ########################################
 # Keep the same nominal optics and dispersion, but change the chromatic
 # boundary conditions. This open solution need not close around the ring.
-zero_init = nominal.get_twiss_init(OBSERVATION)
+zero_init           = nominal.get_twiss_init(OBSERVATION)
 zero_init.ax_chrom  = 0.0
 zero_init.bx_chrom  = 0.0
 zero_init.ay_chrom  = 0.0
 zero_init.by_chrom  = 0.0
-zero_boundary = line.twiss4d(
+zero_boundary       = line.twiss4d(
     start       = OBSERVATION,
     end         = SECTION_END,
     init        = zero_init,
@@ -150,12 +150,12 @@ zero_boundary = line.twiss4d(
 ########################################
 # Propagate zero chromatic response from the downstream boundary
 ########################################
-end_init = nominal.get_twiss_init(SECTION_END)
+end_init            = nominal.get_twiss_init(SECTION_END)
 end_init.ax_chrom   = 0.0
 end_init.bx_chrom   = 0.0
 end_init.ay_chrom   = 0.0
 end_init.by_chrom   = 0.0
-zero_at_end = line.twiss4d(
+zero_at_end         = line.twiss4d(
     start       = OBSERVATION,
     end         = SECTION_END,
     init        = end_init,

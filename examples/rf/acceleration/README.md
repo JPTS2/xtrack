@@ -11,9 +11,10 @@ runs independently.
 | Example | Lesson |
 | --- | --- |
 | [001_ring_energy_ramp.py](001_ring_energy_ramp.py) | Coordinate a native energy programme with RF settings and follow the physical particle energy |
-| [002_linac_energy_gain.py](002_linac_energy_gain.py) | Distinguish an accelerating cavity kick from a reference-momentum change |
-| [003_linac_optics_and_tracking.py](003_linac_optics_and_tracking.py) | Propagate open 6D optics through acceleration and compare native beam sizes with tracking |
-| [004_mixed_species_reference_clock.py](004_mixed_species_reference_clock.py) | Accelerate two species with one reference clock and two laboratory-time RF systems |
+| [002_transverse_adiabatic_damping.py](002_transverse_adiabatic_damping.py) | Follow centered transverse actions and beam-size shrinkage during proton acceleration |
+| [003_linac_energy_gain.py](003_linac_energy_gain.py) | Distinguish an accelerating cavity kick from a reference-momentum change |
+| [004_linac_optics_and_tracking.py](004_linac_optics_and_tracking.py) | Propagate open 6D optics through acceleration and compare native beam sizes with tracking |
+| [005_mixed_species_reference_clock.py](005_mixed_species_reference_clock.py) | Accelerate two species with one reference clock and two laboratory-time RF systems |
 
 Changing reference momentum updates the coordinate description while preserving
 physical particle energy. RF cavities provide physical energy gain. A reference
@@ -26,7 +27,7 @@ Fixed normalized magnet strengths represent magnetic fields following reference
 rigidity. The RF-off control retains its physical energy despite the ramped
 reference. Radiation is off; the small ramp is not an acceptance study.
 
-The second part of `001` reuses that geometry for 64 protons accelerating from
+`002` reuses that geometry for 64 protons accelerating from
 0.5 towards 0.6 GeV/c. A separate tune match moves this illustrative setting
 away from the bare near-integer working point. The 300 kV RF uses the focusing
 phase below transition; the normalized magnet strengths remain fixed while
@@ -42,15 +43,14 @@ coupling permit an approximate adiabatic-action comparison. Centered action
 moments remove coherent centroid motion. They remain approximately constant
 while the phase-averaged betatron sizes shrink by about 8%, consistent with
 inverse square-root beta-gamma scaling. Raw sample rms sizes also include
-dispersion and finite-sample phase effects; they are plotted separately. This is a bounded linear-matching demonstration, not
-an acceptance study or a precision emittance-conservation result.
+dispersion and finite-sample phase effects; they are plotted separately. This is a bounded linear-matching demonstration, not an acceptance study or a precision emittance-conservation result.
 
-The LINAC examples describe ideal cavity/transport maps. `003` retains the
+The LINAC examples describe ideal cavity/transport maps. `004` retains the
 entrance reference momentum: acceleration appears in the tracked and Twiss
 `delta`, while canonical transverse momenta retain that common normalization.
 It uses open **6D** Twiss; 4D Twiss freezes RF energy kicks.
 
-`004` uses Fe-56 (25+) and Bi-209 (68+) probes in a constant-path drift loop,
+`005` uses Fe-56 (25+) and Bi-209 (68+) probes in a constant-path drift loop,
 without transverse confinement or collective forces. The native database
 approximates the Bi-209 mass as 209 atomic mass units. Energies are per ion.
 Equal rigidity requires `delta = chi - 1`, with

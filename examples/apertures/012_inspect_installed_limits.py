@@ -30,6 +30,11 @@ EXIT_A          = 0.015                 # Exit ellipse semiaxis [m]
 EXIT_B          = 0.008                 # Exit ellipse semiaxis [m]
 
 ########################################
+# Magnet-associated input geometry
+########################################
+MAGNET_LENGTH   = 0.4                   # [m]
+
+########################################
 # Geometry sampling
 ########################################
 TRANSITION_TOL  = 1e-3                  # Samples either side of a bound [m]
@@ -99,6 +104,47 @@ sections    = reconstructed.aperture.get_cross_sections_at_s(
 sections.cols['s min_x max_x min_y max_y'].show(maxwidth = 'full')
 # Between these stations the native model interpolates the limiting ellipse
 # profiles. No chamber is specified upstream of the first installed profile.
+
+################################################################################
+# Import aperture definitions associated with magnets
+################################################################################
+
+########################################
+# Store a separate shape definition and associate it with each magnet
+########################################
+associated_env = xt.Environment()
+associated_env.new('quad.aperture', xt.LimitEllipse,
+                   a = ELLIPSE_A, b = ELLIPSE_B)
+for name in ['quad.one', 'quad.two']:
+    associated_env.new(name, xt.Quadrupole, length = MAGNET_LENGTH)
+    associated_env.elements[name].name_associated_aperture = 'quad.aperture'
+associated_line = associated_env.new_line(
+    length      = LINE_LENGTH,
+    components  = [
+        associated_env.place('quad.one', at = STATION_START, anchor = 'start'),
+        associated_env.place('quad.two', at = STATION_END, anchor = 'start'),
+    ],
+)
+# The shape is in the registry, not the tracking sequence. This metadata can
+# also come from legacy data loaded without installing separate Limit elements.
+print('Associated-data line:')
+associated_line.get_table().cols['name s element_type'].show()
+
+########################################
+# Reconstruct each magnet interval rather than interpolate limit stations
+########################################
+associated_line.aperture.from_associated_apertures(with_progress = False)
+associated_line.aperture.get_bounds_table().cols[
+    'name pipe_name profile_name s'].show(maxwidth = 'full')
+# Each pipe spans its associated magnet. This input says nothing about
+# the connecting drifts; no wall or tracking loss is inferred for those gaps.
+print('Associated sections at magnet centres:')
+associated_line.aperture.get_cross_sections_at_s(
+    [STATION_START + MAGNET_LENGTH / 2,
+     STATION_END + MAGNET_LENGTH / 2],
+    extents = True,
+).cols['s min_x max_x min_y max_y'].show()
+# Constructing the chamber does not install particle-removing tracking limits.
 
 ################################################################################
 # Compare sampled axis-cut estimates with reconstructed chamber sections

@@ -34,9 +34,9 @@ RDT_NAMES       = ['f3000', 'f1200', 'f1001', 'f1010']
 ########################################
 # Keep the nominal quadrupoles and switch off higher multipoles
 ########################################
-repo_root = Path(__file__).resolve().parents[3]
-env       = xt.load(repo_root / LATTICE_FILE)
-line      = env[LINE_NAME]
+repo_root   = Path(__file__).resolve().parents[3]
+env         = xt.load(repo_root / LATTICE_FILE)
+line        = env[LINE_NAME]
 for knob in ['k2lf', 'k2ld', 'k3lf', 'k3ld']:
     env[knob] = 0.0
 # The ring retains its 1 GeV/c electron reference. RF and radiation are off.
@@ -61,9 +61,9 @@ print('Reference tunes:', reference.qx, reference.qy)
 ########################################
 # Recompute the orbit with the actual perturbation
 ########################################
-env['rdt_k2l'] = K2L
-perturbed = line.twiss(method = '4d', coupling_edw_teng = True)
-strengths = line.get_table(attr = True)
+env['rdt_k2l']  = K2L
+perturbed       = line.twiss(method = '4d', coupling_edw_teng = True)
+strengths       = line.get_table(attr = True)
 # All three tables must have the same named entrances in the same order.
 # Feed-down uses the orbit relative to each displaced/rotated magnet.
 rdts = xt.rdt_first_order_perturbation(
@@ -114,9 +114,9 @@ print('Relative complex f1001 difference:', relative_difference)
 ########################################
 # Retain reference optics while reducing the perturbation
 ########################################
-env['rdt_k2l'] = K2L / 2
-half_optics = line.twiss(method = '4d', coupling_edw_teng = True)
-half_rdts = xt.rdt_first_order_perturbation(
+env['rdt_k2l']  = K2L / 2
+half_optics     = line.twiss(method = '4d', coupling_edw_teng = True)
+half_rdts       = xt.rdt_first_order_perturbation(
     rdt         = RDT_NAMES,
     twiss       = reference,
     strengths   = line.get_table(attr = True),

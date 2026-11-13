@@ -12,14 +12,17 @@ runs independently.
 | Example | Lesson |
 | --- | --- |
 | [001_mean_energy_loss.py](001_mean_energy_loss.py) | Compare radiation off and mean energy loss during one uncompensated passage |
-| [002_compensate_radiation_and_taper.py](002_compensate_radiation_and_taper.py) | Compensate and taper, compare linearizations/conventions and inspect a decelerating RF station |
-| [003_radiation_integrals.py](003_radiation_integrals.py) | Compare integrals with full-map analysis, including a vertical wiggler and bend gradient |
+| [002_compensate_radiation_and_taper.py](002_compensate_radiation_and_taper.py) | Compensate and taper; compare entrance and mean momentum conventions |
+| [003_radiation_integrals.py](003_radiation_integrals.py) | Inspect native integral predictions and locate the energy-loss/excitation sources |
 | [004_mean_radiation_damping.py](004_mean_radiation_damping.py) | Follow two amplitude damping times and compare action decay with the native rate |
 | [005_equilibrium_emittances.py](005_equilibrium_emittances.py) | Inspect equilibrium covariance, prepare native bunches and compare short mean/quantum histories |
 | [006_quantum_radiation.py](006_quantum_radiation.py) | Contrast deterministic loss with photon-resolved and total-kick fluctuations |
 | [007_record_photons_and_spectrum.py](007_record_photons_and_spectrum.py) | Record photons, check energy balance and compare analytical spectra and photon moments |
+| [008_radiation_linearizations.py](008_radiation_linearizations.py) | Compare three native optics linearizations on one compensated setting |
+| [009_decelerating_rf_station.py](009_decelerating_rf_station.py) | Extract energy at a second RF station and inspect the new balance and partitions |
+| [010_wigglers_and_combined_fields.py](010_wigglers_and_combined_fields.py) | Change radiation sources with a closed vertical wiggler and an independent bend gradient |
 
-All seven examples use a 10 GeV/c electron reference. `001`–`005` load the shared
+All examples use a 10 GeV/c electron reference. `001`–`005` and `008`–`010` load the shared
 [demonstration ring](../../test_data/example_lattices/demo_ring/README.md).
 Its input reference momentum is 1 GeV/c; selecting 10 GeV/c with fixed normalized
 magnet strengths corresponds to ten times the nominal physical fields.
@@ -31,32 +34,23 @@ per turn. This is an illustrative operating point, without a hardware claim.
 Compensation restores the energy each turn, while tapering keeps the operating
 optics close to the intended setting along the energy sawtooth.
 
-`002` also compares `full`, `kick_as_co` and `scale_as_co` linear optics, contrasts
-requested mean and entrance-momentum taper conventions, and adds a weak
-decelerating RF station while holding the tapered magnets fixed. The measured
-station kicks balance the radiation loss. These choices change the optics
-calculation or the operating point; they are not interchangeable. The
-comparison uses a serial CPU context; `scale_as_co` may compile a local kernel.
+`002` compares requested mean and entrance-momentum conventions. Local momentum
+still follows the energy sawtooth; either choice describes a compensated
+operating point rather than a sampled equilibrium bunch.
 
-`003` starts with radiation-free integral predictions, then compares integrals
-and full mean-map analysis on the same compensated operating points. A closed
-vertical field wiggler adds vertical dispersion and excitation without changing
-the surveyed reference path. Its actual orbit and path length do change. A
-separate normal gradient in one horizontal bend isolates a signed I4 term.
-The full entrance momentum spread includes longitudinal alpha and cross-mode
-correlations; it differs by about 0.9% from the scalar integral estimate here.
+`003` is the short radiation-integral introduction. `010` compares integral and
+full mean-map predictions on the same compensated operating points. Its closed
+vertical wiggler adds vertical dispersion/excitation while preserving the
+surveyed reference path; its actual orbit and path length change. An independent
+bend gradient isolates a signed I4 contribution. The ideal planar model has
+no resolved physical vertical excitation; numerical remnants are not a beam-
+height floor.
 
-`004` follows about 2.08 amplitude damping times in 2,048 turns. At fixed
-geometry, the amplitude damping rate scales approximately with the cube of
-beam energy. The action decrement has twice the amplitude exponent, leaving
-about 1.56% of the initial mode action. Mean tracking supplies damping without
-random excitation;
-it cannot produce the nonzero quantum equilibrium predicted in `005`.
-That prediction comes from native damping/excitation analysis of the mean map.
-The planar baseline has zero vertical equilibrium emittance: collinear
-photon recoil omits photon-opening-angle excitation. Numerical remainders do not
-represent a physical beam-height floor. The vertical-wiggler case in `003`
-instead has nonzero vertical excitation.
+`008` compares `full`, `kick_as_co` and `scale_as_co` on identical compensated
+fields. The comparison uses serial CPU; `scale_as_co` may compile a local kernel.
+`009` instead changes the physical RF system, adding a weak decelerating station
+while holding the old tapered fields fixed. It measures both station kicks and
+the new damping partitions; a phase setting alone is not proof of energy loss.
 
 `005` uses native Xpart generation to prepare samples from the predicted
 horizontal emittance and longitudinal width, with zero vertical emittance.

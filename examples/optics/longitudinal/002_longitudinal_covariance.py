@@ -33,11 +33,11 @@ SIGMA_ZETA_3    = 0.02                    # Mode 3 rms zeta at the entrance [m]
 ################################################################################
 # Calculate the 6D optical modes
 ################################################################################
-repo_root   = Path(__file__).resolve().parents[3]
-env         = xt.load(repo_root / LATTICE_FILE)
-line        = env[LINE_NAME]
-env['voltage_rf'] = RF_VOLTAGE
-tw          = line.twiss6d()
+repo_root           = Path(__file__).resolve().parents[3]
+env                 = xt.load(repo_root / LATTICE_FILE)
+line                = env[LINE_NAME]
+env['voltage_rf']   = RF_VOLTAGE
+tw                  = line.twiss6d()
 
 ################################################################################
 # Specify longitudinal emittance in the canonical coordinate convention
@@ -84,9 +84,9 @@ print(longitudinal)
 # Draw the entrance contour u^T Sigma^-1 u = 1
 ########################################
 # u contains offsets (zeta-zeta_co, pzeta-pzeta_co), centered on the orbit.
-theta        = np.linspace(0, 2 * np.pi, 200)
-circle       = np.array([np.cos(theta), np.sin(theta)])
-contour      = np.linalg.cholesky(longitudinal) @ circle
+theta   = np.linspace(0, 2 * np.pi, 200)
+circle  = np.array([np.cos(theta), np.sin(theta)])
+contour = np.linalg.cholesky(longitudinal) @ circle
 fig, ax = plt.subplots(figsize = (7, 5))
 ax.plot(contour[0] * 1e3, contour[1] * 1e3)
 ax.set_xlabel('zeta - zeta_co [mm]')

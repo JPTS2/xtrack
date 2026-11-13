@@ -65,6 +65,25 @@ zeroed.rows[DISPLAY_ROWS].cols[
     'name s mux muy betx bety'].show(maxwidth = 'full')
 
 ################################################################################
+# Propagate an open range across the stored end of the line
+################################################################################
+# This range crosses the sequence seam but is not given periodic boundaries.
+# Its TwissInit comes from the original full-ring solution at the upstream BPM.
+open_start  = 'bpm.s6.f'
+open_end    = 'bpm.s1.f'
+open_wrap   = line.twiss4d(
+    start   = open_start,
+    end     = open_end,
+    init    = original.get_twiss_init(open_start),
+)
+print('Wrapped open range:', open_wrap.name[0], 'to', open_wrap.name[-2])
+print('Continuous s across the seam [m]:', open_wrap.s[0], open_wrap.s[-1])
+print('Beta at the final BPM: propagated/full-ring [m]:',
+      open_wrap['betx', open_end], original['betx', open_end])
+# The final _end_point is the selected range's exit, not the full-ring exit.
+# start alone above instead requests an entire periodic turn from that start.
+
+################################################################################
 # Change the line order when tracking should also start there
 ################################################################################
 

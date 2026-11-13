@@ -18,24 +18,24 @@ import xtrack as xt
 ########################################
 # One-turn surrogate and its geometric-action detuning
 ########################################
-P0C             = 7.0e9                 # Proton reference p0*c [eV]
-QX              = 0.28
-QY              = 0.31
-BETX            = 2.0                   # [m], alpha_x = 0
-BETY            = 3.0                   # [m], alpha_y = 0
-DET_XX          = 1000.0                # dQx/dJx [m^-1]
-DET_XY          = 200.0                 # dQx/dJy = dQy/dJx [m^-1]
-DET_YY          = 1500.0                # dQy/dJy [m^-1]
+P0C     = 7.0e9                 # Proton reference p0*c [eV]
+QX      = 0.28
+QY      = 0.31
+BETX    = 2.0                   # [m], alpha_x = 0
+BETY    = 3.0                   # [m], alpha_y = 0
+DET_XX  = 1000.0                # dQx/dJx [m^-1]
+DET_XY  = 200.0                 # dQx/dJy = dQy/dJx [m^-1]
+DET_YY  = 1500.0                # dQy/dJy [m^-1]
 
 ########################################
 # Tracking amplitudes and emittance scale
 ########################################
-N_TURNS         = 256
-NEMITT          = 1.0e-6                # Normalized emittance scale [m]
-A_SMALL         = 0.05                  # Nonzero amplitude in the other plane
-A1              = 0.5                   # First finite-difference amplitude
-A2              = 1.0                   # Second finite-difference amplitude
-A_SCAN          = np.array([0.5, 1.0, 1.5, 2.0])  # Normalized x amplitudes
+N_TURNS = 256
+NEMITT  = 1.0e-6                # Normalized emittance scale [m]
+A_SMALL = 0.05                  # Nonzero amplitude in the other plane
+A1      = 0.5                   # First finite-difference amplitude
+A2      = 1.0                   # Second finite-difference amplitude
+A_SCAN  = np.array([0.5, 1.0, 1.5, 2.0])  # Normalized x amplitudes
 
 ################################################################################
 # Construct an explicitly amplitude-dependent map

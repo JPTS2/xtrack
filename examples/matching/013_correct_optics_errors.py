@@ -26,9 +26,9 @@ K1_ERROR_RMS    = 1e-5                  # Additive k1-error RMS [m^-2]
 ########################################
 # Independent correction trims and optics targets
 ########################################
-K1_STEP         = 1e-7                  # Strength finite-difference step [m^-2]
-BETA_TOL        = 1e-6                  # Sampled beta-function tolerance [m]
-TUNE_TOL        = 1e-8
+K1_STEP     = 1e-7                  # Strength finite-difference step [m^-2]
+BETA_TOL    = 1e-6                  # Sampled beta-function tolerance [m]
+TUNE_TOL    = 1e-8
 
 ################################################################################
 # Set up fixed errors and separate trim controls at eight arc quadrupoles
@@ -91,12 +91,12 @@ targets.append(xt.TargetSet(
 ########################################
 # Solve independent trim strengths
 ########################################
-opt = line.match(
+opt         = line.match(
     method  = '4d',
     vary    = xt.VaryList(trim_names, step = K1_STEP),
     targets = targets,
 )
-corrected = line.twiss4d()
+corrected   = line.twiss4d()
 
 ################################################################################
 # Inspect sampled residuals and the full-ring beta beating

@@ -23,10 +23,11 @@ use the shared [demonstration ring](../../test_data/example_lattices/demo_ring/R
 | [009_off_momentum_correction.py](009_off_momentum_correction.py) | Correct one fixed momentum offset and inspect the on-momentum tradeoff |
 | [010_corrector_limits.py](010_corrector_limits.py) | Apply accumulated steering bounds and compare the residual with an unbounded solve |
 | [011_three_dimensional_alignment.py](011_three_dimensional_alignment.py) | Apply shifts and rotations about an anchor on a bend; connect native survey frames with exit coordinates and arrival time |
+| [012_optics_response_and_svd.py](012_optics_response_and_svd.py) | Build a scaled beta/tune response, inspect its singular values and iteratively correct fixed quadrupole errors |
 
 The reference is a 1 GeV/c electron. RF voltage and radiation are zero; correction
-uses 4D optics with fixed momentum. Each correction response is calculated before
-applying errors. Magnet rolls in `001` demonstrate coupling; the correction
+uses 4D optics with fixed momentum. The orbit/trajectory lessons use a nominal response calculated before applying
+errors; `012` remeasures its optics response after each correction. Magnet rolls in `001` demonstrate coupling; the correction
 lessons use nominal uncoupled responses and small perturbations.
 
 `001` also locates a misaligned magnet in the reference survey and shows its
@@ -67,3 +68,9 @@ For correction of beta beating and tunes with quadrupole trims, see
 [optics-error matching](../matching/013_correct_optics_errors.py). For the effects
 of offsets and rotations on element tracking, see
 [element transformations](../elements/transformations/README.md).
+
+`012` separates fixed quadrupole errors from independent trim controls. Its
+measurement vector combines relative horizontal/vertical beta beating and tune
+errors with explicit scales. Truncated SVD controls the retained response modes;
+two model-based correction iterations do not establish robustness to measurement
+noise, calibration errors or a real machine's available correction circuits.

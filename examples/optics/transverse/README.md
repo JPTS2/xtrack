@@ -5,135 +5,84 @@ Copyright (c) CERN, 2026.
 
 # Transverse optics
 
-Read in order; each example runs independently. Periodic and open optics start
-this route, followed by inspecting results, beam covariance and coupled optics.
+Start with periodic or open Twiss, then learn the boundary conditions before
+working with covariance, coupling and maps. Each script runs independently.
 
 | Example | Lesson |
 | --- | --- |
-| [001_periodic_twiss.py](001_periodic_twiss.py) | Solve periodic transverse optics and compare boundary conditions and phase advances |
-| [002_open_twiss.py](002_open_twiss.py) | Propagate specified entrance beta, alpha and dispersion through a transport line |
-| [003_inspect_twiss.py](003_inspect_twiss.py) | Access results, select rows and reuse axes with native Twiss plotting |
-| [004_beam_covariance.py](004_beam_covariance.py) | Convert emittances to covariance, inspect an x-px block and include independent momentum spread |
-| [005_coupled_mode_optics.py](005_coupled_mode_optics.py) | Resolve both normal modes in each plane and combine mode emittances into projected sizes |
-| [006_edwards_teng.py](006_edwards_teng.py) | Read Edwards-Teng optics and use the coupling matrix to decouple the transverse one-turn map |
-| [007_twiss_initial_conditions.py](007_twiss_initial_conditions.py) | Supply upstream, downstream or interior conditions, including particle and W matrix |
-| [008_periodic_cells.py](008_periodic_cells.py) | Solve a repeated cell and compare its optics and phase advances with the full ring |
-| [009_change_starting_point.py](009_change_starting_point.py) | Distinguish a wrapped calculation, coordinate zeros and cycling the line |
-| [010_reverse_reference_frame.py](010_reverse_reference_frame.py) | Transform orbit and optical quantities into the opposite local reference frame |
-| [011_closed_orbit_search.py](011_closed_orbit_search.py) | Find and track a transverse fixed point, reuse it for optics and choose a search location |
-| [012_closed_orbit_dispersion.py](012_closed_orbit_dispersion.py) | Differentiate off-momentum closed orbits and compare their shifts with dispersion |
-| [013_transfer_matrices.py](013_transfer_matrices.py) | Compose 4D/6D maps, transport mode shapes and compare tracked linearization |
-| [014_twiss_settings.py](014_twiss_settings.py) | Choose output content, mask thin groups, clear defaults and compare numerical steps |
-| [015_save_and_load_twiss.py](015_save_and_load_twiss.py) | Preserve native Twiss snapshots and distinguish TFS layouts from convention conversion |
+| [001_periodic_twiss.py](001_periodic_twiss.py) | Solve periodic optics and interpret phase advances and boundary conditions |
+| [002_open_twiss.py](002_open_twiss.py) | Propagate specified entrance beta, alpha and dispersion |
+| [003_twiss_initial_conditions.py](003_twiss_initial_conditions.py) | Supply complete upstream, downstream or interior conditions, including the particle and W matrix |
+| [004_inspect_twiss.py](004_inspect_twiss.py) | Access results, select rows and reuse axes with native Twiss plotting |
+| [005_beam_covariance.py](005_beam_covariance.py) | Convert emittances to covariance and include an independent momentum spread |
+| [006_coupled_mode_optics.py](006_coupled_mode_optics.py) | Resolve both modes in each physical plane and obtain projected sizes |
+| [007_edwards_teng.py](007_edwards_teng.py) | Interpret the local Edwards–Teng basis, propagated functions and decoupled transfer maps |
+| [008_periodic_cells.py](008_periodic_cells.py) | Compare a periodic cell, a partial-periodic range and the same cell in a full ring |
+| [009_cell_stability_boundary.py](009_cell_stability_boundary.py) | Track cell maps across the linear stability boundary without requesting unstable periodic optics |
+| [010_change_starting_point.py](010_change_starting_point.py) | Distinguish periodic and open wrapping, coordinate origins and cycling |
+| [011_reverse_reference_frame.py](011_reverse_reference_frame.py) | Compare orbit, optics and strength conventions in opposite local frames |
+| [012_closed_orbit_search.py](012_closed_orbit_search.py) | Find and track a transverse fixed point, then reuse it for optics |
+| [013_closed_orbit_dispersion.py](013_closed_orbit_dispersion.py) | Differentiate off-momentum closed orbits at fixed reference momentum |
+| [014_transfer_matrices.py](014_transfer_matrices.py) | Compose 4D/6D maps and compare transported mode shapes with tracked linearization |
+| [015_twiss_settings.py](015_twiss_settings.py) | Choose output content and inspect numerical finite-difference settings |
+| [016_save_and_load_twiss.py](016_save_and_load_twiss.py) | Preserve native Twiss snapshots and distinguish file layout from convention conversion |
 
-Most lessons use the [shared demonstration ring](../../../test_data/example_lattices/demo_ring/README.md)
-with its 1 GeV/c electron reference and 1.5 km circumference. RF voltage and
-nonlinear strengths are zero; radiation is off and no collective force is
-included in these 4D calculations. The open-line lessons `002`, `007` and `013`
-retain the [native transport line](../../../test_data/example_lattices/transport/lattice.py):
-they supply entrance conditions rather than imposing ring periodicity.
-`line.twiss4d(...)` is the explicit 4D form of
-`line.twiss(method='4d', ...)`.
+## Models and coordinates
 
-Twiss rows describe element entrances and a final exit called `_end_point`.
-Beta and position dispersion are in metres; alpha is dimensionless. Phase
-advances `mux` and `muy` are in turns, without reduction modulo one. `dpx` and
-`dpy` differentiate normalized canonical momenta with respect to `delta`.
-The reference-species convention is `delta = (p-p0)/p0`.
+Most lessons use the [demonstration ring](../../../test_data/example_lattices/demo_ring/README.md):
+1 GeV/c electrons, 1.5 km circumference, RF voltage and nonlinear strengths zero,
+no radiation or collective force. Open transport lessons retain the
+[native transport](../../../test_data/example_lattices/transport/lattice.py).
+`twiss4d()` fixes momentum rather than imposing RF phase closure.
 
-`004` uses transverse rms emittances about the centroid. Its covariance axes are
-`(x, px, y, py, zeta, pzeta)`; the displayed block is `(x, px)`, not `(x, x')`.
-The uncoupled model lets us compare the API with the Courant-Snyder formula.
-For an independently imposed momentum spread, the example explicitly adds the
-first-order dispersion contribution to the transverse covariance. This is not
-an RF-matched longitudinal distribution. Coupled and longitudinal covariance
-need their corresponding optical modes and assumptions.
+Rows refer to element entrances and a final `_end_point`. In a ranged call that
+last row is the selected final element's exit, not necessarily the line exit.
+Positions, beta functions and position dispersion are in metres; alpha is
+dimensionless. `px`/`py` are canonical momenta normalized to reference momentum.
+`dpx`/`dpy` differentiate them with respect to `delta=(p-p0)/p0`. Phase advances
+are in turns and retain their integer part.
 
-`005` and `006` power `ks_s2` and `ks_s5` in independent loads of DEMO.
-These add skew components of +0.001 and -0.0008 m^-2 to the 1 m quadrupoles
-`arc.s2.c2.qd` and `arc.s5.c2.qd`. The supplied strengths give stable, distinct
-transverse modes with nonzero cross-plane projections. No skew fields are added to the
-model file. Mode labels follow the horizontal/vertical branches near the
-uncoupled limit; they are not two independent physical-plane oscillations.
-The covariance API's `nemitt_x/y` specify the two mode populations here.
+## Covariance and coupling
 
-The Edwards-Teng example uses canonical transverse coordinates and a forward
-periodic 4D solution. Its `r*_edw_teng` entries form a coupling matrix, distinct
-from the transport `R_matrix`. The example states its transformation convention
-and shows the resulting one-turn blocks. This parameterization needs a suitable
-mode branch; it is not a universal coordinate chart at mode degeneracies.
-Constructing coupling bumps and knobs belongs with matching.
+`005` starts with centered transverse emittances and no longitudinal-mode
+population. Its independent momentum-spread contribution is a first-order
+uncoupled construction, not an RF-matched bunch. In coupled optics, the
+emittances populate modes rather than two independent physical planes.
 
-`007` propagates a complete `TwissInit`, including orbit, dispersion and phase
-origins. A zero-length marker defines its downstream boundary. A ranged
-calculation includes its final element; its `_end_point` is
-that element's exit, which need not be the full line's final exit. An interior
-marker supports propagation in both directions. The same local particle and
-W matrix can supply explicit boundary conditions; this does not assert that an
-arbitrary optical matrix is a matched periodic normal form.
+`006` and `007` add two skew gradients to their own model loads. Native
+Edwards–Teng parameters vary with position: a map between two points needs the
+local decoupling basis at each end. The propagation check is a consistency
+relation among native Twiss/maps, not independent field integration. The chosen
+mode branch is valid here; degeneracies need separate treatment.
 
-`008` solves the reusable `arc.cell`, with a 15-degree geometric bend and
-90-degree betatron phase advance in each plane. The straight sections match
-its periodic beta/alpha, but the assembled ring has zero dispersion at the
-arc ports; that differs from the periodic cell's dispersion. Cell phase alone
-does not give the ring tunes, because the straight sections add phase. Nor does
-the four-cell transverse identity determine a unique periodic beta solution.
-Periodicity is an optical boundary condition; the cell need not close on the
-floor plan.
+## Boundary conditions and maps
 
-`009` separates the calculation's starting point from the stored line order and
-the zeros of `s` and phase advance. `010` changes the local reference frame:
-reversed entrances correspond to proper-frame exits. Its sign comparisons use
-zero-length markers to identify the same physical locations. Small quadrupole
-offsets make both orbit planes visible; these offsets exist only in that load.
+A complete `TwissInit` carries orbit, optical modes, phases and available
+chromatic derivatives. The open examples use zero-length markers to define the
+physical boundary planes unambiguously. Periodicity on a selected range solves
+that range's optics; it need not close geometrically. The cell's periodic
+dispersion can differ from its dispersion when embedded in the ring.
 
-`011` searches for transverse periodicity at fixed `delta` in a displaced
-quadrupole lattice. Without RF it does not require longitudinal phase closure.
-The returned particle is tracked for one turn, then reused for optics.
-`co_search_at` moves the search location while keeping the output line order.
+`009` uses the trace criterion only for uncoupled symplectic 2×2 transverse
+blocks at fixed momentum. An elliptic linear map is not a nonlinear acceptance
+or long-term stability certificate. `010` distinguishes a full periodic turn
+from an open range crossing the stored sequence seam. Reversing the frame in
+`011` changes table conventions; it does not construct a second beam model.
 
-`012` keeps the reference momentum and magnetic strengths fixed.
-Dispersion differentiates the closed orbit; `dpx/dpy` refer to normalized
-canonical momenta. A finite-delta orbit also contains higher-order terms.
-The centered difference uses delta = +/-1e-5. The imposed spread in `004`
-is also small: these examples demonstrate local derivatives and linear covariance,
-not a qualified momentum acceptance. DEMO's bare chromaticity is large and its
-vertical tune is close to an integer.
-Tune and local-optics momentum dependence belong together in the
-[chromatic optics sequence](../../README.md#nonlinear), within nonlinear optics.
-Matching chromaticity belongs with matching.
+Transfer maps use `(x,px,y,py,zeta,pzeta)` column vectors. Entry-dependent units
+matter, and map endpoints must coincide with the tracking observation planes.
+Pairwise W-column outer products remove arbitrary normal-mode phase when
+comparing transported mode shapes. Numerical matrix steps require their own
+convergence checks for each lattice.
 
-`013` uses canonical column vectors `(x, px, y, py, zeta, pzeta)` and compares
-the fixed-momentum transverse block. Map endpoints are element entrances;
-tracking excludes its stop element to use that same plane. Predictions describe
-displacements from the reference trajectory, with nonlinear and numerical
-residuals. Transfer-matrix entries carry coordinate-dependent units. A separate RF-on
-DEMO section composes full 6D maps and compares propagated mode shapes using
-pairs of W columns; these outer products remove arbitrary normal-mode phase.
-The same-data reconstruction is an algebraic check, distinct from comparison
-with the independently tracked one-turn matrix.
+`016` includes HDF5 and TFS formats and therefore needs **h5py** and
+**tfs-pandas**, in addition to Xtrack, NumPy and Matplotlib. Native JSON retains
+the complete snapshot; a selected TFS layout is not full metadata preservation.
 
-`014` sets defaults only on its freshly loaded line and compares requested
-outputs and finite-difference steps. Its numerical check is qualified for this
-smooth model; step-size convergence depends on the lattice and amplitudes.
-`hide_thin_groups` masks selected intermediate values with NaN while retaining
-all rows. Clearing `line.twiss_default` is explicit and only affects that load.
+## Continue by subject
 
-`015` writes native JSON, CSV and HDF5 results under `outputs/`. These retain
-optical matrices, phase advances and reference-particle data for later analysis.
-HDF5 needs `h5py`; reading the selected TFS output needs `tfs-pandas`. A TFS
-preset selects a layout; the complete forward, on-momentum periodic 4D
-conversion separately changes entry to exit samples and delta derivatives to
-ptau derivatives. The selected TFS fields do not preserve a complete snapshot.
-It is distinct from saving the associated line or environment, covered in
-[environment persistence](../../line_construction/015_save_and_load_environment.py).
-Other table formats and column selection are covered in [tables](../../tables/).
-
-For normalized launches and bunch preparation, see [particles](../../particles/).
-For measured beam envelopes with `ONE_TURN_EBE`, see
+[Chromatic optics](../nonlinear/README.md) owns tune/local-optics momentum
+response, including higher-order derivatives. [Longitudinal optics](../longitudinal/README.md)
+powers RF and solves the synchronous 6D state. For measured beam envelopes see
 [element-by-element monitoring](../../monitors/particle_records/002_element_by_element.py).
-For general table operations, see [tables](../../tables/).
-
-`003` uses Xtrack's native Matplotlib Twiss plot and reuses supplied axes; it
-requires no Xplt installation. Twiss plotting and table selection do not alter
-the model or recompute optics.
+General table operations live in [tables](../../tables/README.md).

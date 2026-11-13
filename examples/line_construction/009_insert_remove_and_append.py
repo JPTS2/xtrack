@@ -160,47 +160,6 @@ subline_line.insert(insert_line, at = SEXT_START, anchor = 'start')
 subline_line.get_table().cols['name s_start s_end'].show()
 
 ################################################################################
-# Insert across an occupied thick interval
-################################################################################
-
-########################################
-# Cover the original quadrupole completely
-########################################
-# A thick insertion replaces the covered span, including an existing magnet.
-# The equal-length replace operation above is preferable for a named swap.
-env.new('cover', xt.Sextupole, length = 2 * QUAD_LENGTH, k2 = 0.1)
-covered_line = starting_line.copy(shallow = True)
-covered_line.insert(
-    'cover',
-    at      = QUAD_START + QUAD_LENGTH / 2,
-    anchor  = 'center',
-)
-covered_line.get_table().cols['name s_start s_end element_type'].show()
-print('Covered line length [m]:', covered_line.get_length())
-
-########################################
-# Replace only part of the original magnet
-########################################
-# The uncovered half remains a thick slice linked to its original parent.
-env.new('partial_cover', xt.Sextupole, length = QUAD_LENGTH, k2 = 0.1)
-partial_line = starting_line.copy(shallow = True)
-partial_line.insert('partial_cover', anchor = 'center', at = 'quad@end')
-partial_line.get_table().cols[
-    'name s_start s_end element_type parent_name'].show()
-
-########################################
-# Compare a thin insertion inside the magnet
-########################################
-env.new('inside_quad', xt.Marker)
-split_line = starting_line.copy(shallow = True)
-split_line.insert('inside_quad', at = 'quad@center')
-split_line.get_table().cols['name s_start s_end element_type'].show()
-# Removing the zero-length marker leaves the slices and geometry in place.
-without_marker = split_line.copy(shallow = True)
-without_marker.remove('inside_quad')
-without_marker.get_table().cols['name s_start s_end element_type'].show()
-
-################################################################################
 # Remove a single occurrence, all occurrences or a pattern
 ################################################################################
 

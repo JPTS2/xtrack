@@ -53,7 +53,7 @@ for label, intensity, updating in [
         z0                  = 0.0,
         q_parameter         = 1.0,
     )
-    field = xf.SpaceChargeBiGaussian(
+    field   = xf.SpaceChargeBiGaussian(
         longitudinal_profile        = profile,
         update_on_track             = updating,
         length                      = SC_LENGTH,
@@ -73,8 +73,8 @@ for label, intensity, updating in [
         element_names   = ['upstream', 'spacecharge', 'downstream', 'end'],
     )
     line.set_particle_ref('proton', p0c = P0C)
-    lines[label] = line
-    fields[label] = field
+    lines[label]    = line
+    fields[label]   = field
 
 # SpaceChargeBiGaussian is a thin kick: SC_LENGTH weights the force, while
 # the surveyed line length is supplied only by the two drifts.

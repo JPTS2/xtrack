@@ -17,23 +17,23 @@ import xtrack as xt
 ########################################
 # Common launches and dimensionless error definition
 ########################################
-P0C             = 1e9                    # Electron reference momentum [eV/c]
-COORDINATES     = ['x', 'px', 'y', 'py', 'zeta']
-SCALES          = np.array([1e-2, 1e-3, 1e-2, 1e-3, 1e-2])
+P0C         = 1e9                    # Electron reference momentum [eV/c]
+COORDINATES = ['x', 'px', 'y', 'py', 'zeta']
+SCALES      = np.array([1e-2, 1e-3, 1e-2, 1e-3, 1e-2])
 # Position scales are metres; momentum scales are relative to reference p0.
-N_SLICES        = np.array([1, 2, 4, 8, 16, 32, 64])
-STAGES          = {'uniform': 1, 'teapot': 1, 'yoshida-4': 3,
+N_SLICES    = np.array([1, 2, 4, 8, 16, 32, 64])
+STAGES      = {'uniform': 1, 'teapot': 1, 'yoshida-4': 3,
                   'yoshida-6': 7, 'yoshida-8': 15}
-REFERENCE_N     = 256                    # Yoshida-6 slices, then doubled
+REFERENCE_N = 256                    # Yoshida-6 slices, then doubled
 
 ########################################
 # Pure bend and combined straight magnet
 ########################################
-LENGTH          = 1.0                    # [m]
-ANGLE           = np.pi / 10             # Pure-bend deflection [rad]
-K1              = 0.37                   # Straight normal quadrupole [m^-2]
-K1S             = 0.08                   # Straight skew quadrupole [m^-2]
-K2              = 2.0                    # Straight sextupole [m^-3]
+LENGTH  = 1.0                    # [m]
+ANGLE   = np.pi / 10             # Pure-bend deflection [rad]
+K1      = 0.37                   # Straight normal quadrupole [m^-2]
+K1S     = 0.08                   # Straight skew quadrupole [m^-2]
+K2      = 2.0                    # Straight sextupole [m^-3]
 
 ################################################################################
 # Establish an exact bend control and refine the nontrivial reference
@@ -132,4 +132,43 @@ axes[1].legend()
 # The low-order bend rotation becomes exact as its integration is refined.
 # This does not test the paraxial approximation of an expanded-drift model.
 # No single fitted order is reported: high-order curves reach roundoff early.
+
+################################################################################
+# Scan tiny launches at fixed integration to expose roundoff
+################################################################################
+launch_sizes    = np.logspace(-3, -16, 14)
+fig, axes       = plt.subplots(1, 2, figsize = (11, 4), layout = 'constrained')
+tiny_launch     = xt.Particles('electron', p0c = P0C, x = launch_sizes)
+tiny_reference  = tiny_launch.copy()
+bend.track(tiny_reference)
+for count in [16, 256]:
+    candidate                       = bend.copy()
+    candidate.model                 = 'rot-kick-rot-low-order'
+    candidate.integrator            = 'uniform'
+    candidate.num_multipole_kicks   = count
+    particles                       = tiny_launch.copy()
+    candidate.track(particles)
+    zero = xt.Particles('electron', p0c = P0C)
+    candidate.track(zero)
+    absolute_error  = np.abs(particles.x - tiny_reference.x)
+    response_error  = np.abs(
+        (particles.x - zero.x[0]) - (tiny_reference.x - on_axis.x[0]))
+    axes[0].loglog(launch_sizes, absolute_error, 'o-',
+                   label = f'{count} kicks')
+    axes[1].loglog(launch_sizes, response_error, 'o-',
+                   label = f'{count} kicks')
+    print('Tiny-launch scan', count, 'on-axis x defect [m]:', zero.x[0])
+    print('  Absolute / incremental-response errors [m]:',
+          absolute_error, response_error)
+axes[0].set(title = 'Fixed-integration orbit bias',
+             xlabel = 'Entrance x [m]', ylabel = 'Absolute exit x error [m]')
+axes[1].set(title = 'Response after subtracting each on-axis output',
+             xlabel = 'Entrance x [m]', ylabel = 'Response error [m]')
+for axis in axes:
+    axis.grid(which = 'both')
+    axis.legend()
+# The first floor is the low-order map's on-axis integration bias, not roundoff.
+# Subtraction isolates its incremental response; this is a diagnostic, not an
+# orbit correction. Tiny differences eventually expose cancellation/roundoff.
+# Small absolute errors do not establish resolved relative accuracy at tiny x.
 plt.show()

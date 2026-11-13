@@ -61,4 +61,4 @@ For using existing maps, see [maps](../maps/README.md).
 same-species replacement rather than physical reaction modelling. Xtrack inserts
 the returned particles and assigns their identifiers. The lesson uses unit
 weights. For storage capacity and `add_particles` independently of tracking, see
-[particle insertion](../../particles/011_capacity_and_insertion.py).
+[particle insertion](../../particles/010_capacity_and_insertion.py).

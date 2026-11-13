@@ -28,10 +28,10 @@ ALFY_START      = 0.0
 ########################################
 # Exit targets and matching settings
 ########################################
-BETX_TARGET     = 50.0                   # [m]
-BETY_TARGET     = 45.0                   # [m]
-BETA_TOL        = 1.0e-7                 # [m]
-K1_STEP         = 1.0e-5                 # [m^-2]
+BETX_TARGET = 50.0                   # [m]
+BETY_TARGET = 45.0                   # [m]
+BETA_TOL    = 1.0e-7                 # [m]
+K1_STEP     = 1.0e-5                 # [m^-2]
 
 ################################################################################
 # Load the transport and propagate specified entrance optics
@@ -55,7 +55,7 @@ tw_before   = line.twiss4d(init = init)
 # xt.END selects the endpoint AFTER the last element, including the final drift.
 # The two variables drive the transport's three quadrupoles through families.
 # These targets constrain exit betas, not exit alphas or dispersion.
-opt = line.match(
+opt         = line.match(
     method  = '4d',
     init    = init,
     vary    = xt.VaryList(['kqf', 'kqd'], step = K1_STEP),

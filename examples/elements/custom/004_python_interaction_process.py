@@ -3,7 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Further examples: examples/particles/011_capacity_and_insertion.py
+# Further examples: examples/particles/010_capacity_and_insertion.py
 
 ################################################################################
 # Required packages
@@ -77,7 +77,7 @@ interaction = xt.BeamInteraction(
 ########################################
 # Reserve product slots and show the original live IDs
 ########################################
-# Capacity management is covered in particles/011_capacity_and_insertion.py.
+# Capacity management is covered in particles/010_capacity_and_insertion.py.
 particles   = xt.Particles(
     _context    = xo.ContextCpu(),
     _capacity   = 8,

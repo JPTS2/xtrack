@@ -49,8 +49,8 @@ nominal     = line.twiss4d()
 ########################################
 # Solve at positive and negative momentum offsets
 ########################################
-plus        = line.twiss4d(delta0 = DELTA)
-minus       = line.twiss4d(delta0 = -DELTA)
+plus    = line.twiss4d(delta0 = DELTA)
+minus   = line.twiss4d(delta0 = -DELTA)
 
 ################################################################################
 # Compare the finite difference with the periodic dispersion

@@ -41,13 +41,14 @@ env         = xt.load(repo_root / LATTICE_FILE)
 line        = env[LINE_NAME]
 env['arc.s1.c1.qf.in'].shift_x = SHIFT_X
 env['arc.s2.c2.qd'].shift_y = SHIFT_Y
+env['ks_s2'] = 5e-4                  # Nonzero skew strength for the table check
 
 ########################################
 # Request the reversed-frame result
 ########################################
-proper          = line.twiss4d()
-reverse         = line.twiss4d(reverse = True)
-converted       = proper.reverse()
+proper      = line.twiss4d(strengths = True)
+reverse     = line.twiss4d(reverse = True, strengths = True)
+converted   = proper.reverse()
 print('Reference frames:', proper.reference_frame, reverse.reference_frame)
 
 # reverse describes the same solution in the opposite local reference frame.
@@ -103,3 +104,15 @@ for ax, column, sign in zip(axes, ['x', 'y'], [-1, 1]):
 axes[-1].set_xlabel('Proper-frame s [m]')
 fig.tight_layout()
 plt.show()
+
+################################################################################
+# Distinguish reversed strength conventions from changing physical magnets
+################################################################################
+# The table follows the reversed local frame: even normal integrated
+# multipoles and odd skew multipoles change sign; normal quadrupoles do not.
+# These are table conventions, not new magnet settings or a second beam model.
+for name in ['arc.s1.c1.qf.in', 'arc.s1.c1.b1', 'arc.s2.c2.qd']:
+    print('Strengths at:', name)
+    for field in ['k0l', 'k1l', 'k2l', 'k1sl']:
+        print(field, 'proper/reversed:', proper[field, name],
+              reverse[field, name])

@@ -21,8 +21,8 @@ import xtrack as xt
 LATTICE_FILE    = 'test_data/example_lattices/transport/lattice.py'
 LINE_NAME       = 'transport'
 # This example starts at the line entrance. Choose later boundaries in order.
-MIDDLE          = 'qd.1'
-STOP            = 'qf.2'
+MIDDLE  = 'qd.1'
+STOP    = 'qf.2'
 
 ########################################
 # Initial optics and small transverse displacement
@@ -35,9 +35,9 @@ DISPLACEMENT    = np.array([1e-6, 2e-7, -2e-6, 1e-7])
 ########################################
 # Periodic 6D comparison
 ########################################
-RING_FILE       = 'test_data/example_lattices/demo_ring/lattice.py'
-RF_VOLTAGE      = 1e5                    # [V]
-RING_MIDDLE     = 'bpm.s4.f'
+RING_FILE   = 'test_data/example_lattices/demo_ring/lattice.py'
+RF_VOLTAGE  = 1e5                    # [V]
+RING_MIDDLE = 'bpm.s4.f'
 
 ################################################################################
 # Load the line and calculate open 4D optics
@@ -167,14 +167,14 @@ print('One-turn reconstruction versus tracked linearization:',
 # Propagated columns acquire phase rotations. Their pairwise outer products
 # remove that phase, so compare mode shapes instead of raw W eigenvectors.
 # These are unit-action shapes, not an emittance-weighted beam covariance.
-w_start = tw6.W_matrix[0]
-w_end = tw6.W_matrix[-1]
+w_start     = tw6.W_matrix[0]
+w_end       = tw6.W_matrix[-1]
 mode_shapes = []
 for mode in range(3):
-    propagated = r6_direct @ w_start[:, 2 * mode:2 * mode + 2]
-    target = w_end[:, 2 * mode:2 * mode + 2]
-    shape_propagated = propagated @ propagated.T
-    shape_target = target @ target.T
+    propagated          = r6_direct @ w_start[:, 2 * mode:2 * mode + 2]
+    target              = w_end[:, 2 * mode:2 * mode + 2]
+    shape_propagated    = propagated @ propagated.T
+    shape_target        = target @ target.T
     mode_shapes.append((shape_propagated, shape_target))
     print('Mode', mode + 1, 'maximum shape-entry residual:',
           np.max(np.abs(shape_propagated - shape_target)))

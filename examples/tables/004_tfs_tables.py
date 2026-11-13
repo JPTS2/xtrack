@@ -35,9 +35,7 @@ K1          = 0.8                        # [m^-2]
 ########################################
 # Output files
 ########################################
-# HDF5 needs h5py; TFS reading needs tfs-pandas. No external engine runs.
-HDF5_FILE   = 'outputs/bpm_readings.h5'
-HDF5_GROUP  = 'measurements'
+# TFS reading needs tfs-pandas. No external engine runs.
 TFS_FILE    = 'outputs/bpm_readings.tfs'
 
 ################################################################################
@@ -53,19 +51,6 @@ table = xt.Table(
     index       = 'name')
 table.show()
 print('Dataset:', table.title)
-
-################################################################################
-# Save and reload HDF5
-################################################################################
-hdf5_path = Path(__file__).resolve().parent / HDF5_FILE
-hdf5_path.parent.mkdir(parents = True, exist_ok = True)
-
-table.to_hdf5(hdf5_path, group = HDF5_GROUP)
-table_hdf5 = xt.Table.from_hdf5(hdf5_path, group = HDF5_GROUP)
-table_hdf5.show()
-print('Restored HDF5 title:', table_hdf5.title)
-print('Largest HDF5 x difference [m]:',
-      np.max(np.abs(table_hdf5.x - table.x)))
 
 ################################################################################
 # Write a defined TFS layout

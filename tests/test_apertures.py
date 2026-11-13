@@ -512,3 +512,28 @@ def test_limitrect_to_dict():
     assert lrectdef.max_x == 1e10
     assert lrectdef.min_y == -1e10
     assert lrectdef.max_y == 1e10
+
+
+def test_rectangle_ducktrack_surviving_particle_ids():
+    import ducktrack as dtk
+
+    # Preserve the independent rectangle-mask comparison from the standalone
+    # aperture recipe, including asymmetric bounds and survivor identifiers.
+    rng = np.random.default_rng(537)
+    n_particles = 1000
+    reference = dtk.TestParticles(
+        p0c=6.5e12,
+        x=rng.uniform(-0.35, 0.35, n_particles),
+        px=np.zeros(n_particles),
+        y=rng.uniform(-0.35, 0.35, n_particles),
+        py=np.zeros(n_particles),
+    )
+    particles = xt.Particles.from_dict(
+        reference.to_dict(), _context=xo.ContextCpu())
+    bounds = dict(min_x=-0.1, max_x=0.2, min_y=0.2, max_y=0.3)
+    dtk.elements.LimitRect(**bounds).track(reference)
+    xt.LimitRect(**bounds).track(particles)
+    np.testing.assert_array_equal(
+        np.sort(particles.particle_id[particles.state > 0]),
+        reference.particle_id,
+    )
