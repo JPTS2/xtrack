@@ -49,6 +49,7 @@ tw = line.twiss(method = '4d', delta0 = DELTA0)
 ########################################
 # Tunes and chromaticities
 ########################################
+print('Tunes and chromaticities\n------------------------')
 print(f'Horizontal tune: {tw.qx:.6f}')
 print(f'Vertical tune:   {tw.qy:.6f}')
 print(f'Chromaticities: dQx/d(delta) = {tw.dqx:.6f}, '
@@ -57,27 +58,12 @@ print(f'Chromaticities: dQx/d(delta) = {tw.dqx:.6f}, '
 ########################################
 # Twiss table
 ########################################
-tw.rows[:12].cols['name s betx bety dx mux muy'].show()
+print('\nFirst 12 Twiss rows\n-------------------')
+print('s, betx, bety, dx [m]; mux, muy [turns]')
+tw.rows[:12].cols['name s betx bety dx mux muy'].show(maxwidth = 'full')
 
 ################################################################################
 # Plot the result
 ################################################################################
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
-
-########################################
-# Beta functions
-########################################
-axes[0].plot(tw.s, tw.betx, label = r'$\beta_x$')
-axes[0].plot(tw.s, tw.bety, label = r'$\beta_y$')
-axes[0].set_ylabel(r'$\beta$ [m]')
-axes[0].legend()
-
-########################################
-# Horizontal dispersion
-########################################
-axes[1].plot(tw.s, tw.dx)
-axes[1].set_ylabel(r'$D_x$ [m]')
-axes[1].set_xlabel('s [m]')
-fig.suptitle(f'Periodic 4D optics: Qx = {tw.qx:.3f}, Qy = {tw.qy:.3f}')
-fig.tight_layout()
+tw.plot(yl = 'betx bety', yr = 'dx')
 plt.show()

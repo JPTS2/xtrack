@@ -18,12 +18,13 @@ def test_teaching_transport_open_optics():
     assert line.particle_ref.q0 == -1
     np.testing.assert_allclose(line.particle_ref.mass0, xt.ELECTRON_MASS_EV)
     np.testing.assert_allclose(line.particle_ref.p0c, 1e9)
-    np.testing.assert_allclose(line.get_length(), 7.1, rtol = 0, atol = 1e-12)
-    tw = line.twiss(method = '4d', betx = 1., bety = 1.)
-    # Qualified entrance conditions, independently retained from the preview.
+    np.testing.assert_allclose(line.get_length(), 18.3, rtol = 0, atol = 1e-12)
+    tw = line.twiss(
+        method = '4d', betx = 10., bety = 2., alfx = -2.2, alfy = 0.5)
+    # Near-cell-matched entrance conditions give a bounded FODO-like envelope.
     np.testing.assert_allclose(
         [tw.betx[-1], tw.bety[-1]],
-        [55.01759394372164, 46.16305551464726], rtol = 1e-8,
+        [9.3533672961093, 2.237736383886591], rtol = 1e-8,
     )
 
 

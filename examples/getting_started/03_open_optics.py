@@ -27,10 +27,10 @@ LINE_NAME       = 'transport'
 ########################################
 # Entrance optics
 ########################################
-BETX_START      = 1.0                   # [m]
-BETY_START      = 1.0                   # [m]
-ALFX_START      = 0.0
-ALFY_START      = 0.0
+BETX_START      = 10.0                   # [m]
+BETY_START      = 2.0                   # [m]
+ALFX_START      = -2.2
+ALFY_START      = 0.5
 
 ################################################################################
 # Load the model
@@ -42,6 +42,8 @@ line      = env[LINE_NAME]
 ################################################################################
 # Calculate open-line optics
 ################################################################################
+# Rounded entrance conditions give a nearly repeating beta envelope.
+# No periodic boundary condition is imposed.
 # Unspecified entrance coordinates and dispersion components default to zero.
 tw = line.twiss(
     method = '4d',
@@ -54,27 +56,12 @@ tw = line.twiss(
 ################################################################################
 # Inspect the optics
 ################################################################################
-tw.cols['name s betx bety alfx alfy dx'].show(maxrows = 12)
+print('Open-line optics\n----------------')
+print('s, betx, bety, dx [m]; alfx, alfy dimensionless')
+tw.cols['name s betx bety alfx alfy dx'].show()
 
 ################################################################################
 # Plot the result
 ################################################################################
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
-
-########################################
-# Beta functions
-########################################
-axes[0].plot(tw.s, tw.betx, label = r'$\beta_x$')
-axes[0].plot(tw.s, tw.bety, label = r'$\beta_y$')
-axes[0].set_ylabel(r'$\beta$ [m]')
-axes[0].legend()
-
-########################################
-# Horizontal dispersion
-########################################
-axes[1].plot(tw.s, tw.dx)
-axes[1].set_ylabel(r'$D_x$ [m]')
-axes[1].set_xlabel('s [m]')
-fig.suptitle('Transport line: optics from specified entrance conditions')
-fig.tight_layout()
+tw.plot(yl = 'betx bety', yr = 'dx')
 plt.show()

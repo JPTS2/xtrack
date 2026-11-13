@@ -30,6 +30,12 @@ LINE_NAME       = 'demo'
 N_TURNS         = 32
 
 ########################################
+# Monitor locations
+########################################
+LOCATION_1      = 'bpm.s1.f'
+LOCATION_2      = 'bpm.s1.d'
+
+########################################
 # Particle launch
 ########################################
 X_NORM          = 2.0
@@ -46,17 +52,18 @@ line      = env[LINE_NAME]
 ################################################################################
 # Install the monitors
 ################################################################################
-monitor_start = xt.ParticlesMonitor(
+monitor_1 = xt.ParticlesMonitor(
     start_at_turn = 0, stop_at_turn = N_TURNS, num_particles = 1,
 )
-monitor_middle = xt.ParticlesMonitor(
+monitor_2 = xt.ParticlesMonitor(
     start_at_turn = 0, stop_at_turn = N_TURNS, num_particles = 1,
 )
-env.elements['monitor_start'] = monitor_start
-env.elements['monitor_middle'] = monitor_middle
+env.elements['monitor_1'] = monitor_1
+env.elements['monitor_2'] = monitor_2
+print('Install the monitors\n--------------------')
 line.insert([
-    env.place('monitor_start', at = 'bpm.s1.f'),
-    env.place('monitor_middle', at = 'bpm.s4.f'),
+    env.place('monitor_1', at = LOCATION_1),
+    env.place('monitor_2', at = LOCATION_2),
 ])
 
 ################################################################################
@@ -78,23 +85,31 @@ line.track(particles, num_turns = N_TURNS)
 ################################################################################
 # Compare the records
 ################################################################################
-table = line.get_table()
-print('Monitor locations:')
-monitors = table.rows['monitor_start|monitor_middle']
-monitors.cols['name s element_type'].show(maxrows = 12)
+# These are two records of the same particle, at different optical phases.
+# Passive BPM devices identify locations; ParticlesMonitor records the motion.
+tw = line.twiss(method = '4d')
+print('\nMonitor locations and optics\n---------------------------')
+print('s, betx [m]; mux [turns]')
+tw.rows[['monitor_1', 'monitor_2']].cols[
+    'name s betx mux'].show(maxwidth = 'full')
+print('The same particle is recorded at both locations on every turn.')
 
+################################################################################
+# Plot the two records
+################################################################################
 fig, ax = plt.subplots(figsize = (8, 4))
 ax.plot(
-    monitor_start.at_turn[0], monitor_start.x[0] * 1e3,
-    label = 'bpm.s1.f (s = 1 m)', marker = '.',
+    monitor_1.at_turn[0], monitor_1.x[0] * 1e3,
+    label = LOCATION_1, marker = '.',
 )
 ax.plot(
-    monitor_middle.at_turn[0], monitor_middle.x[0] * 1e3,
-    label = 'bpm.s4.f (s = 751 m)', marker = '.',
+    monitor_2.at_turn[0], monitor_2.x[0] * 1e3,
+    label = LOCATION_2, marker = '.',
 )
 ax.set_xlabel('Turn')
 ax.set_ylabel('x [mm]')
 ax.set_title('One particle recorded at two locations')
-ax.legend()
+ax.margins(y = 0.20)
+ax.legend(loc = 'upper center', ncol = 2)
 fig.tight_layout()
 plt.show()

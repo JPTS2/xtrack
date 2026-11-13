@@ -53,7 +53,7 @@ tw_before   = line.twiss4d(init = init)
 # Match the beta functions at the actual line exit
 ################################################################################
 # xt.END selects the endpoint AFTER the last element, including the final drift.
-# The two variables drive the transport's three quadrupoles through families.
+# The two variables drive the transport's quadrupoles through families.
 # These targets constrain exit betas, not exit alphas or dispersion.
 opt         = line.match(
     method  = '4d',

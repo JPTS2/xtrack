@@ -11,7 +11,7 @@ Copyright (c) CERN, 2026.
 | [fcc_ee_z/lattice.json](fcc_ee_z/README.md) | `fccee_p_ring` | CAS four-IP FCC-ee Z model, with separate nominal/larger-beta strengths |
 | [elena_field/lattice.py](elena_field/README.md) | `elena` | Compact antiproton ring with fitted curved dipole fields |
 | [pimms_extraction/lattice.py](pimms_extraction/README.md) | `pimms` | Compact proton ring for resonant extraction |
-| [transport/lattice.py](transport/lattice.py) | `transport` | 7.1 m line with three quadrupoles and two bends |
+| [transport/lattice.py](transport/lattice.py) | `transport` | 18.3 m, three-cell alternating-gradient transport |
 
 Load a definition with `env = xt.load(path)` and select `env['demo']` or
 `env['transport']`. Each model supplies its reference particle and strengths.
@@ -31,8 +31,9 @@ strengths and qualified RF configuration. Radiation and collective fields are
 not enabled by the model loader.
 
 The transport uses adaptive magnetic bodies with linear bend edges, zero edge
-angles and zero fringe integrals. Its family settings are `kqf=0.35` and
-`kqd=-0.30` m^-2. It has no RF and needs entrance conditions for 4D Twiss.
+angles and zero fringe integrals. Its family settings are `kqf=1.8` and
+`kqd=-1.8` m^-2. Each 6.1 m cell has one focusing and one defocusing
+quadrupole and two oppositely signed bends (+0.045 and -0.030 rad). It has no RF and needs entrance conditions for 4D Twiss.
 
 ## Coordinates
 

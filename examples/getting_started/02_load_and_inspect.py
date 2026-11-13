@@ -9,6 +9,7 @@
 # Required packages
 ################################################################################
 from pathlib import Path
+from textwrap import fill
 
 import xtrack as xt
 
@@ -41,6 +42,7 @@ line      = env[LINE_NAME]
 ########################################
 table = line.get_table()
 
+print('First 12 elements [m]\n---------------------')
 # s_start and s_end are layout coordinates, in metres.
 table.rows[:12].cols['name s_start s_end element_type'].show()
 
@@ -48,27 +50,34 @@ table.rows[:12].cols['name s_start s_end element_type'].show()
 # Quadrupoles only
 ########################################
 quadrupoles = table.rows[table.element_type == 'Quadrupole']
-print('\nQuadrupoles:')
-quadrupoles.cols['name s_start s_end'].show(maxrows = 12)
+print('\nFirst 12 quadrupoles [m]\n------------------------')
+quadrupoles.rows[:12].cols['name s_start s_end'].show()
 
 ########################################
 # Attribute arrays in tracking order
 ########################################
 # Arrays contain one value per element, without the table's final endpoint.
 attributes = [name for name in line.attr.keys() if not name.startswith('_')]
-print('\nAvailable public attributes:', attributes)
+print('\nAvailable public attributes\n---------------------------')
+print(fill(', '.join(attributes), width = 78))
 lengths = line.attr['length']
 k1l     = line.attr['k1l']
-print('First 12 element lengths [m]:', lengths[:12])
-print('First 12 integrated quadrupole strengths [m^-1]:', k1l[:12])
+print('\nAttribute arrays: first 12 elements'
+      '\n----------------------------------')
+print('Element lengths [m]:')
+print(lengths[:12])
+print('\nIntegrated quadrupole strengths [m^-1]:')
+print(k1l[:12])
 
 ################################################################################
 # Inspect the reference and strength variables
 ################################################################################
-print('\nStrength variables:')
+print('\nStrength variables\n------------------')
 env.vars.get_table().rows['kqf|kqd'].show(maxrows = 12)
-print(f'Circumference: {line.get_length():.3f} m')
-print(f'Reference p0*c: {line.particle_ref.p0c[0] * 1e-9:.3f} GeV')
+print('\nRing and reference\n------------------')
+print(f'Circumference [m]: {line.get_length():.3f}')
+print(f'Reference momentum [GeV/c]: {line.particle_ref.p0c[0] * 1e-9:.3f}')
 
-print(f'arc.s1.c1.qf.in k1: {line["arc.s1.c1.qf.in"].k1:.9f} m^-2')
-print(f'arc.s1.c2.qf.in k1: {line["arc.s1.c2.qf.in"].k1:.9f} m^-2')
+print('\nElement strengths\n-----------------')
+print(f'arc.s1.c1.qf.in k1 [m^-2]: {line["arc.s1.c1.qf.in"].k1:.9f}')
+print(f'arc.s1.c2.qf.in k1 [m^-2]: {line["arc.s1.c2.qf.in"].k1:.9f}')
