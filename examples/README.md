@@ -475,13 +475,18 @@ essential. Start with the
 chromaticity-corrected setting into off-momentum optics and finite tracking.
 The machine folders connect operations around a particular physical problem:
 
-- [elena/](machine_studies/elena/README.md): fitted fields and curved-reference
-  transport with `BFieldExpansion`.
-- [fcc_ee/](machine_studies/fcc_ee/README.md): experimental-solenoid compensation.
-- [lep/](machine_studies/lep/README.md): polarization recovery with spin bumps and
-  coupling corrections.
-- [lhc/](machine_studies/lhc/README.md): collision optics and installed crossing
-  and separation knobs.
+- [fcc_ee/](machine_studies/fcc_ee/README.md): IP beta control, alignment,
+  correction and equilibrium emittance; a separate detector-solenoid study.
+- [lhc/](machine_studies/lhc/README.md): shared-magnet two-beam geometry,
+  collision knobs and joint optics matching.
+- [elena/](machine_studies/elena/README.md): curved fields, orbit/optics response
+  and tracking resolution with `BFieldExpansion`.
+- [pimms/](machine_studies/pimms/README.md): carbon/proton acceleration and
+  pickups; resonant-extraction optics, sextupole controls and spill.
+- [psb/](machine_studies/psb/README.md): injection chicane, programmed collapse,
+  optics correction and multiturn injection tracking.
+- [lep/](machine_studies/lep/README.md): orbital/spin response, spin bumps,
+  coupling correction and polarization recovery.
 
 ## benchmarks
 

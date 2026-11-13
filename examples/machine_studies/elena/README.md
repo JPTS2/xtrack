@@ -3,18 +3,27 @@ This file is part of the Xtrack Package.
 Copyright (c) CERN, 2026.
 -->
 
-# ELENA field transport
+# ELENA: curved magnetic fields
 
-Run [001_field_transport.py](001_field_transport.py) to inspect curved dipoles
-with fitted fringe fields in a simplified ELENA extraction setting. It contrasts
-magnetic field extent with reference curvature, computes periodic 4D optics and
-survey geometry, then follows three small-amplitude probes for one turn.
+Use the same fitted-field ring to connect reference geometry, magnetic errors
+and tracking resolution. The reference is a 100 MeV/c antiproton; all three
+examples use the same geometry and powered quadrupoles.
 
-The reference is a 100 MeV/c antiproton. Fields are plotted normalized to the
-reference magnetic rigidity, not in tesla. The three trajectories are probes,
-not a beam distribution or an acceptance calculation.
+| Example | Lesson |
+| --- | --- |
+| [001_field_transport.py](001_field_transport.py) | Inspect fitted dipole fields, reference curvature, periodic optics and the resulting closed orbit |
+| [002_dipole_field_error.py](002_dipole_field_error.py) | Scale one complete fitted dipole field and compare orbit and beta beating while the reference geometry stays fixed |
+| [003_tracking_resolution.py](003_tracking_resolution.py) | Track identical physical launches at different RK4 resolutions and compare normalized endpoints |
 
 The [native model](../../../test_data/example_lattices/elena_field/README.md)
-documents the retained field fit and omitted machine systems. RF, apertures and
-cooling are absent. The example uses RK4 integration and does not establish
-long-term stability.
+retains six 60-degree bends, fitted fringe fields extending into straight
+reference sections and twelve powered quadrupoles. The field plots show
+rigidity-normalized fields, not tesla. The fit's source map is not included;
+these examples use its stored coefficients without refitting them.
+
+RF, apertures and cooling are absent. The field error is an illustrative current
+scaling, not a measured ELENA error. The tracking comparison isolates numerical
+integration of that fitted model; it does not measure field-fit accuracy or
+establish long-term stability. RK4 is not exactly symplectic.
+
+For the individual element, see [field expansions](../../elements/magnets/README.md).

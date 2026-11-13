@@ -32,10 +32,10 @@ RIGHT           = 'pqc2re.1'
 ########################################
 # Correction resolution
 ########################################
-ORBIT_STEP      = 1e-8                   # Integrated dipole strength step [rad]
-SKEW_STEP       = 1e-7                   # Skew gradient step [m^-2]
-NORMAL_STEP     = 1e-6                   # Normal gradient step [m^-2]
-N_PASSES        = 2                      # Alternate the three correction stages
+ORBIT_STEP  = 1e-8                   # Integrated dipole strength step [rad]
+SKEW_STEP   = 1e-7                   # Skew gradient step [m^-2]
+NORMAL_STEP = 1e-6                   # Normal gradient step [m^-2]
+N_PASSES    = 2                      # Alternate the three correction stages
 
 ################################################################################
 # Load the stored lattice and sample the tabulated axial field
@@ -44,27 +44,27 @@ N_PASSES        = 2                      # Alternate the three correction stages
 ########################################
 # Read the legacy sequence with the native parser
 ########################################
-repo_root           = Path(__file__).resolve().parents[3]
+repo_root           = Path(__file__).resolve().parents[4]
 env                 = xt.load(repo_root / LATTICE_FILE)
 line                = env['fccee_p_ring']
 line.particle_ref   = xt.Particles('positron', p0c = P0C)
 # The sequence is a stored machine definition; no MAD-X executable is used.
 # Freeze RF focusing out of this transverse, radiation-free comparison.
-line['voltca1']         = 0.0
-line['voltca2']         = 0.0
+line['voltca1'] = 0.0
+line['voltca2'] = 0.0
 line.cycle('ip.4')
 
 ########################################
 # Convert physical Bz to the signed normalized solenoid strength
 ########################################
-field               = np.loadtxt(repo_root / FIELD_FILE, skiprows = 1)
-solenoid_length     = BEAM_LENGTH * np.cos(TILT)
-z_edges             = np.linspace(-solenoid_length / 2,
+field           = np.loadtxt(repo_root / FIELD_FILE, skiprows = 1)
+solenoid_length = BEAM_LENGTH * np.cos(TILT)
+z_edges         = np.linspace(-solenoid_length / 2,
                                  solenoid_length / 2, N_SLICES + 1)
-bz_edges            = np.interp(z_edges, field[:, 0], field[:, 1])
+bz_edges        = np.interp(z_edges, field[:, 0], field[:, 1])
 # The supplied profile already contains screening fields of opposite polarity.
 # Outside its sampled range, close the field to zero at the two boundaries.
-bz_edges[[0, -1]]       = 0.0
+bz_edges[[0, -1]]   = 0.0
 rigidity            = line.particle_ref.rigidity0[0]  # Signed B rho [T m]
 ks_edges            = bz_edges / rigidity            # [m^-1]
 print('Reference momentum [GeV/c]:', P0C * 1e-9)
@@ -81,11 +81,11 @@ print('Sampled integral Bz dz [T m]:', np.trapezoid(bz_edges, z_edges))
 ip_s                                = line.get_table()['s', IP]
 line.insert('detector.begin', xt.Marker(), at = ip_s - BEAM_LENGTH / 2)
 line.insert('detector.end', xt.Marker(), at = ip_s + BEAM_LENGTH / 2)
-env.elements['detector.rotate.in']      = xt.Rotation(rot_y_rad = -TILT)
-env.elements['detector.rotate.out']     = xt.Rotation(rot_y_rad = TILT)
+env.elements['detector.rotate.in']  = xt.Rotation(rot_y_rad = -TILT)
+env.elements['detector.rotate.out'] = xt.Rotation(rot_y_rad = TILT)
 shift_x                             = solenoid_length / 2 * np.tan(TILT)
-env.elements['detector.shift.in']       = xt.Translation(shift_x = shift_x)
-env.elements['detector.shift.out']      = xt.Translation(shift_x = shift_x)
+env.elements['detector.shift.in']   = xt.Translation(shift_x = shift_x)
+env.elements['detector.shift.out']  = xt.Translation(shift_x = shift_x)
 # Inside the rotated coordinates the field-free trajectory has
 # kin_xp=tan(TILT) at the IP. Compare physical slopes, not canonical px alone.
 
@@ -158,11 +158,11 @@ corrector_sites = {
 }
 for side, sites in corrector_sites.items():
     for index, site in enumerate(sites):
-        name                = f'detector.corrector.{side}.{index}'
-        h_knob              = f'detector.h.{side}.{index}'
-        v_knob              = f'detector.v.{side}.{index}'
-        env[h_knob]         = 0.0
-        env[v_knob]         = 0.0
+        name        = f'detector.corrector.{side}.{index}'
+        h_knob      = f'detector.h.{side}.{index}'
+        v_knob      = f'detector.v.{side}.{index}'
+        env[h_knob] = 0.0
+        env[v_knob] = 0.0
         line.insert(name, xt.Multipole(knl = [0.0], ksl = [0.0]), at = site)
         env.ref[name].knl[0]    = env.ref[h_knob]
         env.ref[name].ksl[0]    = env.ref[v_knob]
