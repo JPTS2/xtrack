@@ -8,6 +8,9 @@ Copyright (c) CERN, 2026.
 | Model | Line name | Geometry |
 | --- | --- | --- |
 | [demo_ring/lattice.py](demo_ring/README.md) | `demo` | Instrumented 1.5 km ring with a low-beta IP and separate geometry/strength inputs |
+| [fcc_ee_z/lattice.json](fcc_ee_z/README.md) | `fccee_p_ring` | CAS four-IP FCC-ee Z model, with separate nominal/larger-beta strengths |
+| [elena_field/lattice.py](elena_field/README.md) | `elena` | Compact antiproton ring with fitted curved dipole fields |
+| [pimms_extraction/lattice.py](pimms_extraction/README.md) | `pimms` | Compact proton ring for resonant extraction |
 | [transport/lattice.py](transport/lattice.py) | `transport` | 7.1 m line with three quadrupoles and two bends |
 
 Load a definition with `env = xt.load(path)` and select `env['demo']` or
@@ -17,7 +20,7 @@ nonlinear studies. Each example explicitly selects the setting it needs.
 
 ## Reference and modelling
 
-All models use a 1 GeV/c electron reference (`p0c = 1e9` eV). Lengths are in
+The demonstration ring and transport use a 1 GeV/c electron reference (`p0c = 1e9` eV). Lengths are in
 metres, bend angles in radians and quadrupole `k1` in m^-2. The variables `kqf`
 and `kqd` drive the corresponding quadrupole families through expressions.
 

@@ -61,11 +61,11 @@ for label, spin_bump, coupling_correction in SETTINGS:
     ########################################
     # Calculate the invariant spin field and native polarization predictions
     ########################################
-    tw              = line.twiss4d(polarization_analysis = True)
-    sensitivity     = np.sqrt(
+    tw          = line.twiss4d(polarization_analysis = True)
+    sensitivity = np.sqrt(
         tw.spin_dn_ddelta_x**2 + tw.spin_dn_ddelta_y**2
         + tw.spin_dn_ddelta_z**2)
-    n0              = np.array([tw.spin_x[0], tw.spin_y[0], tw.spin_z[0]])
+    n0          = np.array([tw.spin_x[0], tw.spin_y[0], tw.spin_z[0]])
     # n0 has an arbitrary sign; the physical vector P_eq*n0 does not.
     polarization    = tw.spin_polarization_eq * n0
     bend            = tw.rows[BEND_NAME]

@@ -5,39 +5,40 @@ Copyright (c) CERN, 2026.
 
 # Machine studies
 
-Carry a setting through several operations while keeping its model and physical
-assumptions explicit. Start with the shared demonstration ring, then use the
-machine folders for workflows that depend on a particular geometry or operating
-point. Each folder explains its input model and what the calculation establishes.
+Carry a machine model through connected calculations: choose an operating
+point, change its settings and inspect the consequences for optics, tracking
+or equilibrium. The subject folders introduce the individual APIs; these routes
+show how they fit together when the machine geometry and controls matter.
 
-| Example | Lesson |
-| --- | --- |
-| [demo_ring_workflow.py](demo_ring_workflow.py) | Correct global chromaticities, inspect off-momentum IP optics and track common launches at the same operating point |
-| [elena/](elena/README.md) | Follow fitted dipole fields through strongly curved reference sections using `BFieldExpansion` |
-| [fcc_ee/](fcc_ee/README.md) | Compensate a tilted detector solenoid in an experimental insertion |
-| [lep/](lep/README.md) | Recover predicted equilibrium polarization with installed spin bumps and coupling corrections |
-| [lhc/](lhc/README.md) | Apply crossing and separation knobs and inspect the resulting collision optics and local orbit bumps |
+| Route | Species | Connected studies |
+| --- | --- | --- |
+| [Demonstration ring](demo_ring_workflow.py) | Electrons | Chromaticity correction, off-momentum IP optics and common-launch tracking |
+| [FCC-ee](fcc_ee/README.md) | Positrons | IP beta control, alignment sensitivity, orbit correction and equilibrium emittance; separate detector-solenoid insertion |
+| [LHC](lhc/README.md) | Protons | Counter-rotating geometry, shared magnets, collision knobs and joint two-beam optics matching |
+| [ELENA](elena/README.md) | Antiprotons | Curved field expansion, field-error orbit/optics response and tracking-resolution comparison |
+| [PIMMS](pimms/README.md) | Carbon ions and protons | Common-rigidity acceleration and pickups; separate resonant-extraction optics, sextupole controls and spill |
+| [PSB](psb/README.md) | Protons | Injection chicane, time-dependent optics correction and multiturn injection tracking |
+| [LEP](lep/README.md) | Positrons | Detector-induced spin/orbital response, spin bumps, coupling correction and polarization recovery |
 
-These are bounded studies using repository models, rather than current machine
-settings. The subject folders teach the individual APIs; these workflows show
-how the operations fit together. Other machine-specific lessons may be added
-when they contribute a distinct workflow.
+Each guide states the model and physical scope. These stored design and teaching
+models are not current operational settings. Different operating points remain
+explicit: FCC-ee's Z-ring and FCC-t detector insertion use distinct models;
+PIMMS acceleration and extraction use distinct reference/geometry configurations.
+Model-import and independent reference comparisons are separate from these
+reading routes.
 
 ## Demonstration-ring workflow
 
-The workflow uses the shared 1 GeV/c electron demonstration ring. It retains an
-independent bare control and varies only the installed sextupole circuits.
-The corrected environment is then used directly for both off-momentum optics
-and tracking, without loading a fresh setting between operations.
+The [workflow](demo_ring_workflow.py) uses the shared 1 GeV/c electron ring.
+It retains a bare control, corrects global chromaticities through the sextupole
+circuits, then carries that same setting into off-momentum optics and tracking.
+Both cases receive identical physical entrance coordinates from the bare optics.
 
-Global tune-derivative targets leave higher-order chromaticity and insertion
-chromatic beta unconstrained. The example makes those limitations visible;
-its nine launches over a short horizon do not establish a momentum acceptance
-or dynamic aperture. Both settings receive identical physical entrance
-coordinates prepared from the bare optics.
-
-For the individual operations, see [chromaticity matching](../matching/010_match_chromaticity.py),
+Tune-derivative targets leave higher-order chromaticity and insertion chromatic
+beta unconstrained. Nine launches over a short horizon do not establish momentum
+acceptance or dynamic aperture. For the individual operations, see
+[chromaticity matching](../matching/010_match_chromaticity.py),
 [chromatic optics](../optics/nonlinear/001_chromatic_optics.py) and
 [nonlinear tracking](../tracking/nonlinear/README.md). The
-[model definition](../../test_data/example_lattices/demo_ring/README.md) gives
-the geometry, nominal strengths and qualification boundaries.
+[model definition](../../test_data/example_lattices/demo_ring/README.md)
+gives the geometry, controls and qualified configurations.

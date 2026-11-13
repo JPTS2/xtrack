@@ -3,45 +3,69 @@ This file is part of the Xtrack Package.
 Copyright (c) CERN, 2026.
 -->
 
-# FCC-ee detector-solenoid correction
+# FCC-ee: IP optics, alignment and equilibrium emittance
 
-[001_detector_solenoid_correction.py](001_detector_solenoid_correction.py)
-follows one insertion through field installation, local correction and a new
-periodic-optics calculation. It uses the stored FCC-t sequence at
-182.5 GeV/c with positrons and corrects the region around `ip.1`.
-The machine geometry matters: the final-doublet locations provide the skew,
-normal-gradient and orbit-corrector controls.
+Follow a common FCC-ee Z model from IP beta control through alignment errors,
+correction and a radiating equilibrium calculation. The model and strength files
+come from the [Xsuite CAS November 2026 tutorial](https://github.com/xsuite/tutorial_cas_nov_2026/tree/main/02_fccee_optics_and_bb),
+which also provides optics-comparison and beam-beam exercises.
 
-The native Xtrack parser reads the legacy sequence in
-[`test_data/fcc_ee`](../../../test_data/fcc_ee).
-This is a stored machine snapshot, without MAD-X macros or a MAD-X runtime.
-It is not a claim about the current FCC-ee design.
+| Example | Lesson |
+| --- | --- |
+| [001_ip_beta_control.py](001_ip_beta_control.py) | Generate a periodic beta-control knob, compensate endpoint chromaticities and inspect interpolation errors |
+| [002_alignment_sensitivity.py](002_alignment_sensitivity.py) | Compare the same final-doublet offsets under nominal and supplied larger-beta optics |
+| [003_orbit_correction.py](003_orbit_correction.py) | Correct the orbit with installed steering elements and inspect the residual orbit and dispersion |
+| [004_equilibrium_after_correction.py](004_equilibrium_after_correction.py) | Compensate and taper each saved correction state; compare equilibrium emittances and projected IP beam sizes |
 
-The supplied `Bz_closed_before_quads.dat` profile contains the detector field
-and opposite-polarity screening regions. It is represented by piecewise-linear
-`VariableSolenoid` slices in the detector frame. `ks = Bz / rigidity0` uses the
-signed reference rigidity; here the positron charge is positive. The ±15 mrad
-entry/exit rotations and transverse translations give the field-free beam
-`kin_xp = tan(15 mrad)` at the IP in detector coordinates. The example reports
-physical slopes as well as canonical-coordinate matching residuals.
+The [stored model](../../../test_data/example_lattices/fcc_ee_z/README.md) has a
+45.6 GeV/c positron reference, four IPs, simplified magnet maps and no beam-beam
+interaction. These are illustrative studies, not current FCC design settings
+or a commissioning prescription. The generic [matching](../../matching/README.md),
+[correction](../../errors_and_correction/README.md) and
+[radiation](../../radiation/README.md) examples introduce the individual APIs.
 
-The matching first separates orbit, coupling and normal optics, then solves
-them together. Each half-insertion is initialized at its unperturbed external
-boundary. The corrected periodic solution independently checks the resulting
-orbit, projected normal-mode beta functions and cross-plane transfer blocks.
-The plot shows the field profile, local vertical orbit and `bety1` leakage.
-The corrected orbit closes at the boundaries and IP; its excursion inside the
-detector remains.
+## IP beta and sensitivity
 
-RF voltages are zero and radiation is off. This lesson does not include
-radiation-induced vertical emittance, field errors, higher transverse field
-derivatives, full detector-field-map transport or correction at all four IPs.
-In particular, cancelling a longitudinal field integral alone would not restore
-the orbit and coupled optics demonstrated here.
+`001` matches a modest 10% beta increase using periodic optics and shared
+circuits. It preserves the endpoint tunes and linear chromaticities; it does
+not hold insertion boundaries fixed. The native knob linearly interpolates
+circuit changes, so intermediate beta functions and tunes need checking.
+It does not independently control the four IPs.
 
-The configuration and correction stages follow the existing
-[`test_fcc_ee_solenoid_correction_new_optimize_api.py`](../../../tests/test_fcc_ee_solenoid_correction_new_optimize_api.py)
-regression. The separate FCC-Z local/nonlocal compensation studies in the legacy
-`examples/fcc_ee_solenoid` folder use another lattice and remain distinct.
-For the generic map constraints, see
-[coupling bumps](../../matching/011_coupling_bumps.py).
+`002` uses the CAS supplied larger-beta setting, not the small knob endpoint.
+It applies identical independent 5 µm RMS section offsets to both optics.
+The calculation finds the closed orbit only: convergence does not establish
+stable optics around that orbit. It does not model correlated girder motion.
+
+## Correction and radiation
+
+Run `003` before `004`. The correction script writes three native
+states under `outputs/correction/`; the radiation script loads those states
+without repeating the correction.
+
+Full periodic optics needs smaller errors than the orbit-only comparison.
+`003` uses the same seed at 0.2 µm RMS, ideal BPMs, a bounded steering selection
+and no hardware kick limits. The three saved states are aligned, misaligned
+and orbit-corrected. Numerical probe settings resolve the linear optics near
+the narrow vertical waist; their emittance parameter is not a physical bunch
+emittance. Small orbit RMS alone does not establish zero vertical dispersion
+or minimum equilibrium emittance.
+
+`004` independently enables mean radiation, compensates RF energy loss and
+tapers each state. It uses the full radiation linearization and obtains
+equilibrium mode emittances and native projected
+covariances from 6D optics. It does not perform a quantum-tracking measurement
+or include collective effects, IBS or beam-beam forces. The ideal planar
+vertical result is a model/numerical floor, not an achievable emittance budget.
+
+## Detector solenoid: a separate insertion study
+
+[detector_solenoid/001_compensate_insertion.py](detector_solenoid/001_compensate_insertion.py)
+uses the retained FCC-t sequence at 182.5 GeV/c, not the CAS Z model. It installs
+a tabulated tilted detector field and corrects orbit, coupling and optics
+through the two half-insertions. It compares field-off, uncorrected and corrected
+physical slopes, cross-plane transfer blocks and coupled-mode beta functions.
+It is a fixed-energy 4D calculation with radiation off; it does not establish
+the detector's radiation-induced emittance contribution. The different energy,
+field profile and insertion geometry prevent silently combining its result
+with the Z-ring correction sequence above.
