@@ -112,8 +112,8 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
         return ((array(getattr(self, '_' + name)) != 0.)
                 | (array(getattr(self, '_' + name + '_tpsa')) != 0))
 
-    def _check_physical_model(self, tracking=False):
-        super()._check_physical_model(tracking=tracking)
+    def _check_physical_model(self):
+        super()._check_physical_model()
         if self._resolved_model in (11, 12):
             normal, skew = self._present('knl'), self._present('ksl')
             solenoid = _constant_part(self.ks) != 0.

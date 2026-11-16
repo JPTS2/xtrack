@@ -5031,11 +5031,6 @@ class Line:
             if parent is not None:
                 pending.append(parent)
 
-    def _used_cavity_owners(self):
-        """Visit Cavity owners used directly, by replica or slice."""
-        return (ee for _, ee in self._used_owners()
-                if isinstance(ee, (xt.Cavity, xt.FieldExpansionCavity)))
-
     @doc_group("Radiation, Spin and Intra-Beam Scattering")
     def configure_radiation(self, model=None, model_beamstrahlung=None,
                             model_bhabha=None, mode='deprecated'):

@@ -38,7 +38,6 @@ def _constant_part(value):
     return getattr(value, 'const_part', value)
 
 
-_MODEL_CHANGES = [0]
 _RADIAL_ORDER = 6
 _RADIAL_ORDERS = (2, 4, 6, 8)
 
@@ -69,8 +68,6 @@ class _CavityControls:
             raise ValueError('"_geometric" grades the cells of the physical models; the '
                              'longitudinal models take the magnet integrators')
         self._model = index
-        # Trackers rebuild their list of physical cavities when this changes.
-        _MODEL_CHANGES[0] += 1
 
     @classmethod
     def get_available_models(cls):
@@ -108,7 +105,6 @@ class _CavityControls:
 
     def track(self, particles, *args, **kwargs):
 
-        self._check_physical_model(tracking=True)
         if _constant_part(self.harmonic) != 0:
             raise RuntimeError(f"{type(self).__name__} cannot be used in standalone tracking "
                                "when harmonic is not zero. Please use the "
@@ -197,7 +193,8 @@ class Cavity(_CavityControls, BeamElement):
     not in TPSA tracking. A particle with spin is lost (state -99744) where the
     cavity cannot carry it: through slices, on a context other than CPU, or with
     static fields that have active faces, a misalignment or a model other than
-    "_phase-resolved".
+    "_phase-resolved". Settings a physical model cannot track are refused at
+    construction; set later, they lose the particle (state -99744).
 
     counter_wave_amplitude : float
         Amplitude of the counter-propagating RF wave over that of the
@@ -363,15 +360,11 @@ class Cavity(_CavityControls, BeamElement):
 
         self._check_physical_model()
 
-    def _check_physical_model(self, tracking=False):
+    def _check_physical_model(self):
         """Raise for settings the physical models cannot track."""
         self._check_radial_order()
         if self._resolved_model < 10:
             return
-        # Length is commonly assigned after construction.
-        if tracking and not (isfinite(_constant_part(self.length))
-                             and _constant_part(self.length) > 0.):
-            raise ValueError(f'{self.model} requires a positive finite length')
         if self.num_kicks < 0:
             raise ValueError('num_kicks must be non-negative')
         if self._resolved_model == 13:

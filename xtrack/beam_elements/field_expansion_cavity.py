@@ -199,7 +199,7 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         amplitudes = amplitudes - miss * sign / len(m)
         return cls(wave_numbers=k, amplitudes=amplitudes, **kwargs)
 
-    def _check_physical_model(self, tracking=False):
+    def _check_physical_model(self):
         """Raise for settings the phase-resolved model cannot track."""
         self._check_radial_order()
         if self.integrator == 'teapot':
@@ -210,9 +210,6 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         beta = _constant_part(self.calibration_beta)
         if not (isfinite(beta) and 0. < beta <= 1.):
             raise ValueError('calibration_beta must be in (0, 1]')
-        if tracking and not (isfinite(_constant_part(self.length))
-                             and _constant_part(self.length) > 0.):
-            raise ValueError(f'{self.model} requires a positive finite length')
         if not (np.all(np.isfinite(self.wave_numbers))
                 and np.all(np.isfinite(self.amplitudes))
                 and np.any(self.amplitudes != 0.)):

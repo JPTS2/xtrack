@@ -89,13 +89,13 @@ def test_closed_orbit_analysis_loses_only_the_spinning_particle(tmp_path,flag):
 
 @pytest.mark.parametrize('changes',[dict(integrator='teapot'),
                                     dict(n_cells=2),dict(counter_wave_amplitude=.55)])
-def test_later_invalid_configuration_raises_before_tracking(tmp_path,changes):
+def test_later_invalid_configuration_loses_the_particle(tmp_path,changes):
+    """Settings changed after construction are refused by the kernel (-99744)."""
     context = xo.ContextCpu()
     line=eligible_line(model='_phase-resolved-frozen',counter_wave_amplitude=0.)
     line.build_tracker(_context=context)
     for name,value in changes.items():
         setattr(line['rf'],name,value)
     particle=xt.Particles(_context=context,p0c=14e6,mass0=xt.ELECTRON_MASS_EV,x=2e-4)
-    with pytest.raises(ValueError):
-        line.track(particle)
-    assert particle.state[0]==1
+    line.track(particle)
+    assert particle.state[0]==-99744
