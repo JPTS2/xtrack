@@ -31,14 +31,16 @@ _ELEMENTS = {
 }
 
 
-def _launch(context, p0c=_P0C):
+def launch_ramp(context, p0c=_P0C):
+    """Five particles spread along a line through the axis."""
     ramp = np.linspace(-1., 1., 5)
     return xt.Particles(_context=context, mass0=xt.ELECTRON_MASS_EV, p0c=p0c,
                         x=1e-3 * ramp, px=1e-5 * ramp, y=-7e-4 * ramp, py=6e-6 * ramp,
                         zeta=2e-3 * ramp, delta=1e-3 * ramp[::-1])
 
 
-def _end(context, name, misaligned=False, slicing=None, backtrack=False, p0c=_P0C):
+def end_coordinates(context, name, misaligned=False, slicing=None, backtrack=False, p0c=_P0C):
+    """Exit coordinates through a drift and the element, read on the CPU."""
     cls, controls = _ELEMENTS[name]
     controls = dict(controls, **(_MISALIGNMENT if misaligned else {}))
     line = xt.Line(elements={'start': xt.Drift(length=.2), 'rf': cls(**controls)})
@@ -46,7 +48,7 @@ def _end(context, name, misaligned=False, slicing=None, backtrack=False, p0c=_P0
     if slicing is not None:
         line.slice_thick_elements([xt.Strategy(slicing)])
     line.build_tracker(_context=context)
-    particles = _launch(context, p0c)
+    particles = launch_ramp(context, p0c)
     line.track(particles)
     if backtrack:
         line.track(particles, backtrack=True)
@@ -60,8 +62,8 @@ def _end(context, name, misaligned=False, slicing=None, backtrack=False, p0c=_P0
 @pytest.mark.parametrize('misaligned', [False, True], ids=['aligned', 'misaligned'])
 @pytest.mark.parametrize('name', _ELEMENTS)
 def test_map_matches_the_cpu(test_context, name, misaligned):
-    end = _end(test_context, name, misaligned)
-    reference = _end(xo.ContextCpu(), name, misaligned)
+    end = end_coordinates(test_context, name, misaligned)
+    reference = end_coordinates(xo.ContextCpu(), name, misaligned)
     xo.assert_allclose(end, reference, rtol=0, atol=2e-13)
 
 
@@ -69,8 +71,8 @@ def test_map_matches_the_cpu(test_context, name, misaligned):
 @pytest.mark.parametrize('name', ['_phase-resolved', '_phase-averaged',
                                   '_phase-resolved-paraxial', 'adaptive'])
 def test_reversal_restores_the_launch(test_context, name):
-    end = _end(test_context, name, backtrack=True)
-    start = _launch(xo.context_default)
+    end = end_coordinates(test_context, name, backtrack=True)
+    start = launch_ramp(xo.context_default)
     start = np.array([getattr(start, coord) for coord in _COORDS])
     xo.assert_allclose(end, start, rtol=0, atol=1e-10)
 
@@ -78,7 +80,7 @@ def test_reversal_restores_the_launch(test_context, name):
 @for_all_test_contexts
 @pytest.mark.parametrize('name', ['_phase-resolved', '_phase-averaged'])
 def test_thick_slices_match_the_whole_element(test_context, name):
-    whole = _end(test_context, name)
-    sliced = _end(test_context, name, slicing=xt.Teapot(4, mode='thick'))
+    whole = end_coordinates(test_context, name)
+    sliced = end_coordinates(test_context, name, slicing=xt.Teapot(4, mode='thick'))
     xo.assert_allclose(sliced, whole, rtol=0, atol=5e-11)
 

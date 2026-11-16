@@ -131,7 +131,8 @@ def test_slices_compose_and_serialize(mode):
     np.testing.assert_allclose(ends[1], ends[0], rtol=0, atol=1e-13)
 
 
-def _spin_end(element, gamma, phase_offset=.5):
+def spin_end(element, gamma, phase_offset=.5):
+    """Exit coordinates and spin of one particle through the element, on the CPU."""
     p0c = xt.ELECTRON_MASS_EV * np.sqrt(gamma**2 - 1)
     k = 2 * np.pi * element.frequency / clight
     line = xt.Line(elements={'c': element})
@@ -161,8 +162,8 @@ def test_field_table_follows_the_harmonic_sum(seed, radial_order):
     common = dict(wave_numbers=wave_numbers, amplitudes=amplitudes, length=rng.uniform(.3, 1.5),
                   frequency=frequency, voltage=5e6, phase=np.pi / 2, num_kicks=256,
                   radial_order=radial_order)
-    table = _spin_end(xt.FieldExpansionCavity(**common), 40.)
-    direct = _spin_end(xt.FieldExpansionCavity(field_table_points=0, **common), 40.)
+    table = spin_end(xt.FieldExpansionCavity(**common), 40.)
+    direct = spin_end(xt.FieldExpansionCavity(field_table_points=0, **common), 40.)
     launch = np.array([1e-3, 1e-4, -5e-4, 0., 0., 0., .6, 0., .8])
     change = np.abs(direct - launch)
     # Quintic interpolation at 20 points per shortest wavelength, relative to each change.
@@ -176,11 +177,11 @@ def test_field_table_follows_the_amplitudes_and_not_a_changed_length():
     element.amplitudes = [.7, .2j, .5]
     direct = xt.FieldExpansionCavity(length=.8, field_table_points=0,
                                      **(common | dict(amplitudes=[.7, .2j, .5])))
-    np.testing.assert_allclose(_spin_end(element, 20.), _spin_end(direct, 20.), rtol=1e-6, atol=1e-12)
+    np.testing.assert_allclose(spin_end(element, 20.), spin_end(direct, 20.), rtol=1e-6, atol=1e-12)
     # A changed length leaves the table behind: the harmonics are summed directly.
     element.length = .9
     direct.length = .9
-    np.testing.assert_array_equal(_spin_end(element, 20.), _spin_end(direct, 20.))
+    np.testing.assert_array_equal(spin_end(element, 20.), spin_end(direct, 20.))
     rebuilt = xt.FieldExpansionCavity.from_dict(element.to_dict())
     assert len(rebuilt.field_table) == len(element.field_table)
 
