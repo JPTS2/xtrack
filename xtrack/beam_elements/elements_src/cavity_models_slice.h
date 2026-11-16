@@ -11,53 +11,65 @@
 // instead integrate the physical parent source on this interval, with the
 // standard straight-element wrapper.
 GPUFUN
-void CavityModels_track_drift_slice(const CavityPlan* prepared, LocalParticle* part0,
-        double weight, double start_fraction) {
-    const CavityPlan plan=*prepared;
-    const RFModelFields* parent=&plan.fields;
-    const int8_t reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
-    const double drift_length=(reverse ? -weight : weight)*parent->length;
-    if (plan.model<10) {
-        START_PER_PARTICLE_BLOCK(part0,part);
-            Drift_single_particle(part,drift_length);
+void CavityModels_track_drift_slice(
+    const CavityPlan* prepared,
+    LocalParticle* part0,
+    double weight,
+    double start_fraction
+) {
+    const CavityPlan plan = *prepared;
+    const RFModelFields* parent = &plan.fields;
+    const int8_t reverse = LocalParticle_check_track_flag(part0, XS_FLAG_BACKTRACK);
+    const double drift_length = (reverse ? -weight : weight) * parent->length;
+    if (plan.model < 10) {
+        START_PER_PARTICLE_BLOCK(part0, part)
+            ;
+            Drift_single_particle(part, drift_length);
         END_PER_PARTICLE_BLOCK;
         return;
     }
-    const double length=parent->length*weight;
-    const double anchor=parent->rot_shift_anchor
-        -parent->length*start_fraction;
-    const double dx=parent->shift_x;
-    const double dy=parent->shift_y;
-    const double ds=parent->shift_s;
-    const double rx=parent->rot_x_rad;
-    const double ry=parent->rot_y_rad;
-    const double rz=parent->rot_s_rad;
-    const double rz0=parent->rot_s_rad_no_frame;
-    const int transformed=(dx!=0. || dy!=0. || ds!=0. || rx!=0. || ry!=0.
-        || rz!=0. || rz0!=0.);
+    const double length = parent->length * weight;
+    const double anchor = parent->rot_shift_anchor - parent->length * start_fraction;
+    const double dx = parent->shift_x;
+    const double dy = parent->shift_y;
+    const double ds = parent->shift_s;
+    const double rx = parent->rot_x_rad;
+    const double ry = parent->rot_y_rad;
+    const double rz = parent->rot_s_rad;
+    const double rz0 = parent->rot_s_rad_no_frame;
+    const int transformed =
+        (dx != 0. || dy != 0. || ds != 0. || rx != 0. || ry != 0. || rz != 0.
+         || rz0 != 0.);
     if (transformed) {
         if (!reverse)
-            track_misalignment_entry_straight(part0,dx,dy,ds,ry,rx,rz0,
-                                              anchor,length,rz,reverse);
+            track_misalignment_entry_straight(
+                part0, dx, dy, ds, ry, rx, rz0, anchor, length, rz, reverse
+            );
         else
-            track_misalignment_exit_straight(part0,dx,dy,ds,ry,rx,rz0,
-                                             anchor,length,rz,reverse);
+            track_misalignment_exit_straight(
+                part0, dx, dy, ds, ry, rx, rz0, anchor, length, rz, reverse
+            );
     }
     CavityMagnusCache magnus_cache;
     CavityMagnusCache_init(&magnus_cache);
-    START_PER_PARTICLE_BLOCK(part0,part);
-        const int model=plan.model;
-        if (model<10) Drift_single_particle(part,drift_length);
-        else track_cavity_single_particle(&plan,model,part,&magnus_cache);
+    START_PER_PARTICLE_BLOCK(part0, part)
+        ;
+        const int model = plan.model;
+        if (model < 10)
+            Drift_single_particle(part, drift_length);
+        else
+            track_cavity_single_particle(&plan, model, part, &magnus_cache);
     END_PER_PARTICLE_BLOCK;
     CavityMagnusCache_free(&magnus_cache);
     if (transformed) {
         if (!reverse)
-            track_misalignment_exit_straight(part0,dx,dy,ds,ry,rx,rz0,
-                                             anchor,length,rz,reverse);
+            track_misalignment_exit_straight(
+                part0, dx, dy, ds, ry, rx, rz0, anchor, length, rz, reverse
+            );
         else
-            track_misalignment_entry_straight(part0,dx,dy,ds,ry,rx,rz0,
-                                              anchor,length,rz,reverse);
+            track_misalignment_entry_straight(
+                part0, dx, dy, ds, ry, rx, rz0, anchor, length, rz, reverse
+            );
     }
 }
 
