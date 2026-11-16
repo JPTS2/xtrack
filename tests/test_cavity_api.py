@@ -7,55 +7,46 @@ import pytest
 from scipy.constants import c as clight
 import xobjects as xo
 import xtrack as xt
-from _cavity_context import kernel_context
+from xobjects.test_helpers import for_all_test_contexts
 
 
 MODELS = ('_phase-resolved',)
-
-
 COORDS = ('x', 'px', 'y', 'py', 'zeta', 'delta')
-
-
-@pytest.fixture(scope='module')
-def model_context(tmp_path_factory):
-    directory = tmp_path_factory.mktemp('cavity-model-wiring')
-    with kernel_context(directory) as context:
-        yield context
-
-
-def cavity(model='_phase-resolved', **kwargs):
-    controls = dict(length=.05, voltage=20e3, frequency=400e6, phase=.7,
-                    counter_wave_amplitude=.5, counter_wave_phase=.3,
-                    model=model, integrator='uniform', num_kicks=16)
-    if model == '_phase-resolved-frozen':
-        controls.update(counter_wave_amplitude=0., integrator='_geometric')
-    controls.update(kwargs)
-    return xt.MagnetOverlappedCavity(**controls)
-
-
-def particle(context=None):
-    return xt.Particles(_context=context, mass0=xt.ELECTRON_MASS_EV,
-                        q0=1., p0c=2e6, x=.0004, px=.002,
-                        y=-.0003, py=-.001, zeta=.0002, delta=.003)
+# A short cavity, partly standing; the frozen model takes a travelling wave.
+SETTINGS = {
+    '_phase-resolved': dict(length=.05, voltage=20e3, frequency=400e6, phase=.7,
+                            counter_wave_amplitude=.5, counter_wave_phase=.3,
+                            model='_phase-resolved', integrator='uniform', num_kicks=16),
+    '_phase-resolved-frozen': dict(length=.05, voltage=20e3, frequency=400e6, phase=.7,
+                                   counter_wave_amplitude=0., counter_wave_phase=.3,
+                                   model='_phase-resolved-frozen', integrator='_geometric',
+                                   num_kicks=16),
+}
+L_BAND = dict(length=1.15, voltage=20e6, frequency=1.3e9, phase=1.2, num_kicks=32)
+PROBE = dict(mass0=xt.ELECTRON_MASS_EV, q0=1., p0c=2e6, x=.0004, px=.002,
+             y=-.0003, py=-.001, zeta=.0002, delta=.003)
 
 
 def coordinates(particles):
+    """The six coordinates of the first particle, read on the CPU."""
+    particles.move(_context=xo.ContextCpu())
     return np.array([float(getattr(particles, name)[0]) for name in COORDS])
 
 
-def physical_coordinates(particles):
+def laboratory_coordinates(particles):
+    """As coordinates, with zeta replaced by the laboratory clock: a Line's end of
+    turn moves the zeta reference even when s is kept."""
     result = coordinates(particles)
-    # A Line end-turn changes the shared time_s/zeta reference frame even
-    # when s is retained. Compare the same laboratory clock, not raw zeta.
-    result[4] = ((particles.s[0]-particles.zeta[0])/particles.beta0[0]
-                 + 299792458.*particles.time_s)
+    result[4] = ((particles.s[0] - particles.zeta[0]) / particles.beta0[0]
+                 + clight * particles.time_s)
     return result
 
 
 def test_new_selectors_are_cavity_specific():
-    for model in (name for name in xt.Cavity.get_available_models()
-                  if name.startswith('phase-')):
-        assert cavity(model).model == model
+    physical = [name for name in xt.Cavity.get_available_models() if name.startswith('_phase')]
+    assert len(physical) == 4
+    for model in physical:
+        assert xt.Cavity(model=model, counter_wave_amplitude=0.).model == model
         assert model not in xt.CrabCavity.get_available_models()
     assert xt.Cavity().model == 'adaptive'
     assert xt.Cavity().integrator == 'adaptive'
@@ -67,7 +58,7 @@ def test_owned_ref_null_move_preserves_active_scalar_and_array_handles():
     import madng_tpsa
     import xobjects as xo
 
-    rf = cavity()
+    rf = xt.MagnetOverlappedCavity(**SETTINGS['_phase-resolved'])
     descriptor = madng_tpsa.Descriptor(6, 2, num_params=2, param_order=1)
     rf.phase = descriptor.param(1, .7)
     rf.knl[1] = descriptor.param(2, .01)
@@ -96,7 +87,7 @@ def test_null_owned_ref_ordinary_line_moves_to_common_buffer():
     import xobjects as xo
 
     context = xo.ContextCpu(omp_num_threads=0)
-    rf = cavity(_context=context)
+    rf = xt.MagnetOverlappedCavity(**SETTINGS['_phase-resolved'], _context=context)
     marker = xt.Marker(_context=context)
     line = xt.Line(elements=[rf, marker])
     line.build_tracker(_context=context, compile=False)
@@ -123,7 +114,8 @@ def test_serialization_writes_only_non_default_fields():
 
 
 def test_physical_controls_round_trip():
-    original = cavity(knl=[0., .012], ksl=[0., -.003], ks=.2)
+    original = xt.MagnetOverlappedCavity(**SETTINGS['_phase-resolved'], knl=[0., .012],
+                                         ksl=[0., -.003], ks=.2)
     assert original.n_cells == 0
     assert original.counter_wave_amplitude == .5
     copy = xt.MagnetOverlappedCavity.from_dict(original.to_dict())
@@ -156,14 +148,16 @@ def test_without_cells_the_waves_travel_at_c():
 
 @pytest.mark.parametrize('gain', ['from_rf', 0., 12000.])
 def test_frozen_nominal_programme_round_trip(gain):
-    rf = cavity('_phase-resolved-frozen', nominal_energy_gain=gain)
+    rf = xt.MagnetOverlappedCavity(**SETTINGS['_phase-resolved-frozen'],
+                                   nominal_energy_gain=gain)
     restored = xt.Cavity.from_dict(rf.to_dict())
     assert restored.nominal_energy_gain == gain
     assert restored.nominal_energy_gain_from_rf == (gain == 'from_rf')
 
 
 def test_frozen_nominal_programme_live_expression():
-    line = xt.Line(elements={'rf': cavity('_phase-resolved-frozen')})
+    rf = xt.MagnetOverlappedCavity(**SETTINGS['_phase-resolved-frozen'])
+    line = xt.Line(elements={'rf': rf})
     line.vars['programme_gain'] = 0.
     line.set('rf', nominal_energy_gain='programme_gain')
     assert line['rf'].nominal_energy_gain == 0.
@@ -173,13 +167,14 @@ def test_frozen_nominal_programme_live_expression():
     assert not line['rf'].nominal_energy_gain_from_rf
 
 
+@for_all_test_contexts
 @pytest.mark.parametrize('model', (*MODELS, '_phase-resolved-frozen'))
-def test_thin_source_strength_readback_follows_parent_model(model_context, model):
-    line = xt.Line(elements={'rf': cavity(model, voltage=20e3,
-                                         _context=model_context,
-                                         knl=[0., .012], ksl=[0., -.003])})
+def test_thin_source_strength_readback_follows_parent_model(test_context, model):
+    line = xt.Line(elements={'rf': xt.MagnetOverlappedCavity(**dict(SETTINGS[model], voltage=20e3,
+                                         _context=test_context,
+                                         knl=[0., .012], ksl=[0., -.003]))})
     line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
-    line.build_tracker(_context=model_context)
+    line.build_tracker(_context=test_context)
     # These voltages are nominal parent-input allocations; the resolved
     # source's electric-crest integral over a partial interval is not weight*V.
     source = np.array([isinstance(line[name], xt.DriftSliceMagnetOverlappedCavity)
@@ -203,8 +198,9 @@ def test_thin_source_strength_readback_follows_parent_model(model_context, model
 
 
 def test_source_interval_alignment_readback_is_live():
-    line = xt.Line(elements={'rf': cavity(shift_x=.0002, shift_y=-.0001,
-                                         rot_s_rad=.2, rot_y_rad=.001)})
+    rf = xt.MagnetOverlappedCavity(**SETTINGS['_phase-resolved'], shift_x=.0002,
+                                   shift_y=-.0001, rot_s_rad=.2, rot_y_rad=.001)
+    line = xt.Line(elements={'rf': rf})
     line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
     # Metadata needs buffer offsets, not compilation of the physical maps.
     line.build_tracker(compile=False)
@@ -223,17 +219,18 @@ def test_source_interval_alignment_readback_is_live():
                if isinstance(line[name], xt.DriftSliceMagnetOverlappedCavity))
 
 
+@for_all_test_contexts
 @pytest.mark.parametrize('model', MODELS)
-def test_line_variables_update_actual_source(model_context, model):
-    line = xt.Line(elements={'rf': cavity(model, _context=model_context)})
-    line.particle_ref = particle(model_context)
+def test_line_variables_update_actual_source(test_context, model):
+    line = xt.Line(elements={'rf': xt.MagnetOverlappedCavity(**SETTINGS[model])})
+    line.particle_ref = xt.Particles(_context=test_context, **PROBE)
     line.vars['rf_amplitude'] = .5
     line.vars['rf_phase'] = .7
     line.element_refs['rf'].counter_wave_amplitude = line.vars['rf_amplitude']
     line.element_refs['rf'].phase = line.vars['rf_phase']
-    line.build_tracker(_context=model_context)
+    line.build_tracker(_context=test_context)
     line.reset_s_at_end_turn = False
-    original = particle(model_context)
+    original = xt.Particles(_context=test_context, **PROBE)
     initial = original.copy()
     line.track(original)
     assert original.state[0] == 1
@@ -244,12 +241,12 @@ def test_line_variables_update_actual_source(model_context, model):
     line.track(changed)
     assert changed.state[0] == 1
     assert not np.array_equal(coordinates(original), coordinates(changed))
-    fresh = cavity(model, counter_wave_amplitude=.8, phase=1.1, voltage=35e3,
-                   _context=model_context)
+    fresh = xt.MagnetOverlappedCavity(**dict(SETTINGS[model], counter_wave_amplitude=.8,
+                                             phase=1.1, voltage=35e3), _context=test_context)
     expected = initial.copy()
     fresh.track(expected)
-    np.testing.assert_allclose(physical_coordinates(changed),
-                               physical_coordinates(expected),
+    np.testing.assert_allclose(laboratory_coordinates(changed),
+                               laboratory_coordinates(expected),
                                rtol=0, atol=3e-13)
     line.vars['rf_amplitude'] = .5
     line.vars['rf_phase'] = .7
@@ -259,26 +256,27 @@ def test_line_variables_update_actual_source(model_context, model):
     np.testing.assert_array_equal(coordinates(original), coordinates(restored))
 
 
+@for_all_test_contexts
 @pytest.mark.parametrize('model', MODELS)
-def test_line_tracking_twiss_and_reference_reverse(model_context, model):
-    ref = xt.Particles(_context=model_context, mass0=xt.ELECTRON_MASS_EV,
+def test_line_tracking_twiss_and_reference_reverse(test_context, model):
+    ref = xt.Particles(_context=test_context, mass0=xt.ELECTRON_MASS_EV,
                        q0=1., p0c=2e6)
-    rf = cavity(model, _context=model_context)
+    rf = xt.MagnetOverlappedCavity(**SETTINGS[model], _context=test_context)
     pilot = ref.copy()
     rf.track(pilot)
     assert pilot.state[0] == 1
-    update = xt.ReferenceEnergyIncrease(_context=model_context,
+    update = xt.ReferenceEnergyIncrease(_context=test_context,
                                         Delta_p0c=ref.p0c[0]*pilot.delta[0])
     line = xt.Line(elements={'rf': rf, 'reference_update': update})
     line.particle_ref = ref
-    line.build_tracker(_context=model_context)
+    line.build_tracker(_context=test_context)
     line.reset_s_at_end_turn = False
     tw = line.twiss(method='6d', start=xt.START, end=xt.END,
                     betx=2., alfx=.3, bety=3., alfy=-.2)
     assert np.all(np.isfinite(tw.betx))
     assert np.all(np.isfinite(tw.bety))
     assert abs(tw.delta[-1]) < 1e-12
-    tracked = particle(model_context)
+    tracked = xt.Particles(_context=test_context, **PROBE)
     before = coordinates(tracked)
     p0c = tracked.p0c[0]
     line.track(tracked)
@@ -289,43 +287,44 @@ def test_line_tracking_twiss_and_reference_reverse(model_context, model):
     np.testing.assert_allclose(tracked.p0c[0], p0c, rtol=2e-15)
 
 
+@for_all_test_contexts
 @pytest.mark.parametrize('model', MODELS)
 @pytest.mark.parametrize('mode', ['thick', 'thin'])
 @pytest.mark.parametrize('overlap', [False, True])
-def test_slicing_shares_source_and_survives_serialization(model_context,
+def test_slicing_shares_source_and_survives_serialization(test_context,
                                                          model, mode, overlap):
     controls = (dict(ks=.2, knl=[0., .01], ksl=[0., -.003],
                      shift_x=.0002, shift_y=-.0001, rot_s_rad=.2,
                      rot_y_rad=.001) if overlap else {})
     # Teapot(2) thin has lengths 1/6, 2/3, 1/6. N24 aligns the
     # original Gauss cells with both that layout and the two thick halves.
-    line = xt.Line(elements={'rf': cavity(model, num_kicks=24,
-                                         _context=model_context,
-                                         **controls)})
-    line.particle_ref = particle(model_context)
+    line = xt.Line(elements={'rf': xt.MagnetOverlappedCavity(**dict(SETTINGS[model], num_kicks=24,
+                                         _context=test_context,
+                                         **controls))})
+    line.particle_ref = xt.Particles(_context=test_context, **PROBE)
     line.reset_s_at_end_turn = False
-    initial = particle(model_context)
+    initial = xt.Particles(_context=test_context, **PROBE)
     whole = initial.copy()
-    line.build_tracker(_context=model_context)
+    line.build_tracker(_context=test_context)
     line.track(whole)
     assert whole.state[0] == 1
     line.discard_tracker()
     line.slice_thick_elements([xt.Strategy(slicing=xt.Teapot(2, mode=mode))])
     restored = xt.Line.from_dict(line.to_dict())
-    restored.build_tracker(_context=model_context)
+    restored.build_tracker(_context=test_context)
     restored.reset_s_at_end_turn = False
     sliced = initial.copy()
     restored.track(sliced)
     assert sliced.state[0] == 1
-    np.testing.assert_allclose(physical_coordinates(sliced),
-                               physical_coordinates(whole),
+    np.testing.assert_allclose(laboratory_coordinates(sliced),
+                               laboratory_coordinates(whole),
                                rtol=0, atol=2e-12)
     restored.optimize_for_tracking(compile=False, verbose=False)
     optimized = initial.copy()
     restored.track(optimized)
     assert optimized.state[0] == 1
-    np.testing.assert_allclose(physical_coordinates(optimized),
-                               physical_coordinates(sliced),
+    np.testing.assert_allclose(laboratory_coordinates(optimized),
+                               laboratory_coordinates(sliced),
                                rtol=0, atol=2e-12)
     kind = (xt.ThickSliceMagnetOverlappedCavity if mode == 'thick'
             else xt.DriftSliceMagnetOverlappedCavity)
@@ -368,23 +367,24 @@ def test_old_serialized_slice_distance_loads(kind):
     assert restored.slice_offset == .025
 
 
+@for_all_test_contexts
 @pytest.mark.parametrize('model,mode', [('_phase-resolved-frozen', 'thick'),
     ('_phase-resolved-frozen', 'thin'), ('_phase-resolved', 'thick')])
-def test_finite_parent_words_survive_layout_partition(model_context, model, mode):
+def test_finite_parent_words_survive_layout_partition(test_context, model, mode):
     controls = dict(num_kicks=4,
                     edge_entry_active=0, edge_exit_active=1)
-    rf = cavity(model, _context=model_context, **controls)
-    line = xt.Line(elements={'rf': rf, 'end': xt.Marker(_context=model_context)})
-    line.particle_ref = particle(model_context)
-    line.build_tracker(_context=model_context)
-    initial = particle(model_context)
+    rf = xt.MagnetOverlappedCavity(**dict(SETTINGS[model], **controls), _context=test_context)
+    line = xt.Line(elements={'rf': rf, 'end': xt.Marker(_context=test_context)})
+    line.particle_ref = xt.Particles(_context=test_context, **PROBE)
+    line.build_tracker(_context=test_context)
+    initial = xt.Particles(_context=test_context, **PROBE)
     expected = initial.copy()
     line.track(expected, ele_start=0, ele_stop=1)
     assert expected.state[0] == 1
     line.discard_tracker()
     line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode=mode))])
     restored = xt.Line.from_dict(line.to_dict())
-    restored.build_tracker(_context=model_context)
+    restored.build_tracker(_context=test_context)
     restored.reset_s_at_end_turn = False
     stop = restored.element_names.index('end')
     actual = initial.copy()
@@ -400,57 +400,59 @@ def test_finite_parent_words_survive_layout_partition(model_context, model, mode
     optimized = initial.copy()
     restored.track(optimized)
     assert optimized.state[0] == 1
-    np.testing.assert_allclose(physical_coordinates(optimized),
-                               physical_coordinates(expected),
+    np.testing.assert_allclose(laboratory_coordinates(optimized),
+                               laboratory_coordinates(expected),
                                rtol=0., atol=3e-11)
 
 
+@for_all_test_contexts
 @pytest.mark.parametrize('model', ('_phase-resolved', '_phase-resolved-frozen'))
-def test_optimized_source_layout_keeps_live_legacy_rf_switch(model_context, model):
-    source = cavity(model, _context=model_context, integrator='adaptive',
-                    num_kicks=24)
+def test_optimized_source_layout_keeps_live_legacy_rf_switch(test_context, model):
+    source = xt.MagnetOverlappedCavity(**dict(SETTINGS[model], integrator='adaptive',
+                                              num_kicks=24))
     line = xt.Line(elements={'rf': source})
-    line.particle_ref = particle(model_context)
+    line.particle_ref = xt.Particles(_context=test_context, **PROBE)
     line.reset_s_at_end_turn = False
     line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
-    line.build_tracker(_context=model_context)
-    initial = particle(model_context)
+    line.build_tracker(_context=test_context)
+    initial = xt.Particles(_context=test_context, **PROBE)
     expected_source = initial.copy()
     line.track(expected_source)
     assert expected_source.state[0] == 1
     line.optimize_for_tracking(compile=False, verbose=False)
 
-    reference = xt.Line(elements={'rf': cavity(model, _context=model_context,
-                        integrator='adaptive', num_kicks=24)})
+    reference = xt.Line(elements={'rf': xt.MagnetOverlappedCavity(
+        **dict(SETTINGS[model], integrator='adaptive', num_kicks=24))})
     reference['rf'].model = 'drift-kick-drift-expanded'
     reference.reset_s_at_end_turn = False
     reference.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
-    reference.build_tracker(_context=model_context)
+    reference.build_tracker(_context=test_context)
     expected_legacy = initial.copy()
     reference.track(expected_legacy)
     line['rf'].model = 'drift-kick-drift-expanded'
     actual = initial.copy()
     line.track(actual)
     assert expected_legacy.state[0] == actual.state[0] == 1
-    np.testing.assert_allclose(physical_coordinates(actual),
-                               physical_coordinates(expected_legacy),
+    np.testing.assert_allclose(laboratory_coordinates(actual),
+                               laboratory_coordinates(expected_legacy),
                                rtol=0., atol=3e-12)
     line['rf'].model = model
     restored = initial.copy()
     line.track(restored)
     assert restored.state[0] == 1
-    np.testing.assert_allclose(physical_coordinates(restored),
-                               physical_coordinates(expected_source),
+    np.testing.assert_allclose(laboratory_coordinates(restored),
+                               laboratory_coordinates(expected_source),
                                rtol=0., atol=3e-12)
 
 
-def test_matching_uses_normal_live_phase_knob(model_context):
-    line = xt.Line(elements={'rf': cavity(_context=model_context)})
-    line.particle_ref = xt.Particles(_context=model_context,
+@for_all_test_contexts
+def test_matching_uses_normal_live_phase_knob(test_context):
+    line = xt.Line(elements={'rf': xt.MagnetOverlappedCavity(**SETTINGS['_phase-resolved'])})
+    line.particle_ref = xt.Particles(_context=test_context,
         mass0=xt.ELECTRON_MASS_EV, q0=1., p0c=2e6)
     line.vars['rf_phase'] = .9
     line.element_refs['rf'].phase = line.vars['rf_phase']
-    line.build_tracker(_context=model_context)
+    line.build_tracker(_context=test_context)
     init = dict(method='6d', start=xt.START, end=xt.END,
                 betx=2., alfx=.3, bety=3., alfy=-.2)
     target = line.twiss(**init).betx[-1]
@@ -462,13 +464,14 @@ def test_matching_uses_normal_live_phase_knob(model_context):
                                rtol=0, atol=1e-10)
 
 
-def test_legacy_models_ignore_physical_model_fields(model_context):
-    plain = xt.Cavity(_context=model_context, voltage=20e3, frequency=400e6,
+@for_all_test_contexts
+def test_legacy_models_ignore_physical_model_fields(test_context):
+    plain = xt.Cavity(_context=test_context, voltage=20e3, frequency=400e6,
                       phase=.7)
-    dressed = xt.MagnetOverlappedCavity(_context=model_context, voltage=20e3, frequency=400e6,
+    dressed = xt.MagnetOverlappedCavity(_context=test_context, voltage=20e3, frequency=400e6,
         phase=.7, ks=.1, knl=[0., .01], ksl=[0., .02], n_cells=1,
         counter_wave_amplitude=.55)
-    expected = particle(model_context)
+    expected = xt.Particles(_context=test_context, **PROBE)
     actual = expected.copy()
     plain.track(expected)
     dressed.track(actual)
@@ -497,61 +500,46 @@ def test_radial_order_is_phase_resolved_only(kind):
                 xt.Cavity(model=model, length=.1, counter_wave_amplitude=0., radial_order=4)
 
 
-def _averaged_cavity(model='_phase-averaged', **changes):
-    controls = dict(length=1.15, voltage=20e6, frequency=1.3e9, phase=1.2,
-                    model=model, num_kicks=32)
-    controls.update(changes)
-    return xt.MagnetOverlappedCavity(**controls)
-
-
-def _launch(gamma, **changes):
-    values = dict(x=1e-3, px=2e-4, y=-1e-3, py=1e-4, zeta=1e-3, delta=1e-3)
-    values.update(changes)
-    return xt.Particles(p0c=xt.ELECTRON_MASS_EV*np.sqrt(gamma**2 - 1),
-                        mass0=xt.ELECTRON_MASS_EV, **values)
-
-
 @pytest.mark.parametrize('model', ['_phase-averaged', '_phase-resolved-paraxial'])
 def test_phase_averaged_refuses_unsupported_static_fields_and_integrators(model):
     with pytest.raises(ValueError, match='static'):
-        _averaged_cavity(model, ks=.1)                     # solenoid with active faces
+        xt.MagnetOverlappedCavity(**L_BAND, model=model, ks=.1)  # solenoid with active faces
     with pytest.raises(ValueError, match='static'):
-        _averaged_cavity(model, knl=[0., 0., .1], order=2)  # sextupole
+        xt.MagnetOverlappedCavity(**L_BAND, model=model, knl=[0., 0., .1], order=2)  # sextupole
     for integrator in ('teapot', 'yoshida-6'):
         with pytest.raises(ValueError, match='_geometric'):
-            _averaged_cavity(model, integrator=integrator)
+            xt.MagnetOverlappedCavity(**L_BAND, model=model, integrator=integrator)
 
 
 def test_phase_averaged_with_static_fields_loses_a_spinning_particle():
-    line = xt.Line(elements={'rf': _averaged_cavity(knl=[0., .05])})
-    line.particle_ref = _launch(200., x=0., px=0., y=0., py=0., zeta=0., delta=0.)
+    rf = xt.MagnetOverlappedCavity(**L_BAND, model='_phase-averaged', knl=[0., .05])
+    line = xt.Line(elements={'rf': rf})
+    line.particle_ref = xt.Particles(p0c=xt.ELECTRON_MASS_EV * np.sqrt(200.**2 - 1),
+                                     mass0=xt.ELECTRON_MASS_EV)
     line.build_tracker()
     line.configure_spin(True)
-    particles = _launch(200., spin_z=1.)
+    particles = line.build_particles(x=1e-3, px=2e-4, y=-1e-3, py=1e-4, zeta=1e-3,
+                                     delta=1e-3, spin_z=1.)
     line.track(particles)
     assert particles.state[0] == -99744
 
 
-def _adaptive_line(model_context, **controls):
-    line = xt.Line(elements={'rf': xt.Cavity(**controls)})
+@for_all_test_contexts
+def test_plan_follows_element_changes_between_track_calls(test_context):
+    rf = xt.Cavity(model='drift-kick-drift-expanded', length=1., frequency=1e9,
+                   voltage=1e5, phase=np.pi / 2)
+    line = xt.Line(elements={'rf': rf})
     line.particle_ref = xt.Particles(p0c=1e9)
-    line.build_tracker(_context=model_context)
-    return line
-
-
-def test_plan_follows_element_changes_between_track_calls(model_context):
-    line = _adaptive_line(model_context, model='drift-kick-drift-expanded', length=1.,
-                          frequency=1e9, voltage=1e5, phase=np.pi / 2)
-    def gain():
+    line.build_tracker(_context=test_context)
+    gain = {}
+    for setting, value in (('voltage', 1e5), ('voltage', 2e5), ('model', '_phase-resolved')):
+        setattr(line['rf'], setting, value)
         probe = line.build_particles(zeta=0.)
         energy = probe.energy[0]
         line.track(probe)
-        return probe.energy[0] - energy
-    first = gain()
-    line['rf'].voltage = 2e5
-    np.testing.assert_allclose(gain(), 2 * first, rtol=1e-12)
-    line['rf'].model = '_phase-resolved'
-    assert gain() != 2 * first
+        gain[setting, value] = probe.energy[0] - energy
+    np.testing.assert_allclose(gain['voltage', 2e5], 2 * gain['voltage', 1e5], rtol=1e-12)
+    assert gain['model', '_phase-resolved'] != gain['voltage', 2e5]
 
 
 
