@@ -4,10 +4,10 @@ differences and analytic results.
 import numpy as np
 import pytest
 import madng_tpsa
+import xobjects as xo
 import xtrack as xt
 import xtrack.tpsa as xtpsa
 from xtrack.tpsa._knobs import KnobParameters
-from _cavity_context import kernel_context
 
 
 COORDS = ('x', 'px', 'y', 'py', 'zeta', 'delta')
@@ -24,24 +24,24 @@ def _values(particles):
 
 
 def test_frozen_energy_drift_uses_input_delta_series(tmp_path):
-    with kernel_context(tmp_path) as context:
-        line=xt.Line(elements={'d':xt.Drift(length=.17)})
-        line.particle_ref=xt.Particles(p0c=1e9)
-        line.reset_s_at_end_turn=False
-        line.freeze_energy(force=True)
-        line.build_tracker(_context=context)
-        launch=dict(p0c=1e9,x=.001,px=.01,y=-.002,py=-.008,zeta=0.,delta=.002)
-        desc=madng_tpsa.Descriptor(6,2)
-        series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
-        line.track(series)
-        matrix=series.jacobian()
-        finite=np.zeros((6,6))
-        for column,name in enumerate(COORDS):
-            for offset,weight in {-2:1.,-1:-8.,1:8.,2:-1.}.items():
-                particle=xt.Particles(_context=context,**dict(launch,**{name:launch[name]+offset*1e-5}))
-                line.track(particle)
-                finite[:,column]+=weight*_values(particle)/(12e-5)
-        np.testing.assert_allclose(matrix,finite,rtol=3e-6,atol=3e-8)
+    context = xo.ContextCpu()
+    line=xt.Line(elements={'d':xt.Drift(length=.17)})
+    line.particle_ref=xt.Particles(p0c=1e9)
+    line.reset_s_at_end_turn=False
+    line.freeze_energy(force=True)
+    line.build_tracker(_context=context)
+    launch=dict(p0c=1e9,x=.001,px=.01,y=-.002,py=-.008,zeta=0.,delta=.002)
+    desc=madng_tpsa.Descriptor(6,2)
+    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
+    line.track(series)
+    matrix=series.jacobian()
+    finite=np.zeros((6,6))
+    for column,name in enumerate(COORDS):
+        for offset,weight in {-2:1.,-1:-8.,1:8.,2:-1.}.items():
+            particle=xt.Particles(_context=context,**dict(launch,**{name:launch[name]+offset*1e-5}))
+            line.track(particle)
+            finite[:,column]+=weight*_values(particle)/(12e-5)
+    np.testing.assert_allclose(matrix,finite,rtol=3e-6,atol=3e-8)
 
 
 @pytest.mark.parametrize('order,model,static_fields', [
@@ -214,72 +214,72 @@ def test_frozen_fixed_nominal_gain_with_absolute_clock(cavity_magnetic_context):
 @pytest.mark.parametrize('absolute_time', [False, True])
 def test_legacy_cavity_tpsa_clock_and_phase_knob(tmp_path, absolute_time):
     """Same physical clock, including a nonzero cavity position and time_s."""
-    with kernel_context(tmp_path) as context:
-        line = xt.Line(elements=[xt.Drift(length=.17),
-            xt.Cavity(voltage=2e5, frequency=400e6, phase=.7,
-                      absolute_time=absolute_time)],
-            element_names=['d', 'c'])
-        line.particle_ref = xt.Particles(p0c=LAUNCH['p0c'],
-            mass0=LAUNCH['mass0'], q0=1.)
-        line.reset_s_at_end_turn = False
-        line.build_tracker(_context=context)
-        scalar = xt.Particles(_context=context, **LAUNCH)
-        line.track(scalar)
-        desc = madng_tpsa.Descriptor(6, 3, num_params=1, param_order=2)
-        line['c'].phase = desc.param(1, .7)
-        particles = xtpsa.ParticlesTpsa(order=3, descriptor=desc, **LAUNCH)
-        line.track(particles)
-        np.testing.assert_allclose(particles.const_part, _values(scalar),
-                                   rtol=0., atol=3e-14)
-        gradient = particles.param_jacobian()[:, 0]
-        line.disable_tpsa_elements()
-        endpoints = []
-        for phase in (.7-1e-5, .7+1e-5):
-            line['c'].phase = phase
-            probe = xt.Particles(_context=context, **LAUNCH)
-            line.track(probe)
-            endpoints.append(_values(probe))
-        derivative = (endpoints[1]-endpoints[0])/(2e-5)
-        np.testing.assert_allclose(gradient, derivative,
-                                   rtol=2e-7, atol=2e-10)
+    context = xo.ContextCpu()
+    line = xt.Line(elements=[xt.Drift(length=.17),
+        xt.Cavity(voltage=2e5, frequency=400e6, phase=.7,
+                  absolute_time=absolute_time)],
+        element_names=['d', 'c'])
+    line.particle_ref = xt.Particles(p0c=LAUNCH['p0c'],
+        mass0=LAUNCH['mass0'], q0=1.)
+    line.reset_s_at_end_turn = False
+    line.build_tracker(_context=context)
+    scalar = xt.Particles(_context=context, **LAUNCH)
+    line.track(scalar)
+    desc = madng_tpsa.Descriptor(6, 3, num_params=1, param_order=2)
+    line['c'].phase = desc.param(1, .7)
+    particles = xtpsa.ParticlesTpsa(order=3, descriptor=desc, **LAUNCH)
+    line.track(particles)
+    np.testing.assert_allclose(particles.const_part, _values(scalar),
+                               rtol=0., atol=3e-14)
+    gradient = particles.param_jacobian()[:, 0]
+    line.disable_tpsa_elements()
+    endpoints = []
+    for phase in (.7-1e-5, .7+1e-5):
+        line['c'].phase = phase
+        probe = xt.Particles(_context=context, **LAUNCH)
+        line.track(probe)
+        endpoints.append(_values(probe))
+    derivative = (endpoints[1]-endpoints[0])/(2e-5)
+    np.testing.assert_allclose(gradient, derivative,
+                               rtol=2e-7, atol=2e-10)
 
 
 def test_legacy_cavity_tpsa_knob_refresh_and_teardown(tmp_path):
-    with kernel_context(tmp_path) as context:
-        line = xt.Line(elements=[xt.Cavity(voltage=2e5, frequency=400e6)],
-                       element_names=['c'])
-        line.particle_ref = xt.Particles(p0c=LAUNCH['p0c'],
-            mass0=LAUNCH['mass0'], q0=1.)
-        line['rf_phase'] = .4
-        line['c'].phase = line.ref['rf_phase']
-        line.build_tracker(_context=context)
-        desc = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=1)
-        knobs = KnobParameters(line, ['rf_phase'], desc)
-        knobs.apply()
-        first = xtpsa.ParticlesTpsa(order=2, descriptor=desc, **LAUNCH)
-        line.track(first)
-        knobs.refresh([.8])
-        second = xtpsa.ParticlesTpsa(order=2, descriptor=desc, **LAUNCH)
-        line.track(second)
-        assert second.const_part[5] != first.const_part[5]
-        assert second.param_jacobian()[5, 0] != 0.
-        knobs.teardown()
-        assert not line['c']._tpsa_enabled
-        restored = xt.Line.from_dict(line.to_dict())
-        assert restored['c'].phase == pytest.approx(.8)
+    context = xo.ContextCpu()
+    line = xt.Line(elements=[xt.Cavity(voltage=2e5, frequency=400e6)],
+                   element_names=['c'])
+    line.particle_ref = xt.Particles(p0c=LAUNCH['p0c'],
+        mass0=LAUNCH['mass0'], q0=1.)
+    line['rf_phase'] = .4
+    line['c'].phase = line.ref['rf_phase']
+    line.build_tracker(_context=context)
+    desc = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=1)
+    knobs = KnobParameters(line, ['rf_phase'], desc)
+    knobs.apply()
+    first = xtpsa.ParticlesTpsa(order=2, descriptor=desc, **LAUNCH)
+    line.track(first)
+    knobs.refresh([.8])
+    second = xtpsa.ParticlesTpsa(order=2, descriptor=desc, **LAUNCH)
+    line.track(second)
+    assert second.const_part[5] != first.const_part[5]
+    assert second.param_jacobian()[5, 0] != 0.
+    knobs.teardown()
+    assert not line['c']._tpsa_enabled
+    restored = xt.Line.from_dict(line.to_dict())
+    assert restored['c'].phase == pytest.approx(.8)
 
 
 def test_legacy_standalone_cavity_nonzero_s_tpsa(tmp_path):
-    with kernel_context(tmp_path) as context:
-        element = xt.Cavity(_context=context, voltage=2e5, frequency=400e6,
-                            phase=.7, absolute_time=True)
-        launch = dict(LAUNCH, s=.17)
-        scalar = xt.Particles(_context=context, **launch)
-        series = xtpsa.ParticlesTpsa(order=1, **launch)
-        element.track(scalar)
-        element.track(series)
-        np.testing.assert_allclose(series.const_part, _values(scalar),
-                                   rtol=0., atol=3e-14)
+    context = xo.ContextCpu()
+    element = xt.Cavity(_context=context, voltage=2e5, frequency=400e6,
+                        phase=.7, absolute_time=True)
+    launch = dict(LAUNCH, s=.17)
+    scalar = xt.Particles(_context=context, **launch)
+    series = xtpsa.ParticlesTpsa(order=1, **launch)
+    element.track(scalar)
+    element.track(series)
+    np.testing.assert_allclose(series.const_part, _values(scalar),
+                               rtol=0., atol=3e-14)
 
 
 @pytest.mark.parametrize('model', ['_phase-resolved'])
@@ -399,107 +399,107 @@ def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,n_
 
 @pytest.mark.parametrize('absolute_time',[False,True])
 def test_frozen_cavity_tpsa_phase_and_clock(tmp_path,absolute_time):
-    with kernel_context(tmp_path) as context:
-        line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
-            voltage=2e4,frequency=400e6,phase=.4,counter_wave_amplitude=0.,
-            model='_phase-resolved-frozen',num_kicks=8,
-            absolute_time=absolute_time)],element_names=['d','c'])
-        line.particle_ref=xt.Particles(p0c=LAUNCH['p0c'],
-            mass0=LAUNCH['mass0'],q0=1.)
-        line.reset_s_at_end_turn=False
-        line.build_tracker(_context=context)
-        scalar=xt.Particles(_context=context,**LAUNCH)
-        line.track(scalar)
-        assert scalar.state[0] == 1
-        desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
-        line['c'].phase=desc.param(1,.4)
-        series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**LAUNCH)
-        line.track(series)
-        np.testing.assert_allclose(series.const_part,_values(scalar),
-                                   rtol=0.,atol=3e-13)
-        derivative=series.param_jacobian()[:,0]
-        line.disable_tpsa_elements()
-        endpoints=[]
-        for phase in (.4-1e-5,.4+1e-5):
-            line['c'].phase=phase
-            particle=xt.Particles(_context=context,**LAUNCH)
-            line.track(particle)
-            endpoints.append(_values(particle))
-        np.testing.assert_allclose(derivative,
-            (endpoints[1]-endpoints[0])/(2e-5),rtol=3e-6,atol=3e-10)
+    context = xo.ContextCpu()
+    line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
+        voltage=2e4,frequency=400e6,phase=.4,counter_wave_amplitude=0.,
+        model='_phase-resolved-frozen',num_kicks=8,
+        absolute_time=absolute_time)],element_names=['d','c'])
+    line.particle_ref=xt.Particles(p0c=LAUNCH['p0c'],
+        mass0=LAUNCH['mass0'],q0=1.)
+    line.reset_s_at_end_turn=False
+    line.build_tracker(_context=context)
+    scalar=xt.Particles(_context=context,**LAUNCH)
+    line.track(scalar)
+    assert scalar.state[0] == 1
+    desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
+    line['c'].phase=desc.param(1,.4)
+    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**LAUNCH)
+    line.track(series)
+    np.testing.assert_allclose(series.const_part,_values(scalar),
+                               rtol=0.,atol=3e-13)
+    derivative=series.param_jacobian()[:,0]
+    line.disable_tpsa_elements()
+    endpoints=[]
+    for phase in (.4-1e-5,.4+1e-5):
+        line['c'].phase=phase
+        particle=xt.Particles(_context=context,**LAUNCH)
+        line.track(particle)
+        endpoints.append(_values(particle))
+    np.testing.assert_allclose(derivative,
+        (endpoints[1]-endpoints[0])/(2e-5),rtol=3e-6,atol=3e-10)
 
 
 def test_frozen_solenoid_zero_strength_parameter_tpsa(tmp_path):
     """The exact frozen SOL body uses an entire chart at zero field."""
     mass=xt.ELECTRON_MASS_EV
     launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
-    with kernel_context(tmp_path) as context:
-        line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,frequency=400e6,
-            voltage=0.,counter_wave_amplitude=0.,ks=0.,edge_entry_active=False,
-            edge_exit_active=False,model='_phase-resolved-frozen',num_kicks=4)})
-        line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
-        line.reset_s_at_end_turn=False
-        line.build_tracker(_context=context)
-        scalar=xt.Particles(_context=context,**launch)
-        line.track(scalar)
-        assert scalar.state[0]==1
-        desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
-        line['c'].ks=desc.param(1,0.)
-        series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
-        line.track(series)
-        np.testing.assert_allclose(series.const_part,_values(scalar),
-                                   rtol=0.,atol=3e-13)
-        derivative=series.param_jacobian()[:,0]
-        line.disable_tpsa_elements()
-        endpoints=[]
-        for value in (-1e-5,1e-5):
-            line['c'].ks=value
-            particle=xt.Particles(_context=context,**launch)
-            line.track(particle)
-            assert particle.state[0]==1
-            endpoints.append(_values(particle))
-        finite_difference=(endpoints[1]-endpoints[0])/(2e-5)
-        assert np.max(abs(derivative))>1e-6
-        np.testing.assert_allclose(derivative,finite_difference,
-                                   rtol=3e-6,atol=3e-10)
+    context = xo.ContextCpu()
+    line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,frequency=400e6,
+        voltage=0.,counter_wave_amplitude=0.,ks=0.,edge_entry_active=False,
+        edge_exit_active=False,model='_phase-resolved-frozen',num_kicks=4)})
+    line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
+    line.reset_s_at_end_turn=False
+    line.build_tracker(_context=context)
+    scalar=xt.Particles(_context=context,**launch)
+    line.track(scalar)
+    assert scalar.state[0]==1
+    desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
+    line['c'].ks=desc.param(1,0.)
+    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
+    line.track(series)
+    np.testing.assert_allclose(series.const_part,_values(scalar),
+                               rtol=0.,atol=3e-13)
+    derivative=series.param_jacobian()[:,0]
+    line.disable_tpsa_elements()
+    endpoints=[]
+    for value in (-1e-5,1e-5):
+        line['c'].ks=value
+        particle=xt.Particles(_context=context,**launch)
+        line.track(particle)
+        assert particle.state[0]==1
+        endpoints.append(_values(particle))
+    finite_difference=(endpoints[1]-endpoints[0])/(2e-5)
+    assert np.max(abs(derivative))>1e-6
+    np.testing.assert_allclose(derivative,finite_difference,
+                               rtol=3e-6,atol=3e-10)
 
 
 def test_frozen_cavity_tpsa_voltage_and_frequency(tmp_path):
     """Both the actual kick and fixed nominal programme carry RF knobs."""
     values=dict(voltage=2e4,frequency=400e6,phase_taper=.07,lag_taper=1.2)
-    with kernel_context(tmp_path) as context:
-        line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
-            phase=.4,counter_wave_amplitude=0.,model='_phase-resolved-frozen',num_kicks=8,
-            absolute_time=True,**values)],element_names=['d','c'])
-        line.particle_ref=xt.Particles(p0c=LAUNCH['p0c'],
-            mass0=LAUNCH['mass0'],q0=1.)
-        line.reset_s_at_end_turn=False
-        line.build_tracker(_context=context)
-        scalar=xt.Particles(_context=context,**LAUNCH)
-        line.track(scalar)
-        assert scalar.state[0]==1
-        desc=madng_tpsa.Descriptor(6,2,num_params=len(values),param_order=1)
-        for index,(name,value) in enumerate(values.items(),start=1):
-            setattr(line['c'],name,desc.param(index,value))
-        series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**LAUNCH)
-        line.track(series)
-        np.testing.assert_allclose(series.const_part,_values(scalar),
-                                   rtol=0.,atol=3e-13)
-        derivatives=series.param_jacobian().copy()
-        line.disable_tpsa_elements()
-        for index,(name,value) in enumerate(values.items()):
-            scale=max(1.,abs(value));step=scale*1e-5
-            endpoints=[]
-            for sign in (-1,1):
-                setattr(line['c'],name,value+sign*step)
-                particle=xt.Particles(_context=context,**LAUNCH)
-                line.track(particle)
-                assert particle.state[0]==1
-                endpoints.append(_values(particle))
-            setattr(line['c'],name,value)
-            finite_difference=(endpoints[1]-endpoints[0])/(2*step)
-            np.testing.assert_allclose(derivatives[:,index]*scale,
-                finite_difference*scale,rtol=3e-6,atol=3e-9,err_msg=name)
+    context = xo.ContextCpu()
+    line=xt.Line(elements=[xt.Drift(length=.17),xt.Cavity(length=.05,
+        phase=.4,counter_wave_amplitude=0.,model='_phase-resolved-frozen',num_kicks=8,
+        absolute_time=True,**values)],element_names=['d','c'])
+    line.particle_ref=xt.Particles(p0c=LAUNCH['p0c'],
+        mass0=LAUNCH['mass0'],q0=1.)
+    line.reset_s_at_end_turn=False
+    line.build_tracker(_context=context)
+    scalar=xt.Particles(_context=context,**LAUNCH)
+    line.track(scalar)
+    assert scalar.state[0]==1
+    desc=madng_tpsa.Descriptor(6,2,num_params=len(values),param_order=1)
+    for index,(name,value) in enumerate(values.items(),start=1):
+        setattr(line['c'],name,desc.param(index,value))
+    series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**LAUNCH)
+    line.track(series)
+    np.testing.assert_allclose(series.const_part,_values(scalar),
+                               rtol=0.,atol=3e-13)
+    derivatives=series.param_jacobian().copy()
+    line.disable_tpsa_elements()
+    for index,(name,value) in enumerate(values.items()):
+        scale=max(1.,abs(value));step=scale*1e-5
+        endpoints=[]
+        for sign in (-1,1):
+            setattr(line['c'],name,value+sign*step)
+            particle=xt.Particles(_context=context,**LAUNCH)
+            line.track(particle)
+            assert particle.state[0]==1
+            endpoints.append(_values(particle))
+        setattr(line['c'],name,value)
+        finite_difference=(endpoints[1]-endpoints[0])/(2*step)
+        np.testing.assert_allclose(derivatives[:,index]*scale,
+            finite_difference*scale,rtol=3e-6,atol=3e-9,err_msg=name)
 
 
 def _build_shared_cavity_tracker(line, context):
@@ -514,11 +514,10 @@ def _build_shared_cavity_tracker(line, context):
 
 
 @pytest.fixture(scope='module')
-def cavity_magnetic_context(tmp_path_factory):
+def cavity_magnetic_context():
     # All model values share one public data/kernel ABI. Reuse the actual JIT
     # kernel instead of recompiling the same heavy scalar/TPSA sources per case.
-    with kernel_context(tmp_path_factory.mktemp('cavity_magnetic_tpsa')) as context:
-        yield context
+    return xo.ContextCpu()
 
 
 @pytest.mark.parametrize('model',['_phase-resolved','_phase-resolved-frozen'])

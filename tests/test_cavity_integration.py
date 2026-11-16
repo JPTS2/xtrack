@@ -10,7 +10,6 @@ import xobjects as xo
 
 import xtrack as xt
 
-from _cavity_context import kernel_context
 
 
 MODELS = ('_phase-resolved', '_phase-resolved-frozen')
@@ -21,10 +20,9 @@ P0C_EV = MASS_EV*np.sqrt(2.4**2-1.)
 
 
 @pytest.fixture(scope='module')
-def cpu_context(tmp_path_factory):
-    """Keep JIT output context-local."""
-    with kernel_context(tmp_path_factory.mktemp('cavity-integration-review')) as context:
-        yield context
+def cpu_context():
+    # One context for the module, so its compiled kernels are reused.
+    return xo.ContextCpu()
 
 
 def hardware(model):
@@ -428,9 +426,8 @@ def numeric_rows_by_id(particles):
 
 
 @pytest.fixture(scope='module', params=(0, 1), ids=('serial', 'openmp_one_thread'))
-def thread_context(request, tmp_path_factory):
-    with kernel_context(tmp_path_factory.mktemp('cavity-thread-context')) as serial:
-        yield serial if request.param == 0 else xo.ContextCpu(omp_num_threads=1)
+def thread_context(request):
+    return xo.ContextCpu(omp_num_threads=request.param)
 
 
 def test_finite_rf_face_is_a_hard_edge(cpu_context):

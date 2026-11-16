@@ -9,7 +9,6 @@ import xtrack as xt
 import xtrack.tpsa as xtpsa
 from xtrack.base_element import FloatOrTpsa
 from xtrack.tpsa._knobs import KnobParameters
-from _cavity_context import kernel_context
 
 
 # Independently chosen synthetic launch; no machine momentum is embedded.
@@ -46,22 +45,22 @@ class _DefaultSeriesAggregate(xt.BeamElement):
 
 
 def test_generic_series_arrays_follow_active_descriptor(tmp_path):
-    with kernel_context(tmp_path) as context:
-        for order, param_order in ((1, 1), (3, 2)):
-            desc = madng_tpsa.Descriptor(6, order, num_params=1,
-                                         param_order=param_order)
-            element = _DefaultSeriesAggregate(_context=context, strength=2.)
-            element.strength = desc.param(1, 2.)
-            particles = xtpsa.ParticlesTpsa(order=order, descriptor=desc,
-                                           p0c=7e12, x=.25)
-            element.track(particles)
-            assert particles._xobject.state == 1
-            assert particles.const_part[0] == pytest.approx(.125)
-            assert particles.jacobian()[0, 0] == pytest.approx(1.)
-            assert particles.param_jacobian()[0, 0] == pytest.approx(.0625)
-            if order >= 2:
-                assert particles.coefficient('x', (2,0,0,0,0,0,0)) == 2.
-                assert particles.coefficient('x', (1,0,0,0,0,0,1)) == .5
+    context = xo.ContextCpu()
+    for order, param_order in ((1, 1), (3, 2)):
+        desc = madng_tpsa.Descriptor(6, order, num_params=1,
+                                     param_order=param_order)
+        element = _DefaultSeriesAggregate(_context=context, strength=2.)
+        element.strength = desc.param(1, 2.)
+        particles = xtpsa.ParticlesTpsa(order=order, descriptor=desc,
+                                       p0c=7e12, x=.25)
+        element.track(particles)
+        assert particles._xobject.state == 1
+        assert particles.const_part[0] == pytest.approx(.125)
+        assert particles.jacobian()[0, 0] == pytest.approx(1.)
+        assert particles.param_jacobian()[0, 0] == pytest.approx(.0625)
+        if order >= 2:
+            assert particles.coefficient('x', (2,0,0,0,0,0,0)) == 2.
+            assert particles.coefficient('x', (1,0,0,0,0,0,1)) == .5
 
 
 @pytest.mark.parametrize('order',[2,3])
@@ -90,34 +89,34 @@ def test_initial_energy_metadata_series(order,delta):
 
 def test_field_getter_preserves_orders_and_rejects_incompatible_handles(tmp_path):
     """Exercise the real generated FoT getter, including its no-truncation guard."""
-    with kernel_context(tmp_path) as context:
-        desc = madng_tpsa.Descriptor(6, 3, num_params=1, param_order=3)
-        element = _DefaultSeriesAggregate(_context=context, strength=2.)
-        parameter = desc.param(1, 0.)
-        element.strength = 2. + parameter + .3*parameter**2 + .7*parameter**3
-        particles = xtpsa.ParticlesTpsa(order=3, descriptor=desc, p0c=7e12, x=.25)
+    context = xo.ContextCpu()
+    desc = madng_tpsa.Descriptor(6, 3, num_params=1, param_order=3)
+    element = _DefaultSeriesAggregate(_context=context, strength=2.)
+    parameter = desc.param(1, 0.)
+    element.strength = 2. + parameter + .3*parameter**2 + .7*parameter**3
+    particles = xtpsa.ParticlesTpsa(order=3, descriptor=desc, p0c=7e12, x=.25)
+    element.track(particles)
+    assert particles.coefficient('x', (0,0,0,0,0,0,3)) == pytest.approx(.7*.25**2)
+    assert particles.coefficient('x', (1,0,0,0,0,0,2)) == pytest.approx(.3*.5)
+    # Inject a lower-storage-order active prototype deliberately. Normal
+    # ParticlesTpsa construction prevents this shape; the native getter must
+    # still refuse it rather than silently discard the source's high terms.
+    low = madng_tpsa.Tpsa(desc, order=1)
+    particles = xtpsa.ParticlesTpsa(order=3, descriptor=desc, p0c=7e12, x=.25)
+    particles.coords[0] = low
+    particles._xobject.x = int(madng_tpsa.ffi.cast('uintptr_t', low.ptr))
+    # The tracking boundary intentionally translates native tracking_error
+    # exceptions into the standard lost-map status and Python message.
+    with pytest.raises(RuntimeError, match='TPSA map lost'):
         element.track(particles)
-        assert particles.coefficient('x', (0,0,0,0,0,0,3)) == pytest.approx(.7*.25**2)
-        assert particles.coefficient('x', (1,0,0,0,0,0,2)) == pytest.approx(.3*.5)
-        # Inject a lower-storage-order active prototype deliberately. Normal
-        # ParticlesTpsa construction prevents this shape; the native getter must
-        # still refuse it rather than silently discard the source's high terms.
-        low = madng_tpsa.Tpsa(desc, order=1)
-        particles = xtpsa.ParticlesTpsa(order=3, descriptor=desc, p0c=7e12, x=.25)
-        particles.coords[0] = low
-        particles._xobject.x = int(madng_tpsa.ffi.cast('uintptr_t', low.ptr))
-        # The tracking boundary intentionally translates native tracking_error
-        # exceptions into the standard lost-map status and Python message.
-        with pytest.raises(RuntimeError, match='TPSA map lost'):
-            element.track(particles)
-        assert particles._xobject.state == -50
-        # MAD interns equivalent descriptors; change the actual schema rather
-        # than merely constructing a second Python wrapper for the same one.
-        other = madng_tpsa.Descriptor(6, 3, num_params=2, param_order=3)
-        particles = xtpsa.ParticlesTpsa(order=3, descriptor=other, p0c=7e12, x=.25)
-        with pytest.raises(RuntimeError, match='TPSA map lost'):
-            element.track(particles)
-        assert particles._xobject.state == -50
+    assert particles._xobject.state == -50
+    # MAD interns equivalent descriptors; change the actual schema rather
+    # than merely constructing a second Python wrapper for the same one.
+    other = madng_tpsa.Descriptor(6, 3, num_params=2, param_order=3)
+    particles = xtpsa.ParticlesTpsa(order=3, descriptor=other, p0c=7e12, x=.25)
+    with pytest.raises(RuntimeError, match='TPSA map lost'):
+        element.track(particles)
+    assert particles._xobject.state == -50
 
 
 @pytest.mark.parametrize('programme', ['from_rf', 0.])
@@ -252,7 +251,7 @@ def test_tpsa_field_metadata_survives_continuation(tmp_path,monkeypatch,default_
     from contextlib import nullcontext
     import xobjects as xo
     monkeypatch.chdir(tmp_path)
-    scope=nullcontext(xo.ContextCpu()) if default_context else kernel_context(tmp_path)
+    scope=nullcontext(xo.context_default if default_context else xo.ContextCpu())
     with scope as context:
         line=xt.Line(elements={'write':_FieldMetadataWriter(),
                               'read':_FieldMetadataReader()})
@@ -282,111 +281,111 @@ def test_tpsa_field_metadata_survives_continuation(tmp_path,monkeypatch,default_
 
 
 def test_multisetter_preserves_active_cavity_parameters(tmp_path):
-    with kernel_context(tmp_path) as context:
-        line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,counter_wave_amplitude=.5),
-                              'd':xt.Drift(length=.2)})
-        line.build_tracker(_context=context)
-        before=xt.MultiSetter(line,['c'],'phase',dtype=None)
-        before_length=xt.MultiSetter(line,['c','d'],'length',dtype=None)
-        line['c'].shift_x=.001
-        alignment=xt.MultiSetter(line,['c'],'shift_x',dtype=None)
-        np.testing.assert_array_equal(alignment.get_values(),[.001])
-        desc=madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
-        line['c'].phase=desc.param(1,.4)
-        line['c'].counter_wave_amplitude=desc.param(2,.5)
-        after=xt.MultiSetter(line,['c'],'phase',dtype=None)
-        after_length=xt.MultiSetter(line,['c','d'],'length',dtype=None)
-        np.testing.assert_array_equal(before.get_values(),[.4])
-        np.testing.assert_array_equal(after.get_values(),[.4])
-        np.testing.assert_array_equal(before_length.get_values(),[.05,.2])
-        np.testing.assert_array_equal(after_length.get_values(),[.05,.2])
-        before.set_values(np.array([.7]))
-        np.testing.assert_array_equal(after.get_values(),[.7])
-        np.testing.assert_array_equal(line['c'].phase.param_grad(),[0.,0.])
-        np.testing.assert_array_equal(line['c'].counter_wave_amplitude.param_grad(),[0.,1.])
-        assert line['c']._tpsa_enabled
-        np.testing.assert_array_equal(alignment.get_values(),[.001])
-        np.testing.assert_array_equal(line.attr['_tpsa_enabled'],[1.,0.])
-        line.disable_tpsa_elements()
-        assert not before._needs_tpsa_access()
-        after.set_values(np.array([.8]))
-        np.testing.assert_array_equal(before.get_values(),[.8])
-        assert line['c'].phase==.8
+    context = xo.ContextCpu()
+    line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,counter_wave_amplitude=.5),
+                          'd':xt.Drift(length=.2)})
+    line.build_tracker(_context=context)
+    before=xt.MultiSetter(line,['c'],'phase',dtype=None)
+    before_length=xt.MultiSetter(line,['c','d'],'length',dtype=None)
+    line['c'].shift_x=.001
+    alignment=xt.MultiSetter(line,['c'],'shift_x',dtype=None)
+    np.testing.assert_array_equal(alignment.get_values(),[.001])
+    desc=madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
+    line['c'].phase=desc.param(1,.4)
+    line['c'].counter_wave_amplitude=desc.param(2,.5)
+    after=xt.MultiSetter(line,['c'],'phase',dtype=None)
+    after_length=xt.MultiSetter(line,['c','d'],'length',dtype=None)
+    np.testing.assert_array_equal(before.get_values(),[.4])
+    np.testing.assert_array_equal(after.get_values(),[.4])
+    np.testing.assert_array_equal(before_length.get_values(),[.05,.2])
+    np.testing.assert_array_equal(after_length.get_values(),[.05,.2])
+    before.set_values(np.array([.7]))
+    np.testing.assert_array_equal(after.get_values(),[.7])
+    np.testing.assert_array_equal(line['c'].phase.param_grad(),[0.,0.])
+    np.testing.assert_array_equal(line['c'].counter_wave_amplitude.param_grad(),[0.,1.])
+    assert line['c']._tpsa_enabled
+    np.testing.assert_array_equal(alignment.get_values(),[.001])
+    np.testing.assert_array_equal(line.attr['_tpsa_enabled'],[1.,0.])
+    line.disable_tpsa_elements()
+    assert not before._needs_tpsa_access()
+    after.set_values(np.array([.8]))
+    np.testing.assert_array_equal(before.get_values(),[.8])
+    assert line['c'].phase==.8
 
 
 def test_multisetter_resolves_canonical_slice_parent(tmp_path):
-    with kernel_context(tmp_path) as context:
-        line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,counter_wave_amplitude=.5)})
-        line.slice_thick_elements([xt.Strategy(
-            slicing=xt.Teapot(2,mode='thick'),element_type=xt.Cavity)])
-        line.build_tracker(_context=context)
-        slices=[name for name in line.element_names
-                if isinstance(line._element_dict[name],xt.ThickSliceCavity)]
-        setter=xt.MultiSetter(line,slices,('_parent','phase'),dtype=None)
-        desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
-        line['c'].counter_wave_amplitude=desc.param(1,.5)
-        np.testing.assert_array_equal(setter.get_values(),[.4,.4])
-        setter.set_values(np.array([.7,.7]))
-        assert line['c'].phase.const_part==.7
-        np.testing.assert_array_equal(line['c'].counter_wave_amplitude.param_grad(),[1.])
-        np.testing.assert_array_equal(line.attr['length'],[0.,.025,.025,0.])
-        line.disable_tpsa_elements()
-        assert not setter._needs_tpsa_access()
-        np.testing.assert_array_equal(setter.get_values(),[.7,.7])
+    context = xo.ContextCpu()
+    line=xt.Line(elements={'c':xt.Cavity(length=.05,phase=.4,counter_wave_amplitude=.5)})
+    line.slice_thick_elements([xt.Strategy(
+        slicing=xt.Teapot(2,mode='thick'),element_type=xt.Cavity)])
+    line.build_tracker(_context=context)
+    slices=[name for name in line.element_names
+            if isinstance(line._element_dict[name],xt.ThickSliceCavity)]
+    setter=xt.MultiSetter(line,slices,('_parent','phase'),dtype=None)
+    desc=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
+    line['c'].counter_wave_amplitude=desc.param(1,.5)
+    np.testing.assert_array_equal(setter.get_values(),[.4,.4])
+    setter.set_values(np.array([.7,.7]))
+    assert line['c'].phase.const_part==.7
+    np.testing.assert_array_equal(line['c'].counter_wave_amplitude.param_grad(),[1.])
+    np.testing.assert_array_equal(line.attr['length'],[0.,.025,.025,0.])
+    line.disable_tpsa_elements()
+    assert not setter._needs_tpsa_access()
+    np.testing.assert_array_equal(setter.get_values(),[.7,.7])
 
 
 def test_indexed_cavity_knob_lifecycle(tmp_path):
-    with kernel_context(tmp_path) as context:
-        line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(model='_phase-resolved',length=.05,knl=[0.,.2],ksl=[0.,.3])})
-        line.vars['normal']=.2;line.vars['skew']=.3
-        line.element_refs['c'].knl[1]=line.vars['normal']
-        line.element_refs['c'].ksl[1]=line.vars['skew']
-        line.build_tracker(_context=context,compile=False)
-        owner=line._element_dict['c']
-        np.testing.assert_array_equal(np.asarray(owner.knl)[:2],[0.,.2])
-        cached=xt.MultiSetter(line,['c'],'knl',index=1,dtype=None)
-        desc=madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
-        knobs=KnobParameters(line,['normal','skew'],desc)
-        knobs.apply()
-        assert owner._tpsa_enabled
-        assert owner._knl_tpsa[1]!=0
-        np.testing.assert_array_equal(
-            knobs.strength_jacobian()[('c',('knl',1))],[1.,0.])
-        with pytest.raises(TypeError,match='dtype=object'):
-            np.asarray(owner.knl)
-        assert isinstance(np.asarray(owner.knl,dtype=object)[1],madng_tpsa.Tpsa)
-        np.testing.assert_array_equal(cached.get_values(),[.2])
-        current=xt.MultiSetter(line,['c'],'knl',index=1,dtype=None)
-        current.set_values(np.array([.4]))
-        assert owner.knl[1]==.4
-        np.testing.assert_array_equal(owner.ksl[1].param_grad(),[0.,1.])
-        knobs.refresh([.5,.6])
-        np.testing.assert_array_equal(cached.get_values(),[.5])
-        np.testing.assert_array_equal(owner.knl[1].param_grad(),[1.,0.])
-        np.add.at(owner.knl,[1],.1)
-        assert owner.knl[1].const_part==pytest.approx(.6)
-        np.testing.assert_array_equal(owner.knl[1].param_grad(),[1.,0.])
-        owner.knl.put([1],[owner.knl[1]+.1])
-        assert owner.knl[1].const_part==pytest.approx(.7)
-        np.testing.assert_array_equal(owner.knl[1].param_grad(),[1.,0.])
-        with pytest.raises(TypeError,match='unsupported'):
-            owner.knl.sort()
-        owner.knl.fill(0.)
-        np.testing.assert_array_equal(np.asarray(owner.knl),np.zeros(len(owner.knl)))
-        assert not owner.__dict__['_tpsa_array_handles']['_knl']
-        knobs.refresh([.7,.8])
-        knobs.teardown()
-        assert not owner._tpsa_enabled
-        assert not np.any(owner._knl_tpsa)
-        assert not np.any(owner._ksl_tpsa)
-        assert not cached._needs_tpsa_access()
-        np.testing.assert_array_equal(cached.get_values(),[.7])
-        copied=line.copy()
-        restored=xt.Line.from_dict(copied.to_dict())
-        np.testing.assert_array_equal(restored._element_dict['c'].knl,owner.knl)
-        np.testing.assert_array_equal(restored._element_dict['c'].ksl,owner.ksl)
-        assert not np.any(restored._element_dict['c']._knl_tpsa)
-        assert not np.any(restored._element_dict['c']._ksl_tpsa)
+    context = xo.ContextCpu()
+    line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(model='_phase-resolved',length=.05,knl=[0.,.2],ksl=[0.,.3])})
+    line.vars['normal']=.2;line.vars['skew']=.3
+    line.element_refs['c'].knl[1]=line.vars['normal']
+    line.element_refs['c'].ksl[1]=line.vars['skew']
+    line.build_tracker(_context=context,compile=False)
+    owner=line._element_dict['c']
+    np.testing.assert_array_equal(np.asarray(owner.knl)[:2],[0.,.2])
+    cached=xt.MultiSetter(line,['c'],'knl',index=1,dtype=None)
+    desc=madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
+    knobs=KnobParameters(line,['normal','skew'],desc)
+    knobs.apply()
+    assert owner._tpsa_enabled
+    assert owner._knl_tpsa[1]!=0
+    np.testing.assert_array_equal(
+        knobs.strength_jacobian()[('c',('knl',1))],[1.,0.])
+    with pytest.raises(TypeError,match='dtype=object'):
+        np.asarray(owner.knl)
+    assert isinstance(np.asarray(owner.knl,dtype=object)[1],madng_tpsa.Tpsa)
+    np.testing.assert_array_equal(cached.get_values(),[.2])
+    current=xt.MultiSetter(line,['c'],'knl',index=1,dtype=None)
+    current.set_values(np.array([.4]))
+    assert owner.knl[1]==.4
+    np.testing.assert_array_equal(owner.ksl[1].param_grad(),[0.,1.])
+    knobs.refresh([.5,.6])
+    np.testing.assert_array_equal(cached.get_values(),[.5])
+    np.testing.assert_array_equal(owner.knl[1].param_grad(),[1.,0.])
+    np.add.at(owner.knl,[1],.1)
+    assert owner.knl[1].const_part==pytest.approx(.6)
+    np.testing.assert_array_equal(owner.knl[1].param_grad(),[1.,0.])
+    owner.knl.put([1],[owner.knl[1]+.1])
+    assert owner.knl[1].const_part==pytest.approx(.7)
+    np.testing.assert_array_equal(owner.knl[1].param_grad(),[1.,0.])
+    with pytest.raises(TypeError,match='unsupported'):
+        owner.knl.sort()
+    owner.knl.fill(0.)
+    np.testing.assert_array_equal(np.asarray(owner.knl),np.zeros(len(owner.knl)))
+    assert not owner.__dict__['_tpsa_array_handles']['_knl']
+    knobs.refresh([.7,.8])
+    knobs.teardown()
+    assert not owner._tpsa_enabled
+    assert not np.any(owner._knl_tpsa)
+    assert not np.any(owner._ksl_tpsa)
+    assert not cached._needs_tpsa_access()
+    np.testing.assert_array_equal(cached.get_values(),[.7])
+    copied=line.copy()
+    restored=xt.Line.from_dict(copied.to_dict())
+    np.testing.assert_array_equal(restored._element_dict['c'].knl,owner.knl)
+    np.testing.assert_array_equal(restored._element_dict['c'].ksl,owner.ksl)
+    assert not np.any(restored._element_dict['c']._knl_tpsa)
+    assert not np.any(restored._element_dict['c']._ksl_tpsa)
 
 
 @pytest.mark.parametrize('active', [False, True])

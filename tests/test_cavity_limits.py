@@ -13,9 +13,9 @@ import subprocess
 
 import numpy as np
 import pytest
+import xobjects as xo
 import xtrack as xt
 
-from _cavity_context import kernel_context
 
 
 MODELS = ('_phase-resolved',)
@@ -43,39 +43,39 @@ def particle(context, gamma, charge=1., **changes):
 def test_public_cavity_independent_vacuum_limits(tmp_path):
     """The map keeps its own finite-angle drift, rather than aliasing the full drift."""
     length = .37
-    with kernel_context(tmp_path) as context:
-        for model in MODELS:
-            element = xt.Cavity(_context=context, length=length, voltage=0.,
-                frequency=0., counter_wave_amplitude=.55, model=model, integrator='uniform',
-                num_kicks=7, absolute_time=True)
-            line = xt.Line(elements=[element,xt.Marker(_context=context)],
-                           element_names=['cavity','physical_exit'])
-            line.particle_ref = particle(context, 2.4, x=0., px=0., y=0.,
-                                         py=0., zeta=0.)
-            line.reset_s_at_end_turn = False
-            for gamma in (2.4, 20.):
-                for charge in (-1., 1.):
-                    incoming = particle(context, gamma, charge)
-                    initial = values(incoming)
-                    expected = initial.copy()
-                    angle2 = initial[1]**2+initial[3]**2
-                    longitudinal = np.sqrt(1-angle2)
-                    expected[0] += length*initial[1]/longitudinal
-                    expected[2] += length*initial[3]/longitudinal
-                    expected[4] += length*(1-1/longitudinal)
-                    # Observe the physical exit before the usual end-turn
-                    # time_s/zeta reference-frame change. DriftExact has that
-                    # same bookkeeping; it is separate from the cavity map.
-                    line.track(incoming,ele_start=0,ele_stop=1)
-                    assert incoming.state[0] == 1, model
-                    np.testing.assert_allclose(values(incoming), expected,
-                        rtol=0., atol=2e-13, err_msg=model)
-                    np.testing.assert_allclose(incoming.s[0], length,
-                                               rtol=0., atol=2e-14)
-                    line.track(incoming,ele_start=0,ele_stop=1,backtrack=True)
-                    assert incoming.state[0] == 1, model
-                    np.testing.assert_allclose(values(incoming), initial,
-                        rtol=0., atol=3e-13, err_msg=model+' signed inverse')
+    context = xo.ContextCpu()
+    for model in MODELS:
+        element = xt.Cavity(_context=context, length=length, voltage=0.,
+            frequency=0., counter_wave_amplitude=.55, model=model, integrator='uniform',
+            num_kicks=7, absolute_time=True)
+        line = xt.Line(elements=[element,xt.Marker(_context=context)],
+                       element_names=['cavity','physical_exit'])
+        line.particle_ref = particle(context, 2.4, x=0., px=0., y=0.,
+                                     py=0., zeta=0.)
+        line.reset_s_at_end_turn = False
+        for gamma in (2.4, 20.):
+            for charge in (-1., 1.):
+                incoming = particle(context, gamma, charge)
+                initial = values(incoming)
+                expected = initial.copy()
+                angle2 = initial[1]**2+initial[3]**2
+                longitudinal = np.sqrt(1-angle2)
+                expected[0] += length*initial[1]/longitudinal
+                expected[2] += length*initial[3]/longitudinal
+                expected[4] += length*(1-1/longitudinal)
+                # Observe the physical exit before the usual end-turn
+                # time_s/zeta reference-frame change. DriftExact has that
+                # same bookkeeping; it is separate from the cavity map.
+                line.track(incoming,ele_start=0,ele_stop=1)
+                assert incoming.state[0] == 1, model
+                np.testing.assert_allclose(values(incoming), expected,
+                    rtol=0., atol=2e-13, err_msg=model)
+                np.testing.assert_allclose(incoming.s[0], length,
+                                           rtol=0., atol=2e-14)
+                line.track(incoming,ele_start=0,ele_stop=1,backtrack=True)
+                assert incoming.state[0] == 1, model
+                np.testing.assert_allclose(values(incoming), initial,
+                    rtol=0., atol=3e-13, err_msg=model+' signed inverse')
 
 
 def test_public_cavity_independent_quadrupole_limit(tmp_path):
@@ -85,24 +85,24 @@ def test_public_cavity_independent_quadrupole_limit(tmp_path):
     angle = wave*length
     expected_x = epsilon*np.array([np.cos(angle), -wave*np.sin(angle)])
     expected_y = epsilon*np.array([np.cosh(angle), wave*np.sinh(angle)])
-    with kernel_context(tmp_path) as context:
-        for model in MODELS:
-            element = xt.MagnetOverlappedCavity(_context=context, length=length, voltage=0.,
-                frequency=0., counter_wave_amplitude=0., knl=[0., k1*length], ks=0.,
-                model=model, integrator='uniform', num_kicks=64)
-            for charge in (-1., 1.):
-                incoming = particle(context, 2.4, charge,
-                    x=epsilon, px=0., y=epsilon, py=0., zeta=0.)
-                element.track(incoming)
-                assert incoming.state[0] == 1, model
-                result = values(incoming)
-                # Finite launch and collocation errors are below this linear
-                # limit check; the test is not a finite-amplitude exact map.
-                np.testing.assert_allclose(result[:2], expected_x,
-                    rtol=2e-8, atol=3e-14, err_msg=model+' normal x')
-                np.testing.assert_allclose(result[2:4], expected_y,
-                    rtol=2e-8, atol=3e-14, err_msg=model+' normal y')
-                np.testing.assert_allclose(result[5], 0., rtol=0., atol=2e-13)
+    context = xo.ContextCpu()
+    for model in MODELS:
+        element = xt.MagnetOverlappedCavity(_context=context, length=length, voltage=0.,
+            frequency=0., counter_wave_amplitude=0., knl=[0., k1*length], ks=0.,
+            model=model, integrator='uniform', num_kicks=64)
+        for charge in (-1., 1.):
+            incoming = particle(context, 2.4, charge,
+                x=epsilon, px=0., y=epsilon, py=0., zeta=0.)
+            element.track(incoming)
+            assert incoming.state[0] == 1, model
+            result = values(incoming)
+            # Finite launch and collocation errors are below this linear
+            # limit check; the test is not a finite-amplitude exact map.
+            np.testing.assert_allclose(result[:2], expected_x,
+                rtol=2e-8, atol=3e-14, err_msg=model+' normal x')
+            np.testing.assert_allclose(result[2:4], expected_y,
+                rtol=2e-8, atol=3e-14, err_msg=model+' normal y')
+            np.testing.assert_allclose(result[5], 0., rtol=0., atol=2e-13)
 
 
 def test_public_cavity_physical_clock_frame_invariance(tmp_path):
@@ -111,50 +111,50 @@ def test_public_cavity_physical_clock_frame_invariance(tmp_path):
     gamma = 2.4
     beta0 = np.sqrt((gamma-1.)*(gamma+1.))/gamma
     shift_zeta = beta0*C_LIGHT*delay
-    with kernel_context(tmp_path) as context:
-        for model in MODELS:
-            element = xt.Cavity(_context=context, length=.05, voltage=20e3,
-                frequency=400e6, phase=.23, counter_wave_amplitude=.5, counter_wave_phase=.3, model=model, integrator='uniform',
-                num_kicks=16, absolute_time=True)
-            first = particle(context, gamma, px=.005, py=-.004,
-                             zeta=.001, time_s=0.)
-            second = particle(context, gamma, px=.005, py=-.004,
-                zeta=.001+shift_zeta, time_s=delay)
-            element.track(first)
-            element.track(second)
-            assert first.state[0] == second.state[0] == 1, model
-            translated = values(second)
-            translated[4] -= shift_zeta
-            np.testing.assert_allclose(translated, values(first),
-                rtol=0., atol=2e-12, err_msg=model+' physical RF clock')
+    context = xo.ContextCpu()
+    for model in MODELS:
+        element = xt.Cavity(_context=context, length=.05, voltage=20e3,
+            frequency=400e6, phase=.23, counter_wave_amplitude=.5, counter_wave_phase=.3, model=model, integrator='uniform',
+            num_kicks=16, absolute_time=True)
+        first = particle(context, gamma, px=.005, py=-.004,
+                         zeta=.001, time_s=0.)
+        second = particle(context, gamma, px=.005, py=-.004,
+            zeta=.001+shift_zeta, time_s=delay)
+        element.track(first)
+        element.track(second)
+        assert first.state[0] == second.state[0] == 1, model
+        translated = values(second)
+        translated[4] -= shift_zeta
+        np.testing.assert_allclose(translated, values(first),
+            rtol=0., atol=2e-12, err_msg=model+' physical RF clock')
 
 
 def test_public_cavity_rejects_nonpositive_native_momentum(tmp_path):
     """Squaring p cannot turn a backward native ray into a forward one."""
     checked=0
     names=(*COORDINATES,'ptau','pzeta','rpp','rvv','s','ax','ay')
-    with kernel_context(tmp_path) as context:
-        for model in MODELS:
-            element=xt.Cavity(_context=context,length=.05,voltage=0.,
-                frequency=0.,counter_wave_amplitude=.55,model=model,integrator='uniform',
-                num_kicks=4)
-            for delta in (-1.1,-1.):
-                try:
-                    incoming=particle(context,2.4,px=0.,py=0.,delta=delta)
-                except ValueError:
-                    # Some particle constructors may already reject this
-                    # direction; do not corrupt raw buffers to bypass them.
-                    continue
-                before={name:np.asarray(getattr(incoming,name)).copy()
-                        for name in names}
-                time_before=float(incoming.time_s)
-                element.track(incoming)
-                assert incoming.state[0]<0,(model,delta)
-                for name,expected in before.items():
-                    np.testing.assert_array_equal(getattr(incoming,name),
-                        expected,err_msg=repr((model,delta,name)))
-                assert float(incoming.time_s)==time_before
-                checked+=1
+    context = xo.ContextCpu()
+    for model in MODELS:
+        element=xt.Cavity(_context=context,length=.05,voltage=0.,
+            frequency=0.,counter_wave_amplitude=.55,model=model,integrator='uniform',
+            num_kicks=4)
+        for delta in (-1.1,-1.):
+            try:
+                incoming=particle(context,2.4,px=0.,py=0.,delta=delta)
+            except ValueError:
+                # Some particle constructors may already reject this
+                # direction; do not corrupt raw buffers to bypass them.
+                continue
+            before={name:np.asarray(getattr(incoming,name)).copy()
+                    for name in names}
+            time_before=float(incoming.time_s)
+            element.track(incoming)
+            assert incoming.state[0]<0,(model,delta)
+            for name,expected in before.items():
+                np.testing.assert_array_equal(getattr(incoming,name),
+                    expected,err_msg=repr((model,delta,name)))
+            assert float(incoming.time_s)==time_before
+            checked+=1
     if not checked:
         pytest.skip('Particles constructor already rejects both directions')
 
@@ -178,31 +178,31 @@ def test_public_cavity_mixed_species_reference_equivalence(tmp_path):
                     counter_wave_amplitude=.5, counter_wave_phase=.3,
                     integrator='uniform', num_kicks=16, absolute_time=True)
     metadata = ('ptau', 'pzeta', 'rpp', 'rvv', 'ax', 'ay', 's')
-    with kernel_context(tmp_path) as context:
-        for model in MODELS:
-            fixed = xt.MagnetOverlappedCavity(_context=context, model=model,
-                              **controls, **base_static)
-            rebuilt_controls = {**controls, 'phase': controls['phase']-np.pi}
-            rebuilt = xt.MagnetOverlappedCavity(_context=context, model=model,
-                                **rebuilt_controls, **actual_static)
-            mixed = particle(context, gamma, charge_ratio=-1., mass_ratio=2.,
-                             px=.005, py=-.004, zeta=.001, delta=.03)
-            actual = particle(context, gamma, charge=-1., mass0=2*MASS0,
-                p0c=2*MASS0*np.sqrt((gamma-1.)*(gamma+1.)),
-                px=.005, py=-.004, zeta=.001, delta=.03)
-            fixed.track(mixed)
-            rebuilt.track(actual)
-            assert mixed.state[0] == actual.state[0] == 1, model
-            np.testing.assert_allclose(values(mixed), values(actual),
-                rtol=0., atol=8e-13, err_msg=model+' actual-species chart')
-            for name in metadata:
-                np.testing.assert_allclose(getattr(mixed, name),
-                    getattr(actual, name), rtol=0., atol=8e-13,
-                    err_msg=model+' '+name)
-            # Physical momenta/energies also agree, despite the different
-            # reference masses, charges and momentum normalizations.
-            np.testing.assert_allclose(mixed.energy, actual.energy,
-                rtol=3e-13, atol=2e-7, err_msg=model+' physical energy')
+    context = xo.ContextCpu()
+    for model in MODELS:
+        fixed = xt.MagnetOverlappedCavity(_context=context, model=model,
+                          **controls, **base_static)
+        rebuilt_controls = {**controls, 'phase': controls['phase']-np.pi}
+        rebuilt = xt.MagnetOverlappedCavity(_context=context, model=model,
+                            **rebuilt_controls, **actual_static)
+        mixed = particle(context, gamma, charge_ratio=-1., mass_ratio=2.,
+                         px=.005, py=-.004, zeta=.001, delta=.03)
+        actual = particle(context, gamma, charge=-1., mass0=2*MASS0,
+            p0c=2*MASS0*np.sqrt((gamma-1.)*(gamma+1.)),
+            px=.005, py=-.004, zeta=.001, delta=.03)
+        fixed.track(mixed)
+        rebuilt.track(actual)
+        assert mixed.state[0] == actual.state[0] == 1, model
+        np.testing.assert_allclose(values(mixed), values(actual),
+            rtol=0., atol=8e-13, err_msg=model+' actual-species chart')
+        for name in metadata:
+            np.testing.assert_allclose(getattr(mixed, name),
+                getattr(actual, name), rtol=0., atol=8e-13,
+                err_msg=model+' '+name)
+        # Physical momenta/energies also agree, despite the different
+        # reference masses, charges and momentum normalizations.
+        np.testing.assert_allclose(mixed.energy, actual.energy,
+            rtol=3e-13, atol=2e-7, err_msg=model+' physical energy')
 
 
 @pytest.fixture(scope='module')
