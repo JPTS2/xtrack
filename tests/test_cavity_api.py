@@ -599,3 +599,26 @@ def test_cavity_switched_to_a_physical_model_after_tracking_is_checked():
     cavity.length = 0.
     with pytest.raises(ValueError, match='positive finite length'):
         line.track(line.build_particles(x=[1e-3]))
+
+
+@pytest.mark.parametrize('model, is_drift', [('adaptive', True), ('_phase-resolved', False)])
+def test_drift_slices_keep_their_role_before_the_parent_is_linked(model, is_drift):
+    from xtrack.line import _is_drift
+    line = xt.Line(elements={'rf': xt.Cavity(model=model, frequency=400e6, length=2.,
+                                             voltage=1e6)})
+    line.slice_thick_elements([xt.Strategy(slicing=xt.Teapot(3))])
+    reloaded = xt.Line.from_dict(line.to_dict())
+    names = [name for name in reloaded.element_names if name.startswith('drift_rf')]
+    assert names and all(_is_drift(reloaded._element_dict[name], reloaded) == is_drift
+                         for name in names)
+
+
+def test_magnet_overlapped_cavity_refuses_static_fields_it_cannot_track():
+    import madng_tpsa
+    desc = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=1)
+    cavity = xt.MagnetOverlappedCavity(model='_phase-averaged', frequency=400e6, length=1.,
+                                       voltage=1e6, knl=[0., .1, 0.], edge_entry_active=0,
+                                       edge_exit_active=0)
+    cavity.knl[2] = desc.param(1, 0.)
+    with pytest.raises(ValueError, match='normal quadrupole'):
+        cavity._check_physical_model(tracking=True)

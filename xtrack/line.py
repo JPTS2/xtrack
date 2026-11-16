@@ -1861,10 +1861,7 @@ class Line:
     @doc_group("Cleanup and Simplification")
     def disable_tpsa_elements(self):
         """Convert all TPSA-enabled elements in the line back to scalar storage."""
-        # Attribute-cache construction probes dtypes by copying an element;
-        # active TPSA elements intentionally cannot be copied. Visit the actual
-        # owners instead, including parents used only through their slices.
-        # The environment may contain unrelated lines: do not disable those.
+        # The owners, not the attribute cache: active TPSA elements cannot be copied.
         for _, element in self._used_owners():
             if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0):
                 element.disable_tpsa()
@@ -8115,9 +8112,14 @@ def _is_drift(element, line):
     if isinstance(element, beam_elements.Drift):
         return True
     if element.__class__.__name__.startswith('Drift'):
-        # A layout drift slice can carry a distributed source. Its owner
-        # declares whether replacing/merging it as a free drift is valid.
-        return bool(getattr(element, 'behaves_like_drift', True))
+        # A drift slice of a physical-model cavity carries its field; the parent
+        # is looked up by name when the slice is not linked yet.
+        parent = getattr(element, '_parent', None)
+        name = getattr(element, 'parent_name', None)
+        if parent is None and name is not None and line is not None:
+            parent = line._element_dict.get(name)
+        return not (isinstance(parent, (xt.Cavity, xt.FieldExpansionCavity))
+                    and parent._model >= 10)
     return False
 
 def _behaves_like_drift(element, line):
@@ -8594,12 +8596,7 @@ class LineAttr:
 
     @property
     def _inherit_strengths(self):
-        """Refresh source-bearing layout roles after ordinary model changes.
-
-        Most element classes have a fixed Boolean role and retain the cached
-        array. A small number of slice classes expose an actual property:
-        continuous Cavity fields live on intervals, legacy RF kicks on nodes.
-        """
+        """Slice roles that follow the parent's current cavity model."""
         if not self._dynamic_inherit_strengths:
             return self._static_inherit_strengths
         result = self._static_inherit_strengths.copy()
@@ -8609,9 +8606,7 @@ class LineAttr:
 
     @property
     def _rot_and_shift_from_parent(self):
-        # Metadata can inherit a manually applied frame without changing the
-        # element's automatic native transformation wrapper. Fixed roles keep
-        # their original cached array; only explicit dynamic hooks are read.
+        # Only slices with a dynamic role are read; the rest keep the cached array.
         if not self._dynamic_rot_and_shift_from_parent:
             return self._static_rot_and_shift_from_parent
         result = self._static_rot_and_shift_from_parent.copy()

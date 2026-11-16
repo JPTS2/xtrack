@@ -22,8 +22,7 @@ class _DriftSliceElementBase(_SliceBase):
     allow_loss_refinement = True
     isthick = True
     _inherit_strengths = False
-    # Match the historical Line cleanup classification. Specific intervals
-    # carrying an active source override this property below.
+    # A drift for line cleanup, unless the interval carries a physical model.
     behaves_like_drift = True
 
 class DriftSliceBend(_DriftSliceElementBase, BeamElement):
@@ -123,15 +122,13 @@ class DriftSliceCavity(_CavitySliceOffset, _DriftSliceElementBase, BeamElement):
 
     @property
     def _rot_and_shift_from_parent_for_metadata(self):
-        # New source intervals apply the parent frame manually in their
-        # native helper. Do not enable the automatic legacy drift wrapper.
+        # The slice applies the parent frame itself.
         parent = self._parent
         return parent is not None and parent._model >= 10
 
     def get_equivalent_element(self):
         if self._parent._model >= 10:
-            # Retain this connected physical interval. An ordinary Drift
-            # would erase the parent RF/static source during optimization.
+            # Kept: a Drift would drop the parent's field.
             return self
         out = Drift(length=self._parent.length * self.weight,
                      _buffer=self._buffer)

@@ -288,11 +288,14 @@ class Tracker:
             self._tracker_data_cache = None
         self._is_invalidated = True
 
-    def _cavities(self):
-        # All cavities, not only those physical now: a model may change between calls.
-        if not hasattr(self, '_cavity_cache'):
-            self._cavity_cache = tuple(self.line._used_cavity_owners())
-        return self._cavity_cache
+    def _physical_cavities(self):
+        # Rebuilt only when some cavity's model has changed since the last call.
+        from .beam_elements.cavity import _MODEL_CHANGES
+        if getattr(self, '_physical_cavity_stamp', None) != _MODEL_CHANGES[0]:
+            self._physical_cavity_cache = tuple(
+                ee for ee in self.line._used_cavity_owners() if ee._model >= 10)
+            self._physical_cavity_stamp = _MODEL_CHANGES[0]
+        return self._physical_cavity_cache
 
     def _check_invalidated(self):
         if hasattr(self, '_is_invalidated') and self._is_invalidated:
@@ -301,7 +304,7 @@ class Tracker:
                 "Please rebuild the tracker, for example using `line.build_tracker(...)`.")
 
     def _track(self, particles, *args, **kwargs):
-        for cavity in self._cavities():
+        for cavity in self._physical_cavities():
             cavity._check_physical_model(tracking=True)
         original_tpsa_track = self.config.XTRACK_TPSA_TRACK
         self.config.XTRACK_TPSA_TRACK = isinstance(particles, ParticlesTpsa)

@@ -154,9 +154,7 @@ class ThinSliceCavity(_ThinSliceElementBase, BeamElement):
     def get_equivalent_element(self):
 
         if self._parent._model >= 10:
-            # Retain connected identity partition nodes. Replacing these by
-            # disposable Markers would erase the RF kicks if the live parent
-            # later changes back to a legacy selector.
+            # Kept: a Marker would lose the RF kicks if the parent returns to a legacy model.
             return self
 
         out = Cavity(length=0,

@@ -9,9 +9,6 @@
 // Conservative source-based RF maps. Coordinates are (X,Y,T,Px,Py,E),
 // scaled by (1/k,1/k,1/(kc),mc,mc,mc^2); the T--E block has negative sign.
 // k is the coordinate scale omega/c, independent of the physical carrier.
-// Source ancestry: cavity-modelling phase_resolved/conservative_source.py,
-// kinetic/transport.py, voltage.py and phase_resolved/localized.py.
-// This header supplies numerical maps, not physical/numerical admission.
 #include <math.h>
 #include <stdint.h>
 #include <stddef.h>

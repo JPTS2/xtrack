@@ -39,6 +39,7 @@ def _constant_part(value):
     return getattr(value, 'const_part', value)
 
 
+_MODEL_CHANGES = [0]
 _RADIAL_ORDER = 6
 _NONZERO_DEFAULTS = {'edge_entry_active': 1, 'edge_exit_active': 1,
                      'radial_order': _RADIAL_ORDER}
@@ -64,6 +65,8 @@ class _CavityControls:
             self._model = _CAVITY_MODEL_IDS[value]
         except KeyError:
             raise ValueError(f'Invalid Cavity model: {value}') from None
+        # Trackers rebuild their list of physical cavities when this changes.
+        _MODEL_CHANGES[0] += 1
 
     @staticmethod
     def get_available_models():
@@ -516,17 +519,21 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
         # _HasKnlKsl comes first in the order and has its own __init__.
         Cavity.__init__(self, **kwargs)
 
+    def _present(self, name):
+        """Entries of knl or ksl that are set: a nonzero value or a knob's series."""
+        array = self._context.nparray_from_context_array
+        return ((array(getattr(self, '_' + name)) != 0.)
+                | (array(getattr(self, '_' + name + '_tpsa')) != 0))
+
     def _check_physical_model(self, tracking=False):
         super()._check_physical_model(tracking=tracking)
+        normal, skew = self._present('knl'), self._present('ksl')
+        solenoid = _constant_part(self.ks) != 0.
         if self._model < 10:
             return
         if self._model in (11, 12):
-            # The stored constant parts: a knob's series does not change which terms are present.
-            normal, skew = np.asarray(self._knl), np.asarray(self._ksl)
-            others = (np.any(normal[np.arange(len(normal)) != 1] != 0.)
-                      or np.any(skew != 0.))
-            solenoid = _constant_part(self.ks) != 0.
-            if others or (solenoid and (np.any(normal != 0.) or self.edge_entry_active
+            others = np.any(normal[np.arange(len(normal)) != 1]) or np.any(skew)
+            if others or (solenoid and (np.any(normal) or self.edge_entry_active
                                         or self.edge_exit_active)):
                 raise ValueError(f'{self.model} supports a uniform solenoid with '
                                  'faces off or a normal quadrupole as static field')
@@ -756,8 +763,9 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         z = np.linspace(-length / 2, length / 2, len(values))
         m = np.arange(-num_harmonics, num_harmonics + 1)
         k = 2 * np.pi * m / length
-        amplitudes = np.trapezoid(values[None, :] * np.exp(-1j * k[:, None] * z[None, :]),
-                                  z, axis=1) / length
+        from ..footprint import _trapezoid
+        amplitudes = _trapezoid(np, values[None, :] * np.exp(-1j * k[:, None] * z[None, :]),
+                                z, axis=1) / length
         # Both ends are one point of the period, where harmonic m is (-1)^m: the
         # least change meeting the end value is alternating and equal in size.
         sign = (-1.) ** m
