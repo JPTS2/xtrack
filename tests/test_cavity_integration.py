@@ -9,6 +9,7 @@ import pytest
 import xobjects as xo
 
 import xtrack as xt
+from xobjects.test_helpers import for_all_test_contexts
 
 
 
@@ -25,111 +26,112 @@ def cpu_context():
     return xo.ContextCpu()
 
 
-def hardware(model):
-    """Small declared hardware, with nonzero counter-wave where retained."""
-    return dict(model=model, length=.05, voltage=2e4, frequency=400e6,
-        phase=.35, counter_wave_amplitude=0. if model == '_phase-resolved-frozen' else .25,
-        counter_wave_phase=.3, num_kicks=16,
-        absolute_time=True)
+# Small cavities with a partly reflected wave, where the model takes one.
+SETTINGS = {model: dict(model=model, length=.05, voltage=2e4, frequency=400e6, phase=.35,
+                        counter_wave_amplitude=0. if model == '_phase-resolved-frozen' else .25,
+                        counter_wave_phase=.3, num_kicks=16, absolute_time=True)
+            for model in MODELS}
+PROBE = dict(mass0=MASS_EV, p0c=P0C_EV, q0=1., x=3e-5, px=4e-4, y=-2e-5, py=-3e-4,
+             zeta=2e-4, delta=1e-3)
 
 
-def particle(context, **overrides):
-    """Use a finite off-axis launch, independently of any reference donor."""
-    values = dict(mass0=MASS_EV, p0c=P0C_EV, q0=1., x=3e-5,
-        px=4e-4, y=-2e-5, py=-3e-4, zeta=2e-4, delta=1e-3)
-    values.update(overrides)
-    return xt.Particles(_context=context, **values)
-
-
-def values(particles):
+def coordinates(particles):
+    """The six coordinates of a surviving first particle, read on the CPU."""
+    particles.move(_context=xo.ContextCpu())
     assert particles.state[0] == 1
     return np.array([getattr(particles, name)[0] for name in COORDINATES])
 
 
-def line_for(context, controls):
-    line = xt.Line(elements=[xt.Cavity(_context=context, **controls)],
-                   element_names=['rf'])
-    line.particle_ref = xt.Particles(_context=context, mass0=MASS_EV,
-                                    p0c=P0C_EV, q0=1.)
-    line.reset_s_at_end_turn = False
-    line.build_tracker(_context=context)
-    return line
-
-
-def endpoint(line, context):
-    probe = particle(context)
-    line.track(probe)
-    return values(probe)
-
-
+@for_all_test_contexts
 @pytest.mark.parametrize('model', EVOLVING_MODELS)
-def test_live_expression_updates_equal_fresh_construction(cpu_context, model):
+def test_live_expression_updates_equal_fresh_construction(test_context, model):
     """A source cached at construction must not mask ordinary variable edits."""
-    controls = hardware(model)
-    line = line_for(cpu_context, controls)
-    line.set('rf_phase', controls['phase'])
-    line.set('rf_amplitude', controls['counter_wave_amplitude'])
-    line.set('rf', phase='rf_phase', counter_wave_amplitude='rf_amplitude')
-    first = endpoint(line, cpu_context)
+    live = xt.Line(elements=[xt.Cavity(**SETTINGS[model])], element_names=['rf'])
+    live.particle_ref = xt.Particles(mass0=MASS_EV, p0c=P0C_EV, q0=1.)
+    live.reset_s_at_end_turn = False
+    live.build_tracker(_context=test_context)
+    live.set('rf_phase', SETTINGS[model]['phase'])
+    live.set('rf_amplitude', SETTINGS[model]['counter_wave_amplitude'])
+    live.set('rf', phase='rf_phase', counter_wave_amplitude='rf_amplitude')
+    first = xt.Particles(_context=test_context, **PROBE)
+    live.track(first)
+    first = coordinates(first)
+
     for phase, amplitude in ((.75, .7), (-.2, .3)):
-        line.set('rf_phase', phase)
-        line.set('rf_amplitude', amplitude)
-        actual = endpoint(line, cpu_context)
-        fresh = line_for(cpu_context, dict(controls, phase=phase,
-                                           counter_wave_amplitude=amplitude))
-        np.testing.assert_allclose(actual, endpoint(fresh, cpu_context),
+        live.set('rf_phase', phase)
+        live.set('rf_amplitude', amplitude)
+        through_live = xt.Particles(_context=test_context, **PROBE)
+        live.track(through_live)
+
+        fresh = xt.Line(elements=[xt.Cavity(**dict(SETTINGS[model], phase=phase,
+                                                   counter_wave_amplitude=amplitude))],
+                        element_names=['rf'])
+        fresh.particle_ref = xt.Particles(mass0=MASS_EV, p0c=P0C_EV, q0=1.)
+        fresh.reset_s_at_end_turn = False
+        fresh.build_tracker(_context=test_context)
+        through_fresh = xt.Particles(_context=test_context, **PROBE)
+        fresh.track(through_fresh)
+
+        np.testing.assert_allclose(coordinates(through_live), coordinates(through_fresh),
                                    rtol=0., atol=2e-13)
-        assert np.linalg.norm(actual-first) > 1e-6
+        assert np.linalg.norm(coordinates(through_live) - first) > 1e-6
 
 
+@for_all_test_contexts
 @pytest.mark.parametrize('model', MODELS)
-def test_copy_json_rebuild_and_reverse_preserve_public_map(cpu_context, model):
+def test_copy_json_rebuild_and_reverse_preserve_public_map(test_context, model):
     """Copy/load is tested for ordinary fields, without active TPSA handles."""
-    line = line_for(cpu_context, hardware(model))
-    expected = endpoint(line, cpu_context)
-    for copy in (line.copy(_context=cpu_context),
-                 xt.Line.from_dict(line.to_dict())):
+    line = xt.Line(elements=[xt.Cavity(**SETTINGS[model])], element_names=['rf'])
+    line.particle_ref = xt.Particles(mass0=MASS_EV, p0c=P0C_EV, q0=1.)
+    line.reset_s_at_end_turn = False
+    line.build_tracker(_context=test_context)
+    end = {}
+    for name, copy in (('original', line), ('copy', line.copy(_context=test_context)),
+                       ('json', xt.Line.from_dict(line.to_dict()))):
         if copy.tracker is None:
-            copy.build_tracker(_context=cpu_context)
-        np.testing.assert_allclose(endpoint(copy, cpu_context), expected,
-                                   rtol=0., atol=2e-13)
-    initial = particle(cpu_context)
+            copy.build_tracker(_context=test_context)
+        particles = xt.Particles(_context=test_context, **PROBE)
+        copy.track(particles)
+        end[name] = coordinates(particles)
+    for name in ('copy', 'json'):
+        np.testing.assert_allclose(end[name], end['original'], rtol=0., atol=2e-13)
+
+    initial = xt.Particles(_context=test_context, **PROBE)
     tracked = initial.copy()
     line.track(tracked)
     line.track(tracked, backtrack=True)
-    np.testing.assert_allclose(values(tracked), values(initial),
-                               rtol=0., atol=2e-11)
+    np.testing.assert_allclose(coordinates(tracked), coordinates(initial), rtol=0., atol=2e-11)
 
 
+@for_all_test_contexts
 @pytest.mark.parametrize('model', MODELS)
-def test_absolute_clock_origin_is_one_shared_physical_event(cpu_context, model):
+def test_absolute_clock_origin_is_one_shared_physical_event(test_context, model):
     """A clock-origin change compensated in RF phase leaves the map invariant."""
-    controls = hardware(model)
-    first = xt.Cavity(_context=cpu_context, **controls)
     delay = .73e-9
-    second = xt.Cavity(_context=cpu_context,
-        **dict(controls, phase=controls['phase']-2*np.pi*controls['frequency']*delay))
-    before = particle(cpu_context, time_s=1.9e-9, s=.17)
-    after = particle(cpu_context, time_s=1.9e-9+delay, s=.17)
+    settings = SETTINGS[model]
+    first = xt.Cavity(_context=test_context, **settings)
+    second = xt.Cavity(_context=test_context, **dict(
+        settings, phase=settings['phase'] - 2 * np.pi * settings['frequency'] * delay))
+    before = xt.Particles(_context=test_context, **PROBE, time_s=1.9e-9, s=.17)
+    after = xt.Particles(_context=test_context, **PROBE, time_s=1.9e-9 + delay, s=.17)
     first.track(before)
     second.track(after)
-    np.testing.assert_allclose(values(before), values(after),
-                               rtol=0., atol=2e-12)
+    np.testing.assert_allclose(coordinates(before), coordinates(after), rtol=0., atol=2e-12)
 
 
+@for_all_test_contexts
 @pytest.mark.parametrize('model', EVOLVING_MODELS)
-def test_normal_match_uses_selected_tracking_map(cpu_context, model):
+def test_normal_match_uses_selected_tracking_map(test_context, model):
     """Recover an energy target produced by tracking at another RF phase."""
-    controls = hardware(model)
-    target_controls = dict(controls, phase=.7)
-    reference = xt.Particles(_context=cpu_context, mass0=MASS_EV,
-                             p0c=P0C_EV, q0=1.)
+    reference = xt.Particles(_context=test_context, mass0=MASS_EV, p0c=P0C_EV, q0=1.)
     pilot = reference.copy()
-    xt.Cavity(_context=cpu_context, **target_controls).track(pilot)
-    assert pilot.state[0] == 1
-    target_delta = float(pilot.delta[0])
-    line = line_for(cpu_context, controls)
-    line.set('phase_knob', controls['phase'])
+    xt.Cavity(_context=test_context, **dict(SETTINGS[model], phase=.7)).track(pilot)
+    target_delta = coordinates(pilot)[5]
+    line = xt.Line(elements=[xt.Cavity(**SETTINGS[model])], element_names=['rf'])
+    line.particle_ref = reference.copy()
+    line.reset_s_at_end_turn = False
+    line.build_tracker(_context=test_context)
+    line.set('phase_knob', SETTINGS[model]['phase'])
     line.set('rf', phase='phase_knob')
     line.match(method='6d', start=xt.START, end=xt.END,
         betx=2., alfx=.3, bety=3., alfy=-.2,
@@ -137,15 +139,14 @@ def test_normal_match_uses_selected_tracking_map(cpu_context, model):
         targets=[xt.Target('delta', at=xt.END, value=target_delta, tol=1e-11)])
     matched = reference.copy()
     line.track(matched)
-    assert matched.state[0] == 1
-    assert abs(float(matched.delta[0])-target_delta) < 1e-11
+    assert abs(coordinates(matched)[5] - target_delta) < 1e-11
 
 
 @pytest.mark.parametrize('model,field', [('_phase-resolved', 'counter_wave_amplitude'),
     ('_phase-resolved', 'edge_entry_active'), ('_phase-resolved', 'edge_exit_active')])
 def test_zero_controls_survive_json_roundtrip(model, field):
     """Zero hardware/face settings must not turn into constructor defaults."""
-    original = xt.MagnetOverlappedCavity(**dict(hardware(model), **{field: 0}))
+    original = xt.MagnetOverlappedCavity(**dict(SETTINGS[model], **{field: 0}))
     restored = xt.MagnetOverlappedCavity.from_dict(original.to_dict())
     assert getattr(restored, field) == 0
     assert restored.model == original.model
@@ -154,8 +155,8 @@ def test_zero_controls_survive_json_roundtrip(model, field):
 @pytest.mark.parametrize('n_cells', (-1, 1.5))
 def test_cells_must_be_a_non_negative_integer(n_cells):
     with pytest.raises(ValueError, match='n_cells'):
-        xt.Cavity(**dict(hardware('_phase-resolved'), n_cells=n_cells))
-    rf = xt.Cavity(**hardware('_phase-resolved'))
+        xt.Cavity(**dict(SETTINGS['_phase-resolved'], n_cells=n_cells))
+    rf = xt.Cavity(**SETTINGS['_phase-resolved'])
     with pytest.raises(ValueError, match='n_cells'):
         rf.n_cells = n_cells
 
@@ -261,7 +262,7 @@ def test_time_based_clock_option_survives_copy_json(cpu_context, mode):
 def test_reference_ramp_preserves_physical_clock_across_calls_and_reverse(cpu_context):
     ramped = clock_line(cpu_context, .4*MASS_EV, True)
     control = clock_line(cpu_context, 0., True)
-    initial = particle(cpu_context, **CLOCK_LAUNCH)
+    initial = xt.Particles(_context=cpu_context, **dict(PROBE, **CLOCK_LAUNCH))
     start = physical_clock_chart(initial)
     split, baseline = initial.copy(), initial.copy()
     for index in range(4):
@@ -289,7 +290,7 @@ def test_reference_ramp_preserves_physical_clock_across_calls_and_reverse(cpu_co
 
 def test_default_reference_ramp_retains_relative_delay_convention(cpu_context):
     line = clock_line(cpu_context, .4*MASS_EV, False)
-    tracked = particle(cpu_context, **CLOCK_LAUNCH)
+    tracked = xt.Particles(_context=cpu_context, **dict(PROBE, **CLOCK_LAUNCH))
     line.track(tracked, ele_start=0, ele_stop=1)
     before = physical_clock_chart(tracked)[4]/CLOCK_BETA
     old_beta = float(tracked.beta0[0])
@@ -367,7 +368,7 @@ def test_reference_rebase_preserves_scalar_nonzero_potential(tmp_path, monkeypat
     context = xo.ContextCpu(omp_num_threads=0)
     line = reference_only_line(context, mode, kind)
     launch = dict(CLOCK_LAUNCH, px=.13, py=-.07, ax=.025, ay=-.017)
-    tracked = particle(context, **launch)
+    tracked = xt.Particles(_context=context, **dict(PROBE, **launch))
 
     def chart():
         scale = float(tracked.p0c[0])/float(P0C_EV)
@@ -430,28 +431,27 @@ def thread_context(request):
     return xo.ContextCpu(omp_num_threads=request.param)
 
 
-def test_finite_rf_face_is_a_hard_edge(cpu_context):
+@for_all_test_contexts
+def test_finite_rf_face_is_a_hard_edge(test_context):
     """A whole cavity's end planes are hard edges: a field that does
     not vanish there ends abruptly and the particle leaves field-free."""
-    line = xt.Line(elements=[xt.Cavity(_context=cpu_context,
+    line = xt.Line(elements=[xt.Cavity(
         model='_phase-resolved', length=.56, frequency=712e6, voltage=2000.,
         phase=.4, counter_wave_amplitude=.5, counter_wave_phase=.3, n_cells=3,
-        num_kicks=64, absolute_time=True), xt.Marker(_context=cpu_context)],
+        num_kicks=64, absolute_time=True), xt.Marker()],
         element_names=['rf', 'end'])
-    line.particle_ref = xt.Particles(_context=cpu_context, mass0=MASS_EV,
-                                    p0c=P0C_EV, q0=1.)
+    line.particle_ref = xt.Particles(mass0=MASS_EV, p0c=P0C_EV, q0=1.)
     line.reset_s_at_end_turn = False
-    line.build_tracker(_context=cpu_context)
-    ray = particle(cpu_context, x=.0004, y=-.0003, px=.002, py=-.001,
-                   s=.17, time_s=1.9e-9)
-    start = ray.copy()
+    line.build_tracker(_context=test_context)
+    ray = xt.Particles(_context=test_context, **dict(PROBE, x=.0004, y=-.0003, px=.002,
+                                                      py=-.001), s=.17, time_s=1.9e-9)
+    start = coordinates(ray.copy())
     for reverse in (False, True):
         line.track(ray, ele_start=0, ele_stop=1, backtrack=reverse)
-        assert ray.state[0] == 1
+        ray.move(_context=xo.ContextCpu())
         assert ray.ax[0] == 0. and ray.ay[0] == 0.
-    for name in ('x', 'px', 'y', 'py', 'zeta', 'delta'):
-        np.testing.assert_allclose(getattr(ray, name)[0], getattr(start, name)[0],
-                                   rtol=0, atol=1e-14)
+        ray.move(_context=test_context)
+    np.testing.assert_allclose(coordinates(ray), start, rtol=0, atol=1e-14)
 
 
 @pytest.mark.parametrize('mode', (None, 'thick', 'thin'),
@@ -468,7 +468,7 @@ def test_accepted_transformed_species_and_reference_rows_are_independent(
     or physical inverse-error bound.
     """
     context = thread_context
-    controls = dict(hardware('_phase-resolved'), num_kicks=24,
+    controls = dict(SETTINGS['_phase-resolved'], num_kicks=24,
         shift_x=.001, shift_y=-.0003, shift_s=.001,
         rot_x_rad=-.02, rot_y_rad=.03, rot_s_rad=.12)
     line = xt.Line(elements=[
@@ -491,14 +491,14 @@ def test_accepted_transformed_species_and_reference_rows_are_independent(
         charge_ratio=[1., -1., .5], particle_id=[7, 3, 11],
         zeta=[.0002, -.0003, .0001], delta=[.001, -.002, .003],
         spin_x=.1, spin_y=.2, spin_z=.3, s=.17, time_s=1.9e-9)
-    rays = particle(context, **launch)
+    rays = xt.Particles(_context=context, **dict(PROBE, **launch))
     before = numeric_rows_by_id(rays)
     expected = {}
     for index, identifier in enumerate(launch['particle_id']):
         one_launch = {name: (value[index]
             if isinstance(value, (list, np.ndarray)) else value)
             for name, value in launch.items()}
-        one = particle(context, **one_launch)
+        one = xt.Particles(_context=context, **dict(PROBE, **one_launch))
         line.track(one, ele_start=0, ele_stop=stop)
         assert one.state[0] == 1
         expected[identifier] = numeric_rows_by_id(one)[identifier]
