@@ -55,46 +55,47 @@ void CavityComplex_add_scaled(CavityComplex *out, CavityComplex a, double re, do
     out->im+=a.re*im+a.im*re;
 }
 
-// Eight-point Gauss-Legendre nodes and weights on [-1, 1], and the spectral
-// integration matrix S[i][j] = int_{-1}^{x_i} l_j for their Lagrange basis.
-static const double CAVITY_MAGNUS_X[8]={-0.96028985649753623,-0.79666647741362674,
-    -0.52553240991632899,-0.1834346424956498,0.1834346424956498,0.52553240991632899,
-    0.79666647741362674,0.96028985649753623};
-static const double CAVITY_MAGNUS_W[8]={0.10122853629037626,0.22238103445337447,
-    0.31370664587788729,0.36268378337836198,0.36268378337836198,0.31370664587788729,
-    0.22238103445337447,0.10122853629037626};
-static const double CAVITY_MAGNUS_S[8][8]={
-    {0.05061426814518813,-0.01821188661194015,0.012561662294060948,-0.0089660312261095029,
-     0.0061569827366535598,-0.0038353505092739047,0.0019455153281185271,-0.00055501665423383845},
-    {0.10951864353510864,0.11119051722668724,-0.027279592471563339,0.016299417716721101,
-     -0.010430704178294307,0.0062795059709273379,-0.0031298698218978848,0.00088560460868447563},
-    {0.097175071997825762,0.24171904999434633,0.15685332293894364,-0.031950206723756863,
-     0.016743465440452328,-0.0092869317242089596,0.0044514295505697994,-0.0012376113905010307},
-    {0.10373104194116247,0.21238698029669681,0.34134226854910724,0.18134189168918099,
-     -0.032042082642050026,0.01448241312244454,-0.0063956286207215406,0.0017184731685297054},
-    {0.099510063121846554,0.22877666307409601,0.29922423275544275,0.39472586602041201,
-     0.18134189168918099,-0.027635622671219955,0.0099940541566776568,-0.00250250565078621},
-    {0.10246614768087729,0.21792960490280467,0.32299357760209625,0.34594031793790966,
-     0.39463399010211885,0.15685332293894364,-0.019338015540971864,0.0040534642925504973},
-    {0.10034293168169178,0.22551090427527236,0.30742713990695995,0.37311448755665629,
-     0.34638436566164088,0.34098623834945063,0.11119051722668724,-0.0082901072447323814},
-    {0.1017835529446101,0.22043551912525594,0.31754199638716119,0.35652680064170842,
-     0.37164981460447149,0.30114498358382634,0.24059292106531462,0.05061426814518813}};
-
+// Eight-point Gauss-Legendre nodes and weights on [-1, 1]. Each user copies
+// a table into a local array: GPU kernels cannot read file-scope tables.
+#define CAVITY_MAGNUS_NODE_VALUES {-0.96028985649753623,-0.79666647741362674, \
+    -0.52553240991632899,-0.1834346424956498,0.1834346424956498,0.52553240991632899, \
+    0.79666647741362674,0.96028985649753623}
+#define CAVITY_MAGNUS_WEIGHT_VALUES {0.10122853629037626,0.22238103445337447, \
+    0.31370664587788729,0.36268378337836198,0.36268378337836198,0.31370664587788729, \
+    0.22238103445337447,0.10122853629037626}
+// Spectral integration matrix: int_{-1}^{x_i} l_j for the nodes' Lagrange basis l_j.
+#define CAVITY_MAGNUS_INTEGRAL_VALUES { \
+    {0.05061426814518813,-0.01821188661194015,0.012561662294060948,-0.0089660312261095029, \
+     0.0061569827366535598,-0.0038353505092739047,0.0019455153281185271,-0.00055501665423383845}, \
+    {0.10951864353510864,0.11119051722668724,-0.027279592471563339,0.016299417716721101, \
+     -0.010430704178294307,0.0062795059709273379,-0.0031298698218978848,0.00088560460868447563}, \
+    {0.097175071997825762,0.24171904999434633,0.15685332293894364,-0.031950206723756863, \
+     0.016743465440452328,-0.0092869317242089596,0.0044514295505697994,-0.0012376113905010307}, \
+    {0.10373104194116247,0.21238698029669681,0.34134226854910724,0.18134189168918099, \
+     -0.032042082642050026,0.01448241312244454,-0.0063956286207215406,0.0017184731685297054}, \
+    {0.099510063121846554,0.22877666307409601,0.29922423275544275,0.39472586602041201, \
+     0.18134189168918099,-0.027635622671219955,0.0099940541566776568,-0.00250250565078621}, \
+    {0.10246614768087729,0.21792960490280467,0.32299357760209625,0.34594031793790966, \
+     0.39463399010211885,0.15685332293894364,-0.019338015540971864,0.0040534642925504973}, \
+    {0.10034293168169178,0.22551090427527236,0.30742713990695995,0.37311448755665629, \
+     0.34638436566164088,0.34098623834945063,0.11119051722668724,-0.0082901072447323814}, \
+    {0.1017835529446101,0.22043551912525594,0.31754199638716119,0.35652680064170842, \
+     0.37164981460447149,0.30114498358382634,0.24059292106531462,0.05061426814518813}}
 // Omega = sum Re{e^{i n T} C} E^c p^-d M, M in {1, X^2+Y^2, XU+YV, U^2+V^2};
 // columns n, c, d, M. The n = 1 terms are first order in the charge, the
 // others second.
-static const int CAVITY_MAGNUS_LAYOUT[CAVITY_MAGNUS_TERMS][4]={
-    {0,0,1,1},{0,0,2,2},{0,0,3,1},{0,0,3,3},{0,0,4,2},{0,0,5,3},{0,1,2,1},{0,1,3,2},
-    {0,1,4,3},{0,2,3,1},{0,2,4,2},{0,2,5,3},{1,0,0,0},{1,0,0,1},{1,0,1,2},{1,0,2,3},
-    {1,1,1,1},{1,1,2,2},{1,1,3,3},{2,0,1,1},{2,0,2,2},{2,0,3,1},{2,0,3,3},{2,0,4,2},
-    {2,0,5,3},{2,1,2,1},{2,1,3,2},{2,1,4,3},{2,2,3,1},{2,2,4,2},{2,2,5,3}};
+#define CAVITY_MAGNUS_LAYOUT_VALUES { \
+    {0,0,1,1},{0,0,2,2},{0,0,3,1},{0,0,3,3},{0,0,4,2},{0,0,5,3},{0,1,2,1},{0,1,3,2}, \
+    {0,1,4,3},{0,2,3,1},{0,2,4,2},{0,2,5,3},{1,0,0,0},{1,0,0,1},{1,0,1,2},{1,0,2,3}, \
+    {1,1,1,1},{1,1,2,2},{1,1,3,3},{2,0,1,1},{2,0,2,2},{2,0,3,1},{2,0,3,3},{2,0,4,2}, \
+    {2,0,5,3},{2,1,2,1},{2,1,3,2},{2,1,4,3},{2,2,3,1},{2,2,4,2},{2,2,5,3}}
 
 GPUFUN
 int CavityMagnus_slot(int n, int c, int d, int monomial) {
+    const int layout[CAVITY_MAGNUS_TERMS][4] = CAVITY_MAGNUS_LAYOUT_VALUES;
     for (int i=0;i<CAVITY_MAGNUS_TERMS;++i)
-        if (CAVITY_MAGNUS_LAYOUT[i][0]==n && CAVITY_MAGNUS_LAYOUT[i][1]==c
-            && CAVITY_MAGNUS_LAYOUT[i][2]==d && CAVITY_MAGNUS_LAYOUT[i][3]==monomial) return i;
+        if (layout[i][0]==n && layout[i][1]==c
+            && layout[i][2]==d && layout[i][3]==monomial) return i;
     return -1;
 }
 
@@ -115,9 +116,10 @@ GPUFUN
 void CavityMagnus_samples(const CavityModelSource *source, xt_float_or_tpsa_arg z_mid,
         xt_float_or_tpsa_arg width, xt_float_or_tpsa tau[CAVITY_MAGNUS_NODES],
         CavityComplex out[3][CAVITY_MAGNUS_NODES]) {
+    const double node[CAVITY_MAGNUS_NODES] = CAVITY_MAGNUS_NODE_VALUES;
     xt_float_or_tpsa envelope[5];
     for (int i=0;i<CAVITY_MAGNUS_NODES;++i) {
-        tau[i]=CAVITY_MAGNUS_X[i]*width*.5;
+        tau[i]=node[i]*width*.5;
         CavityModel_source_envelope(z_mid+tau[i], source, envelope);
         for (int k=0;k<3;++k) out[k][i]=CavityComplex_make(0., 0.);
         for (int wave=0;wave<2;++wave) {
@@ -163,13 +165,15 @@ void CavityMagnus_add(CavityMagnusStep *step, int n, int c, int d, int monomial,
 GPUFUN
 void CavityMagnus_prepare_step(const CavityModelSource *source, xt_float_or_tpsa_arg z_mid,
                                xt_float_or_tpsa_arg width, CavityMagnusStep *step) {
+    const double node_weight[CAVITY_MAGNUS_NODES] = CAVITY_MAGNUS_WEIGHT_VALUES;
+    const double integral[CAVITY_MAGNUS_NODES][CAVITY_MAGNUS_NODES] = CAVITY_MAGNUS_INTEGRAL_VALUES;
     xt_float_or_tpsa tau[CAVITY_MAGNUS_NODES], weight[CAVITY_MAGNUS_NODES];
     CavityComplex samples[3][CAVITY_MAGNUS_NODES];
     CavityComplex cumulative[3][3][CAVITY_MAGNUS_NODES];
     CavityMagnus_samples(source, z_mid, width, tau, samples);
     const xt_float_or_tpsa half=width*.5;
     for (int i=0;i<CAVITY_MAGNUS_NODES;++i) {
-        weight[i]=CAVITY_MAGNUS_W[i]*half;
+        weight[i]=node_weight[i]*half;
         step->tau[i]=xt_float_or_tpsa_const_part(tau[i]);
         step->weight[i]=xt_float_or_tpsa_const_part(weight[i]);
         for (int k=0;k<3;++k) {
@@ -182,7 +186,7 @@ void CavityMagnus_prepare_step(const CavityModelSource *source, xt_float_or_tpsa
             for (int i=0;i<CAVITY_MAGNUS_NODES;++i) {
                 CavityComplex sum=CavityComplex_make(0., 0.);
                 for (int j=0;j<CAVITY_MAGNUS_NODES;++j) {
-                    xt_float_or_tpsa scale=half*CAVITY_MAGNUS_S[i][j];
+                    xt_float_or_tpsa scale=half*integral[i][j];
                     for (int m=0;m<p;++m) scale=scale*tau[j];
                     sum.re+=scale*samples[k][j].re; sum.im+=scale*samples[k][j].im;
                 }
@@ -269,6 +273,7 @@ CavityComplex CavityMagnus_edge_amplitude(const CavityModelSource *source,
 GPUFUN
 int CavityMagnus_gradient(const CavityComplex term[CAVITY_MAGNUS_TERMS], xt_float_or_tpsa_arg Q,
                           const xt_float_or_tpsa q[6], xt_float_or_tpsa out[6]) {
+    const int layout[CAVITY_MAGNUS_TERMS][4] = CAVITY_MAGNUS_LAYOUT_VALUES;
     const xt_float_or_tpsa X=q[0], Y=q[1], T=q[2], U=q[3], V=q[4], E=q[5];
     const xt_float_or_tpsa square=(E-1.)*(E+1.);
     if (xt_float_or_tpsa_const_part(square)<=0.) return CAVITY_MODEL_DOMAIN;
@@ -281,8 +286,8 @@ int CavityMagnus_gradient(const CavityComplex term[CAVITY_MAGNUS_TERMS], xt_floa
     const xt_float_or_tpsa value[4]={1., X*X+Y*Y, X*U+Y*V, U*U+V*V};
     for (int i=0;i<6;++i) out[i]=0.;
     for (int i=0;i<CAVITY_MAGNUS_TERMS;++i) {
-        const int n=CAVITY_MAGNUS_LAYOUT[i][0], c=CAVITY_MAGNUS_LAYOUT[i][1];
-        const int d=CAVITY_MAGNUS_LAYOUT[i][2], monomial=CAVITY_MAGNUS_LAYOUT[i][3];
+        const int n=layout[i][0], c=layout[i][1];
+        const int d=layout[i][2], monomial=layout[i][3];
         xt_float_or_tpsa charge=Q;
         if (n!=1) charge=Q*Q;
         xt_float_or_tpsa cn=1., sn=0.;
@@ -381,6 +386,8 @@ int CavityMagnus_edge(xt_float_or_tpsa q[6], const CavityModelSource *source,
 GPUFUN
 void CavityMagnus_spin_step(const CavitySpin *spin, const CavityMagnusStep *step,
                             double Q, double sign, const double m[6]) {
+    const double node[CAVITY_MAGNUS_NODES] = CAVITY_MAGNUS_NODE_VALUES;
+    const double integral[CAVITY_MAGNUS_NODES][CAVITY_MAGNUS_NODES] = CAVITY_MAGNUS_INTEGRAL_VALUES;
     if (!spin || !spin->spin) return;
     const double X=m[0], Y=m[1], U=m[3], V=m[4], E=m[5];
     const double p=sqrt(E*E-1.), beta=p/E, a=spin->anomaly;
@@ -424,13 +431,13 @@ void CavityMagnus_spin_step(const CavitySpin *spin, const CavityMagnusStep *step
         rate[3][i]=-H_X; rate[4][i]=-H_Y; rate[5][i]=H_T;
     }
     const double half=(step->tau[CAVITY_MAGNUS_NODES-1]-step->tau[0])
-                      /(CAVITY_MAGNUS_X[CAVITY_MAGNUS_NODES-1]-CAVITY_MAGNUS_X[0]);
+                      /(node[CAVITY_MAGNUS_NODES-1]-node[0]);
     double theta[3]={0., 0., 0.};
     for (int i=0;i<CAVITY_MAGNUS_NODES;++i) {
         double cum_rate[6]={0.,0.,0.,0.,0.,0.}, cum_gw[3][6];
         for (int a3=0;a3<3;++a3) for (int j=0;j<6;++j) cum_gw[a3][j]=0.;
         for (int l=0;l<CAVITY_MAGNUS_NODES;++l) {
-            const double s=CAVITY_MAGNUS_S[i][l]*half;
+            const double s=integral[i][l]*half;
             for (int j=0;j<6;++j) {
                 cum_rate[j]+=s*rate[j][l];
                 for (int a3=0;a3<3;++a3) cum_gw[a3][j]+=s*gw[a3][j][l];

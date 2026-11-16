@@ -97,13 +97,6 @@ int CavityModels_potential(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
 #define CAVITY_W6_INNER (-1.349343516178727)
 #define CAVITY_W8_OUTER 1.1161829393253857
 #define CAVITY_W8_INNER (-1.2323658786507714)
-static const double CAVITY_COMPOSITION_ORDER4[1]={1.};
-static const double CAVITY_COMPOSITION_ORDER6[3]={
-    CAVITY_W6_OUTER, CAVITY_W6_INNER, CAVITY_W6_OUTER};
-static const double CAVITY_COMPOSITION_ORDER8[9]={
-    CAVITY_W8_OUTER*CAVITY_W6_OUTER, CAVITY_W8_OUTER*CAVITY_W6_INNER, CAVITY_W8_OUTER*CAVITY_W6_OUTER,
-    CAVITY_W8_INNER*CAVITY_W6_OUTER, CAVITY_W8_INNER*CAVITY_W6_INNER, CAVITY_W8_INNER*CAVITY_W6_OUTER,
-    CAVITY_W8_OUTER*CAVITY_W6_OUTER, CAVITY_W8_OUTER*CAVITY_W6_INNER, CAVITY_W8_OUTER*CAVITY_W6_OUTER};
 
 // The averaged map takes two steps per half-wavelength of the uniform field.
 // The paraxial map integrates its generator through each step: two steps are
@@ -524,10 +517,16 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     }
     // Composition of the fourth-order Gauss cell: yoshida-6 is one
     // triple jump, yoshida-8 two; geometric grades the cell lengths.
-    const double *substeps=CAVITY_COMPOSITION_ORDER4;
-    int num_substeps=1;
-    if (integrator==2) {substeps=CAVITY_COMPOSITION_ORDER6; num_substeps=3;}
-    else if (integrator==5) {substeps=CAVITY_COMPOSITION_ORDER8; num_substeps=9;}
+    const double order4[1] = {1.};
+    const double order6[3] = {CAVITY_W6_OUTER, CAVITY_W6_INNER, CAVITY_W6_OUTER};
+    const double order8[9] = {
+        CAVITY_W8_OUTER*CAVITY_W6_OUTER, CAVITY_W8_OUTER*CAVITY_W6_INNER, CAVITY_W8_OUTER*CAVITY_W6_OUTER,
+        CAVITY_W8_INNER*CAVITY_W6_OUTER, CAVITY_W8_INNER*CAVITY_W6_INNER, CAVITY_W8_INNER*CAVITY_W6_OUTER,
+        CAVITY_W8_OUTER*CAVITY_W6_OUTER, CAVITY_W8_OUTER*CAVITY_W6_INNER, CAVITY_W8_OUTER*CAVITY_W6_OUTER};
+    const double *substeps = order4;
+    int num_substeps = 1;
+    if (integrator == 2) {substeps = order6; num_substeps = 3;}
+    else if (integrator == 5) {substeps = order8; num_substeps = 9;}
     xt_float_or_tpsa grading=0.,grading_log=0.;
     if (model==CAVITY_MODEL_FULL && integrator==7 && status==CAVITY_MODEL_OK) {
         const xt_float_or_tpsa entry=sqrt(1.+kappa0*kappa0);

@@ -122,7 +122,7 @@ def test_frozen_uniform_and_geometric_meshes_share_their_limit():
     def endpoint(integrator, cells):
         rf = xt.Cavity(length=.5, voltage=5e6, frequency=1.3e9, phase=.6,
                        model='_phase-resolved-frozen', integrator=integrator,
-                       num_kicks=cells)
+                       counter_wave_amplitude=0., num_kicks=cells)
         probe = xt.Particles(p0c=xt.ELECTRON_MASS_EV*np.sqrt(20.**2 - 1),
             mass0=xt.ELECTRON_MASS_EV, x=1e-3, px=2e-3, zeta=1e-3)
         rf.track(probe)
@@ -369,9 +369,10 @@ def test_taper_pass_tracks_physical_cavities_longitudinally(model):
     """The taper pass shares the energy loss at zero frequency (tapering.py)."""
     results = []
     for chosen in (model, 'drift-kick-drift-expanded'):
+        wave = 0. if chosen == '_phase-resolved-frozen' else 1.
         line = xt.Line(elements=[xt.Cavity(length=1., voltage=10e6,
                                            frequency=0., phase=np.pi/2,
-                                           model=chosen)])
+                                           model=chosen, counter_wave_amplitude=wave)])
         line.particle_ref = xt.Particles(p0c=1e10, mass0=xt.ELECTRON_MASS_EV)
         line.build_tracker()
         line.tracker.track_flags.XS_FLAG_SR_TAPER = True
