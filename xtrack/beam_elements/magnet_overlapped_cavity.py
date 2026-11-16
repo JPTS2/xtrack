@@ -29,9 +29,9 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
         "adaptive" (default) is "longitudinal-kick" for now. "longitudinal-kick"
         tracks the static fields as a straight magnet with an exact drift, with
         the RF energy kick added to each of the magnet's kicks, and its faces as
-        those of a Quadrupole or UniformSolenoid. The experimental physical models, "_phase-resolved",
-        "_phase-averaged", "_phase-resolved-paraxial" and "_phase-resolved-frozen",
-        are those of Cavity.
+        those of a Quadrupole or UniformSolenoid. The experimental physical
+        models, "_phase-resolved", "_phase-averaged", "_phase-resolved-paraxial"
+        and "_phase-resolved-frozen", are those of Cavity.
     integrator : str
         As for Cavity; for "longitudinal-kick" it places the magnet's kicks.
     num_kicks : int
@@ -80,7 +80,6 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
     _MODELS = {0: 'adaptive', 1: 'longitudinal-kick',
                **{index: name for index, name in _CAVITY_MODELS.items() if index >= 10}}
     _ADAPTIVE_MODEL = 1
-    _default_model = 'adaptive'
 
     def __init__(self, **kwargs):
         if '_xobject' in kwargs and kwargs['_xobject'] is not None:
@@ -115,11 +114,9 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
 
     def _check_physical_model(self, tracking=False):
         super()._check_physical_model(tracking=tracking)
-        normal, skew = self._present('knl'), self._present('ksl')
-        solenoid = _constant_part(self.ks) != 0.
-        if self._resolved_model < 10:
-            return
         if self._resolved_model in (11, 12):
+            normal, skew = self._present('knl'), self._present('ksl')
+            solenoid = _constant_part(self.ks) != 0.
             others = np.any(normal[np.arange(len(normal)) != 1]) or np.any(skew)
             if others or (solenoid and (np.any(normal) or self.edge_entry_active
                                         or self.edge_exit_active)):

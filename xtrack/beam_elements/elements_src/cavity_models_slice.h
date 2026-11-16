@@ -1,3 +1,7 @@
+// copyright ############################### //
+// This file is part of the Xtrack Package.  //
+// Copyright (c) CERN, 2026.                 //
+// ######################################### //
 // Slices of the physical cavity models, tracked as intervals of the parent.
 #ifndef XTRACK_CAVITY_MODELS_SLICE_H
 #define XTRACK_CAVITY_MODELS_SLICE_H
@@ -51,7 +55,9 @@ void CavityModels_track_drift_slice(
             );
     }
     if (static_fields) {
-        CavityModels_track_longitudinal_magnet(part0, &plan, NULL, weight, CAVITY_MAGNET_DRIFT);
+        CavityModels_track_longitudinal_magnet(
+            part0, &plan, NULL, weight, CAVITY_MAGNET_DRIFT
+        );
     }
     else {
         CavityMagnusCache magnus_cache;

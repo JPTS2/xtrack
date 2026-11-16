@@ -1,3 +1,7 @@
+// copyright ############################### //
+// This file is part of the Xtrack Package.  //
+// Copyright (c) CERN, 2026.                 //
+// ######################################### //
 // Scalar operations shared by ordinary and TPSA cavity tracking.
 #ifndef XTRACK_CAVITY_MODELS_COMPAT_H
 #define XTRACK_CAVITY_MODELS_COMPAT_H

@@ -728,35 +728,6 @@ int CavityModel_frozen_prefix(
                                                 : CAVITY_MODEL_NONFINITE;
 }
 
-GPUFUN
-int CavityModel_frozen(
-    const xt_float_or_tpsa q[6],
-    xt_float_or_tpsa_arg Q,
-    const CavityModelSource* source,
-    xt_float_or_tpsa_arg nominal_momentum,
-    xt_float_or_tpsa_arg nominal_gain,
-    int64_t requested_cells,
-    int entry_face,
-    int exit_face,
-    int reverse,
-    xt_float_or_tpsa output[6]
-) {
-    return CavityModel_frozen_prefix(
-        q,
-        Q,
-        source,
-        nominal_momentum,
-        nominal_gain,
-        requested_cells,
-        entry_face,
-        exit_face,
-        1.,
-        reverse,
-        NULL,
-        output
-    );
-}
-
 // A slice from a to b is M_b M_a^-1 of the parent's prefixes: it keeps the
 // parent's nominal programme and mesh, and the faces belong to the parent's
 // ends.

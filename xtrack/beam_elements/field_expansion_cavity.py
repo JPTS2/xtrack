@@ -108,8 +108,6 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
 
     _MODELS = {0: 'adaptive', 10: '_phase-resolved'}
     _ADAPTIVE_MODEL = 10
-    _default_model = 'adaptive'
-    _default_integrator = 'adaptive'
     _default_calibration_beta = 1.
     _default_frequency = 0.0
     _default_harmonic = 0.0

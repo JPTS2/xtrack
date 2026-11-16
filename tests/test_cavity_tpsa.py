@@ -19,7 +19,7 @@ LAUNCH = dict(p0c=14e6, mass0=xt.ELECTRON_MASS_EV,
               zeta=4e-4, delta=2e-3, time_s=1.9e-9)
 
 
-def _values(particles):
+def coordinate_values(particles):
     return np.array([getattr(particles, name)[0] for name in COORDS])
 
 
@@ -40,7 +40,7 @@ def test_frozen_energy_drift_uses_input_delta_series(tmp_path):
         for offset,weight in {-2:1.,-1:-8.,1:8.,2:-1.}.items():
             particle=xt.Particles(_context=context,**dict(launch,**{name:launch[name]+offset*1e-5}))
             line.track(particle)
-            finite[:,column]+=weight*_values(particle)/(12e-5)
+            finite[:,column]+=weight*coordinate_values(particle)/(12e-5)
     np.testing.assert_allclose(matrix,finite,rtol=3e-6,atol=3e-8)
 
 
@@ -64,7 +64,7 @@ def test_calibration_order_one_handle_on_higher_order_map(
         n_cells=1, model=model, num_kicks=8, **fields)})
     line.particle_ref = xt.Particles(p0c=launch['p0c'], mass0=launch['mass0'], q0=1.)
     line.reset_s_at_end_turn = False
-    _build_shared_cavity_tracker(line, context)
+    build_shared_cavity_tracker(line, context)
     scalar = xt.Particles(_context=context, **launch)
     line.track(scalar)
     desc = madng_tpsa.Descriptor(6, order, num_params=1, param_order=1)
@@ -77,7 +77,7 @@ def test_calibration_order_one_handle_on_higher_order_map(
         line.track(series)
     except RuntimeError as error:
         raise AssertionError(f'calibration order {order}, native status {series._xobject.state}') from error
-    np.testing.assert_allclose(series.const_part, _values(scalar), rtol=0., atol=3e-12)
+    np.testing.assert_allclose(series.const_part, coordinate_values(scalar), rtol=0., atol=3e-12)
     gradient = series.param_jacobian()[:,0].copy()
     mixed = series.coefficient('x', (0,1,0,0,0,0,1))
     # Order three also checks that the fixed stage sweeps after primal
@@ -94,7 +94,7 @@ def test_calibration_order_one_handle_on_higher_order_map(
         line['c'].frequency = 400e6*(1. + ib*1e-4)
         particle = xt.Particles(_context=context, **launch)
         line.track(particle)
-        finite += wb*_values(particle)/(12e-4)
+        finite += wb*coordinate_values(particle)/(12e-4)
         for ip, wp in weights.items():
             particle = xt.Particles(_context=context, **dict(launch,px=launch['px']+ip*1e-3))
             line.track(particle)
@@ -135,7 +135,7 @@ def test_zero_primal_static_controls_keep_derivatives(cavity_magnetic_context):
     line.element_refs['c'].ksl[2] = line.vars['skew']
     line.particle_ref = xt.Particles(p0c=launch['p0c'], mass0=mass, q0=1.)
     line.reset_s_at_end_turn = False
-    _build_shared_cavity_tracker(line, context)
+    build_shared_cavity_tracker(line, context)
     scalar = xt.Particles(_context=context, **launch)
     line.track(scalar)
     assert scalar.state[0] == 1
@@ -145,7 +145,7 @@ def test_zero_primal_static_controls_keep_derivatives(cavity_magnetic_context):
     series = xtpsa.ParticlesTpsa(order=2, descriptor=descriptor, **launch)
     line.track(series)
     assert series._xobject.state == 1
-    np.testing.assert_allclose(series.const_part, _values(scalar), rtol=0., atol=3e-13)
+    np.testing.assert_allclose(series.const_part, coordinate_values(scalar), rtol=0., atol=3e-13)
     gradient = series.param_jacobian().copy()
     mixed = series.coefficient('px', (1,0,0,0,0,0,0,1,0))
     knobs.teardown()
@@ -156,7 +156,7 @@ def test_zero_primal_static_controls_keep_derivatives(cavity_magnetic_context):
             ray = xt.Particles(_context=context, **launch)
             line.track(ray)
             assert ray.state[0] == 1
-            endpoints.append(_values(ray))
+            endpoints.append(coordinate_values(ray))
         line.vars[name] = 0.
         finite = (endpoints[1]-endpoints[0])/(2e-5)
         assert np.max(abs(gradient[:, column])) > 1e-7
@@ -186,7 +186,7 @@ def test_frozen_fixed_nominal_gain_with_absolute_clock(cavity_magnetic_context):
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=launch['mass0'],q0=1.)
     line.reset_s_at_end_turn=False
     line.use_time_based_zeta_update=True
-    _build_shared_cavity_tracker(line,context)
+    build_shared_cavity_tracker(line,context)
     scalar=xt.Particles(_context=context,**launch);line.track(scalar)
     assert scalar.state[0]==1
     desc=madng_tpsa.Descriptor(6,2,num_params=2,param_order=1)
@@ -194,7 +194,7 @@ def test_frozen_fixed_nominal_gain_with_absolute_clock(cavity_magnetic_context):
     line['c'].nominal_energy_gain=desc.param(2,8e3)
     series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
     line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-12)
+    np.testing.assert_allclose(series.const_part,coordinate_values(scalar),rtol=0.,atol=3e-12)
     gradients=series.param_jacobian().copy()
     line.disable_tpsa_elements()
     for column,(name,value,scale) in enumerate((('phase',.4,1.),
@@ -203,7 +203,7 @@ def test_frozen_fixed_nominal_gain_with_absolute_clock(cavity_magnetic_context):
         for offset,weight in {-2:1.,-1:-8.,1:8.,2:-1.}.items():
             setattr(line['c'],name,value+offset*scale*1e-4)
             particle=xt.Particles(_context=context,**launch);line.track(particle)
-            finite+=weight*_values(particle)/(12e-4)
+            finite+=weight*coordinate_values(particle)/(12e-4)
         setattr(line['c'],name,value)
         np.testing.assert_allclose(gradients[:,column]*scale,finite,rtol=3e-6,atol=3e-8)
     restored=xt.Line.from_dict(line.to_dict())
@@ -229,7 +229,7 @@ def test_legacy_cavity_tpsa_clock_and_phase_knob(tmp_path, absolute_time):
     line['c'].phase = desc.param(1, .7)
     particles = xtpsa.ParticlesTpsa(order=3, descriptor=desc, **LAUNCH)
     line.track(particles)
-    np.testing.assert_allclose(particles.const_part, _values(scalar),
+    np.testing.assert_allclose(particles.const_part, coordinate_values(scalar),
                                rtol=0., atol=3e-14)
     gradient = particles.param_jacobian()[:, 0]
     line.disable_tpsa_elements()
@@ -238,7 +238,7 @@ def test_legacy_cavity_tpsa_clock_and_phase_knob(tmp_path, absolute_time):
         line['c'].phase = phase
         probe = xt.Particles(_context=context, **LAUNCH)
         line.track(probe)
-        endpoints.append(_values(probe))
+        endpoints.append(coordinate_values(probe))
     derivative = (endpoints[1]-endpoints[0])/(2e-5)
     np.testing.assert_allclose(gradient, derivative,
                                rtol=2e-7, atol=2e-10)
@@ -278,7 +278,7 @@ def test_legacy_standalone_cavity_nonzero_s_tpsa(tmp_path):
     series = xtpsa.ParticlesTpsa(order=1, **launch)
     element.track(scalar)
     element.track(series)
-    np.testing.assert_allclose(series.const_part, _values(scalar),
+    np.testing.assert_allclose(series.const_part, coordinate_values(scalar),
                                rtol=0., atol=3e-14)
 
 
@@ -297,7 +297,7 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
         num_kicks=8)], element_names=['c'])
     line.particle_ref = xt.Particles(p0c=launch['p0c'], mass0=mass, q0=1.)
     line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
+    build_shared_cavity_tracker(line,context)
     scalar = xt.Particles(_context=context, **launch)
     line.track(scalar)
     assert scalar.state[0] == 1
@@ -307,7 +307,7 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
     series = xtpsa.ParticlesTpsa(order=order, descriptor=desc, **launch)
     line.track(series)
     assert series._xobject.state == 1
-    np.testing.assert_allclose(series.const_part, _values(scalar),
+    np.testing.assert_allclose(series.const_part, coordinate_values(scalar),
                                rtol=0., atol=3e-13)
     gradients = series.param_jacobian().copy()
     state_jacobian = series.jacobian().copy()
@@ -321,7 +321,7 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
             particle=xt.Particles(_context=context,**launch)
             line.track(particle)
             assert particle.state[0] == 1
-            endpoints.append(_values(particle))
+            endpoints.append(coordinate_values(particle))
         setattr(line['c'],name,value)
         fd=(endpoints[1]-endpoints[0])/(2*step)
         np.testing.assert_allclose(gradients[:,index],fd,
@@ -338,7 +338,7 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
             particle=xt.Particles(_context=context,**shifted)
             line.track(particle)
             assert particle.state[0] == 1
-            fd_matrix[:,column]+=coefficient*_values(particle)/(12*step)
+            fd_matrix[:,column]+=coefficient*coordinate_values(particle)/(12*step)
     np.testing.assert_allclose(state_jacobian,fd_matrix,
                                rtol=2e-6,atol=2e-8)
     # Actual cavity mixed coefficient, not the generic polynomial above.
@@ -367,7 +367,7 @@ def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,n_
     line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,phase=.4,counter_wave_amplitude=.5,
         n_cells=n_cells,model=model,num_kicks=8,absolute_time=True,**values)})
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
-    _build_shared_cavity_tracker(line,context)
+    build_shared_cavity_tracker(line,context)
     scalar=xt.Particles(_context=context,**launch)
     line.track(scalar)
     assert scalar.state[0] == 1
@@ -376,7 +376,7 @@ def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,n_
         setattr(line['c'],name,desc.param(index,value))
     series=xtpsa.ParticlesTpsa(order=1,descriptor=desc,**launch)
     line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),
+    np.testing.assert_allclose(series.const_part,coordinate_values(scalar),
                                rtol=0.,atol=3e-13)
     gradients=series.param_jacobian().copy()
     line.disable_tpsa_elements()
@@ -389,7 +389,7 @@ def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,n_
             particle=xt.Particles(_context=context,**launch)
             line.track(particle)
             assert particle.state[0] == 1
-            endpoints.append(_values(particle))
+            endpoints.append(coordinate_values(particle))
         setattr(line['c'],name,value)
         fd=(endpoints[1]-endpoints[0])/(2*step)
         np.testing.assert_allclose(gradients[:,index]*scale,fd*scale,
@@ -415,7 +415,7 @@ def test_frozen_cavity_tpsa_phase_and_clock(tmp_path,absolute_time):
     line['c'].phase=desc.param(1,.4)
     series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**LAUNCH)
     line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),
+    np.testing.assert_allclose(series.const_part,coordinate_values(scalar),
                                rtol=0.,atol=3e-13)
     derivative=series.param_jacobian()[:,0]
     line.disable_tpsa_elements()
@@ -424,7 +424,7 @@ def test_frozen_cavity_tpsa_phase_and_clock(tmp_path,absolute_time):
         line['c'].phase=phase
         particle=xt.Particles(_context=context,**LAUNCH)
         line.track(particle)
-        endpoints.append(_values(particle))
+        endpoints.append(coordinate_values(particle))
     np.testing.assert_allclose(derivative,
         (endpoints[1]-endpoints[0])/(2e-5),rtol=3e-6,atol=3e-10)
 
@@ -447,7 +447,7 @@ def test_frozen_solenoid_zero_strength_parameter_tpsa(tmp_path):
     line['c'].ks=desc.param(1,0.)
     series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
     line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),
+    np.testing.assert_allclose(series.const_part,coordinate_values(scalar),
                                rtol=0.,atol=3e-13)
     derivative=series.param_jacobian()[:,0]
     line.disable_tpsa_elements()
@@ -457,7 +457,7 @@ def test_frozen_solenoid_zero_strength_parameter_tpsa(tmp_path):
         particle=xt.Particles(_context=context,**launch)
         line.track(particle)
         assert particle.state[0]==1
-        endpoints.append(_values(particle))
+        endpoints.append(coordinate_values(particle))
     finite_difference=(endpoints[1]-endpoints[0])/(2e-5)
     assert np.max(abs(derivative))>1e-6
     np.testing.assert_allclose(derivative,finite_difference,
@@ -483,7 +483,7 @@ def test_frozen_cavity_tpsa_voltage_and_frequency(tmp_path):
         setattr(line['c'],name,desc.param(index,value))
     series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**LAUNCH)
     line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),
+    np.testing.assert_allclose(series.const_part,coordinate_values(scalar),
                                rtol=0.,atol=3e-13)
     derivatives=series.param_jacobian().copy()
     line.disable_tpsa_elements()
@@ -495,14 +495,14 @@ def test_frozen_cavity_tpsa_voltage_and_frequency(tmp_path):
             particle=xt.Particles(_context=context,**LAUNCH)
             line.track(particle)
             assert particle.state[0]==1
-            endpoints.append(_values(particle))
+            endpoints.append(coordinate_values(particle))
         setattr(line['c'],name,value)
         finite_difference=(endpoints[1]-endpoints[0])/(2*step)
         np.testing.assert_allclose(derivatives[:,index]*scale,
             finite_difference*scale,rtol=3e-6,atol=3e-9,err_msg=name)
 
 
-def _build_shared_cavity_tracker(line, context):
+def build_shared_cavity_tracker(line, context):
     # Kernel ownership is per Tracker, not per Context. Reuse the supported
     # track_kernel dictionary across lines with the same element types.
     kernels = getattr(context, '_cavity_test_track_kernels', {})
@@ -536,7 +536,7 @@ def test_native_indexed_magnetic_parameter_tpsa(cavity_magnetic_context,model):
     if not frozen:line.element_refs['c'].ksl[2]=line.vars['skew']
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
     line.reset_s_at_end_turn=False
-    _build_shared_cavity_tracker(line,context)
+    build_shared_cavity_tracker(line,context)
     scalar=xt.Particles(_context=context,**launch)
     line.track(scalar)
     assert scalar.state[0]==1
@@ -545,7 +545,7 @@ def test_native_indexed_magnetic_parameter_tpsa(cavity_magnetic_context,model):
     knobs.apply()
     series=xtpsa.ParticlesTpsa(order=2,descriptor=desc,**launch)
     line.track(series)
-    np.testing.assert_allclose(series.const_part,_values(scalar),rtol=0.,atol=3e-13)
+    np.testing.assert_allclose(series.const_part,coordinate_values(scalar),rtol=0.,atol=3e-13)
     gradients=series.param_jacobian().copy()
     powers=(1,0,0,0,0,0,1)+(0,)*(len(values)-1)
     mixed=series.coefficient('px',powers)
@@ -557,7 +557,7 @@ def test_native_indexed_magnetic_parameter_tpsa(cavity_magnetic_context,model):
             particle=xt.Particles(_context=context,**launch)
             line.track(particle)
             assert particle.state[0]==1
-            endpoints.append(_values(particle))
+            endpoints.append(coordinate_values(particle))
         line.vars[name]=value
         fd=(endpoints[1]-endpoints[0])/(2e-5)
         np.testing.assert_allclose(gradients[:,index],fd,rtol=3e-6,atol=3e-10)

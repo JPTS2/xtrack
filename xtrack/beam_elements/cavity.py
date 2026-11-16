@@ -15,7 +15,6 @@ from ._common import SynchrotronRadiationRecord
 import xtrack as xt
 from ._common import (
     _HasIntegrator,
-    _HasModelRF,
     _INDEX_TO_MODEL_RF,
     _INDEX_TO_INTEGRATOR,
     _NOEXPR_FIELDS,
@@ -50,6 +49,8 @@ class _CavityControls:
     _MODELS = _CAVITY_MODELS
     # The model "adaptive" (index 0) tracks with: the element's default, which may change.
     _ADAPTIVE_MODEL = 0
+    _default_model = 'adaptive'
+    _default_integrator = 'adaptive'
 
     @property
     def _resolved_model(self):
@@ -109,7 +110,7 @@ class _CavityControls:
 
         self._check_physical_model(tracking=True)
         if _constant_part(self.harmonic) != 0:
-            raise RuntimeError("Cavity cannot be used in standalone tracking "
+            raise RuntimeError(f"{type(self).__name__} cannot be used in standalone tracking "
                                "when harmonic is not zero. Please use the "
                                "cavity within a Line or set frequency instead"
                                " of harmonic.")
@@ -155,7 +156,7 @@ class _CavityControls:
         self._harmonic = value
 
 
-class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
+class Cavity(_CavityControls, BeamElement):
 
     _docstring_start = \
     '''RF cavity element.
@@ -223,9 +224,10 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         higher one: r^6 is 50 times closer than r^4 to the exact field for
         protons at beta 0.6 10 mm off axis, for 16% more time.
     edge_entry_active, edge_exit_active : bool
-        Whether the faces of a MagnetOverlappedCavity are applied: the RF and
-        static faces of the physical models, the magnet faces of
-        "longitudinal-kick". Default is True.
+        Whether the entrance and exit faces are applied: in "_phase-resolved-frozen"
+        the RF faces; for the static fields of a MagnetOverlappedCavity, the
+        faces of the physical models and the magnet faces of "longitudinal-kick".
+        "_phase-resolved" always applies its RF faces. Default is True.
     '''.strip()
 
     _docstring_models = '''model : str
@@ -258,8 +260,9 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         uses 16 per half RF wavelength and at least 64, "_phase-averaged" two
         per half RF wavelength,
         "_phase-resolved-paraxial" two per half RF wavelength for a travelling
-        wave (counter_wave_amplitude = 0) and four otherwise, at least eight in all and at least
-        one for each 2% of V/E, and the frozen model its own count.
+        wave (counter_wave_amplitude = 0) and four otherwise, at least eight in
+        all and at least one for each 2% of V/E, and the frozen model its own
+        count.
     '''.strip()
 
     __doc__ = '\n    '.join([_docstring_start, _docstring_models,

@@ -355,7 +355,7 @@ def test_phase_averaged_reads_its_radial_kick_at_the_mean_energy_of_the_step(tes
         assert errors(ends, truth, p0c, gradient * length)[1] < 1e-3
 
 
-def _spin_end(context, model, gamma, half_waves, gradient, amplitude, phase, anomaly, spin, **controls):
+def spin_end(context, model, gamma, half_waves, gradient, amplitude, phase, anomaly, spin, **controls):
     length = half_waves * _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
     line = xt.Line(elements={'rf': xt.Cavity(model=model, frequency=_FREQUENCY, length=length,
@@ -380,7 +380,7 @@ def test_spin_through_hard_edges_follows_thomas_bmt(gamma, gradient, amplitude):
     spin = np.array([.6, 0., .8])
     length = half_waves * _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
-    end = _spin_end(xo.ContextCpu(), '_phase-resolved', gamma, half_waves, gradient, amplitude, phase, anomaly,
+    end = spin_end(xo.ContextCpu(), '_phase-resolved', gamma, half_waves, gradient, amplitude, phase, anomaly,
                     spin, num_kicks=16 * half_waves, n_cells=n_cells)
     waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, hard_edge,
                              n_cells=n_cells)
@@ -403,7 +403,7 @@ def test_spin_through_the_face_impulses_matches_the_reference(amplitude, half_wa
     length = half_waves * _HALF_WAVE
     k = np.pi / _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
-    end = _spin_end(xo.ContextCpu(), '_phase-resolved', gamma, half_waves, gradient, amplitude, phase,
+    end = spin_end(xo.ContextCpu(), '_phase-resolved', gamma, half_waves, gradient, amplitude, phase,
                     anomaly, spin, num_kicks=256 * half_waves,
                     n_cells=half_waves if amplitude > 0. else 0)
     field = HarmonicField.from_voltage([k, -k], [1., amplitude], _FREQUENCY, length,
@@ -434,7 +434,7 @@ def test_spin_of_every_composition_matches_the_reference(integrator, num_kicks, 
     length = half_waves * _HALF_WAVE
     k = np.pi / _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
-    end = _spin_end(xo.ContextCpu(), '_phase-resolved', gamma, half_waves, gradient, amplitude, phase,
+    end = spin_end(xo.ContextCpu(), '_phase-resolved', gamma, half_waves, gradient, amplitude, phase,
                     anomaly, spin, num_kicks=num_kicks, integrator=integrator,
                     n_cells=half_waves if amplitude > 0. else 0)
     field = HarmonicField.from_voltage([k, -k], [1., amplitude], _FREQUENCY, length,
@@ -462,7 +462,7 @@ def test_spin_rotation_follows_thomas_bmt(model, gamma, gradient, tolerance):
     length = half_waves * _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
     controls = dict(num_kicks=16 * half_waves) if model == '_phase-resolved' else {}
-    end = _spin_end(xo.ContextCpu(), model, gamma, half_waves, gradient, amplitude, phase, anomaly, spin, **controls)
+    end = spin_end(xo.ContextCpu(), model, gamma, half_waves, gradient, amplitude, phase, anomaly, spin, **controls)
     waves = calibrated_waves(gradient * length, _FREQUENCY, length, phase, amplitude, hard_edge)
     launch = dict(_LAUNCHES[0], spin_x=spin[0], spin_y=spin[1], spin_z=spin[2])
     truth = lorentz_end(launch, waves, length, ramped(length, 3e-4), p0c, _ELECTRON, anomaly=anomaly, ramp=3e-4)

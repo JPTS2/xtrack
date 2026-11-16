@@ -819,7 +819,7 @@ int CavityModel_paraxial_interval(
     const xt_float_or_tpsa z_left = length * (left - .5), z_right = length * (right - .5);
     const xt_float_or_tpsa h = (z_right - z_left) / cells;
     const xt_float_or_tpsa grading_log = CavityModel_log1p(grading);
-    const int graded = integrator == 7 && xt_float_or_tpsa_const_part(grading) > 1.e-6;
+    const int graded = integrator == CAVITY_INTEGRATOR_GEOMETRIC && xt_float_or_tpsa_const_part(grading) > 1.e-6;
     const double sign = reverse ? -1. : 1.;
     const double Q_spin = xt_float_or_tpsa_const_part(Q);
     // Reference-only step generators are cached once per call on the CPU.

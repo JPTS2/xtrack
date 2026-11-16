@@ -408,7 +408,7 @@ int CavityModel_averaged_interval(
     // offered: the energy kicks integrate the waves along the reference
     // trajectory, which keeps one step second order but caps compositions.
     const xt_float_or_tpsa grading_log = CavityModel_log1p(grading);
-    const int graded = integrator == 7 && xt_float_or_tpsa_const_part(grading) > 1.e-6;
+    const int graded = integrator == CAVITY_INTEGRATOR_GEOMETRIC && xt_float_or_tpsa_const_part(grading) > 1.e-6;
     xt_float_or_tpsa previous = outer_left;
     if (reverse) previous = outer_right;
     for (int64_t n = 0; n < cells && status == CAVITY_MODEL_OK; ++n) {

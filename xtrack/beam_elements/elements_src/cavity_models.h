@@ -32,6 +32,12 @@ enum CavityModelStatus {
 #define CAVITY_MODEL_TABLE_JETS       (CAVITY_MODEL_JETS + 2)
 #define CAVITY_MODEL_TABLE_ROW        (2 * CAVITY_MODEL_TABLE_JETS)
 
+// Cavity's own integrator, beside the magnets' (default_magnet_config.h).
+#define CAVITY_INTEGRATOR_GEOMETRIC 7
+// Collocation solve of one Gauss cell: fixed-point sweeps and primal tolerance.
+#define CAVITY_MODEL_GAUSS_MAX_ITERATIONS 80
+#define CAVITY_MODEL_GAUSS_TOLERANCE 2e-13
+
 enum CavityPhysicalModel {
     CAVITY_MODEL_FULL = 10,
     CAVITY_MODEL_AVERAGED = 11,
