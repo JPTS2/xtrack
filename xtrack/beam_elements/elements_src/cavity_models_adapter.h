@@ -81,7 +81,7 @@ int CavityModels_transformations_active(const RFModelFields* el) {
 GPUFUN
 int CavityModels_potential(const xt_float_or_tpsa q[6],xt_float_or_tpsa_arg z,
         const CavityModelSource *source,int model,xt_float_or_tpsa out[4]) {
-    return CavityModel_physical_potential(q,z,source,model,out);
+    return CavityModel_potential(q,z,source,model,out);
 }
 
 // Public source-based Cavity uses the ordinary canonical native chart.

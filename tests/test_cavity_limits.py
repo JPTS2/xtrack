@@ -244,7 +244,7 @@ int mixed_case(const double *q,double Q,int model,double *out){
  s.forward=.04;s.backward=.017;s.magnetic_scale=.7;s.ks=.17;
  s.order=3;s.knl=normal;s.ksl=skew;s.radial_order=4;
  const double z=.17*s.half_span;
- int status=CavityModel_physical_potential(q,z,&s,model,out);
+ int status=CavityModel_potential(q,z,&s,model,out);
  if(status!=1)return status;
  status=CavityModel_potential(q,z,&s,model,out+4);
  if(status!=1)return status;

@@ -5,10 +5,10 @@
 #ifndef XTRACK_CAVITY_MODELS_H
 #define XTRACK_CAVITY_MODELS_H
 
-// Phase-resolved source and maps.
-// Conservative source-based RF maps. Coordinates are (X,Y,T,Px,Py,E),
-// scaled by (1/k,1/k,1/(kc),mc,mc,mc^2); the T--E block has negative sign.
-// k is the coordinate scale omega/c, independent of the physical carrier.
+// Phase-resolved cavity model: the RF and static fields as potentials, and the
+// symplectic maps through them. Coordinates are q = (X, Y, T, Px, Py, E), lengths
+// scaled by k = omega/c, momenta by mc and energy by mc^2; T and E are a
+// conjugate pair with a negative sign.
 #include <math.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -52,7 +52,7 @@ typedef struct {
     // on the element; kz_m in rad/m.
     int64_t num_harmonics;
     GPUGLMEM const double *harmonic_wave_number, *harmonic_re, *harmonic_im;
-    // Optional table of the unit-amplitude jets in physical z (track_rf.h).
+    // Optional table of the unit-amplitude jets in physical z.
     int64_t table_points;
     double table_z0, table_dz;
     GPUGLMEM const double* table;
@@ -111,10 +111,10 @@ xt_float_or_tpsa CavityModel_static_sinc(xt_float_or_tpsa_arg angle) {
 #endif
 }
 
-// Live fixed-beta electric-crest calibration. No evolving particle beta
-// retunes the hardware. wave_number is already resolved by the caller and
-// may be zero; it is not the coordinate normalization k=omega/c.
-// Only RF entries are assigned; the caller supplies static strengths.
+// Scales the waves so that `voltage` is the crest energy gain at the fixed
+// speed calibration_beta, as hardware is rated: the amplitude does not follow
+// each particle's speed. wave_number is the spatial wave number of the cells,
+// possibly zero, not the scale k. Sets the RF entries only.
 GPUFUN
 int CavityModel_prepare(
     xt_float_or_tpsa_arg frequency,
@@ -143,16 +143,15 @@ int CavityModel_prepare(
     // A pure counter wave is a distinct chart: its weights have no derivative.
     if (isinf(mixture) && !CavityModel_scalar_constant(counter_amplitude))
         return CAVITY_MODEL_ARGUMENT;
-    const double c = 299792458.;
-    const double pi = 3.141592653589793238462643383279502884;
+    // Without RF, k = 1/m is only a unit choice.
     source->k = 1.;
-    if (f > 0.) source->k = 2. * pi * frequency / c;
-    source->omega = c * source->k;
+    if (f > 0.) source->k = 2. * PI * frequency / C_LIGHT;
+    source->omega = C_LIGHT * source->k;
     source->length = length;
     source->half_span = source->k * length * .5;
     source->carrier = wave_number / source->k;
     source->counter_phase = counter_phase;
-    source->clock_origin = phase - copysign(pi * .5, q0);
+    source->clock_origin = phase - copysign(PI * .5, q0);
     source->voltage_norm = voltage / source_mass_eV;
     source->phase = phase;
     source->reference_charge = q0;
@@ -203,7 +202,8 @@ int CavityModel_prepare(
     xt_float_or_tpsa magnitude_square = real * real + imag * imag;
     const double scale =
         fabs(xt_float_or_tpsa_const_part(slow)) + fabs(xt_float_or_tpsa_const_part(fast));
-    const double threshold = 64. * 2.2204460492503131e-16 * scale;
+    // A crest gain cancelled to rounding cannot be calibrated.
+    const double threshold = 64. * DBL_EPSILON * scale;
     if (!CavityModel_scalar_finite(magnitude_square)
         || xt_float_or_tpsa_const_part(magnitude_square) <= threshold * threshold)
         return CAVITY_MODEL_ARGUMENT;
@@ -211,8 +211,7 @@ int CavityModel_prepare(
     xt_float_or_tpsa amplitude = voltage / (source_mass_eV * magnitude);
     source->forward = amplitude * forward_weight;
     source->backward = amplitude * backward_weight;
-    // Arg[exp(i H/beta)*(real+i imag)] is evaluated with the same branch
-    // as the prepared source, retaining every calibration derivative.
+    // The phase of the crest gain sets the clock origin of `phase`.
     xt_float_or_tpsa angle = source->half_span / calibration_beta;
     xt_float_or_tpsa phasor_real = real * cos(angle) - imag * sin(angle);
     xt_float_or_tpsa phasor_imag = real * sin(angle) + imag * cos(angle);
@@ -331,12 +330,10 @@ void CavityModel_profile(
     }
 }
 
-// Retained temporal-gauge RF potential to M = radial_order/2 terms in r^2 and
-// its exact first derivatives, with P_n = (1 + d_Z^2)^n of the phase profile:
-// A_z = -sum_{n<=M} (-1/4)^n/n!^2 r^2n P_n, A_perp = r_perp sum_{n<M}
-// (-1/4)^n/(2 n!(n+1)!) r^2n P_n'. M = 2 is the compact form of
-// native_rf_source()['potentials']; no force fit or independent
-// radial-focusing coefficient is introduced.
+// RF potential in the temporal gauge, to num_terms = radial_order/2 terms in r^2,
+// and its first derivatives. From Maxwell's equations, with P_n = (1 + d_Z^2)^n
+// of the on-axis profile: A_z = -sum_{n<=M} (-1/4)^n/n!^2 r^2n P_n and
+// A_perp = r_perp sum_{n<M} (-1/4)^n/(2 n!(n+1)!) r^2n P_n'.
 GPUFUN
 void CavityModel_rf_potential(
     const xt_float_or_tpsa q[6],
@@ -345,66 +342,67 @@ void CavityModel_rf_potential(
     int model,
     CavityModelPotential* potential
 ) {
-    const int M = (int)(source->radial_order / 2), jets = 2 * M + 1;
+    const int num_terms = (int)(source->radial_order / 2);
+    const int num_jets = 2 * num_terms + 1;
     xt_float_or_tpsa real[CAVITY_MODEL_JETS], imag[CAVITY_MODEL_JETS];
-    xt_float_or_tpsa S[CAVITY_MODEL_JETS], C[CAVITY_MODEL_JETS];
-    CavityModel_profile(z, source, real, imag, jets);
+    xt_float_or_tpsa profile_sin[CAVITY_MODEL_JETS], profile_cos[CAVITY_MODEL_JETS];
+    CavityModel_profile(z, source, real, imag, num_jets);
     xt_float_or_tpsa sine = sin(q[2]), cosine = cos(q[2]);
-    for (int j = 0; j < jets; ++j) {
-        S[j] = real[j] * sine - imag[j] * cosine;
-        C[j] = real[j] * cosine + imag[j] * sine;
+    for (int j = 0; j < num_jets; ++j) {
+        profile_sin[j] = real[j] * sine - imag[j] * cosine;
+        profile_cos[j] = real[j] * cosine + imag[j] * sine;
     }
     for (int i = 0; i < 4; ++i) {
         potential->a[i] = 0.;
         for (int j = 0; j < 3; ++j) potential->d[i][j] = 0.;
     }
-    // Frozen voltage actions have their own body chart and collapsed RF
-    // faces. The phase-resolved interior gauge must never be attached to them.
+    // These models carry the RF in their own generators.
     if (model == CAVITY_MODEL_FROZEN || model == CAVITY_MODEL_AVERAGED
         || model == CAVITY_MODEL_PARAXIAL)
         return;
-    xt_float_or_tpsa X = q[0], Y = q[1], r2 = X * X + Y * Y;
-    // Sums and their r^2 derivatives; S, C turn into P_n in place, P_n
-    // keeping jets 0..2(M-n).
-    xt_float_or_tpsa axial = 0., axial_T = 0., axial_r2 = 0.;
-    xt_float_or_tpsa radial = 0., radial_T = 0., radial_r2 = 0.;
-    xt_float_or_tpsa power = 1., slope = 0.;
-    double alpha = 1., beta = .5;
-    for (int n = 0; n <= M; ++n) {
-        axial += alpha * power * S[0];
-        axial_T += alpha * power * C[0];
-        axial_r2 += alpha * slope * S[0];
-        if (n < M) {
-            radial += beta * power * S[1];
-            radial_T += beta * power * C[1];
-            radial_r2 += beta * slope * S[1];
+    const xt_float_or_tpsa x = q[0], y = q[1], r2 = x * x + y * y;
+    xt_float_or_tpsa axial = 0., axial_d_time = 0., axial_d_r2 = 0.;
+    xt_float_or_tpsa radial = 0., radial_d_time = 0., radial_d_r2 = 0.;
+    xt_float_or_tpsa r2_power = 1.;       // r2^n
+    xt_float_or_tpsa r2_power_d_r2 = 0.;  // n r2^(n-1)
+    double axial_coefficient = 1.;        // (-1/4)^n / (n!)^2
+    double radial_coefficient = .5;       // (-1/4)^n / (2 n! (n+1)!)
+    for (int n = 0; n <= num_terms; ++n) {
+        axial += axial_coefficient * r2_power * profile_sin[0];
+        axial_d_time += axial_coefficient * r2_power * profile_cos[0];
+        axial_d_r2 += axial_coefficient * r2_power_d_r2 * profile_sin[0];
+        if (n < num_terms) {
+            radial += radial_coefficient * r2_power * profile_sin[1];
+            radial_d_time += radial_coefficient * r2_power * profile_cos[1];
+            radial_d_r2 += radial_coefficient * r2_power_d_r2 * profile_sin[1];
         }
-        for (int j = 0; j + 2 < jets - 2 * n; ++j) {
-            S[j] += S[j + 2];
-            C[j] += C[j + 2];
+        // The profile jets become those of P_(n+1) in place.
+        for (int j = 0; j + 2 < num_jets - 2 * n; ++j) {
+            profile_sin[j] += profile_sin[j + 2];
+            profile_cos[j] += profile_cos[j + 2];
         }
-        slope = (double)(n + 1) * power;
-        power = power * r2;
-        alpha *= -.25 / ((n + 1.) * (n + 1.));
-        beta *= -.25 / ((n + 1.) * (n + 2.));
+        r2_power_d_r2 = (double)(n + 1) * r2_power;
+        r2_power = r2_power * r2;
+        axial_coefficient *= -.25 / ((n + 1.) * (n + 1.));
+        radial_coefficient *= -.25 / ((n + 1.) * (n + 2.));
     }
-    potential->a[0] = X * radial;
-    potential->a[1] = Y * radial;
+    potential->a[0] = x * radial;
+    potential->a[1] = y * radial;
     potential->a[2] = -axial;
-    potential->d[0][0] = radial + 2. * X * X * radial_r2;
-    potential->d[0][1] = 2. * X * Y * radial_r2;
-    potential->d[0][2] = X * radial_T;
+    potential->d[0][0] = radial + 2. * x * x * radial_d_r2;
+    potential->d[0][1] = 2. * x * y * radial_d_r2;
+    potential->d[0][2] = x * radial_d_time;
     potential->d[1][0] = potential->d[0][1];
-    potential->d[1][1] = radial + 2. * Y * Y * radial_r2;
-    potential->d[1][2] = Y * radial_T;
-    potential->d[2][0] = -2. * X * axial_r2;
-    potential->d[2][1] = -2. * Y * axial_r2;
-    potential->d[2][2] = -axial_T;
+    potential->d[1][1] = radial + 2. * y * y * radial_d_r2;
+    potential->d[1][2] = y * radial_d_time;
+    potential->d[2][0] = -2. * x * axial_d_r2;
+    potential->d[2][1] = -2. * y * axial_d_r2;
+    potential->d[2][2] = -axial_d_time;
 }
 
-// Straight static multipoles and uniform solenoid in the same potential.
-// knl[1]>0 gives focusing in x for the reference charge. Source coefficients
-// remain uncharged; actual signed Q enters the Hamiltonian exactly once.
+// Uniform solenoid and straight multipoles added to the potential. knl[1] > 0
+// focuses in x for the reference charge; the particle's charge Q multiplies the
+// whole potential in the Hamiltonian, not these coefficients.
 GPUFUN
 void CavityModel_add_static(
     const xt_float_or_tpsa q[6],
@@ -412,10 +410,8 @@ void CavityModel_add_static(
     const CavityModelSource* source,
     CavityModelPotential* potential
 ) {
-    // Explicit taper-compensation analysis only: A_z=-g*T gives constant
-    // longitudinal voltage while retaining the same static transport.
-    // Ordinary harmonic preparation initializes g=0; it never invents a DC
-    // continuation of the calibrated harmonic field at nonzero V, f=0.
+    // A_z = -g T is a constant accelerating field; the taper pass sets g, which
+    // is zero for RF tracking.
     potential->a[2] -= source->dc_gradient * q[2];
     potential->d[2][2] -= source->dc_gradient;
     xt_float_or_tpsa x = q[0] / source->k, y = q[1] / source->k;
@@ -455,21 +451,8 @@ int CavityModel_potential(
     return CAVITY_MODEL_OK;
 }
 
-// The longitudinal generator is projected, but its physical mechanical lift
-// still uses the complete retained RF potential. This is the same distinction
-// as VoltageTransport.mechanical(), not an auxiliary momentum readback.
-GPUFUN
-int CavityModel_physical_potential(
-    const xt_float_or_tpsa q[6],
-    xt_float_or_tpsa_arg z,
-    const CavityModelSource* source,
-    int model,
-    xt_float_or_tpsa output[4]
-) {
-    return CavityModel_potential(q, z, source, model, output);
-}
-
-// H=-Q Az-sqrt(epsilon^2-1-|P-Q A_perp|^2).
+// Hamilton's equations for H = -Q A_z - sqrt((E - Q Phi)^2 - 1 - |P - Q A_perp|^2),
+// with z the independent variable.
 GPUFUN
 int CavityModel_flow(
     const xt_float_or_tpsa q[6],
@@ -510,8 +493,8 @@ int CavityModel_flow(
         flow[coordinate + 3] = derivative;
         if (coordinate == 2) flow[coordinate + 3] = -derivative;
     }
-    // Named constrained analysis maps used by normal Line workflows.
-    // The constraints apply inside every implicit stage, not just setters.
+    // Frozen coordinates for Line analyses such as the taper pass; frozen in
+    // every stage, so the implicit solve sees the constrained flow.
     if (source->freeze_energy) flow[5] = 0.;
     if (source->freeze_zeta) flow[2] = 1. / source->reference_beta;
     if (source->freeze_x) flow[0] = 0.;
@@ -529,15 +512,12 @@ int CavityModel_flow(
     #endif
 #endif
 
-// Two-stage Gauss--Legendre: the same equations and constants as the existing
-// Python owner. Signed h reverses the deterministic word. All outputs are
-// transactional. The defining residual is checked after reassignment. Both
-// tests use the primal only; under TPSA the coefficients lag the primal by a
-// few contractions, so fixed sweeps after primal convergence settle them.
-// Stage unknowns are increments about q: this exact translation avoids
-// subtracting a large base energy/clock in the defining residual. The physical
-// primal increment retains the same absolute tolerance; reconstructed stages
-// and the final rounded output still have their floating-point ULP floor.
+// One step of the two-stage Gauss-Legendre method, fourth order and symplectic;
+// a negative h steps backwards. The stages are solved as increments about q, so
+// the residual does not subtract the large energy and clock. Convergence is
+// judged on the constant part: under TPSA the derivatives lag by a few
+// iterations, and the fixed sweeps after convergence settle them. The outputs
+// are written only on success.
 GPUFUN
 int CavityModel_gauss_stages(
     const xt_float_or_tpsa q[6],
@@ -640,8 +620,8 @@ int CavityModel_gauss(
 }
 
 
-// Space harmonics over the element, with the same fixed-beta crest calibration:
-// the crest phasor is sum_m conj(a_m) 2H sinc((1/beta - kappa_m) H).
+// Space harmonics over the element, calibrated as CavityModel_prepare: the crest
+// phasor is sum_m conj(a_m) 2H sinc((1/beta - kappa_m) H).
 GPUFUN
 int CavityModel_prepare_harmonics(
     xt_float_or_tpsa_arg frequency,
@@ -697,8 +677,7 @@ int CavityModel_prepare_harmonics(
         imag -= im[m] * integral;
     }
     const xt_float_or_tpsa square = real * real + imag * imag;
-    const double floor =
-        64. * 2.2204460492503131e-16 * 2. * xt_float_or_tpsa_const_part(H) * scale;
+    const double floor = 64. * DBL_EPSILON * 2. * xt_float_or_tpsa_const_part(H) * scale;
     if (!CavityModel_scalar_finite(square)
         || xt_float_or_tpsa_const_part(square) <= floor * floor)
         return CAVITY_MODEL_ARGUMENT;
@@ -715,20 +694,21 @@ int CavityModel_prepare_harmonics(
 }
 
 #ifndef XTRACK_TPSA_TRACK
-// Applied-effects local laws: full-root M2 plus uniform SOL/QUAD overlap.
-// Static overlap is a body law between in-field observation planes. It does
-// not supply hard-edge spin rotations or radiation through field jumps.
-// Fields are uncharged in source mass units. q=(X,Y,T,Px,Py,gamma).
-// Derivative rows T,X,Y,Z; rho is NOT absorbed in this law.
+// Fields acting on spin and radiation inside the element: the RF to radial
+// order, a uniform solenoid and a normal or skew quadrupole. The faces are
+// handled separately. Fields are per unit charge in the scaled units, with
+// derivative rows T, X, Y, Z.
 typedef struct {
     double E[3], B[3], dE[4][3], dB[4][3];
 } CavityModelEffectsField;
+
 GPUFUN
 void CavityModel_effects_cross(const double a[3], const double b[3], double c[3]) {
     c[0] = a[1] * b[2] - a[2] * b[1];
     c[1] = a[2] * b[0] - a[0] * b[2];
     c[2] = a[0] * b[1] - a[1] * b[0];
 }
+
 GPUFUN
 int CavityModel_effects_profile(
     double T,
@@ -829,8 +809,8 @@ int CavityModel_effects_profile(
     }
     return CAVITY_MODEL_OK;
 }
-// Uniform longitudinal-gauge static overlap only. Fields remain uncharged;
-// actual signed Q is applied by the Lorentz/LL/BMT laws, never here.
+
+// Solenoid and quadrupole strengths of the static fields, per unit charge.
 GPUFUN
 int CavityModel_effects_static_components(
     const CavityModelSource* source,
@@ -843,7 +823,7 @@ int CavityModel_effects_static_components(
     double normal = 0., skew = 0.;
     int present = ks != 0.;
     for (int64_t n = 0; n <= source->order; ++n) {
-        // Applied effects have no TPSA execution/derivative interpretation.
+        // Spin and radiation are tracked without TPSA.
         if ((source->knl_tpsa && source->knl_tpsa[n])
             || (source->ksl_tpsa && source->ksl_tpsa[n]))
             return CAVITY_MODEL_ARGUMENT;
@@ -860,7 +840,6 @@ int CavityModel_effects_static_components(
     *b = 0.;
     *gn = 0.;
     *gs = 0.;
-    // Raw RF-only point queries historically need no magnetic geometry.
     if (!present) return CAVITY_MODEL_OK;
     const double k = source->k, length = source->length, scale = source->magnetic_scale;
     if (!isfinite(k) || k <= 0. || !isfinite(length) || length <= 0. || !isfinite(scale))
@@ -871,6 +850,7 @@ int CavityModel_effects_static_components(
     return isfinite(*b) && isfinite(*gn) && isfinite(*gs) ? CAVITY_MODEL_OK
                                                           : CAVITY_MODEL_NONFINITE;
 }
+
 // The radial sums of the effect fields from jets 0..2M of a phase profile F,
 // with P_n = (1 + d_Z^2)^n F: E_z's sum_{n<=M} (-1/4)^n/n!^2 r^2n P_n, then
 // sum_{n<M} (-1/4)^n/(2 n!(n+1)!) r^2n of P_n and of P_n', each followed by
@@ -880,23 +860,25 @@ void CavityModel_effects_series(const double F[], int M, double r2, double sums[
     double P[CAVITY_MODEL_JETS];
     for (int j = 0; j <= 2 * M; ++j) P[j] = F[j];
     for (int i = 0; i < 6; ++i) sums[i] = 0.;
-    double power = 1., slope = 0., alpha = 1., beta = .5;
+    double r2_power = 1., r2_power_d_r2 = 0.;
+    double axial_coefficient = 1., radial_coefficient = .5;
     for (int n = 0; n <= M; ++n) {
-        sums[0] += alpha * power * P[0];
-        sums[1] += alpha * slope * P[0];
+        sums[0] += axial_coefficient * r2_power * P[0];
+        sums[1] += axial_coefficient * r2_power_d_r2 * P[0];
         if (n < M) {
-            sums[2] += beta * power * P[0];
-            sums[3] += beta * slope * P[0];
-            sums[4] += beta * power * P[1];
-            sums[5] += beta * slope * P[1];
+            sums[2] += radial_coefficient * r2_power * P[0];
+            sums[3] += radial_coefficient * r2_power_d_r2 * P[0];
+            sums[4] += radial_coefficient * r2_power * P[1];
+            sums[5] += radial_coefficient * r2_power_d_r2 * P[1];
         }
         for (int j = 0; j + 2 <= 2 * (M - n); ++j) P[j] += P[j + 2];
-        slope = (double)(n + 1) * power;
-        power *= r2;
-        alpha *= -.25 / ((n + 1.) * (n + 1.));
-        beta *= -.25 / ((n + 1.) * (n + 2.));
+        r2_power_d_r2 = (double)(n + 1) * r2_power;
+        r2_power *= r2;
+        axial_coefficient *= -.25 / ((n + 1.) * (n + 1.));
+        radial_coefficient *= -.25 / ((n + 1.) * (n + 2.));
     }
 }
+
 GPUFUN
 int CavityModel_effects_fields(
     const double q[6],
@@ -943,8 +925,8 @@ int CavityModel_effects_fields(
         field->dB[axis][1] = -dx * L - x * dL;
         field->dB[axis][2] = 0.;
     }
-    // Curl of the SAME uniform static potential used by full orbit tracking:
-    // A=(-bY/2,bX/2,-gn(X^2-Y^2)/2+gsXY). Static E vanishes.
+    // Curl of the static potential the orbit uses,
+    // A = (-bY/2, bX/2, -gn(X^2 - Y^2)/2 + gs XY); it has no electric field.
     double b, gn, gs;
     status = CavityModel_effects_static_components(source, &b, &gn, &gs);
     if (status != CAVITY_MODEL_OK) return status;
@@ -964,6 +946,9 @@ int CavityModel_effects_fields(
     }
     return CAVITY_MODEL_OK;
 }
+
+// Spin precession (Thomas-BMT) and radiation reaction (Landau-Lifshitz) at
+// kinetic momentum u.
 GPUFUN
 int CavityModel_effects_law(
     const double u[3],
@@ -1052,6 +1037,7 @@ int CavityModel_effects_law(
         if (!isfinite(omega[j]) || !isfinite(thomas[j])) return CAVITY_MODEL_NONFINITE;
     return CAVITY_MODEL_OK;
 }
+
 GPUFUN
 int CavityModel_effects(
     const double q[6],
@@ -1075,8 +1061,8 @@ int CavityModel_effects(
         CavityModel_add_static(q, z, source, &potential);
     else
         potential.a[2] -= source->dc_gradient * q[2];
-    // Kinetic momentum comes from TOTAL A, including the solenoid's Ax/Ay.
-    // Az affects the conservative generator; it is not a transverse kick.
+    // Kinetic momentum subtracts the whole transverse potential, the solenoid's
+    // included; A_z enters the Hamiltonian, not the momentum.
     const double gamma = q[5] - Q * potential.a[3];
     double u[3] = {q[3] - Q * potential.a[0], q[4] - Q * potential.a[1], 0.};
     const double shell = gamma * gamma - 1. - u[0] * u[0] - u[1] * u[1];
@@ -1084,6 +1070,7 @@ int CavityModel_effects(
     u[2] = sqrt(shell);
     return CavityModel_effects_law(u, Q, anomaly, &field, S1, omega, thomas);
 }
+
 GPUFUN
 int CavityModel_spin_generator(
     const double q[6],
@@ -1108,9 +1095,9 @@ int CavityModel_spin_generator(
     return CAVITY_MODEL_OK;
 }
 
-// Solve the two 3-vector collocation stages for all three input columns.
-// The accepted orbit stages are supplied; no orbit or spin normalization is
-// substituted. A fresh OPERATOR residual is checked independently of LU.
+// Spin rotation over one Gauss step, at the orbit's accepted stages: the linear
+// collocation equations are solved for the three columns, and their residual is
+// checked independently of the factorisation.
 GPUFUN
 int CavityModel_spin_gauss_matrix(
     const double stages[12],
@@ -1231,6 +1218,6 @@ int CavityModel_spin_cell(
     return CAVITY_MODEL_OK;
 }
 
-#endif  // CPU-scalar applied effects; no TPSA scalarization
+#endif  // !XTRACK_TPSA_TRACK
 
 #endif
