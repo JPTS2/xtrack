@@ -196,3 +196,59 @@ def test_a_kick_near_the_axis_is_resolved_to_rtol(backend):
     ends = [track(field, 1e-6, 0., 0., 0., 0., 0., p0c, xt.ELECTRON_MASS_EV, backend=backend, max_step=step)['px'][0]
             for step in (None, np.pi / _K / 800)]
     assert abs(ends[0] - ends[1]) < 1e-10 * abs(ends[1])
+
+
+@pytest.mark.parametrize('backend', ['python', 'c'])
+def test_without_field_the_crossing_is_the_exact_drift(backend):
+    """Straight lines at constant momentum: the transit time is L E / (P_z c^2)."""
+    p0c, length = 2e9, .7
+    energy0 = np.hypot(p0c, _PROTON)
+    beta0 = p0c / energy0
+    launch = dict(x=np.array([1e-3, -2e-3]), px=np.array([2e-3, -1e-3]),
+                  y=np.array([-1e-3, 3e-3]), py=np.array([-1e-3, 4e-3]),
+                  zeta=np.array([1e-2, -3e-2]), pzeta=np.array([1e-3, -2e-3]))
+    field = HarmonicField([0.], [0.], _FREQUENCY, length)
+    end = track(field, **launch, p0c=p0c, mass0=_PROTON, backend=backend)
+
+    energy = energy0 + launch['pzeta'] * beta0 * p0c
+    momentum_x, momentum_y = launch['px'] * p0c, launch['py'] * p0c
+    momentum_z = np.sqrt(energy**2 - _PROTON**2 - momentum_x**2 - momentum_y**2)
+    expected = dict(x=launch['x'] + length * momentum_x / momentum_z, px=launch['px'],
+                    y=launch['y'] + length * momentum_y / momentum_z, py=launch['py'],
+                    zeta=launch['zeta'] + length - beta0 * length * energy / momentum_z,
+                    pzeta=launch['pzeta'])
+    for name in _COORDINATES:
+        np.testing.assert_allclose(end[name], expected[name], rtol=1e-12, atol=1e-15)
+
+
+@pytest.mark.parametrize('backend', ['python', 'c'])
+def test_uniform_longitudinal_field_gives_the_closed_form_orbit(backend):
+    """In a uniform E_z the energy grows linearly in z and P_perp is conserved, so
+    with m_T^2 = m^2 + P_perp^2 the orbit integrates in closed form:
+    x gains P_x [acosh(E/m_T)] / (q E_z) and c t gains [P_z] / (q E_z) across the field.
+    A 1 Hz field is uniform to (omega t)^2 ~ 1e-16 over the transit."""
+    gradient, length = 5e6, .5
+    p0c = _PROTON * np.sqrt(1.2**2 - 1)
+    energy0 = np.hypot(p0c, _PROTON)
+    beta0 = p0c / energy0
+    launch = dict(x=np.array([1e-3, -2e-3]), px=np.array([2e-3, -1e-3]),
+                  y=np.array([-1e-3, 3e-3]), py=np.array([-1e-3, 4e-3]),
+                  zeta=np.array([1e-2, -3e-2]), pzeta=np.array([1e-3, -2e-3]))
+    field = HarmonicField([0.], [gradient], 1., length)
+    end = track(field, **launch, p0c=p0c, mass0=_PROTON, backend=backend)
+
+    momentum_x, momentum_y = launch['px'] * p0c, launch['py'] * p0c
+    transverse_mass = np.sqrt(_PROTON**2 + momentum_x**2 + momentum_y**2)
+    energy_in = energy0 + launch['pzeta'] * beta0 * p0c
+    energy_out = energy_in + gradient * length
+    momentum_z_in = np.sqrt(energy_in**2 - transverse_mass**2)
+    momentum_z_out = np.sqrt(energy_out**2 - transverse_mass**2)
+    path = (np.arccosh(energy_out / transverse_mass)
+            - np.arccosh(energy_in / transverse_mass)) / gradient
+    expected = dict(x=launch['x'] + momentum_x * path, px=launch['px'],
+                    y=launch['y'] + momentum_y * path, py=launch['py'],
+                    zeta=launch['zeta'] + length
+                         - beta0 * (momentum_z_out - momentum_z_in) / gradient,
+                    pzeta=(energy_out - energy0) / (beta0 * p0c))
+    for name in _COORDINATES:
+        np.testing.assert_allclose(end[name], expected[name], rtol=1e-10, atol=1e-14)
