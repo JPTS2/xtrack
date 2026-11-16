@@ -62,6 +62,10 @@ lattice_path    = output_dir / 'legacy_transport.madx'
 strengths_path  = output_dir / 'legacy_strengths.madx'
 lattice_path.write_text(LEGACY_DATA)
 strengths_path.write_text(LEGACY_STRENGTHS)
+print('Read legacy lattice and strength data'
+      '\n-------------------------------------')
+print('Legacy input only: prefer native Python definitions for new models.')
+print('Xtrack parses these files directly; no MAD-X process or macros run.')
 env         = xt.load(
     file            = [lattice_path, strengths_path],
     format          = 'madx',
@@ -74,35 +78,47 @@ line        = env[LINE_NAME]
 ########################################
 # Legacy sequence positions refer to element centres here. Reversed beams
 # receive separate definitions; shared names are qualified by the line name.
-line.get_table().cols['name s_start s_center s_end element_type'].show()
-print('Imported length [m]:', line.get_length())
-print('Imported qf and qd k1 [m^-2]:',
-      line['qf/transport'].k1, line['qd/transport'].k1)
-env.info('qf/transport')
+print('\nImported transport geometry\n---------------------------')
+print('Positions [m]. The legacy sequences specify element centres.')
+line.get_table().cols[
+    'name s_start s_center s_end element_type'].show()
+print(f'Imported length [m]: {line.get_length():.3f}')
+print(f'qf/transport k1 [m^-2]: {line["qf/transport"].k1:.3f}')
+print(f'qd/transport k1 [m^-2]: {line["qd/transport"].k1:.3f}')
+print('Imported qf strength and its deferred expression:')
+env['qf/transport'].get_table().rows['k1'].show()
 
 ########################################
 # Inspect the polygon limit created from stored aperture data
 ########################################
+print('\nStored aperture data becomes a native tracking limit'
+      '\n----------------------------------------------------')
 limits      = line.get_table().rows['.*_aper.*']
 limits.cols['name s element_type'].show()
 aperture    = line.get(limits.name[0])
-print('Imported polygon vertices x / y [m]:',
-      aperture.x_vertices, aperture.y_vertices)
+print('Polygon x vertices [m]:', aperture.x_vertices)
+print('Polygon y vertices [m]:', aperture.y_vertices)
 probes      = xt.Particles('electron', p0c = 1e9, x = [0.0, 0.020])
 aperture.track(probes)
 probes.sort(interleave_lost_particles = True)
-print('Inside / outside probe states:', probes.state)
+print('Probe x [m]:', probes.x)
+print('Probe states (1 = alive, 0 = lost):', probes.state)
 # These are native tracking limits; loading stored geometry does not run MAD-X.
 
 ########################################
 # Inspect the reversed stored beam definition
 ########################################
 # The return path now runs from qd to qf in its own beam coordinate convention.
-print('Reversed stored line:')
+print('\nConvert the return path to its reversed beam convention'
+      '\n-------------------------------------------------------')
+print('reverse_lines reverses element order and transforms magnet parameters.')
+print('Here the normal quadrupole k1 signs change; unary -line only reorders.')
+print('Positions [m]:')
 env['return_path'].get_table().cols[
     'name s_start s_center s_end element_type'].show()
-print('Forward and reversed lengths [m]:',
-      line.get_length(), env['return_path'].get_length())
+print(f'Return-path length [m]: {env["return_path"].get_length():.3f}')
+print(f'qd/return_path k1 [m^-2]: {env["qd/return_path"].k1:.3f}')
+print(f'qf/return_path k1 [m^-2]: {env["qf/return_path"].k1:.3f}')
 
 ################################################################################
 # Continue with native Xtrack data
@@ -111,9 +127,14 @@ print('Forward and reversed lengths [m]:',
 ########################################
 # Change an imported variable
 ########################################
-env['kq']   = KQ_AFTER
-print('After changing kq [m^-2]:',
-      line['qf/transport'].k1, line['qd/transport'].k1)
+print('\nChange the imported strength variable'
+      '\n-------------------------------------')
+env['kq'] = KQ_AFTER
+print(f'kq [m^-2]: {env["kq"]:.3f}')
+print(f'qf/transport k1 [m^-2]: {line["qf/transport"].k1:.3f}')
+print(f'qd/transport k1 [m^-2]: {line["qd/transport"].k1:.3f}')
+print(f'qd/return_path k1 [m^-2]: {env["qd/return_path"].k1:.3f}')
+print(f'qf/return_path k1 [m^-2]: {env["qf/return_path"].k1:.3f}')
 
 ########################################
 # Save and reload native JSON
@@ -121,10 +142,14 @@ print('After changing kq [m^-2]:',
 save_path       = Path(__file__).resolve().parent / SAVE_FILE
 save_path.parent.mkdir(parents = True, exist_ok = True)
 
+print('\nSave and reload the current setting as native JSON'
+      '\n--------------------------------------------------')
 env.to_json(save_path)
+print('Saved native environment:', save_path)
 env_loaded      = xt.load(save_path)
 line_loaded     = env_loaded[LINE_NAME]
-print('Saved native environment:', save_path)
-print('Native reload length [m]:', line_loaded.get_length())
-print('Native reload qf and qd k1 [m^-2]:',
-      line_loaded['qf/transport'].k1, line_loaded['qd/transport'].k1)
+print(f'Reloaded transport length [m]: {line_loaded.get_length():.3f}')
+print(f'Reloaded qf/transport k1 [m^-2]: '
+      f'{line_loaded["qf/transport"].k1:.3f}')
+print(f'Reloaded qd/transport k1 [m^-2]: '
+      f'{line_loaded["qd/transport"].k1:.3f}')

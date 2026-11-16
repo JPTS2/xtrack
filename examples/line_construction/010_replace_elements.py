@@ -42,8 +42,14 @@ line = env.new_line(
 ########################################
 # The table adds zero-based :: occurrence suffixes to repeated names.
 # env_name identifies the shared element; ::1 identifies its second occurrence.
-print('Starting geometry and integrated strengths [m^-1]:')
-line.get_table(attr = True).cols['name env_name s_start s_end k1l'].show()
+print('Three occurrences of one quadrupole'
+      '\n-----------------------------------')
+print('Units: s_start, s_end [m]; k1l [m^-1].')
+print('k1l is k1 times the quadrupole length in this example.')
+print('env_name identifies the shared definition; '
+      '::1 is its second occurrence.')
+table = line.get_table(attr = True)
+table.cols['name env_name s_start s_end k1l'].show(maxwidth = 'full')
 
 ################################################################################
 # Change all three quadrupoles, then replace only the second
@@ -54,8 +60,11 @@ line.get_table(attr = True).cols['name env_name s_start s_end k1l'].show()
 ########################################
 # All three occurrences reference the same object, so all three change.
 line['quad'].k1 = K1_SHARED
-print('After changing the shared quadrupole:')
-line.get_table(attr = True).cols['name s_start s_end k1l'].show()
+print('\nChange the shared quadrupole strength'
+      '\n-------------------------------------')
+print(f'Set quad.k1 [m^-2]: {K1_SHARED:.3f}. All three occurrences change.')
+table = line.get_table(attr = True)
+table.cols['name s_start s_end k1l'].show(maxwidth = 'full')
 
 ########################################
 # Replace the second occurrence only
@@ -69,8 +78,14 @@ env.new(
 
 # Using 'quad' here would replace every occurrence of that environment name.
 line.replace('quad::1', 'quad_single')
-print('After replacing only the second quadrupole:')
-line.get_table(attr = True).cols['name env_name s_start s_end k1l'].show()
+print('\nReplace only the second occurrence'
+      '\n----------------------------------')
+print("replace('quad::1', 'quad_single') selects just the second occurrence.")
+print('Its replacement has independent attributes and the same length.')
+print('Occurrence suffixes are renumbered after the edit; '
+      'follow the positions.')
+table = line.get_table(attr = True)
+table.cols['name env_name s_start s_end k1l'].show(maxwidth = 'full')
 
 ################################################################################
 # Replace all magnets with a given name or pattern
@@ -82,8 +97,12 @@ line.get_table(attr = True).cols['name env_name s_start s_end k1l'].show()
 line['quad'].k1 = K1_AFTER
 # Occurrence suffixes are regenerated after edits: the remaining shared quads
 # are now quad::0 and quad::1. quad_single keeps its own strength.
-print('Only the two remaining shared quadrupoles change:')
-line.get_table(attr = True).cols['name env_name s_start s_end k1l'].show()
+print('\nChange the remaining shared quadrupoles'
+      '\n---------------------------------------')
+print(f'Set quad.k1 [m^-2]: {K1_AFTER:.3f}. '
+      'quad_single keeps its own strength.')
+table = line.get_table(attr = True)
+table.cols['name env_name s_start s_end k1l'].show(maxwidth = 'full')
 
 ########################################
 # Replace both remaining uses of quad
@@ -96,8 +115,12 @@ env.new(
 
 # Both remaining occurrences are selected; quad_single stays independent.
 line.replace('quad', 'quad_family')
-print('After replacing every occurrence of quad:')
-line.get_table(attr = True).cols['name env_name s_start s_end k1l'].show()
+print('\nReplace all remaining uses of quad'
+      '\n----------------------------------')
+print("replace('quad', 'quad_family') selects both remaining uses of quad.")
+print('quad_single is a different name and is left unchanged.')
+table = line.get_table(attr = True)
+table.cols['name env_name s_start s_end k1l'].show(maxwidth = 'full')
 
 ########################################
 # Replace both screens using a name pattern
@@ -106,11 +129,15 @@ line.get_table(attr = True).cols['name env_name s_start s_end k1l'].show()
 # so their common replacement has the same zero length.
 env.new('screen_replacement', xt.Marker)
 line.replace('screen[.].*', 'screen_replacement')
-print('After replacing both screen names with the same marker:')
-line.get_table(attr = True).cols['name env_name s_start s_end k1l'].show()
+print('\nReplace names selected by a pattern'
+      '\n-----------------------------------')
+print("The pattern 'screen[.].*' selects screen.left and screen.right.")
+print('Both become occurrences of screen_replacement, a zero-length marker.')
+table = line.get_table(attr = True)
+table.cols['name env_name s_start s_end k1l'].show(maxwidth = 'full')
 
 ################################################################################
 # Inspect the preserved geometry
 ################################################################################
 # Every replacement kept its selected element length.
-print(f'Final length: {line.get_length():.3f} m')
+print(f'Final line length [m]: {line.get_length():.3f}')

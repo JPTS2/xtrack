@@ -43,7 +43,8 @@ line = env.new_line(
 ########################################
 # Inspect the starting sequence
 ########################################
-print('Before editing:')
+print('Starting line\n-------------')
+print('Positions [m]. Insertions below occupy drift space.')
 line.get_table().cols['name s_start s_end element_type'].show()
 starting_line = line.copy(shallow = True)
 
@@ -56,6 +57,9 @@ starting_line = line.copy(shallow = True)
 ########################################
 # Inserting into a drift splits that drift while preserving the line length.
 sextupole = xt.Sextupole(length = SEXT_LENGTH, k2 = 0.1)
+print('\nInsert a sextupole and replace the quadrupole'
+      '\n---------------------------------------------')
+print('Insertion splits the drift; equal-length replacement keeps the layout.')
 line.insert(
     'sext', sextupole,
     at      = SEXT_START,
@@ -76,7 +80,6 @@ line.replace('quad', 'quad_replacement')
 ########################################
 # Inspect the changed sequence
 ########################################
-print('After insertion and replacement:')
 line.get_table().cols['name s_start s_end element_type'].show()
 
 ################################################################################
@@ -89,14 +92,17 @@ line.get_table().cols['name s_start s_end element_type'].show()
 # Removing a thick element replaces its occupied length with a drift.
 # It removes the occurrence from this line, not the object from the environment.
 line.remove('sext')
-print('Removed from the line, still defined:', 'sext' in env.elements)
+print('\nRemove an occurrence, then its unused definition'
+      '\n------------------------------------------------')
+print('line.remove replaces the sextupole with a drift of the same length.')
+print('sext remains in env.elements:', 'sext' in env.elements)
 
 ########################################
 # Remove the unused environment definition
 ########################################
 # Remove a definition only after no line or expression needs it.
 env.remove('sext')
-print('After removing its definition:', 'sext' in env.elements)
+print('After env.remove, sext remains in env.elements:', 'sext' in env.elements)
 
 ########################################
 # Append a drift
@@ -108,9 +114,11 @@ line.append('tail')
 ########################################
 # Inspect the edited geometry
 ########################################
-print('After removing sext and appending the tail:')
+print('\nAppend a drift after the existing end marker'
+      '\n--------------------------------------------')
+print('Appending extends the line; the end marker stays at its old position.')
 line.get_table().cols['name s_start s_end element_type'].show()
-print(f'Edited line length: {line.get_length():.3f} m')
+print(f'Edited line length [m]: {line.get_length():.3f}')
 
 ################################################################################
 # Insert a batch or a prepared subline
@@ -122,6 +130,9 @@ print(f'Edited line length: {line.get_length():.3f} m')
 env.new('batch_s1', xt.Sextupole, length = SEXT_LENGTH, k2 = 0.1)
 env.new('batch_s2', xt.Sextupole, length = SEXT_LENGTH, k2 = -0.1)
 batch_line = starting_line.copy(shallow = True)
+print('\nInsert two adjacent elements\n----------------------------')
+print(f'Each insertion comparison starts from the original '
+      f'{LINE_LENGTH:g} m line.')
 batch_line.insert(
     ['batch_s1', 'batch_s2'],
     at      = SEXT_START,
@@ -133,6 +144,10 @@ batch_line.get_table().cols['name s_start s_end'].show()
 # Place a batch relative to existing and new elements
 ########################################
 anchor_line = starting_line.copy(shallow = True)
+print('\nInsert a batch using relative anchors'
+      '\n-------------------------------------')
+print(f'The sextupole ends {SEXT_LENGTH:g} m before the quadrupole entrance.')
+print('Both new markers are placed at the new sextupole exit.')
 anchor_line.insert([
     env.place(
         'batch_s1',
@@ -143,7 +158,6 @@ anchor_line.insert([
     env.new('batch_m1', xt.Marker, at = 'batch_s1@end'),
     env.new('batch_m2', xt.Marker, at = 'batch_s1@end'),
 ])
-print('Two markers share the new sextupole exit:')
 anchor_line.get_table().cols['name s_start s_end'].show()
 
 ########################################
@@ -156,6 +170,9 @@ insert_line = env.new_line(
     ],
 )
 subline_line = starting_line.copy(shallow = True)
+print('\nInsert a subline with an internal gap'
+      '\n-------------------------------------')
+print('Unlike the adjacent list, the subline retains its internal drift.')
 subline_line.insert(insert_line, at = SEXT_START, anchor = 'start')
 subline_line.get_table().cols['name s_start s_end'].show()
 
@@ -167,17 +184,25 @@ subline_line.get_table().cols['name s_start s_end'].show()
 # Give the comparison line a repeated quadrupole
 ########################################
 repeated_line = env.new_line(components = ['quad', 'quad', 'batch_s1'])
+print('\nCompare removal selections\n--------------------------')
+print('Starting sequence [m]; each selection is applied to a separate copy.')
 repeated_line.get_table().cols['name s_start s_end'].show()
+print('Each removed thick occurrence is replaced by an equal-length drift.')
 
 ########################################
 # Compare the three selections on separate sequences
 ########################################
-for selection in ['quad::1', 'quad', 'batch_.*']:
+for selection, label in [
+    ('quad::1', 'Remove only the second quadrupole occurrence'),
+    ('quad', 'Remove every occurrence of quad'),
+    ('batch_.*', 'Remove names matching batch_.*'),
+]:
     removed_line = repeated_line.copy(shallow = True)
     removed_line.remove(selection)
-    print('Removed:', selection)
+    print('\n' + label + '\n' + '-' * len(label))
+    print('Selection:', selection)
     removed_line.get_table().cols['name s_start s_end'].show()
-    print('Length after removal [m]:', removed_line.get_length())
+    print(f'Length after removal [m]: {removed_line.get_length():.3f}')
 
 ################################################################################
 # Append an object, a list or a prepared subline
@@ -188,6 +213,10 @@ for selection in ['quad::1', 'quad', 'batch_.*']:
 ########################################
 object_tail = starting_line.copy(shallow = True)
 object_tail.append('new_tail', xt.Drift(length = TAIL_LENGTH))
+print('\nAppend a newly instantiated element'
+      '\n-----------------------------------')
+print(f'Each append comparison starts from the original '
+      f'{LINE_LENGTH:g} m line.')
 object_tail.get_table().cols['name s_start s_end'].show()
 
 ########################################
@@ -195,6 +224,7 @@ object_tail.get_table().cols['name s_start s_end'].show()
 ########################################
 list_tail = starting_line.copy(shallow = True)
 list_tail.append(['batch_s1', 'batch_s2'])
+print('\nAppend two adjacent elements\n----------------------------')
 list_tail.get_table().cols['name s_start s_end'].show()
 
 ########################################
@@ -202,4 +232,7 @@ list_tail.get_table().cols['name s_start s_end'].show()
 ########################################
 subline_tail = starting_line.copy(shallow = True)
 subline_tail.append(insert_line)
+print('\nAppend a subline with an internal gap'
+      '\n-------------------------------------')
+print('Appending the subline preserves the gap between its sextupoles.')
 subline_tail.get_table().cols['name s_start s_end'].show()

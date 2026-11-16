@@ -31,6 +31,7 @@ env = xt.Environment()
 ########################################
 env.new('quad', xt.Quadrupole, length = QUAD_LENGTH, k1 = KQ_START)
 env.new('screen', xt.Marker)
+print('Registered elements\n-------------------')
 print('Registered element names:', list(env.elements.keys()))
 
 ################################################################################
@@ -40,9 +41,11 @@ print('Registered element names:', list(env.elements.keys()))
 ########################################
 # Read the named definition
 ########################################
+print('\nRead the quadrupole definition\n------------------------------')
 print('Element class:', type(env.get('quad')).__name__)
 print('Quadrupole length [m]:', env['quad'].length)
 print('Initial quadrupole k1 [m^-2]:', env['quad'].k1)
+print('\nNative element inspection\n-------------------------')
 env.info('quad')
 
 ########################################
@@ -50,5 +53,6 @@ env.info('quad')
 ########################################
 # Here k1 is a number. Strength expressions are introduced separately.
 env['quad'].k1 = KQ_AFTER
+print('\nChange the numerical strength\n-----------------------------')
 print('Updated quadrupole k1 [m^-2]:', env['quad'].k1)
 print('Registered element names after editing:', list(env.elements.keys()))

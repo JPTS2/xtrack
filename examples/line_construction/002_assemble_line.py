@@ -56,14 +56,16 @@ line = env.new_line(
 ########################################
 # Read positions and length
 ########################################
+print('Element positions [m]\n---------------------')
 table = line.get_table()
 table.cols['name s_start s_center s_end element_type'].show()
-print('Total line length [m]:', line.get_length())
+print(f'Total line length [m]: {line.get_length():.3f}')
 
 ########################################
 # Retrieve the registered line
 ########################################
 line_registered = env[LINE_NAME]
+print('\nRetrieve the registered line\n----------------------------')
 print('Registered line names:', list(env.lines.keys()))
 print('Registered sequence:', line_registered.element_names)
 print('Same line object:', line_registered is line)

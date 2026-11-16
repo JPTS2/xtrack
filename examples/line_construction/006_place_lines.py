@@ -15,7 +15,7 @@ QUAD_LENGTH = 0.4                       # [m]
 CELL_LENGTH = 3.0                       # [m]
 KQ_START    = 0.2                       # [m^-2]
 KQ_AFTER    = 0.3                       # [m^-2]
-CLONE_TILT  = 1.0e-3                    # [rad]
+CLONE_ROLL  = 1.0e-3                    # [rad]
 CELL_START  = 2.0                       # [m]
 
 ################################################################################
@@ -71,11 +71,12 @@ line_end = env.new_line(
 ########################################
 # Compare the element positions
 ########################################
-for label, line in [('Start anchor', line_start),
-                    ('Centre anchor', line_center),
-                    ('End anchor', line_end)]:
-    print(label)
+for label, line in [('Start anchor [m]', line_start),
+                    ('Centre anchor [m]', line_center),
+                    ('End anchor [m]', line_end)]:
+    print(label + '\n' + '-' * len(label))
     line.get_table().cols['name s_start s_end'].show()
+    print()
 
 ################################################################################
 # Place another subline relative to the first
@@ -109,6 +110,9 @@ line = env.new_line(
 ########################################
 # Inspect the combined line
 ########################################
+print('Second cell placed at the first cell exit'
+      '\n-----------------------------------------')
+print('s_start, s_end [m]')
 line.get_table().cols['name s_start s_end isreplica'].show()
 
 ################################################################################
@@ -119,14 +123,21 @@ line.get_table().cols['name s_start s_end isreplica'].show()
 # Give the clone its own alignment
 ########################################
 cloned_cell = cell.clone(suffix = 'cloned')
-cloned_cell['qf.cloned'].rot_s_rad = CLONE_TILT
-print('Original and cloned qf tilts [rad]:',
-      cell['qf'].rot_s_rad, cloned_cell['qf.cloned'].rot_s_rad)
+cloned_cell['qf.cloned'].rot_s_rad = CLONE_ROLL
+print('\nIndependent magnet alignment\n----------------------------')
+print(f'Original qf roll [rad]: {cell["qf"].rot_s_rad:.3f}')
+print(f'Cloned qf roll [rad]: {cloned_cell["qf.cloned"].rot_s_rad:.3f}')
 
 ########################################
 # Change the shared family expression
 ########################################
+print('\nShared strength variable\n------------------------')
+print(f'Initial kq [m^-2]: {env["kq"]:.3f}')
 env['kq'] = KQ_AFTER
-print('Original and cloned qf strengths [m^-2]:',
-      cell['qf'].k1, cloned_cell['qf.cloned'].k1)
+print(f'Updated kq [m^-2]: {env["kq"]:.3f}')
+print(f'Original qf k1 [m^-2]: {cell["qf"].k1:.3f}')
+print(f'Cloned qf k1 [m^-2]: {cloned_cell["qf.cloned"].k1:.3f}')
+print('The clone retains expressions linked to the same environment variables.')
+
+print('\nClone-local positions [m]\n-------------------------')
 cloned_cell.get_table().cols['name s_start s_end'].show()

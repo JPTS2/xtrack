@@ -13,17 +13,18 @@ import xtrack as xt
 ################################################################################
 QUAD_LENGTH     = 0.3                   # [m]
 DRIFT_LENGTH    = 1.0                   # [m]
-N_CELLS         = 3
+KQ              = 0.2                   # Quadrupole k1 magnitude [m^-2]
+N_REPEATS       = 3
 
 ################################################################################
-# Build a half cell
+# Build a short section
 ################################################################################
 env = xt.Environment()
-half_cell = env.new_line(
+section = env.new_line(
     components  = [
-        env.new('qf', xt.Quadrupole, length = QUAD_LENGTH, k1 = 0.2),
+        env.new('qf', xt.Quadrupole, length = QUAD_LENGTH, k1 = KQ),
         env.new('drift', xt.Drift, length = DRIFT_LENGTH),
-        env.new('qd', xt.Quadrupole, length = QUAD_LENGTH, k1 = -0.2),
+        env.new('qd', xt.Quadrupole, length = QUAD_LENGTH, k1 = -KQ),
     ],
 )
 
@@ -36,24 +37,37 @@ half_cell = env.new_line(
 ########################################
 # Unary minus reverses element order. It does not invert magnet strengths,
 # backtrack particles or turn this straight geometry into a closed ring.
-cell = half_cell + (-half_cell)
+symmetric_section = section + (-section)
 
 ########################################
-# Repeat the cell
+# Repeat the combined section
 ########################################
-line = N_CELLS * cell
+# Repeated occurrences share the named element definitions.
+line = N_REPEATS * symmetric_section
+
+################################################################################
+# Inspect the resulting sequences
+################################################################################
 
 ########################################
-# Inspect the original and reversed sequences
+# Original and reversed sections
 ########################################
-print('Half cell:')
-half_cell.get_table().cols['name s element_type'].show()
-print('Reversed half cell:')
-(-half_cell).get_table().cols['name s element_type'].show()
+print('Original section\n----------------')
+print('s [m]; k1l [m^-1]')
+section.get_table(attr = True).cols['name s element_type k1l'].show()
+print('\nReversed section\n----------------')
+print('-section reverses element order and preserves the magnet strengths.')
+(-section).get_table(attr = True).cols['name s element_type k1l'].show()
 
 ########################################
-# Inspect the repeated line
+# Concatenated and repeated sections
 ########################################
-print('Repeated line:')
-line.get_table().cols['name s element_type'].show(maxrows = 16)
-print(f'Length: {line.get_length():.3f} m')
+print('\nOriginal plus reversed section\n------------------------------')
+print('section + (-section) concatenates the two assembled sequences.')
+symmetric_section.get_table(attr = True).cols[
+    'name s element_type k1l'].show()
+print('\nRepeated section\n----------------')
+print(f'Repetitions: {N_REPEATS}')
+print('Repeated occurrences share the original named element definitions.')
+line.get_table(attr = True).cols['name s element_type k1l'].show()
+print(f'Total length [m]: {line.get_length():.3f}')

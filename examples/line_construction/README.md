@@ -34,8 +34,11 @@ script runs independently. Begin with the
 | [019_import_independent_sliced_models.py](019_import_independent_sliced_models.py) | Combine independently authored sliced models with colliding element names |
 
 `005_line_algebra.py` combines already assembled element sequences.
-`007_parametric_geometry.py` uses `compose = True` to retain placement expressions
-and rebuild the geometry when a variable changes.
+`007_parametric_geometry.py` shows that changing element-length expressions
+does not recompute generated drifts. It rebuilds the layout from its retained
+placement composer after a geometry parameter changes. `compose = True` allows
+incremental placement before assembly; ordinary `env.new_line(...)` also retains
+its composer.
 
 Run the scripts in your Xsuite environment.
 
@@ -60,7 +63,7 @@ Lengths and positions are in metres, quadrupole `k1` in m^-2, and rotations in
 radians. `016` also checks two probes against an imported aperture limit.
 `013_reference_particles.py` uses a proton
 reference and relates a signed magnetic field to its rigidity.
-`015` also preserves a named proton reference through copying and reload.
+`015` also preserves the live named proton reference through JSON reload.
 The other small recipes need no reference particle.
 
 For reusable native Python definitions, see the
@@ -77,7 +80,7 @@ thick slices. For choosing slicing strategies and slice counts, see the
 `015_save_and_load_environment.py` saves three named lines in one environment,
 including sliced and unsliced lines sharing parent magnets. Restored strength
 expressions and the named reference remain live inside the loaded copy; the
-original and an in-memory copy stay independent. It writes
+original stays independent. In-memory copying is covered in `011`. It writes
 `outputs/shared_environment.json` beside the script.
 
 `016_read_legacy_madx_data.py` is a legacy data-input example, not a recommended

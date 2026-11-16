@@ -46,10 +46,11 @@ line = env.new_line(
 ################################################################################
 # Inspect the positions
 ################################################################################
+print('Start-anchor placements [m]\n---------------------------')
 table = line.get_table()
 table.cols['name s_start s_center s_end element_type'].show()
-print(f'Gap between quadrupoles: '
-      f'{table["s_start", "qd"] - table["s_end", "qf"]:.3f} m')
+print(f'Gap between quadrupoles [m]: '
+      f'{table["s_start", "qd"] - table["s_end", "qf"]:.3f}')
 
 ################################################################################
 # Compare element anchors
@@ -79,8 +80,7 @@ line_anchors = env.new_line(
 ########################################
 # Compare the equivalent positions
 ########################################
-print('Original start-anchor placements:')
-table.cols['name s_start s_center s_end'].show()
-print('Default centre and explicit end-anchor placements:')
+print('\nEquivalent centre/end-anchor placements [m]'
+      '\n-------------------------------------------')
 table_anchors = line_anchors.get_table()
 table_anchors.cols['name s_start s_center s_end'].show()
