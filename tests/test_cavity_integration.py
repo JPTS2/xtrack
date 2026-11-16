@@ -153,9 +153,13 @@ def test_zero_controls_survive_json_roundtrip(model, field):
     assert restored.model == original.model
 
 
-def test_cells_must_be_a_non_negative_count():
-    with pytest.raises(ValueError):
-        xt.Cavity(**dict(hardware('_phase-resolved'), n_cells=-1))
+@pytest.mark.parametrize('n_cells', (-1, 1.5))
+def test_cells_must_be_a_non_negative_integer(n_cells):
+    with pytest.raises(ValueError, match='n_cells'):
+        xt.Cavity(**dict(hardware('_phase-resolved'), n_cells=n_cells))
+    rf = xt.Cavity(**hardware('_phase-resolved'))
+    with pytest.raises(ValueError, match='n_cells'):
+        rf.n_cells = n_cells
 
 
 def test_failed_knob_apply_restores_original_series_and_new_promotions():

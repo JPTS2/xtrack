@@ -288,6 +288,7 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         'frequency': '_frequency',
         'harmonic': '_harmonic',
         'lag': '_lag',
+        'n_cells': '_n_cells',
         'nominal_energy_gain': '_nominal_energy_gain',
     }
 
@@ -311,6 +312,7 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         frequency = kwargs.pop('frequency', None)
         harmonic = kwargs.pop('harmonic', None)
         lag = kwargs.pop('lag', None)
+        n_cells = kwargs.pop('n_cells', 0)
         nominal_energy_gain = kwargs.pop('nominal_energy_gain', 'from_rf')
         kwargs.setdefault('counter_wave_amplitude', self._default_counter_wave_amplitude)
 
@@ -332,6 +334,7 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         if lag is not None:
             self.lag = lag
 
+        self.n_cells = n_cells
         self.nominal_energy_gain = nominal_energy_gain
 
         self._check_physical_model()
@@ -347,8 +350,6 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
             raise ValueError(f'{self.model} requires a positive finite length')
         if self.num_kicks < 0:
             raise ValueError('num_kicks must be non-negative')
-        if self.n_cells < 0:
-            raise ValueError('n_cells must be non-negative')
         if self._model == 13:
             if self.integrator not in ('adaptive', '_geometric', 'uniform'):
                 raise ValueError('_phase-resolved-frozen supports the "_geometric" '
@@ -366,6 +367,16 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         elif self.integrator == 'teapot':
             raise ValueError('_phase-resolved has no kicks to place: "teapot" '
                              'does not apply')
+
+    @property
+    def n_cells(self):
+        return self._n_cells
+
+    @n_cells.setter
+    def n_cells(self, value):
+        if value < 0 or int(value) != value:
+            raise ValueError('n_cells must be a non-negative integer')
+        self._n_cells = int(value)
 
     @property
     def cell_length(self):
