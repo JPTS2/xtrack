@@ -69,6 +69,7 @@ def test_frozen_model_is_symplectic_with_canonical_faces(model_context, faces):
     p0c = xt.ELECTRON_MASS_EV * np.sqrt(3.2**2 - 1)
     rf = xt.Cavity(_context=model_context, length=1., voltage=2e6,
                    frequency=1.3e9, phase=.4, model='_phase-resolved-frozen',
+                   counter_wave_amplitude=0.,
                    edge_entry_active=faces, edge_exit_active=faces)
     step = 1e-6
     matrix = np.zeros((6, 6))

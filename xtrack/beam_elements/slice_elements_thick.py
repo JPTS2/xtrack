@@ -4,7 +4,9 @@ import xobjects as xo
 from ..base_element import BeamElement
 from .bend import Bend
 from .bfield_expansion import BFieldExpansion
-from .cavity import Cavity, FieldExpansionCavity, MagnetOverlappedCavity
+from .cavity import Cavity
+from .field_expansion_cavity import FieldExpansionCavity
+from .magnet_overlapped_cavity import MagnetOverlappedCavity
 from .crab_cavity import CrabCavity
 from .device import Device
 from .multipole import Multipole

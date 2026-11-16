@@ -29,7 +29,9 @@ from .acdipole import ACDipole
 from .beam_interaction import BeamInteraction, ParticlesInjectionSample
 from .bend import Bend
 from .bfield_expansion import BFieldExpansion
-from .cavity import Cavity, FieldExpansionCavity, MagnetOverlappedCavity
+from .cavity import Cavity
+from .magnet_overlapped_cavity import MagnetOverlappedCavity
+from .field_expansion_cavity import FieldExpansionCavity
 from .combined_function_magnet import CombinedFunctionMagnet
 from .crab_cavity import CrabCavity
 from .device import Device

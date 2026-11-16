@@ -41,7 +41,7 @@ def _track(context, controls, p0c, mass0=_ELECTRON, q0=1.):
 
 @lru_cache(maxsize=None)
 def _truth(gamma, half_waves, gradient, amplitude, phase, counter_phase=0.,
-           mass0=_ELECTRON, q0=1., n_cells=None, ks=0., k1=0.):
+           mass0=_ELECTRON, q0=1., n_cells=0, ks=0., k1=0.):
     p0c = mass0 * np.sqrt(gamma**2 - 1)
     length = half_waves * _HALF_WAVE
     voltage = gradient * length
@@ -355,7 +355,7 @@ def test_spin_through_hard_edges_follows_thomas_bmt(context, gamma, gradient, am
     """A uniform field ends at its faces: the spin turns there too. The reference
     resolves each edge as a 0.3 mm ramp, the physical limit of a hard edge."""
     half_waves, phase, anomaly = 15, 1.2, 0.00115965218
-    n_cells = half_waves if amplitude > 0. else None
+    n_cells = half_waves if amplitude > 0. else 0
     spin = np.array([.6, 0., .8])
     length = half_waves * _HALF_WAVE
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
@@ -384,7 +384,7 @@ def test_spin_through_the_face_impulses_matches_the_reference(context, amplitude
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
     end = _spin_end(context, '_phase-resolved', gamma, half_waves, gradient, amplitude, phase,
                     anomaly, spin, num_kicks=256 * half_waves,
-                    n_cells=half_waves if amplitude > 0. else None)
+                    n_cells=half_waves if amplitude > 0. else 0)
     field = HarmonicField.from_voltage([k, -k], [1., amplitude], _FREQUENCY, length,
                                        gradient * length, phase, 1.)
     # The map's calibration particle enters with the reference particle.
@@ -415,7 +415,7 @@ def test_spin_of_every_composition_matches_the_reference(context, integrator, nu
     p0c = _ELECTRON * np.sqrt(gamma**2 - 1)
     end = _spin_end(context, '_phase-resolved', gamma, half_waves, gradient, amplitude, phase,
                     anomaly, spin, num_kicks=num_kicks, integrator=integrator,
-                    n_cells=half_waves if amplitude > 0. else None)
+                    n_cells=half_waves if amplitude > 0. else 0)
     field = HarmonicField.from_voltage([k, -k], [1., amplitude], _FREQUENCY, length,
                                        gradient * length, phase, 1.)
     beta0 = np.sqrt(1 - 1 / gamma**2)

@@ -14,7 +14,6 @@ import xtrack as xt
 from ._common import (
     _HasIntegrator,
     _HasModelRF,
-    _HasKnlKsl,
     _INDEX_TO_MODEL_RF,
     _INDEX_TO_INTEGRATOR,
     _NOEXPR_FIELDS,
@@ -41,15 +40,7 @@ def _constant_part(value):
 
 _MODEL_CHANGES = [0]
 _RADIAL_ORDER = 6
-_NONZERO_DEFAULTS = {'edge_entry_active': 1, 'edge_exit_active': 1,
-                     'radial_order': _RADIAL_ORDER}
 _RADIAL_ORDERS = (2, 4, 6, 8)
-# Jets 0 to 11 per table row, as CAVITY_MODEL_TABLE_JETS in cavity_models.h.
-_FIELD_TABLE_JETS = 12
-
-
-def _default_counter_wave_amplitude(model):
-    return 0. if model == '_phase-resolved-frozen' else 1.
 
 
 class _CavityControls:
@@ -194,21 +185,20 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
     counter_wave_amplitude : float
         Amplitude of the counter-propagating RF wave over that of the
         co-propagating one: 0 is a travelling wave, 1 a standing wave, and the
-        values between are partly reflected waves. Default is 1, or 0 when
-        constructed with the frozen model. It is not re-inferred when `model`
-        changes.
+        values between are partly reflected waves. Default is 1. The frozen
+        model takes a travelling wave only, so it needs 0.
     counter_wave_phase : float
         Phase of the counter-propagating wave in radians. Default is 0.
-    n_cells : int or None
+    n_cells : int
         Number of pi-mode cells, each of length `length / n_cells`: they fix
         the spatial wave number to pi n_cells / length whatever the frequency,
         and `voltage` is the crest energy gain at their synchronous speed, or
-        at c if that exceeds it. None (default) has no cells: the waves travel
+        at c if that exceeds it. 0 (default) has no cells: the waves travel
         at c and `voltage` is the crest gain at c. `cell_length`,
         `wave_number` and `synchronous_beta` read the result.
-    nominal_energy_gain : float or None
-        Reference energy programme of the frozen model, in eV. None (default)
-        derives it from the RF settings.
+    nominal_energy_gain : float or str
+        Reference energy programme of the frozen model, in eV. It can be set to
+        the string 'from_rf' (default), in which case it follows the RF settings.
     radial_order : int
         Power of the offset r to which "_phase-resolved" keeps the on-axis
         field's near-axis series: E_z to r^radial_order, E_r and c B_phi one
@@ -276,11 +266,11 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         'counter_wave_amplitude': FloatOrTpsa,
         'counter_wave_phase': FloatOrTpsa,
         'n_cells': xo.Int64,
-        'radial_order': xo.Int64,
+        'radial_order': xo.Field(xo.Int64, default=_RADIAL_ORDER),
         'nominal_energy_gain': FloatOrTpsa,
-        'nominal_energy_gain_from_rf': xo.Int64,
-        'edge_entry_active': xo.Int64,
-        'edge_exit_active': xo.Int64,
+        'nominal_energy_gain_from_rf': xo.Field(xo.Int64, default=1),
+        'edge_entry_active': xo.Field(xo.Int64, default=1),
+        'edge_exit_active': xo.Field(xo.Int64, default=1),
         'absolute_time': xo.Int64,
         'num_kicks': xo.Int64,
         'model': xo.Int64,
@@ -298,12 +288,15 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         'frequency': '_frequency',
         'harmonic': '_harmonic',
         'lag': '_lag',
-        'n_cells': '_n_cells',
         'nominal_energy_gain': '_nominal_energy_gain',
     }
 
+    _skip_in_to_dict = ['nominal_energy_gain_from_rf']
+
     _default_frequency = 0.0
     _default_harmonic = 0.0
+    _default_nominal_energy_gain = 'from_rf'
+    _default_counter_wave_amplitude = 1.
 
     _noexpr_fields = _NOEXPR_FIELDS
 
@@ -318,19 +311,8 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         frequency = kwargs.pop('frequency', None)
         harmonic = kwargs.pop('harmonic', None)
         lag = kwargs.pop('lag', None)
-        n_cells = kwargs.pop('n_cells', None)
-        nominal_energy_gain = kwargs.pop('nominal_energy_gain', None)
-        nominal_from_rf = kwargs.pop('nominal_energy_gain_from_rf',
-                                     nominal_energy_gain is None)
-        kwargs.setdefault('counter_wave_amplitude',
-                          _default_counter_wave_amplitude(model))
-        kwargs.setdefault('counter_wave_phase', 0.)
-        kwargs.setdefault('edge_entry_active', 1)
-        kwargs.setdefault('edge_exit_active', 1)
-        kwargs.setdefault('radial_order', _RADIAL_ORDER)
-        kwargs['nominal_energy_gain'] = (
-            0. if nominal_energy_gain is None else nominal_energy_gain)
-        kwargs['nominal_energy_gain_from_rf'] = int(nominal_from_rf)
+        nominal_energy_gain = kwargs.pop('nominal_energy_gain', 'from_rf')
+        kwargs.setdefault('counter_wave_amplitude', self._default_counter_wave_amplitude)
 
         self.xoinitialize(**kwargs)
 
@@ -350,7 +332,7 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         if lag is not None:
             self.lag = lag
 
-        self.n_cells = n_cells
+        self.nominal_energy_gain = nominal_energy_gain
 
         self._check_physical_model()
 
@@ -365,14 +347,16 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
             raise ValueError(f'{self.model} requires a positive finite length')
         if self.num_kicks < 0:
             raise ValueError('num_kicks must be non-negative')
+        if self.n_cells < 0:
+            raise ValueError('n_cells must be non-negative')
         if self._model == 13:
             if self.integrator not in ('adaptive', '_geometric', 'uniform'):
                 raise ValueError('_phase-resolved-frozen supports the "_geometric" '
                                  'and "uniform" integrators')
             if (_constant_part(self.counter_wave_amplitude) != 0.
-                    or self.n_cells is not None):
+                    or self.n_cells != 0):
                 raise ValueError('_phase-resolved-frozen requires a travelling '
-                                 'wave: counter_wave_amplitude=0 and no n_cells')
+                                 'wave: set counter_wave_amplitude=0 and n_cells=0')
         elif self._model in (11, 12):
             if self.integrator not in ('adaptive', 'uniform', '_geometric'):
                 raise ValueError(f'{self.model} supports the "uniform" and '
@@ -384,63 +368,36 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
                              'does not apply')
 
     @property
-    def n_cells(self):
-        return int(self._n_cells) or None
-
-    @n_cells.setter
-    def n_cells(self, value):
-        if value is not None and (int(value) != value or value <= 0):
-            raise ValueError('n_cells must be a positive integer or None')
-        self._n_cells = 0 if value is None else int(value)
-
-    @property
     def cell_length(self):
-        return None if self.n_cells is None else self.length / self.n_cells
+        return self.length / self.n_cells if self.n_cells else None
 
     @property
     def wave_number(self):
-        if self.n_cells is not None:
+        if self.n_cells:
             return np.pi * self.n_cells / self.length
         return 2 * np.pi * _constant_part(self.frequency) / clight
 
     @property
     def synchronous_beta(self):
-        if self.n_cells is None:
+        if not self.n_cells:
             return 1.
         return 2 * _constant_part(self.frequency) * self.cell_length / clight
 
     @property
     def nominal_energy_gain(self):
-        return (None if self.nominal_energy_gain_from_rf
-                else self._nominal_energy_gain)
+        if self.nominal_energy_gain_from_rf:
+            return 'from_rf'
+        return self._nominal_energy_gain
 
     @nominal_energy_gain.setter
     def nominal_energy_gain(self, value):
-        self.nominal_energy_gain_from_rf = int(value is None)
-        self._nominal_energy_gain = 0. if value is None else value
-
-    def to_dict(self, **kwargs):
-        result = super().to_dict(**kwargs)
-        # The base class omits zeros; these defaults are nonzero, so an
-        # explicit zero must be written and the default itself omitted.
-        defaults = dict(_NONZERO_DEFAULTS, counter_wave_amplitude=
-                        _default_counter_wave_amplitude(self.model))
-        for name, default in defaults.items():
-            value = getattr(self, name)
-            if value == default:
-                result.pop(name, None)
-            else:
-                result[name] = value
-        # An explicit zero carrier differs physically from the derived default.
-        result.pop('nominal_energy_gain_from_rf', None)
-        if self.nominal_energy_gain_from_rf:
-            result.pop('nominal_energy_gain', None)
+        if isinstance(value, str):
+            if value != 'from_rf':
+                raise ValueError("nominal_energy_gain can only be set to 'from_rf' as a string")
+            self.nominal_energy_gain_from_rf = 1
         else:
-            result['nominal_energy_gain'] = self.nominal_energy_gain
-        result.pop('n_cells', None)
-        if self.n_cells is not None:
-            result['n_cells'] = self.n_cells
-        return result
+            self.nominal_energy_gain_from_rf = 0
+            self._nominal_energy_gain = value
 
     @property
     def _thin_slice_class(self):
@@ -453,413 +410,3 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
     @property
     def _drift_slice_class(self):
         return xt.DriftSliceCavity
-
-
-class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
-
-    _docstring_start = Cavity._docstring_start.replace(
-        'RF cavity element.',
-        'RF cavity overlapped with static magnetic fields: a solenoid, and normal\n'
-        '    and skew multipoles. It is tracked by the experimental physical models.', 1) + '''
-    ks : float
-        Solenoid strength in 1/m. Normal and skew multipoles use `knl`, `ksl`.
-    The static fields are uniform along the cavity.'''
-
-    __doc__ = '\n    '.join([_docstring_start, Cavity._docstring_models,
-        _HasKnlKsl._for_docstring,
-        _for_docstring_alignment, '\n',
-        _docstring_general_notes, '\n\n'])
-
-    _xofields = {
-        **Cavity._xofields,
-        'ks': FloatOrTpsa,
-        'order': xo.Int64,
-        'inv_factorial_order': xo.Float64,
-        'knl': xo.Float64[:],
-        'ksl': xo.Float64[:],
-        'knl_tpsa': xo.UInt64[:],
-        'ksl_tpsa': xo.UInt64[:],
-    }
-
-    isthick = True
-
-    _extra_c_sources = [
-        '#include "xtrack/beam_elements/elements_src/magnet_overlapped_cavity.h"',
-    ]
-
-    _skip_in_to_dict = ['_order', 'inv_factorial_order',
-                        'knl_tpsa', 'ksl_tpsa', '_knl_tpsa', '_ksl_tpsa']
-
-    _rename = {
-        **Cavity._rename,
-        'order': '_order',
-        'knl': '_knl',
-        'ksl': '_ksl',
-        'knl_tpsa': '_knl_tpsa',
-        'ksl_tpsa': '_ksl_tpsa',
-    }
-
-    _float_or_tpsa_array_fields = ('knl', 'ksl')
-
-    _noexpr_fields = Cavity._noexpr_fields
-
-    def __init__(self, **kwargs):
-        if '_xobject' in kwargs and kwargs['_xobject'] is not None:
-            self.xoinitialize(**kwargs)
-            return
-        order = kwargs.pop('order', 5)
-        kwargs.update(self._prepare_multipolar_params(
-            order, knl=kwargs.pop('knl', None), ksl=kwargs.pop('ksl', None)))
-        for name in ('knl', 'ksl'):
-            # Handles are process-local owned storage, never serialized knobs.
-            handles = kwargs.pop(name + '_tpsa', None)
-            if handles is not None and any(handles):
-                raise ValueError('Cavity TPSA array handles cannot be imported')
-            kwargs[name + '_tpsa'] = [0] * len(kwargs[name])
-        # _HasKnlKsl comes first in the order and has its own __init__.
-        Cavity.__init__(self, **kwargs)
-
-    def _present(self, name):
-        """Entries of knl or ksl that are set: a nonzero value or a knob's series."""
-        array = self._context.nparray_from_context_array
-        return ((array(getattr(self, '_' + name)) != 0.)
-                | (array(getattr(self, '_' + name + '_tpsa')) != 0))
-
-    def _check_physical_model(self, tracking=False):
-        super()._check_physical_model(tracking=tracking)
-        normal, skew = self._present('knl'), self._present('ksl')
-        solenoid = _constant_part(self.ks) != 0.
-        if self._model < 10:
-            return
-        if self._model in (11, 12):
-            others = np.any(normal[np.arange(len(normal)) != 1]) or np.any(skew)
-            if others or (solenoid and (np.any(normal) or self.edge_entry_active
-                                        or self.edge_exit_active)):
-                raise ValueError(f'{self.model} supports a uniform solenoid with '
-                                 'faces off or a normal quadrupole as static field')
-
-    @property
-    def knl(self):
-        from ..tpsa._cavity_array import CavityArrayView
-        return CavityArrayView(self, '_knl', '_knl_tpsa')
-
-    @knl.setter
-    def knl(self, value):
-        self.knl[:] = value
-
-    @property
-    def ksl(self):
-        from ..tpsa._cavity_array import CavityArrayView
-        return CavityArrayView(self, '_ksl', '_ksl_tpsa')
-
-    @ksl.setter
-    def ksl(self, value):
-        self.ksl[:] = value
-
-    # HybridClass inspection uses raw field names even when Python storage
-    # descriptors are renamed. These are internal handles, not saved settings.
-    @property
-    def knl_tpsa(self):
-        return self._knl_tpsa
-
-    @property
-    def ksl_tpsa(self):
-        return self._ksl_tpsa
-
-    def to_dict(self, **kwargs):
-        result = super().to_dict(**kwargs)
-        if self.order == 5:
-            result.pop('order', None)
-        else:
-            result['order'] = self.order
-        for name in ('knl', 'ksl'):
-            values = self._context.nparray_from_context_array(getattr(self, '_' + name))
-            if np.any(values != 0.):
-                result[name] = values.tolist()
-            else:
-                result.pop(name, None)
-        return result
-
-    @classmethod
-    def from_dict(cls, dct, **kwargs):
-        # A later order change can deliberately leave a larger allocated
-        # array. Restore the saved active order after allocating that storage.
-        order = dct.get('order')
-        result = super().from_dict(dct, **kwargs)
-        if order is not None:
-            result.order = order
-        return result
-
-    @property
-    def _thin_slice_class(self):
-        return xt.ThinSliceMagnetOverlappedCavity
-
-    @property
-    def _thick_slice_class(self):
-        return xt.ThickSliceMagnetOverlappedCavity
-
-    @property
-    def _drift_slice_class(self):
-        return xt.DriftSliceMagnetOverlappedCavity
-
-
-class FieldExpansionCavity(_CavityControls, BeamElement):
-
-    __doc__ = '''RF cavity whose on-axis field is a sum of space harmonics.
-
-    Over the element, the on-axis longitudinal field is
-    E_z(z, t) = Re[G(z) exp(-i omega t)], G(z) = sum_m c_m exp(i k_m z), with z
-    from the centre. The near-axis field follows from Maxwell's equations, and
-    the element ends in hard edges. A Cavity of `n_cells` and counter-wave
-    amplitude r is the case k = [k_z, -k_z], c = [1, r exp(-i counter_wave_phase)],
-    k_z = pi n_cells / length. It is tracked by the experimental
-    "_phase-resolved" model.
-
-    Parameters
-    ----------
-    length, voltage, frequency, harmonic, phase, lag, absolute_time
-        As for Cavity: `voltage` is the crest energy gain at `calibration_beta`
-        and `phase` the phase of that gain, so the scale of the amplitudes is free.
-    calibration_beta : float
-        Fixed speed, 0 < beta <= 1, at which `voltage` is the crest energy gain:
-        a field map's design speed. Default is 1. A Cavity's is the synchronous
-        speed of its cells.
-    wave_numbers : array of float
-        Wave numbers k_m of the space harmonics, in rad/m; positive ones
-        travel with the beam.
-    amplitudes : array of complex
-        Their relative amplitudes c_m, as many as there are wave numbers.
-    integrator, num_kicks, radial_order
-        As for Cavity's "_phase-resolved" model.
-    field_table_points : int or None
-        The field and its derivatives are tabulated over the element at this many
-        points and interpolated while tracking, which makes the cost per step
-        independent of the number of harmonics; quintic Hermite interpolation of
-        each derivative matches the summed harmonics to about 1e-9. None
-        (default) takes 20 points per shortest harmonic wavelength, at least 64;
-        0 sums the harmonics at every evaluation instead. The table follows `amplitudes`; after a change
-        of `length` or of `wave_numbers` the harmonics are summed directly.
-    '''
-
-    isthick = True
-    has_backtrack = True
-    allow_loss_refinement = True
-
-    _rf_plan = 'track_cavity_plan'
-    _xofields = {
-        'length': xo.Float64,
-        'voltage': FloatOrTpsa,
-        'frequency': FloatOrTpsa,
-        'lag': FloatOrTpsa,
-        'phase': FloatOrTpsa,
-        'harmonic': FloatOrTpsa,
-        'lag_taper': FloatOrTpsa,
-        'phase_taper': FloatOrTpsa,
-        'calibration_beta': FloatOrTpsa,
-        'wave_numbers': xo.Float64[:],
-        'amplitudes_re': xo.Float64[:],
-        'amplitudes_im': xo.Float64[:],
-        'field_table': xo.Float64[:],
-        'field_table_z0': xo.Float64,
-        'field_table_dz': xo.Float64,
-        'field_table_key': xo.Float64,
-        'radial_order': xo.Int64,
-        'absolute_time': xo.Int64,
-        'num_kicks': xo.Int64,
-        'model': xo.Int64,
-        'integrator': xo.Int64,
-    }
-
-    _extra_c_sources = [
-        '#include "xtrack/beam_elements/elements_src/field_expansion_cavity.h"',
-    ]
-
-    _rename = {
-        'model': '_model',
-        'integrator': '_integrator',
-        'frequency': '_frequency',
-        'harmonic': '_harmonic',
-        'lag': '_lag',
-    }
-
-    _default_frequency = 0.0
-    _default_harmonic = 0.0
-
-    _noexpr_fields = _NOEXPR_FIELDS
-
-    def __init__(self, **kwargs):
-        if '_xobject' in kwargs and kwargs['_xobject'] is not None:
-            self.xoinitialize(**kwargs)
-            return
-        model = kwargs.pop('model', '_phase-resolved')
-        integrator = kwargs.pop('integrator', None)
-        frequency = kwargs.pop('frequency', None)
-        harmonic = kwargs.pop('harmonic', None)
-        lag = kwargs.pop('lag', None)
-        wave_numbers = np.atleast_1d(np.asarray(kwargs.pop('wave_numbers'), dtype=float))
-        amplitudes = kwargs.pop('amplitudes', None)
-        if amplitudes is None:
-            amplitudes = (np.asarray(kwargs.pop('amplitudes_re'), dtype=float)
-                          + 1j * np.asarray(kwargs.pop('amplitudes_im'), dtype=float))
-        amplitudes = np.atleast_1d(np.asarray(amplitudes, dtype=complex))
-        if wave_numbers.ndim != 1 or amplitudes.shape != wave_numbers.shape or not len(wave_numbers):
-            raise ValueError('wave_numbers and amplitudes must be equal-length, '
-                             'non-empty one-dimensional arrays')
-        points = kwargs.pop('field_table_points', None)
-        length = float(kwargs.get('length', 0.))
-        if points is None:
-            shortest = 2 * np.pi / max(np.max(np.abs(wave_numbers)), 1e-300)
-            points = max(64, int(np.ceil(20 * length / shortest)) + 1) if length > 0. else 0
-        if points == 1 or points < 0:
-            raise ValueError('field_table_points must be 0 or at least 2')
-        kwargs.setdefault('calibration_beta', 1.)
-        kwargs.setdefault('radial_order', _RADIAL_ORDER)
-        kwargs['wave_numbers'] = wave_numbers
-        kwargs['amplitudes_re'] = amplitudes.real.copy()
-        kwargs['amplitudes_im'] = amplitudes.imag.copy()
-        kwargs['field_table'] = 2 * _FIELD_TABLE_JETS * points
-        self.xoinitialize(**kwargs)
-        self._build_field_table()
-        self.model = model
-        if integrator is not None:
-            self.integrator = integrator
-        if frequency is not None:
-            self.frequency = frequency
-        if harmonic is not None:
-            self.harmonic = harmonic
-        if lag is not None:
-            self.lag = lag
-        self._check_physical_model()
-
-    @classmethod
-    def from_fourier_series(cls, cos_coefficients, sin_coefficients=None, period=None,
-                            **kwargs):
-        """A standing wave whose on-axis profile is the Fourier series
-        a_0/2 + sum_n (a_n cos(2 pi n z / P) + b_n sin(2 pi n z / P)), z from the
-        centre, of period P, by default the element's `length`."""
-        a = np.asarray(cos_coefficients, dtype=float)
-        b = np.zeros_like(a)
-        if sin_coefficients is not None:
-            b[:len(sin_coefficients)] = sin_coefficients
-        k = 2 * np.pi * np.arange(1, len(a)) / (kwargs['length'] if period is None else period)
-        return cls(wave_numbers=np.concatenate([[0.], k, -k]),
-                   amplitudes=np.concatenate([[a[0] / 2], (a[1:] - 1j * b[1:]) / 2,
-                                              (a[1:] + 1j * b[1:]) / 2]), **kwargs)
-
-    @classmethod
-    def from_samples(cls, values, num_harmonics=None, **kwargs):
-        """The space harmonics of a field sampled at equal steps over the element,
-        both ends included: real values are a standing wave's profile, complex
-        ones the phasor G. The field is read as periodic over the element, so it
-        should vanish, or match, at both ends. The truncated series is corrected
-        to take the samples' end value exactly: otherwise it misses it by O(1/N),
-        and the hard-edge faces kick on the difference."""
-        values = np.asarray(values)
-        if values.ndim != 1 or len(values) < 3:
-            raise ValueError('values must be at least three samples')
-        if num_harmonics is None:
-            num_harmonics = (len(values) - 1) // 2
-        length = kwargs['length']
-        z = np.linspace(-length / 2, length / 2, len(values))
-        m = np.arange(-num_harmonics, num_harmonics + 1)
-        k = 2 * np.pi * m / length
-        from ..footprint import _trapezoid
-        amplitudes = _trapezoid(np, values[None, :] * np.exp(-1j * k[:, None] * z[None, :]),
-                                z, axis=1) / length
-        # Both ends are one point of the period, where harmonic m is (-1)^m: the
-        # least change meeting the end value is alternating and equal in size.
-        sign = (-1.) ** m
-        miss = sign @ amplitudes - (values[0] + values[-1]) / 2
-        amplitudes = amplitudes - miss * sign / len(m)
-        return cls(wave_numbers=k, amplitudes=amplitudes, **kwargs)
-
-    def _check_physical_model(self, tracking=False):
-        """Raise for settings the phase-resolved model cannot track."""
-        self._check_radial_order()
-        if self._model != 10:
-            raise ValueError('FieldExpansionCavity is tracked by "_phase-resolved" only')
-        if self.integrator == 'teapot':
-            raise ValueError('_phase-resolved has no kicks to place: "teapot" '
-                             'does not apply')
-        if self.num_kicks < 0:
-            raise ValueError('num_kicks must be non-negative')
-        beta = _constant_part(self.calibration_beta)
-        if not (isfinite(beta) and 0. < beta <= 1.):
-            raise ValueError('calibration_beta must be in (0, 1]')
-        if tracking and not (isfinite(_constant_part(self.length))
-                             and _constant_part(self.length) > 0.):
-            raise ValueError(f'{self.model} requires a positive finite length')
-        if not (np.all(np.isfinite(self.wave_numbers))
-                and np.all(np.isfinite(self.amplitudes))
-                and np.any(self.amplitudes != 0.)):
-            raise ValueError('The space harmonics must be finite and not all zero')
-
-    @property
-    def amplitudes(self):
-        context = self._context
-        return (context.nparray_from_context_array(self.amplitudes_re)
-                + 1j * context.nparray_from_context_array(self.amplitudes_im))
-
-    @amplitudes.setter
-    def amplitudes(self, value):
-        value = np.asarray(value, dtype=complex)
-        if value.shape != (len(self.wave_numbers),):
-            raise ValueError('amplitudes must have one value per wave number')
-        self.amplitudes_re[:] = value.real
-        self.amplitudes_im[:] = value.imag
-        self._build_field_table()
-
-    def _build_field_table(self):
-        """Tabulate jets 0 to 11 of the unit-amplitude field over the element."""
-        points = len(self.field_table) // (2 * _FIELD_TABLE_JETS)
-        if points < 2:
-            return
-        context = self._context
-        wave_numbers = context.nparray_from_context_array(self.wave_numbers)
-        amplitudes = self.amplitudes
-        z = np.linspace(-self.length / 2, self.length / 2, points)
-        table = np.empty((points, 2 * _FIELD_TABLE_JETS))
-        for start in range(0, points, 4096):
-            phasors = amplitudes * np.exp(1j * np.outer(z[start:start + 4096], wave_numbers))
-            for order in range(_FIELD_TABLE_JETS):
-                jet = (phasors * (1j * wave_numbers)**order).sum(axis=1)
-                table[start:start + 4096, order] = jet.real
-                table[start:start + 4096, _FIELD_TABLE_JETS + order] = jet.imag
-        self.field_table[:] = context.nparray_to_context_array(table.ravel())
-        self.field_table_z0 = -self.length / 2
-        self.field_table_dz = self.length / (points - 1)
-        # Matched in track_cavity_single_particle: the table applies only while
-        # the harmonics and length are those it was built from.
-        key = 11. * self.length
-        for m, (k, a) in enumerate(zip(wave_numbers, amplitudes)):
-            key += (m + 1) * (k + 3. * a.real + 7. * a.imag)
-        self.field_table_key = key
-
-    def to_dict(self, **kwargs):
-        result = super().to_dict(**kwargs)
-        if self.calibration_beta == 1.:
-            result.pop('calibration_beta', None)
-        else:
-            result['calibration_beta'] = self.calibration_beta
-        for name in ('wave_numbers', 'amplitudes_re', 'amplitudes_im'):
-            result[name] = self._context.nparray_from_context_array(
-                getattr(self, name)).tolist()
-        # The table is derived; from_dict rebuilds it from its size.
-        for name in ('field_table', 'field_table_z0', 'field_table_dz', 'field_table_key'):
-            result.pop(name, None)
-        result['field_table_points'] = len(self.field_table) // (2 * _FIELD_TABLE_JETS)
-        if self.radial_order == _RADIAL_ORDER:
-            result.pop('radial_order', None)
-        return result
-
-    @property
-    def _thin_slice_class(self):
-        return xt.ThinSliceFieldExpansionCavity
-
-    @property
-    def _thick_slice_class(self):
-        return xt.ThickSliceFieldExpansionCavity
-
-    @property
-    def _drift_slice_class(self):
-        return xt.DriftSliceFieldExpansionCavity

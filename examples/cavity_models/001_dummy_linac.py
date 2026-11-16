@@ -53,7 +53,7 @@ PX_LIMIT          = .03
 ########################################
 COHORTS = [
     ('partly standing', .5, .3, 1, ['_phase-resolved', '_phase-averaged']),
-    ('travelling', 0., 0., None, ['_phase-resolved', '_phase-averaged', '_phase-resolved-frozen']),
+    ('travelling', 0., 0., 0, ['_phase-resolved', '_phase-averaged', '_phase-resolved-frozen']),
 ]
 INTEGRATORS = {
     '_phase-resolved': 'uniform',

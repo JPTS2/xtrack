@@ -120,7 +120,7 @@ def test_field_getter_preserves_orders_and_rejects_incompatible_handles(tmp_path
         assert particles._xobject.state == -50
 
 
-@pytest.mark.parametrize('programme', [None, 0.])
+@pytest.mark.parametrize('programme', ['from_rf', 0.])
 def test_cavity_tpsa_renamed_programme_storage(programme):
     """Promoting backing slots must preserve a derived/explicit public input."""
     line = xt.Line(elements=[xt.Cavity(nominal_energy_gain=programme)],
@@ -130,9 +130,9 @@ def test_cavity_tpsa_renamed_programme_storage(programme):
     desc = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=1)
     knobs = KnobParameters(line, ['phase_knob'], desc)
     knobs.apply()
-    assert line['c'].nominal_energy_gain_from_rf == (programme is None)
-    if programme is None:
-        assert line['c'].nominal_energy_gain is None
+    assert line['c'].nominal_energy_gain_from_rf == (programme == 'from_rf')
+    if programme == 'from_rf':
+        assert line['c'].nominal_energy_gain == 'from_rf'
     else:
         assert line['c'].nominal_energy_gain.const_part == 0.
     with pytest.raises(ValueError, match='one value'):
@@ -140,8 +140,8 @@ def test_cavity_tpsa_renamed_programme_storage(programme):
     assert line['c'].phase.const_part == .4
     knobs.refresh([.8])
     knobs.teardown()
-    if programme is None:
-        assert line['c'].nominal_energy_gain is None
+    if programme == 'from_rf':
+        assert line['c'].nominal_energy_gain == 'from_rf'
     else:
         assert line['c'].nominal_energy_gain == 0.
     assert line['c'].phase == .8

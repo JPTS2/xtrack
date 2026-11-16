@@ -32,7 +32,7 @@ def hard_edge(z):
 
 
 def calibrated_waves(voltage, frequency, length, phase, ratio, envelope,
-                     counter_phase=0., n_cells=None, q0=1., wave_number=None):
+                     counter_phase=0., n_cells=0, q0=1., wave_number=None):
     """Peak field [V/m] of the two waves, of amplitude ratio `ratio`, and the phase of the
     forward one at T = Z = 0. Without cells the waves travel at c; `n_cells` pi-mode cells
     fix the spatial wave number to pi n_cells / length, or `wave_number` sets it, zero for
@@ -40,7 +40,7 @@ def calibrated_waves(voltage, frequency, length, phase, ratio, envelope,
     at c if they are faster, gains voltage * sin(phase)."""
     k = 2 * np.pi * frequency / clight
     if wave_number is None:
-        wave_number = k if n_cells is None else np.pi * n_cells / length
+        wave_number = np.pi * n_cells / length if n_cells else k
     calibration_beta = 1. if wave_number <= k else k / wave_number
     nu = wave_number / k
     half = k * length / 2

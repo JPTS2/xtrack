@@ -357,7 +357,7 @@ def test_source_cavity_tpsa_eta_and_phase(cavity_magnetic_context, model, order)
 
 
 @pytest.mark.parametrize('model',['_phase-resolved'])
-@pytest.mark.parametrize('n_cells',[None,1])
+@pytest.mark.parametrize('n_cells',[0,1])
 def test_source_cavity_tpsa_continuous_controls(cavity_magnetic_context,model,n_cells):
     mass=xt.ELECTRON_MASS_EV
     launch=dict(LAUNCH,p0c=mass*np.sqrt(2.4**2-1))
