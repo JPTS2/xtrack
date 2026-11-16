@@ -143,7 +143,8 @@ def test_normal_match_uses_selected_tracking_map(test_context, model):
 
 
 @pytest.mark.parametrize('model,field', [('_phase-resolved', 'counter_wave_amplitude'),
-    ('_phase-resolved', 'edge_entry_active'), ('_phase-resolved', 'edge_exit_active')])
+    ('_phase-resolved', 'edge_entry_active'), ('_phase-resolved', 'edge_exit_active'),
+    ('_phase-resolved', '_rf_edge_entry_active'), ('_phase-resolved', '_rf_edge_exit_active')])
 def test_zero_controls_survive_json_roundtrip(model, field):
     """Zero hardware/face settings must not turn into constructor defaults."""
     original = xt.MagnetOverlappedCavity(**dict(SETTINGS[model], **{field: 0}))

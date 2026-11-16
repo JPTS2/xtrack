@@ -373,7 +373,7 @@ def test_old_serialized_slice_distance_loads(kind):
     ('_phase-resolved-frozen', 'thin'), ('_phase-resolved', 'thick')])
 def test_finite_parent_words_survive_layout_partition(test_context, model, mode):
     controls = dict(num_kicks=4,
-                    edge_entry_active=0, edge_exit_active=1)
+                    _rf_edge_entry_active=0, _rf_edge_exit_active=1)
     rf = xt.MagnetOverlappedCavity(**dict(SETTINGS[model], **controls), _context=test_context)
     line = xt.Line(elements={'rf': rf, 'end': xt.Marker(_context=test_context)})
     line.particle_ref = xt.Particles(_context=test_context, **PROBE)

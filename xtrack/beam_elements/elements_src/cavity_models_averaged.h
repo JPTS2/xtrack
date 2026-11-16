@@ -356,6 +356,8 @@ int CavityModel_averaged_interval(
     int reverse,
     int entry_face,
     int exit_face,
+    int rf_entry_face,
+    int rf_exit_face,
     xt_float_or_tpsa_arg reference_momentum,
     int integrator,
     xt_float_or_tpsa_arg grading,
@@ -386,6 +388,11 @@ int CavityModel_averaged_interval(
     if (static_present && spin && spin->spin) return CAVITY_MODEL_ARGUMENT;
     entry_face = entry_face && left == 0.;
     exit_face = exit_face && right == 1.;
+    // An RF face that is off leaves the field continuing past the parent's end.
+    const int rf_first =
+        reverse ? !(right == 1. && !rf_exit_face) : !(left == 0. && !rf_entry_face);
+    const int rf_last =
+        reverse ? !(left == 0. && !rf_entry_face) : !(right == 1. && !rf_exit_face);
     for (int i = 0; i < 6; ++i) q[i] = q_in[i];
     const xt_float_or_tpsa length = source->k * source->length;
     const xt_float_or_tpsa z_left = length * (left - .5), z_right = length * (right - .5);
@@ -408,7 +415,8 @@ int CavityModel_averaged_interval(
     // offered: the energy kicks integrate the waves along the reference
     // trajectory, which keeps one step second order but caps compositions.
     const xt_float_or_tpsa grading_log = CavityModel_log1p(grading);
-    const int graded = integrator == CAVITY_INTEGRATOR_GEOMETRIC && xt_float_or_tpsa_const_part(grading) > 1.e-6;
+    const int graded = integrator == CAVITY_INTEGRATOR_GEOMETRIC
+                       && xt_float_or_tpsa_const_part(grading) > 1.e-6;
     xt_float_or_tpsa previous = outer_left;
     if (reverse) previous = outer_right;
     for (int64_t n = 0; n < cells && status == CAVITY_MODEL_OK; ++n) {
@@ -433,15 +441,16 @@ int CavityModel_averaged_interval(
         const xt_float_or_tpsa gradient = Q * source->forward * envelope[0];
         const xt_float_or_tpsa counter = Q * source->backward * envelope[0];
         // The inverse crosses the same boundaries, negating each jump.
-        status =
-            CavityModel_averaged_edge(q, gradient - previous, boundary, source, spin);
+        if (n > 0 || rf_first)
+            status =
+                CavityModel_averaged_edge(q, gradient - previous, boundary, source, spin);
         if (status == CAVITY_MODEL_OK)
             status = CavityModel_averaged_step(
                 q, step, z_mid, gradient, counter, Q, source, &field, spin
             );
         previous = gradient;
     }
-    if (status == CAVITY_MODEL_OK) {
+    if (status == CAVITY_MODEL_OK && rf_last) {
         xt_float_or_tpsa outer = outer_right, end = z_right;
         if (reverse) {
             outer = outer_left;

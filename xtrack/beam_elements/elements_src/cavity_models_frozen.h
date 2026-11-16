@@ -457,7 +457,7 @@ xt_float_or_tpsa CavityModel_frozen_weight(
 // momentum and gain are the reference's, in the units of q, so a slice keeps
 // the parent's coefficients. Inside, d is timed from the parent's entrance; the
 // returned T adds the nominal path once. Static fields: a uniform solenoid with
-// the RF faces off, or a normal quadrupole with its faces.
+// all faces off, or a normal quadrupole with its faces.
 GPUFUN
 int CavityModel_frozen_prefix(
     const xt_float_or_tpsa q[6],
@@ -468,6 +468,8 @@ int CavityModel_frozen_prefix(
     int64_t requested_cells,
     int entry_face,
     int exit_face,
+    int rf_entry_face,
+    int rf_exit_face,
     double fraction,
     int reverse,
     const CavitySpin* spin,
@@ -480,6 +482,7 @@ int CavityModel_frozen_prefix(
         return CAVITY_MODEL_OK;
     }
     exit_face = exit_face && fraction == 1.;
+    rf_exit_face = rf_exit_face && fraction == 1.;
     if (!xt_float_or_tpsa_is_zero(source->backward)
         || !xt_float_or_tpsa_is_zero(source->dc_gradient))
         return CAVITY_MODEL_ARGUMENT;
@@ -498,7 +501,8 @@ int CavityModel_frozen_prefix(
                    * CavityModel_static_coefficient(source, 1, 0) / source->length;
     const int solenoid_present = !xt_float_or_tpsa_is_zero(solenoid);
     const int quad_present = !xt_float_or_tpsa_is_zero(gradient);
-    if (solenoid_present && (quad_present || entry_face || exit_face))
+    if (solenoid_present
+        && (quad_present || entry_face || exit_face || rf_entry_face || rf_exit_face))
         return CAVITY_MODEL_ARGUMENT;
     if ((solenoid_present || quad_present) && spin && spin->spin)
         return CAVITY_MODEL_ARGUMENT;
@@ -546,7 +550,7 @@ int CavityModel_frozen_prefix(
     xt_float_or_tpsa p, ps;
     int status = CavityModel_static_shell(state, solenoid, &p, &ps);
     if (status != CAVITY_MODEL_OK) return status;
-    if ((!reverse && entry_face) || (reverse && exit_face)) {
+    if ((!reverse && rf_entry_face) || (reverse && rf_exit_face)) {
         xt_float_or_tpsa face_voltage = voltage;
         if (reverse) face_voltage = -voltage;
         status = CavityModel_frozen_face(
@@ -560,6 +564,8 @@ int CavityModel_frozen_prefix(
             spin
         );
         if (status != CAVITY_MODEL_OK) return status;
+    }
+    if ((!reverse && entry_face) || (reverse && exit_face)) {
         if (quad_present) {
             xt_float_or_tpsa face_gradient = gradient;
             if (reverse) face_gradient = -gradient;
@@ -705,6 +711,8 @@ int CavityModel_frozen_prefix(
             );
             if (status != CAVITY_MODEL_OK) return status;
         }
+    }
+    if ((!reverse && rf_exit_face) || (reverse && rf_entry_face)) {
         xt_float_or_tpsa face_voltage = -voltage;
         if (reverse) face_voltage = voltage;
         status = CavityModel_frozen_face(
@@ -741,6 +749,8 @@ int CavityModel_frozen_interval(
     int64_t requested_cells,
     int entry_face,
     int exit_face,
+    int rf_entry_face,
+    int rf_exit_face,
     double entrance,
     double exit,
     int reverse,
@@ -769,6 +779,8 @@ int CavityModel_frozen_interval(
         requested_cells,
         entry_face,
         exit_face,
+        rf_entry_face,
+        rf_exit_face,
         first,
         1,
         spin,
@@ -784,6 +796,8 @@ int CavityModel_frozen_interval(
         requested_cells,
         entry_face,
         exit_face,
+        rf_entry_face,
+        rf_exit_face,
         second,
         0,
         spin,

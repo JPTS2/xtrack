@@ -72,6 +72,8 @@ typedef struct RFModelFields_s {
     int64_t table_points;
     double table_z0, table_dz, table_key;
     GPUGLMEM const double *table;
+    // End planes of the RF field; of the static fields (MagnetOverlappedCavity).
+    int64_t rf_edge_entry_active, rf_edge_exit_active;
     int64_t edge_entry_active, edge_exit_active;
     xt_float_or_tpsa ks;
     int64_t order, knl_len, ksl_len;
@@ -109,8 +111,8 @@ typedef struct RFModelFields_s {
     (f)->nominal_energy_gain=DATA##_get_nominal_energy_gain(el); \
     (f)->nominal_energy_gain_from_rf=DATA##_get_nominal_energy_gain_from_rf(el); \
     (f)->rf_profile=0; (f)->radial_order=DATA##_get_radial_order(el); \
-    (f)->edge_entry_active=DATA##_get_edge_entry_active(el); \
-    (f)->edge_exit_active=DATA##_get_edge_exit_active(el); \
+    (f)->rf_edge_entry_active=DATA##_get__rf_edge_entry_active(el); \
+    (f)->rf_edge_exit_active=DATA##_get__rf_edge_exit_active(el); \
     (f)->num_harmonics=0; (f)->harmonic_wave_number=NULL; \
     (f)->harmonic_re=NULL; (f)->harmonic_im=NULL; \
     (f)->table_points=0; (f)->table_z0=0.; (f)->table_dz=0.; (f)->table_key=0.; \
@@ -123,7 +125,8 @@ typedef struct RFModelFields_s {
     (f)->calibration_beta=DATA##_get_calibration_beta(el); \
     (f)->nominal_energy_gain=0.; (f)->nominal_energy_gain_from_rf=1; \
     (f)->rf_profile=1; (f)->radial_order=DATA##_get_radial_order(el); \
-    (f)->edge_entry_active=1; (f)->edge_exit_active=1; \
+    (f)->rf_edge_entry_active=DATA##_get__rf_edge_entry_active(el); \
+    (f)->rf_edge_exit_active=DATA##_get__rf_edge_exit_active(el); \
     (f)->num_harmonics=DATA##_len_wave_numbers(el); \
     (f)->harmonic_wave_number=DATA##_getp1_wave_numbers(el,0); \
     (f)->harmonic_re=DATA##_getp1_amplitudes_re(el,0); \
@@ -137,13 +140,15 @@ typedef struct RFModelFields_s {
 
 // An element without static fields: a Cavity.
 #define RF_MODEL_FIELDS_CLEAR_STATIC(f) do { \
-    (f)->ks=0.; \
+    (f)->ks=0.; (f)->edge_entry_active=0; (f)->edge_exit_active=0; \
     (f)->order=-1; (f)->inv_factorial_order=1.; (f)->knl_len=0; (f)->ksl_len=0; \
     (f)->knl=NULL; (f)->ksl=NULL; (f)->knl_tpsa=NULL; (f)->ksl_tpsa=NULL; \
 } while (0)
 
 #define RF_MODEL_FIELDS_FILL_STATIC(DATA, el, f) do { \
     (f)->ks=DATA##_get_ks(el); (f)->order=DATA##_get_order(el); \
+    (f)->edge_entry_active=DATA##_get_edge_entry_active(el); \
+    (f)->edge_exit_active=DATA##_get_edge_exit_active(el); \
     (f)->inv_factorial_order=DATA##_get_inv_factorial_order(el); \
     (f)->knl_len=DATA##_len_knl(el); (f)->ksl_len=DATA##_len_ksl(el); \
     (f)->knl=DATA##_getp1_knl(el,0); (f)->ksl=DATA##_getp1_ksl(el,0); \

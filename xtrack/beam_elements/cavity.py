@@ -220,11 +220,10 @@ class Cavity(_CavityControls, BeamElement):
         series is exact at any order; slower waves and field maps gain from a
         higher one: r^6 is 50 times closer than r^4 to the exact field for
         protons at beta 0.6 10 mm off axis, for 16% more time.
-    edge_entry_active, edge_exit_active : bool
-        Whether the entrance and exit faces are applied: in "_phase-resolved-frozen"
-        the RF faces; for the static fields of a MagnetOverlappedCavity, the
-        faces of the physical models and the magnet faces of "longitudinal-kick".
-        "_phase-resolved" always applies its RF faces. Default is True.
+    _rf_edge_entry_active, _rf_edge_exit_active : bool
+        Experimental, to test the hard-edge assumption: with a face off, the
+        physical models take the RF field to continue past that end, without its
+        end-plane impulse. Default is True; a real field always ends.
     '''.strip()
 
     _docstring_models = '''model : str
@@ -290,8 +289,8 @@ class Cavity(_CavityControls, BeamElement):
         'radial_order': xo.Field(xo.Int64, default=_RADIAL_ORDER),
         'nominal_energy_gain': FloatOrTpsa,
         'nominal_energy_gain_from_rf': xo.Field(xo.Int64, default=1),
-        'edge_entry_active': xo.Field(xo.Int64, default=1),
-        'edge_exit_active': xo.Field(xo.Int64, default=1),
+        '_rf_edge_entry_active': xo.Field(xo.Int64, default=1),
+        '_rf_edge_exit_active': xo.Field(xo.Int64, default=1),
         'absolute_time': xo.Int64,
         'num_kicks': xo.Int64,
         'model': xo.Int64,

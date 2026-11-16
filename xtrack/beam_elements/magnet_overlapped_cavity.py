@@ -23,6 +23,10 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
         '    and skew multipoles.', 1) + '''
     ks : float
         Solenoid strength in 1/m. Normal and skew multipoles use `knl`, `ksl`.
+    edge_entry_active, edge_exit_active : bool
+        Whether the faces of the static fields are applied, as for a
+        Quadrupole or UniformSolenoid: the hard-edge fringe and the solenoid's
+        vector potential. Default is True.
     The static fields are uniform along the cavity.'''
 
     _docstring_models = '''model : str
@@ -46,6 +50,8 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
         # A Field stores its struct offset, so Cavity's cannot be shared.
         **{name: copy(field) for name, field in Cavity._xofields.items()},
         'ks': FloatOrTpsa,
+        'edge_entry_active': xo.Field(xo.Int64, default=1),
+        'edge_exit_active': xo.Field(xo.Int64, default=1),
         'order': xo.Int64,
         'inv_factorial_order': xo.Float64,
         'knl': xo.Float64[:],

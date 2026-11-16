@@ -61,7 +61,7 @@ def test_frozen_model_is_symplectic_with_canonical_faces(test_context, faces):
     """The SAD face scales the momenta by p_after/p; the canonical face does not."""
     rf = xt.Cavity(length=1., voltage=2e6, frequency=1.3e9, phase=.4,
                    model='_phase-resolved-frozen', counter_wave_amplitude=0.,
-                   edge_entry_active=faces, edge_exit_active=faces)
+                   _rf_edge_entry_active=faces, _rf_edge_exit_active=faces)
     line = xt.Line(elements=[rf])
     line.particle_ref = xt.Particles(mass0=ELECTRON, p0c=ELECTRON * np.sqrt(3.2**2 - 1))
     line.build_tracker(_context=test_context)
@@ -389,3 +389,65 @@ def test_harmonic_resolves_steps_from_the_frequency(test_context, model):
         probe.move(_context=xo.ContextCpu())
         end[lock] = np.array([getattr(probe, n)[0] for n in COORDS])
     np.testing.assert_allclose(end['harmonic'], end['frequency'], rtol=0, atol=1e-13)
+
+
+RF_FACE_MODELS = {'_phase-resolved': dict(counter_wave_amplitude=.5),
+                  '_phase-averaged': dict(counter_wave_amplitude=.5, n_cells=2),
+                  '_phase-resolved-paraxial': dict(counter_wave_amplitude=.5),
+                  '_phase-resolved-frozen': dict(counter_wave_amplitude=0.)}
+RF_FACE_LAUNCH = dict(x=1e-3, px=2e-4, y=-5e-4, py=1e-4, zeta=2e-4, delta=1e-3)
+
+
+@for_all_test_contexts
+@pytest.mark.parametrize('faces', [(1, 1), (0, 0), (0, 1), (1, 0)])
+@pytest.mark.parametrize('model', list(RF_FACE_MODELS))
+def test_rf_faces_belong_to_the_parent_ends_and_invert(test_context, model, faces):
+    """Each RF face switches alone: backtracking undoes it, and thick slices apply
+    it only at the parent's ends."""
+    end = {}
+    for layout in ('whole', 'thick 2'):
+        rf = xt.Cavity(model=model, length=.3, voltage=3e6, frequency=1.3e9, phase=.4,
+                       num_kicks=16, **RF_FACE_MODELS[model],
+                       _rf_edge_entry_active=faces[0], _rf_edge_exit_active=faces[1])
+        line = xt.Line(elements={'rf': rf, 'end': xt.Marker()})
+        if layout == 'thick 2':
+            line.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thick'))])
+        line.particle_ref = xt.Particles(mass0=ELECTRON, p0c=ELECTRON * np.sqrt(20.**2 - 1))
+        line.build_tracker(_context=test_context)
+
+        particles = line.build_particles(**RF_FACE_LAUNCH)
+        line.track(particles)
+        particles.move(_context=xo.ContextCpu())
+        end[layout] = np.array([getattr(particles, n)[0] for n in COORDS])
+        particles.move(_context=test_context)
+        line.track(particles, backtrack=True)
+        particles.move(_context=xo.ContextCpu())
+
+        assert particles.state[0] == 1
+        np.testing.assert_allclose([getattr(particles, n)[0] for n in COORDS],
+                                   list(RF_FACE_LAUNCH.values()), rtol=0, atol=1e-14)
+    np.testing.assert_allclose(end['thick 2'], end['whole'], rtol=0, atol=1e-14)
+
+
+@pytest.mark.parametrize('faces', [(1, 1), (0, 0), (1, 0)])
+def test_models_agree_on_what_an_rf_face_does(faces):
+    """A face off leaves the field continuing past that end: at gamma 200 the
+    phase-resolved, averaged and paraxial models agree as closely as with faces on."""
+    end = {}
+    for model in ('_phase-resolved', '_phase-averaged', '_phase-resolved-paraxial'):
+        rf = xt.Cavity(model=model, length=.3, voltage=3e6, frequency=1.3e9, phase=.4,
+                       counter_wave_amplitude=0., num_kicks=256,
+                       _rf_edge_entry_active=faces[0], _rf_edge_exit_active=faces[1])
+        line = xt.Line(elements=[rf])
+        line.particle_ref = xt.Particles(mass0=ELECTRON, p0c=ELECTRON * np.sqrt(200.**2 - 1))
+        line.build_tracker()
+
+        particles = line.build_particles(**RF_FACE_LAUNCH)
+        line.track(particles)
+
+        # Kinetic momenta: the canonical ones carry the readback potential.
+        end[model] = np.array([particles.x[0], particles.px[0] - particles.ax[0],
+                               particles.y[0], particles.py[0] - particles.ay[0],
+                               particles.zeta[0], particles.delta[0]])
+    for model in ('_phase-averaged', '_phase-resolved-paraxial'):
+        np.testing.assert_allclose(end[model], end['_phase-resolved'], rtol=0, atol=1e-10)

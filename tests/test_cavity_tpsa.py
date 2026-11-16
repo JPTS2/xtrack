@@ -436,7 +436,8 @@ def test_frozen_solenoid_zero_strength_parameter_tpsa(tmp_path):
     context = xo.ContextCpu()
     line=xt.Line(elements={'c':xt.MagnetOverlappedCavity(length=.05,frequency=400e6,
         voltage=0.,counter_wave_amplitude=0.,ks=0.,edge_entry_active=False,
-        edge_exit_active=False,model='_phase-resolved-frozen',num_kicks=4)})
+        edge_exit_active=False,_rf_edge_entry_active=False,_rf_edge_exit_active=False,
+        model='_phase-resolved-frozen',num_kicks=4)})
     line.particle_ref=xt.Particles(p0c=launch['p0c'],mass0=mass,q0=1.)
     line.reset_s_at_end_turn=False
     line.build_tracker(_context=context)

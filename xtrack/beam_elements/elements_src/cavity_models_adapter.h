@@ -566,6 +566,8 @@ void track_cavity_single_particle(
                     reverse,
                     el->edge_entry_active,
                     el->edge_exit_active,
+                    el->rf_edge_entry_active,
+                    el->rf_edge_exit_active,
                     kappa0,
                     integrator,
                     grading,
@@ -583,6 +585,8 @@ void track_cavity_single_particle(
                     reverse,
                     el->edge_entry_active,
                     el->edge_exit_active,
+                    el->rf_edge_entry_active,
+                    el->rf_edge_exit_active,
                     kappa0,
                     integrator,
                     grading,
@@ -621,6 +625,8 @@ void track_cavity_single_particle(
                 requested,
                 el->edge_entry_active,
                 el->edge_exit_active,
+                el->rf_edge_entry_active,
+                el->rf_edge_exit_active,
                 left_fraction,
                 right_fraction,
                 reverse,
@@ -632,16 +638,19 @@ void track_cavity_single_particle(
             z = source.k * length * (end_fraction - .5);
         }
     }
-    // A whole cavity's end planes are hard edges of both waves:
-    // the impulse in the field-free-outside gauge, then the temporal gauge.
+    // A whole cavity's end planes are hard edges of both waves: the impulse in
+    // the field-free-outside gauge, then the temporal gauge. With an RF face
+    // off the field continues past it: the gauge change alone.
     const int physical_start = reverse ? right_fraction == 1. : left_fraction == 0.;
+    const int rf_start = reverse ? el->rf_edge_exit_active : el->rf_edge_entry_active;
     if (status == CAVITY_MODEL_OK && model == CAVITY_MODEL_FULL && physical_start) {
         xt_float_or_tpsa envelope[5];
         CavityModel_source_envelope(z, &source, envelope);
         CavitySpin edge_spin = {spin_tracking ? spin : NULL, anomaly};
-        status = CavityMagnus_edge(
-            q, &source, Q, z, direction * envelope[0], direction, &edge_spin
-        );
+        if (rf_start)
+            status = CavityMagnus_edge(
+                q, &source, Q, z, direction * envelope[0], direction, &edge_spin
+            );
         if (status == CAVITY_MODEL_OK)
             CavityModels_rf_gauge(q, &source, Q, z, 1, &edge_spin);
     }
@@ -727,14 +736,16 @@ void track_cavity_single_particle(
         if (model == CAVITY_MODEL_FULL) z = source.k * length * (end_fraction - .5);
         // The exit plane of a whole cavity: back to the outside gauge and
         // the closing impulse, after which only static fields remain.
+        const int rf_end = reverse ? el->rf_edge_entry_active : el->rf_edge_exit_active;
         if (model == CAVITY_MODEL_FULL && physical_outer) {
             xt_float_or_tpsa envelope[5];
             CavityModel_source_envelope(z, &source, envelope);
             CavitySpin edge_spin = {spin_tracking ? spin : NULL, anomaly};
             CavityModels_rf_gauge(q, &source, Q, z, 0, &edge_spin);
-            status = CavityMagnus_edge(
-                q, &source, Q, z, -direction * envelope[0], direction, &edge_spin
-            );
+            if (rf_end)
+                status = CavityMagnus_edge(
+                    q, &source, Q, z, -direction * envelope[0], direction, &edge_spin
+                );
             field_source.forward = 0.;
             field_source.backward = 0.;
         }

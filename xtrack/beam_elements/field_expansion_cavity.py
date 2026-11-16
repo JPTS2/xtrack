@@ -45,7 +45,7 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         travel with the beam.
     amplitudes : array of complex
         Their relative amplitudes c_m, as many as there are wave numbers.
-    integrator, num_kicks, radial_order
+    integrator, num_kicks, radial_order, _rf_edge_entry_active, _rf_edge_exit_active
         As for Cavity's "_phase-resolved" model.
     field_table_points : int or None
         The field and its derivatives are tabulated over the element at this many
@@ -84,6 +84,8 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         'field_table_dz': xo.Float64,
         'field_table_key': xo.Float64,
         'radial_order': xo.Field(xo.Int64, default=_RADIAL_ORDER),
+        '_rf_edge_entry_active': xo.Field(xo.Int64, default=1),
+        '_rf_edge_exit_active': xo.Field(xo.Int64, default=1),
         'absolute_time': xo.Int64,
         'num_kicks': xo.Int64,
         'model': xo.Int64,

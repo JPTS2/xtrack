@@ -783,6 +783,8 @@ int CavityModel_paraxial_interval(
     int reverse,
     int entry_face,
     int exit_face,
+    int rf_entry_face,
+    int rf_exit_face,
     xt_float_or_tpsa_arg reference_momentum,
     int integrator,
     xt_float_or_tpsa_arg grading,
@@ -814,12 +816,18 @@ int CavityModel_paraxial_interval(
     if (static_present && spin && spin->spin) return CAVITY_MODEL_ARGUMENT;
     entry_face = entry_face && left == 0.;
     exit_face = exit_face && right == 1.;
+    // An RF face that is off leaves the field continuing past the parent's end.
+    const int rf_first =
+        reverse ? !(right == 1. && !rf_exit_face) : !(left == 0. && !rf_entry_face);
+    const int rf_last =
+        reverse ? !(left == 0. && !rf_entry_face) : !(right == 1. && !rf_exit_face);
     for (int i = 0; i < 6; ++i) q[i] = q_in[i];
     const xt_float_or_tpsa length = source->k * source->length;
     const xt_float_or_tpsa z_left = length * (left - .5), z_right = length * (right - .5);
     const xt_float_or_tpsa h = (z_right - z_left) / cells;
     const xt_float_or_tpsa grading_log = CavityModel_log1p(grading);
-    const int graded = integrator == CAVITY_INTEGRATOR_GEOMETRIC && xt_float_or_tpsa_const_part(grading) > 1.e-6;
+    const int graded = integrator == CAVITY_INTEGRATOR_GEOMETRIC
+                       && xt_float_or_tpsa_const_part(grading) > 1.e-6;
     const double sign = reverse ? -1. : 1.;
     const double Q_spin = xt_float_or_tpsa_const_part(Q);
     // Reference-only step generators are cached once per call on the CPU.
@@ -873,7 +881,7 @@ int CavityModel_paraxial_interval(
     if ((!reverse && entry_face) || (reverse && exit_face))
         status = CavityModel_averaged_static_face(q, source, &field, reverse, reverse);
     // The inverse crosses the same steps backwards with negated generators.
-    if (status == CAVITY_MODEL_OK) {
+    if (status == CAVITY_MODEL_OK && rf_first) {
         if (reverse)
             status = CavityMagnus_edge(q, source, Q, z_right, -f_right, -1., spin);
         else
@@ -912,7 +920,7 @@ int CavityModel_paraxial_interval(
         if (status == CAVITY_MODEL_OK)
             status = CavityModel_averaged_body(q, .5 * sign * width, source, &field);
     }
-    if (status == CAVITY_MODEL_OK) {
+    if (status == CAVITY_MODEL_OK && rf_last) {
         if (reverse)
             status = CavityMagnus_edge(q, source, Q, z_left, f_left, -1., spin);
         else
