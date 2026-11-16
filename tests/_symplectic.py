@@ -1,22 +1,25 @@
 import numpy as np
+import xobjects as xo
 
 COORDS = ['x', 'px', 'y', 'py', 'zeta', 'pzeta']
 STEPS = np.array([1e-7, 1e-8, 1e-7, 1e-8, 1e-7, 1e-8])
 
 
-def fd_jacobian(line, centre):
+def fd_jacobian(line, centre, steps=STEPS):
     """Jacobian of one pass through ``line`` at ``centre`` (x, px, y, py,
     zeta, pzeta), by central differences, one coordinate at a time."""
+    steps = np.broadcast_to(steps, (6,))
     start = np.repeat(np.asarray(centre, dtype=float)[:, None], 12, axis=1)
     for ii in range(6):
-        start[ii, 2 * ii] += STEPS[ii]
-        start[ii, 2 * ii + 1] -= STEPS[ii]
+        start[ii, 2 * ii] += steps[ii]
+        start[ii, 2 * ii + 1] -= steps[ii]
     p = line.build_particles(**dict(zip(COORDS, start)))
     line.track(p)
+    p.move(_context=xo.ContextCpu())
     end = np.array([getattr(p, cc) for cc in COORDS])
     jac = np.zeros((6, 6))
     for ii in range(6):
-        jac[:, ii] = (end[:, 2 * ii] - end[:, 2 * ii + 1]) / (2 * STEPS[ii])
+        jac[:, ii] = (end[:, 2 * ii] - end[:, 2 * ii + 1]) / (2 * steps[ii])
     return jac
 
 
