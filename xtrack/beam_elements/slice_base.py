@@ -41,6 +41,9 @@ class _CavitySliceOffset:
     def slice_offset(self):
         if self._slice_offset_fraction < 0:
             return self._legacy_slice_offset
+        if self._parent is None:
+            # Loaded from a dict before the parent is linked: zero offsets are not saved.
+            return 0.
         return self._slice_offset_fraction * self._parent.length
 
     @slice_offset.setter

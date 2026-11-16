@@ -562,3 +562,40 @@ def test_plan_follows_element_changes_between_track_calls(model_context):
     line['rf'].model = '_phase-resolved'
     assert gain() != 2 * first
 
+
+
+def test_magnet_overlapped_cavity_checks_knob_driven_strengths():
+    import madng_tpsa
+    cavity = xt.MagnetOverlappedCavity(model='_phase-averaged', frequency=400e6, length=1.,
+                                       voltage=1e6, knl=[0., .1], edge_entry_active=0,
+                                       edge_exit_active=0)
+    desc = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=1)
+    cavity.knl[1] = desc.param(1, .1)
+    cavity._check_physical_model(tracking=True)
+    cavity.knl[2] = desc.param(1, .2)
+    with pytest.raises(ValueError, match='normal quadrupole'):
+        cavity._check_physical_model(tracking=True)
+
+
+def test_sliced_cavity_line_saves_after_reload():
+    line = xt.Line(elements={'rf': xt.Cavity(model='_phase-resolved', frequency=400e6,
+                                             length=2., voltage=1e6)})
+    line.slice_thick_elements([xt.Strategy(slicing=xt.Teapot(3, mode='thick'))])
+    offsets = [line[name].slice_offset for name in line.element_names if name.startswith('rf..')]
+    reloaded = xt.Line.from_dict(line.to_dict())
+    reloaded.to_dict()
+    reloaded.build_tracker()
+    assert [reloaded[name].slice_offset for name in reloaded.element_names
+            if name.startswith('rf..')] == offsets
+
+
+def test_cavity_switched_to_a_physical_model_after_tracking_is_checked():
+    cavity = xt.Cavity(frequency=400e6, length=1., voltage=1e6)
+    line = xt.Line(elements={'drift': xt.Drift(length=1.), 'rf': cavity})
+    line.particle_ref = xt.Particles(p0c=1e9)
+    line.build_tracker()
+    line.track(line.build_particles(x=[1e-3]))
+    cavity.model = '_phase-resolved'
+    cavity.length = 0.
+    with pytest.raises(ValueError, match='positive finite length'):
+        line.track(line.build_particles(x=[1e-3]))

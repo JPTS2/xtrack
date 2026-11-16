@@ -288,13 +288,11 @@ class Tracker:
             self._tracker_data_cache = None
         self._is_invalidated = True
 
-    def _physical_cavities(self):
-        # Cached so legacy-only lines pay nothing per call; a cavity switched
-        # to a physical model afterwards still meets the kernel's refusal.
-        if not hasattr(self, '_physical_cavity_cache'):
-            self._physical_cavity_cache = tuple(
-                ee for ee in self.line._used_cavity_owners() if ee._model >= 10)
-        return self._physical_cavity_cache
+    def _cavities(self):
+        # All cavities, not only those physical now: a model may change between calls.
+        if not hasattr(self, '_cavity_cache'):
+            self._cavity_cache = tuple(self.line._used_cavity_owners())
+        return self._cavity_cache
 
     def _check_invalidated(self):
         if hasattr(self, '_is_invalidated') and self._is_invalidated:
@@ -303,8 +301,7 @@ class Tracker:
                 "Please rebuild the tracker, for example using `line.build_tracker(...)`.")
 
     def _track(self, particles, *args, **kwargs):
-        cavities = self._physical_cavities()
-        for cavity in cavities:
+        for cavity in self._cavities():
             cavity._check_physical_model(tracking=True)
         original_tpsa_track = self.config.XTRACK_TPSA_TRACK
         self.config.XTRACK_TPSA_TRACK = isinstance(particles, ParticlesTpsa)
@@ -949,10 +946,7 @@ class Tracker:
             LocalParticle_set_state(&lpart, 1);
             LocalParticle_set_at_element(&lpart, ele_start);
             LocalParticle_update_delta(&lpart, LocalParticle_get_delta(&lpart));
-            // Input s is part of the physical clock for absolute RF. Turn
-            // bookkeeping below, rather than entry, owns any requested reset.
-            // Preserve the caller's canonical-potential metadata across
-            // partial tracking calls, as ordinary particle tracking does.
+            // s, ax and ay are kept: absolute RF time and canonical momenta read them.
 
 #endif
 

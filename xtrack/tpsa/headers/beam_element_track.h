@@ -36,9 +36,7 @@ void KERNEL_NAME(
         LocalParticle_set_state(&lpart, 1);
         LocalParticle_set_at_element(&lpart, 0);
         LocalParticle_update_delta(&lpart, LocalParticle_get_delta(&lpart));
-        // Preserve the caller's physical observation plane, as scalar element
-        // tracking does. Absolute RF phase depends on this s coordinate.
-        // Preserve canonical-potential metadata across element calls too.
+        // s, ax and ay are kept: absolute RF time and canonical momenta read them.
 
         if (check_is_active(&lpart) > 0) {
             CONCAT(ELEMENT_NAME, _track_local_particle_with_transformations)(

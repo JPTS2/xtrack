@@ -521,7 +521,8 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
         if self._model < 10:
             return
         if self._model in (11, 12):
-            normal, skew = np.asarray(self.knl), np.asarray(self.ksl)
+            # The stored constant parts: a knob's series does not change which terms are present.
+            normal, skew = np.asarray(self._knl), np.asarray(self._ksl)
             others = (np.any(normal[np.arange(len(normal)) != 1] != 0.)
                       or np.any(skew != 0.))
             solenoid = _constant_part(self.ks) != 0.

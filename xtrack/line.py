@@ -1865,7 +1865,7 @@ class Line:
         # active TPSA elements intentionally cannot be copied. Visit the actual
         # owners instead, including parents used only through their slices.
         # The environment may contain unrelated lines: do not disable those.
-        for element in self._used_owners():
+        for _, element in self._used_owners():
             if getattr(getattr(element, '_xobject', None), '_tpsa_enabled', 0):
                 element.disable_tpsa()
 
@@ -5017,24 +5017,26 @@ class Line:
         )
 
     def _used_owners(self):
-        """Visit every element owner the line uses, by replica or slice."""
+        """Visit (name, element) of every owner the line uses, by replica or slice."""
         pending = list(self.element_names)
         seen = set()
         while pending:
-            element = self._element_dict[pending.pop()]
+            name = pending.pop()
+            element = self._element_dict[name]
             if isinstance(element, xt.Replica):
-                element = element.resolve(self)
+                name = element.resolve(self, get_name=True)
+                element = self._element_dict[name]
             if id(element) in seen:
                 continue
             seen.add(id(element))
-            yield element
+            yield name, element
             parent = getattr(element, 'parent_name', None)
             if parent is not None:
                 pending.append(parent)
 
     def _used_cavity_owners(self):
         """Visit Cavity owners used directly, by replica or slice."""
-        return (ee for ee in self._used_owners()
+        return (ee for _, ee in self._used_owners()
                 if isinstance(ee, (xt.Cavity, xt.FieldExpansionCavity)))
 
     @doc_group("Radiation, Spin and Intra-Beam Scattering")

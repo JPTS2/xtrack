@@ -143,25 +143,10 @@ class KnobParameters:
         self._reached = None
         self._initially_enabled = None
 
-    def _used_owners(self):
-        """Canonical used elements and their slice/replica parent closure."""
-        pending = list(self.line.element_names)
-        seen = set()
-        while pending:
-            name = pending.pop()
-            element = self.line._element_dict[name]
-            if id(element) in seen:
-                continue
-            seen.add(id(element))
-            yield name, element
-            parent = getattr(element, 'parent_name', None)
-            if parent is not None:
-                pending.append(parent)
-
     def driven_elements(self) -> list[tuple[str, str | tuple[str, int]]]:
         """``(element, attribute)`` of every field currently holding a series."""
         driven = []
-        for name, element in self._used_owners():
+        for name, element in self.line._used_owners():
             if not getattr(getattr(element, "_xobject", None), "_tpsa_enabled", 0):
                 continue
             for attr in getattr(element, "_float_or_tpsa_fields", ()):
