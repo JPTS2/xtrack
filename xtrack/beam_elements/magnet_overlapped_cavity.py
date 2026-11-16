@@ -104,9 +104,16 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
     @model.setter
     def model(self, value):
         try:
-            self._model = _MODEL_IDS[value]
+            index = _MODEL_IDS[value]
         except KeyError:
             raise ValueError(f'Invalid MagnetOverlappedCavity model: {value}') from None
+        if index < 10 and (np.any(self._knl_tpsa) or np.any(self._ksl_tpsa)):
+            raise ValueError('TPSA knobs on knl and ksl need a physical model: the '
+                             'longitudinal-kick model tracks their constant parts')
+        if index < 10 and self.integrator == '_geometric':
+            raise ValueError('"_geometric" grades the cells of the physical models; '
+                             'longitudinal-kick takes the magnet integrators')
+        self._model = index
         _MODEL_CHANGES[0] += 1
 
     @staticmethod

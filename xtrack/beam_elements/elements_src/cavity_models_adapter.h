@@ -637,10 +637,8 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     }
 }
 
-// Longitudinal-kick model of a MagnetOverlappedCavity: the static fields are
-// tracked as a magnet by its integrator, and the RF energy kick of each step is
-// added to the magnet's kick at the same point. A thin slice is the kick alone,
-// a drift slice the magnet's drift; the fringe fields are not included.
+// Longitudinal-kick model of a MagnetOverlappedCavity: the magnet's integrator,
+// with the RF energy kick added to each magnet kick; no fringe fields.
 #define CAVITY_MAGNET_BODY 0
 #define CAVITY_MAGNET_KICK 1
 #define CAVITY_MAGNET_DRIFT 2
@@ -653,8 +651,6 @@ void CavityModels_track_longitudinal_magnet(
     double weight,
     int part_of_body
 ) {
-    double inv_factorial_order = 1.;
-    for (int64_t n = 2; n <= fields->order; n++) inv_factorial_order /= (double)n;
     const int with_kicks = part_of_body != CAVITY_MAGNET_DRIFT;
     MagnetFace entry_face = MagnetFace_empty(0);
     MagnetFace exit_face = MagnetFace_empty(1);
@@ -663,7 +659,7 @@ void CavityModels_track_longitudinal_magnet(
     magnet.length = fields->length;
     magnet.weight = weight;
     magnet.order = with_kicks ? fields->order : -1;
-    magnet.inv_factorial_order = inv_factorial_order;
+    magnet.inv_factorial_order = fields->inv_factorial_order;
     magnet.knl = with_kicks ? fields->knl : NULL;
     magnet.ksl = with_kicks ? fields->ksl : NULL;
     magnet.ks = fields->ks;

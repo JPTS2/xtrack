@@ -55,9 +55,13 @@ class _CavityControls:
     @model.setter
     def model(self, value):
         try:
-            self._model = _CAVITY_MODEL_IDS[value]
+            index = _CAVITY_MODEL_IDS[value]
         except KeyError:
             raise ValueError(f'Invalid Cavity model: {value}') from None
+        if index < 10 and self._integrator == 7:
+            raise ValueError('"_geometric" grades the cells of the physical models; the '
+                             'longitudinal models take the magnet integrators')
+        self._model = index
         # Trackers rebuild their list of physical cavities when this changes.
         _MODEL_CHANGES[0] += 1
 
@@ -76,9 +80,13 @@ class _CavityControls:
             _HasIntegrator.integrator.fset(self, value)
             return
         try:
-            self._integrator = _CAVITY_INTEGRATOR_IDS[value]
+            index = _CAVITY_INTEGRATOR_IDS[value]
         except KeyError:
             raise ValueError(f'Invalid Cavity integrator: {value}') from None
+        if value == '_geometric' and self._model < 10:
+            raise ValueError('"_geometric" grades the cells of the physical models; the '
+                             'longitudinal models take the magnet integrators')
+        self._integrator = index
 
     @staticmethod
     def get_available_integrators():
@@ -380,7 +388,8 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
 
     @n_cells.setter
     def n_cells(self, value):
-        if value < 0 or int(value) != value:
+        if not (isinstance(value, (int, float, np.integer, np.floating)) and isfinite(value)
+                and value >= 0 and int(value) == value):
             raise ValueError('n_cells must be a non-negative integer')
         self._n_cells = int(value)
 

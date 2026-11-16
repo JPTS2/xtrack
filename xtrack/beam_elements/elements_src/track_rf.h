@@ -75,6 +75,7 @@ typedef struct RFModelFields_s {
     int64_t edge_entry_active, edge_exit_active;
     xt_float_or_tpsa ks;
     int64_t order, knl_len, ksl_len;
+    double inv_factorial_order;
     GPUGLMEM const double *knl, *ksl;
     GPUGLMEM const uint64_t *knl_tpsa, *ksl_tpsa;
     int64_t absolute_time, num_kicks, model, integrator, tpsa_enabled;
@@ -137,12 +138,13 @@ typedef struct RFModelFields_s {
 // An element without static fields: a Cavity.
 #define RF_MODEL_FIELDS_CLEAR_STATIC(f) do { \
     (f)->ks=0.; \
-    (f)->order=-1; (f)->knl_len=0; (f)->ksl_len=0; \
+    (f)->order=-1; (f)->inv_factorial_order=1.; (f)->knl_len=0; (f)->ksl_len=0; \
     (f)->knl=NULL; (f)->ksl=NULL; (f)->knl_tpsa=NULL; (f)->ksl_tpsa=NULL; \
 } while (0)
 
 #define RF_MODEL_FIELDS_FILL_STATIC(DATA, el, f) do { \
     (f)->ks=DATA##_get_ks(el); (f)->order=DATA##_get_order(el); \
+    (f)->inv_factorial_order=DATA##_get_inv_factorial_order(el); \
     (f)->knl_len=DATA##_len_knl(el); (f)->ksl_len=DATA##_len_ksl(el); \
     (f)->knl=DATA##_getp1_knl(el,0); (f)->ksl=DATA##_getp1_ksl(el,0); \
     (f)->knl_tpsa=DATA##_getp1_knl_tpsa(el,0); (f)->ksl_tpsa=DATA##_getp1_ksl_tpsa(el,0); \

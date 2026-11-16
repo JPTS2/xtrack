@@ -186,7 +186,7 @@ def test_thin_source_strength_readback_follows_parent_model(test_context, model)
     np.testing.assert_allclose(line.attr['k1l'][source].sum(), .012)
     np.testing.assert_allclose(line.attr['k1sl'][source].sum(), -.003)
     # Reuse the already-created attr cache through both selector changes.
-    line.set('rf', model='longitudinal-kick')
+    line.set('rf', integrator='uniform', model='longitudinal-kick')
     np.testing.assert_array_equal(line.attr['voltage'][source], 0.)
     np.testing.assert_allclose(line.attr['voltage'][marker].sum(), 20e3)
     line.set('rf', model=model)

@@ -152,7 +152,7 @@ def test_zero_controls_survive_json_roundtrip(model, field):
     assert restored.model == original.model
 
 
-@pytest.mark.parametrize('n_cells', (-1, 1.5))
+@pytest.mark.parametrize('n_cells', (-1, 1.5, None, float('inf')))
 def test_cells_must_be_a_non_negative_integer(n_cells):
     with pytest.raises(ValueError, match='n_cells'):
         xt.Cavity(**dict(SETTINGS['_phase-resolved'], n_cells=n_cells))

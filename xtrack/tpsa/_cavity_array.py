@@ -74,6 +74,9 @@ class CavityArrayView(np.lib.mixins.NDArrayOperatorsMixin):
     def _set_one(self, index, value):
         index = self._index(index)
         if isinstance(value, Tpsa):
+            if self.owner._model < 10:
+                raise ValueError('TPSA knobs on knl and ksl need a physical model: the '
+                                 'longitudinal-kick model tracks their constant parts')
             if getattr(self.owner._xobject, '_tpsa_enabled', 0):
                 descriptor = self.owner.__dict__.get('_tpsa_descriptor')
                 if descriptor.ptr != value.descriptor.ptr:
@@ -108,6 +111,10 @@ class CavityArrayView(np.lib.mixins.NDArrayOperatorsMixin):
             return np.array(list(self), dtype=object if dtype is None else dtype)
         array = self.owner._context.nparray_from_context_array(self._backing)
         return np.asarray(array, dtype=dtype)
+
+    def _to_dict(self):
+        # Saved as the plain array, like the knl of the magnets.
+        return self._array().copy()
 
     def __array__(self, dtype=None, copy=None):
         if self._series and (dtype is None or np.dtype(dtype) != np.dtype(object)):

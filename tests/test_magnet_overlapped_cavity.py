@@ -115,3 +115,40 @@ def test_only_the_longitudinal_kick_and_the_physical_models_are_offered():
     with pytest.raises(ValueError, match='Invalid MagnetOverlappedCavity model'):
         xt.MagnetOverlappedCavity(model='drift-kick-drift-exact')
     assert 'model' not in xt.MagnetOverlappedCavity(length=1.).to_dict()
+
+
+def test_longitudinal_models_refuse_the_geometric_integrator():
+    """The magnet integrators have no "_geometric" branch: it would track nothing."""
+    with pytest.raises(ValueError, match='_geometric'):
+        xt.MagnetOverlappedCavity(length=LENGTH, **RF, **STATIC, integrator='_geometric')
+    rf = xt.MagnetOverlappedCavity(length=LENGTH, **RF, model='_phase-resolved',
+                                   integrator='_geometric')
+    with pytest.raises(ValueError, match='_geometric'):
+        rf.model = 'longitudinal-kick'
+    cavity = xt.Cavity(length=LENGTH, **RF, model='_phase-resolved', integrator='_geometric')
+    with pytest.raises(ValueError, match='_geometric'):
+        cavity.model = 'adaptive'
+
+
+def test_longitudinal_kick_refuses_tpsa_knobs_on_the_static_fields():
+    madng_tpsa = pytest.importorskip('madng_tpsa')
+    descriptor = madng_tpsa.Descriptor(6, 1, num_params=1, param_order=1)
+    rf = xt.MagnetOverlappedCavity(length=LENGTH, **RF, **STATIC)
+    with pytest.raises(ValueError, match='physical model'):
+        rf.knl[1] = descriptor.param(1, .02)
+    physical = xt.MagnetOverlappedCavity(length=LENGTH, **RF, knl=[0., .02],
+                                         model='_phase-resolved')
+    physical.knl[1] = descriptor.param(1, .02)
+    with pytest.raises(ValueError, match='physical model'):
+        physical.model = 'longitudinal-kick'
+    physical.disable_tpsa()
+
+
+def test_line_with_static_fields_saves_as_json(tmp_path):
+    line = xt.Line(elements=[xt.MagnetOverlappedCavity(length=LENGTH, ks=.3, **STATIC, **RF)],
+                   element_names=['rf'])
+    line.to_json(tmp_path / 'line.json')
+    restored = xt.load(tmp_path / 'line.json')
+    np.testing.assert_array_equal(restored['rf'].knl, line['rf'].knl)
+    np.testing.assert_array_equal(restored['rf'].ksl, line['rf'].ksl)
+    assert restored['rf'].ks == .3

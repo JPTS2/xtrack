@@ -533,7 +533,7 @@ def test_cavity_array_ufunc_rejects_invalid_results_before_target_mutation(activ
 
 
 def test_cavity_descriptor_change_is_atomic():
-    owner=xt.MagnetOverlappedCavity(length=.05)
+    owner=xt.MagnetOverlappedCavity(length=.05,model='_phase-resolved')
     first=madng_tpsa.Descriptor(6,2,num_params=1,param_order=1)
     second=madng_tpsa.Descriptor(6,3,num_params=1,param_order=1)
     owner.phase=first.param(1,.4)
