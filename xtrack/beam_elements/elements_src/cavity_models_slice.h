@@ -6,8 +6,9 @@
 #include "xtrack/beam_elements/elements_src/track_misalignments.h"
 #include "xtrack/beam_elements/elements_src/track_drift.h"
 
-// A drift slice of a physical model carries the parent's field over its
-// interval, in the parent's frame. For the longitudinal models it stays a drift.
+// A drift slice of a physical model, or of a MagnetOverlappedCavity, carries the
+// parent's fields over its interval, in the parent's frame. A Cavity's drift slice
+// of a longitudinal model is a drift.
 GPUFUN
 void CavityModels_track_drift_slice(
     const CavityPlan* prepared,
@@ -18,12 +19,9 @@ void CavityModels_track_drift_slice(
     const CavityPlan plan = *prepared;
     const RFModelFields* parent = &plan.fields;
     const int8_t reverse = LocalParticle_check_track_flag(part0, XS_FLAG_BACKTRACK);
-    const double drift_length = (reverse ? -weight : weight) * parent->length;
-    if (plan.model < 10 && parent->knl) {
-        CavityModels_track_longitudinal_magnet(part0, &plan, NULL, weight, CAVITY_MAGNET_DRIFT);
-        return;
-    }
-    if (plan.model < 10) {
+    const int static_fields = plan.model < 10 && parent->knl;
+    if (plan.model < 10 && !static_fields) {
+        const double drift_length = (reverse ? -weight : weight) * parent->length;
         START_PER_PARTICLE_BLOCK(part0, part)
             ;
             Drift_single_particle(part, drift_length);
@@ -52,17 +50,18 @@ void CavityModels_track_drift_slice(
                 part0, dx, dy, ds, ry, rx, rz0, anchor, length, rz, reverse
             );
     }
-    CavityMagnusCache magnus_cache;
-    CavityMagnusCache_init(&magnus_cache);
-    START_PER_PARTICLE_BLOCK(part0, part)
-        ;
-        const int model = plan.model;
-        if (model < 10)
-            Drift_single_particle(part, drift_length);
-        else
-            track_cavity_single_particle(&plan, model, part, &magnus_cache);
-    END_PER_PARTICLE_BLOCK;
-    CavityMagnusCache_free(&magnus_cache);
+    if (static_fields) {
+        CavityModels_track_longitudinal_magnet(part0, &plan, NULL, weight, CAVITY_MAGNET_DRIFT);
+    }
+    else {
+        CavityMagnusCache magnus_cache;
+        CavityMagnusCache_init(&magnus_cache);
+        START_PER_PARTICLE_BLOCK(part0, part)
+            ;
+            track_cavity_single_particle(&plan, plan.model, part, &magnus_cache);
+        END_PER_PARTICLE_BLOCK;
+        CavityMagnusCache_free(&magnus_cache);
+    }
     if (transformed) {
         if (!reverse)
             track_misalignment_exit_straight(

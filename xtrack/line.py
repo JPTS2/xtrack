@@ -8112,14 +8112,14 @@ def _is_drift(element, line):
     if isinstance(element, beam_elements.Drift):
         return True
     if element.__class__.__name__.startswith('Drift'):
-        # A drift slice of a physical-model cavity carries its field; the parent
-        # is looked up by name when the slice is not linked yet.
+        # A drift slice of a cavity can carry its parent's field; the parent is
+        # looked up by name when the slice is not linked yet.
         parent = getattr(element, '_parent', None)
         name = getattr(element, 'parent_name', None)
         if parent is None and name is not None and line is not None:
             parent = line._element_dict.get(name)
-        return not (isinstance(parent, (xt.Cavity, xt.FieldExpansionCavity))
-                    and parent._resolved_model >= 10)
+        carries = getattr(type(element), '_carries_parent_field', None)
+        return not (carries is not None and parent is not None and carries(parent))
     return False
 
 def _behaves_like_drift(element, line):

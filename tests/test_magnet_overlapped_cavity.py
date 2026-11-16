@@ -114,6 +114,46 @@ def test_longitudinal_kick_slices_keep_the_static_fields(test_context):
     assert thin_32 < thin_8 / 10
 
 
+@for_all_test_contexts
+def test_longitudinal_kick_slices_follow_a_misaligned_parent(test_context):
+    """A shifted solenoid is not a drift: its drift slices take the parent's frame."""
+    end = {}
+    for key, slicing in (('whole', None), ('thin 8', xt.Teapot(8, mode='thin'))):
+        rf = xt.MagnetOverlappedCavity(length=LENGTH, num_kicks=64, ks=.3, shift_x=2e-3,
+                                       **STATIC, **RF)
+        line = xt.Line(elements={'rf': rf, 'end': xt.Marker()})
+        if slicing is not None:
+            line.slice_thick_elements([xt.Strategy(slicing)])
+        line.particle_ref = xt.Particles(p0c=2e9, mass0=xt.PROTON_MASS_EV)
+        line.build_tracker(_context=test_context)
+
+        particles = line.build_particles(**LAUNCH)
+        line.track(particles, ele_stop='end')
+        particles.move(_context=xo.ContextCpu())
+        end[key] = np.array([getattr(particles, n)[0] for n in COORDS])
+
+    np.testing.assert_allclose(end['thin 8'], end['whole'], rtol=0, atol=1e-7)
+
+
+def test_optimize_for_tracking_keeps_the_static_fields_of_slices():
+    """Neither slice has an equivalent Drift or Cavity: both keep the static fields."""
+    end = {}
+    for key in ('sliced', 'optimized'):
+        rf = xt.MagnetOverlappedCavity(length=LENGTH, num_kicks=8, ks=.3, **STATIC, **RF)
+        line = xt.Line(elements={'rf': rf, 'end': xt.Marker()})
+        line.slice_thick_elements([xt.Strategy(xt.Teapot(4, mode='thin'))])
+        line.particle_ref = xt.Particles(p0c=2e9, mass0=xt.PROTON_MASS_EV)
+        line.build_tracker()
+        if key == 'optimized':
+            line.optimize_for_tracking(verbose=False)
+
+        particles = line.build_particles(**LAUNCH)
+        line.track(particles)
+        end[key] = np.array([getattr(particles, n)[0] for n in COORDS])
+
+    np.testing.assert_array_equal(end['optimized'], end['sliced'])
+
+
 def test_only_the_longitudinal_kick_and_the_physical_models_are_offered():
     assert xt.MagnetOverlappedCavity().model == 'adaptive'
     assert xt.MagnetOverlappedCavity.get_available_models() == [

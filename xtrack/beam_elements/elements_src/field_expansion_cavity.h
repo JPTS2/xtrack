@@ -27,6 +27,7 @@ void FieldExpansionCavity_prepare_rf(FieldExpansionCavityData el, RFPlan* plan, 
     rf.phase_taper            = FieldExpansionCavityData_get_phase_taper(el);
     rf.absolute_time          = FieldExpansionCavityData_get_absolute_time(el);
     rf.num_kicks              = FieldExpansionCavityData_get_num_kicks(el);
+    rf.model                  = MODEL_ADAPTIVE; // the RF body's drift; the cavity plan tracks the models
     rf.integrator             = FieldExpansionCavityData_get_integrator(el);
     // clang-format on
     RFPlan_prepare(plan, &rf, part0);

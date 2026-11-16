@@ -48,6 +48,7 @@ void ThickSliceFieldExpansionCavity_prepare_rf(ThickSliceFieldExpansionCavityDat
     rf.phase_taper            = ThickSliceFieldExpansionCavityData_get__parent_phase_taper(el);
     rf.absolute_time          = ThickSliceFieldExpansionCavityData_get__parent_absolute_time(el);
     rf.num_kicks              = ThickSliceFieldExpansionCavityData_get__parent_num_kicks(el);
+    rf.model                  = MODEL_ADAPTIVE; // the RF body's drift; the cavity plan tracks the models
     rf.integrator             = ThickSliceFieldExpansionCavityData_get__parent_integrator(el);
     // clang-format on
     RFPlan_prepare(plan, &rf, part0);

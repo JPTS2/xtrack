@@ -181,6 +181,10 @@ class ThinSliceMagnetOverlappedCavity(ThinSliceCavity):
         _pkg_root.joinpath('beam_elements/elements_src/thin_slice_magnet_overlapped_cavity.h'),
     ]
 
+    def get_equivalent_element(self):
+        # Kept: a Cavity would drop the multipole kick.
+        return self
+
 
 class ThinSliceFieldExpansionCavity(ThinSliceCavity):
 

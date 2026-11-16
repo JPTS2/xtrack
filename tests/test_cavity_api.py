@@ -209,8 +209,9 @@ def test_source_interval_alignment_readback_is_live():
     for name, value in [('shift_x', .0002), ('shift_y', -.0001),
                         ('rot_s_rad', .2), ('rot_y_rad', .001)]:
         np.testing.assert_array_equal(line.attr[name][intervals], value)
+    # The static fields are carried in every model, so the frame stays.
     line.set('rf', model='longitudinal-kick')
-    np.testing.assert_array_equal(line.attr['shift_x'][intervals], 0.)
+    np.testing.assert_array_equal(line.attr['shift_x'][intervals], .0002)
     line.set('rf', model='_phase-resolved', shift_x=.0003)
     np.testing.assert_array_equal(line.attr['shift_x'][intervals], .0003)
     # Automatic drift transforms stay off; its new source helper owns them.

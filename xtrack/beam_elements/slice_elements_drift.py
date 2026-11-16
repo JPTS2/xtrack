@@ -112,10 +112,15 @@ class DriftSliceCavity(_CavitySliceOffset, _DriftSliceElementBase, BeamElement):
         '#include "xtrack/beam_elements/elements_src/drift_slice_cavity.h"'
     ]
 
+    @staticmethod
+    def _carries_parent_field(parent):
+        """Whether the slice tracks the parent's field, in its frame, not a drift."""
+        return parent._resolved_model >= 10
+
     @property
     def behaves_like_drift(self):
         parent = self._parent
-        return parent is not None and parent._resolved_model < 10
+        return parent is not None and not self._carries_parent_field(parent)
 
     @property
     def _inherit_strengths(self):
@@ -124,12 +129,11 @@ class DriftSliceCavity(_CavitySliceOffset, _DriftSliceElementBase, BeamElement):
 
     @property
     def _rot_and_shift_from_parent_for_metadata(self):
-        # The slice applies the parent frame itself.
         parent = self._parent
-        return parent is not None and parent._resolved_model >= 10
+        return parent is not None and self._carries_parent_field(parent)
 
     def get_equivalent_element(self):
-        if self._parent._resolved_model >= 10:
+        if self._carries_parent_field(self._parent):
             # Kept: a Drift would drop the parent's field.
             return self
         out = Drift(length=self._parent.length * self.weight,
@@ -141,6 +145,11 @@ class DriftSliceMagnetOverlappedCavity(DriftSliceCavity):
 
     isthick = True
     _xofields = cavity_slice_xofields(MagnetOverlappedCavity)
+
+    @staticmethod
+    def _carries_parent_field(parent):
+        # Every model tracks the static fields and their faces.
+        return True
 
     _extra_c_sources = [
         '#include "xtrack/beam_elements/elements_src/drift_slice_magnet_overlapped_cavity.h"'
