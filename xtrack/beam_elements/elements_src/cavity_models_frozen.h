@@ -5,20 +5,17 @@
 #ifndef XTRACK_CAVITY_MODELS_FROZEN_H
 #define XTRACK_CAVITY_MODELS_FROZEN_H
 
-// Phase-resolved source conventions shared with the other families.
 #include "xtrack/beam_elements/elements_src/cavity_models.h"
 #include "xtrack/beam_elements/elements_src/cavity_models_spin_rules.h"
 
-// Authenticated static factors of the frozen nominal-coefficient word.
-// Authenticated straight static factors for the frozen-voltage word.
-// State=(x[m],y[m],d=c(t-t_ref)[m],Px/(mc),Py/(mc),E/(mc^2)).
-// They transcribe sad_reduction._solenoid_body_flow,
-// _quadrupole_body_flow and _quadrupole_face. RF/static profiles, smooth
-// fringe radiation and physical source qualification remain separate.
+// Frozen model: SAD's cavity map, RF voltage kicks with coefficients frozen at
+// the nominal momentum between exact drifts on a graded mesh, with canonical
+// faces. Its static fields are the exact bodies of a uniform solenoid and of a
+// normal quadrupole, and the quadrupole's faces. The state inside the model is
+// (x [m], y [m], d = c(t - t_ref) [m], Px/(mc), Py/(mc), E/(mc^2)).
 
-// Entire C(u)=cos(sqrt(u)), S(u)=sin(sqrt(u))/sqrt(u). Negative u
-// gives the hyperbolic continuation. There is no sqrt(strength) singularity
-// at zero gradient; the TPSA backend supplies the entire functions directly.
+// C(u) = cos(sqrt(u)) and S(u) = sin(sqrt(u))/sqrt(u), entire in u: negative u
+// gives the hyperbolic functions, and a zero gradient needs no special case.
 GPUFUN
 void CavityModel_static_cs(
     xt_float_or_tpsa_arg u,
@@ -68,8 +65,8 @@ int CavityModel_static_shell(
     return CAVITY_MODEL_OK;
 }
 
-// Exact full-positive-root helix in A=(-b*y/2,b*x/2,0), b=q*Bz/(mc).
-// Both observation planes are inside the uniform field; no SOL face is added.
+// Exact helix in A = (-b y/2, b x/2, 0), b = q Bz/(mc), between two planes
+// inside the uniform field: the solenoid's faces are not included.
 GPUFUN
 int CavityModel_static_solenoid(
     xt_float_or_tpsa state[6],
@@ -97,9 +94,8 @@ int CavityModel_static_solenoid(
     return CavityModel_static_shell(state, strength, &p, &ps);
 }
 
-// Exact flow of Q=-p+P_perp^2/(2p)+g*(x^2-y^2)/2, including its
-// energy derivative. The two plane integrals below are actual integrals
-// of P_x(s)^2 and P_y(s)^2, not endpoint trapezoidal approximations.
+// Exact flow of Q = -p + P_perp^2/(2p) + g (x^2 - y^2)/2, with its energy
+// derivative; the path-length terms integrate P_x(s)^2 and P_y(s)^2 exactly.
 GPUFUN
 int CavityModel_static_quadratic(
     xt_float_or_tpsa state[6],
@@ -153,8 +149,8 @@ int CavityModel_static_remainder(
     return CAVITY_MODEL_OK;
 }
 
-// tsolqu's Bz=0 normal-quadrupole R/2,Q,R,...,Q,R/2 word (default EPS).
-// This is not silently replaced by an exact full-root quadrupole ODE.
+// Normal quadrupole body as SAD splits it at zero solenoid field:
+// R/2, Q, R, ..., Q, R/2, with R the shear above and Q the quadratic flow.
 GPUFUN
 int CavityModel_static_quadrupole(
     xt_float_or_tpsa state[6],
@@ -184,8 +180,8 @@ int CavityModel_static_quadrupole(
     return CAVITY_MODEL_OK;
 }
 
-// Source normal-quadrupole face q'=f(q,E), P'=Df^-T P,
-// d'=d-P'.partial_E f. The matrix is Df=[[xx,cross],[-cross,yy]].
+// Normal quadrupole face as a point transformation: q' = f(q, E),
+// P' = Df^-T P, d' = d - P'.partial_E f, with Df = [[xx, cross], [-cross, yy]].
 GPUFUN
 void CavityModel_static_quad_face_values(
     xt_float_or_tpsa_arg x,
@@ -221,8 +217,7 @@ int CavityModel_static_quad_face(
     xt_float_or_tpsa x = state[0], y = state[1], dx, dy, xx, yy, cross, correction;
     int converged = !inverse;
     if (inverse) {
-        // Invert the actual finite coordinate transformation. Negating g is
-        // not its exact inverse. The accepted root is differentiated by TPSA.
+        // Negating g does not invert the face: invert the transformation itself.
         for (int iteration = 0; iteration < 80; ++iteration) {
             CavityModel_static_quad_face_values(
                 x, y, coefficient, &dx, &dy, &xx, &yy, &cross, &correction
@@ -274,22 +269,14 @@ int CavityModel_static_quad_face(
     return CavityModel_static_shell(state, 0., &p, &ps);
 }
 
-// Frozen voltage actions, finite word and parent-prefix composition.
-// First-RF-interaction, transverse-quadratic voltage actions with a fixed
-// nominal inverse-momentum coefficient and collapsed physical RF faces.
-// The geometrically weighted exact-drift/voltage/clock word is the retained
-// TCAV-connected recipe, not a Gauss step through the phase-resolved source.
-// Algebra owner: verification/physics/orbit/sad_reduction.py:tcav_factor_map.
-// Source face continuation is deliberately kept, including its cubic defect
-// relative to the quadratic canonical face generator. Its inverse below is
-// the inverse of that actual finite face, not an assumed symplectic inverse.
+// RF voltage kicks, first order in the field and quadratic in the offset, with
+// the coefficients frozen at the nominal momentum, and the RF faces as
+// impulses. The face's inverse is computed from the face itself.
 
 GPUFUN
 xt_float_or_tpsa CavityModel_expm1(xt_float_or_tpsa_arg x) {
     xt_float_or_tpsa value = exp(x);
-    // The backend supplies exp but not expm1. Replacing its constant term
-    // preserves every represented Taylor coefficient, without a finite
-    // polynomial approximation or cancellation in the scalar result.
+    // TPSA has exp but not expm1: exp's derivatives with expm1's constant part.
     return value - xt_float_or_tpsa_const_part(value)
            + expm1(xt_float_or_tpsa_const_part(x));
 }
@@ -375,8 +362,8 @@ int CavityModel_frozen_face(
     xt_float_or_tpsa energy = state[5] + dh;
     if (inverse) energy = state[5] - dh;
     if (xt_float_or_tpsa_const_part(energy) <= 1.) return CAVITY_MODEL_DOMAIN;
-    // Exact flow of the ideal-edge generator W(x, y, t): a pure kick. SAD
-    // also rescales the momenta by p_after/p, which is not canonical.
+    // Exact flow of the face generator W(x, y, t), a pure kick. SAD also scales
+    // the momenta by p_after/p, which is not symplectic, so it is left out.
     for (int plane = 0; plane < 2; ++plane) {
         if (inverse)
             state[plane + 3] -= kick * state[plane];
@@ -466,14 +453,11 @@ xt_float_or_tpsa CavityModel_frozen_weight(
     return CavityModel_expm1(logarithm / count) * exp(index * logarithm / count) / ratio;
 }
 
-// Anchored parent prefix. nominal_momentum and nominal_gain are fixed
-// reference-programme data, independent of the particle's evolving energy.
-// The caller supplies them in the same positive mass normalization as q.
-// q uses the global source clock. Internally d=c(t-t_ref) uses the parent's
-// entrance clock; the returned T includes the nominal path advance once.
-// Authenticated static subsets are a uniform SOL body with RF faces off,
-// or a straight normal QUAD with its own source faces. Combined SOL/QUAD,
-// dipoles/skew/higher multipoles require their own finite source factors.
+// The map from the parent's entrance to `fraction` of its length. The nominal
+// momentum and gain are the reference's, in the units of q, so a slice keeps
+// the parent's coefficients. Inside, d is timed from the parent's entrance; the
+// returned T adds the nominal path once. Static fields: a uniform solenoid with
+// the RF faces off, or a normal quadrupole with its faces.
 GPUFUN
 int CavityModel_frozen_prefix(
     const xt_float_or_tpsa q[6],
@@ -499,9 +483,7 @@ int CavityModel_frozen_prefix(
     if (!xt_float_or_tpsa_is_zero(source->backward)
         || !xt_float_or_tpsa_is_zero(source->dc_gradient))
         return CAVITY_MODEL_ARGUMENT;
-    // Transverse frozen-coordinate analysis of the static finite factors
-    // requires its own constrained word. Silently freezing only the final
-    // particle setters would execute a different internal trajectory.
+    // Freezing a transverse coordinate would need constrained static bodies.
     if (source->freeze_x || source->freeze_px || source->freeze_y || source->freeze_py)
         return CAVITY_MODEL_ARGUMENT;
     for (int64_t i = 0; i <= source->order; ++i)
@@ -553,8 +535,7 @@ int CavityModel_frozen_prefix(
         if (geometric > count) count = geometric;
         if (count > 1000) count = 1000;
     }
-    // A positive requested resolution is a different, explicitly selected
-    // finite recipe. Automatic zero retains the source's capped mesh.
+    // num_kicks > 0 replaces the automatic count.
     if (requested_cells > 0) count = requested_cells;
     xt_float_or_tpsa state[6];
     state[0] = q[0] / k;
@@ -588,9 +569,8 @@ int CavityModel_frozen_prefix(
             if (status != CAVITY_MODEL_OK) return status;
         }
     }
-    // The parent mesh, voltage and nominal programme never change with a
-    // prefix. Only the observation plane moves. Each kick belongs to its
-    // right-continuous prefix; topology decisions use the constant chart.
+    // A prefix keeps the parent's mesh, voltage and nominal programme and stops
+    // at the target plane; a kick belongs to the prefix that contains it.
     xt_float_or_tpsa target = fraction * source->length;
     if (!reverse) {
         xt_float_or_tpsa previous_node = 0., previous_weight = 0.;
@@ -602,8 +582,8 @@ int CavityModel_frozen_prefix(
                 prefix = CavityModel_expm1((i + 1) * logarithm / count) / ratio;
             xt_float_or_tpsa node = source->length * (prefix - .5 * weight);
             if (fraction < 1. && xt_float_or_tpsa_const_part(node - target) > 0.) break;
-            // Preserve the original full-parent body calls and arithmetic;
-            // a normal-QUAD finite factor is not a drift semigroup.
+            // One body call per mesh interval: a quadrupole body split at the
+            // target is not the composition of its parts.
             status = CavityModel_frozen_body(
                 state,
                 source->length * (previous_weight + weight) * .5,
@@ -657,8 +637,7 @@ int CavityModel_frozen_prefix(
         for (int64_t i = count - 1; i >= 0; --i) {
             xt_float_or_tpsa weight =
                 CavityModel_frozen_weight(i, count, mesh_ratio, logarithm);
-            // Closed geometric prefix retains the full reference programme
-            // and avoids a second O(N) prefix loop on every reverse stage.
+            // The geometric mesh's prefix in closed form, not a running sum.
             xt_float_or_tpsa prefix = (i + 1.) / count;
             if (mesh_r > 1.e-6)
                 prefix = CavityModel_expm1((i + 1) * logarithm / count) / ratio;
@@ -748,7 +727,7 @@ int CavityModel_frozen_prefix(
     return CavityModel_vector_finite(output, 6) ? CAVITY_MODEL_OK
                                                 : CAVITY_MODEL_NONFINITE;
 }
-// The complete retained word remains the fraction-one prefix.
+
 GPUFUN
 int CavityModel_frozen(
     const xt_float_or_tpsa q[6],
@@ -778,9 +757,9 @@ int CavityModel_frozen(
     );
 }
 
-// Any child is the interval M_b M_a^-1 of the same anchored parent family.
-// This preserves the nominal energy programme and source finite word rather
-// than recalibrating independent short cavities. Physical faces occur once.
+// A slice from a to b is M_b M_a^-1 of the parent's prefixes: it keeps the
+// parent's nominal programme and mesh, and the faces belong to the parent's
+// ends.
 GPUFUN
 int CavityModel_frozen_interval(
     const xt_float_or_tpsa q[6],

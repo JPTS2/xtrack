@@ -1,4 +1,4 @@
-// Parent-frame handling for source-bearing cavity layout intervals.
+// Slices of the physical cavity models, tracked as intervals of the parent.
 #ifndef XTRACK_CAVITY_MODELS_SLICE_H
 #define XTRACK_CAVITY_MODELS_SLICE_H
 
@@ -6,10 +6,8 @@
 #include "xtrack/beam_elements/elements_src/track_misalignments.h"
 #include "xtrack/beam_elements/elements_src/track_drift.h"
 
-// Ordinary DriftSliceCavity deliberately has no automatic parent transform:
-// its legacy path must remain an untransformed drift. New continuous models
-// instead integrate the physical parent source on this interval, with the
-// standard straight-element wrapper.
+// A drift slice of a physical model carries the parent's field over its
+// interval, in the parent's frame. For the longitudinal models it stays a drift.
 GPUFUN
 void CavityModels_track_drift_slice(
     const CavityPlan* prepared,

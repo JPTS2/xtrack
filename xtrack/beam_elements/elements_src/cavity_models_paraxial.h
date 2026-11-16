@@ -10,8 +10,8 @@
 // phi = (r^2/4) d_z e, A_perp = 0, A_z = -int e dt - (r^2/4) d_t e, with e the
 // on-axis E_z, the Hamiltonian is linear in the field; per wave (amplitude a,
 // wave number nu, phase phi, psi = T - nu Z + phi)
-//     K = -p_z + a [f sin psi + (r^2/4)(E/p) f' cos psi + (r^2/4) f (nu E/p - 1) sin
-//     psi].
+//     K = -p_z + a [f sin psi + (r^2/4)(E/p) f' cos psi
+//                   + (r^2/4) f (nu E/p - 1) sin psi].
 // One step is body(h/2) exp(Omega) body(h/2), Omega the first- and
 // second-order Magnus generator of the RF terms in the drift frame
 // X + tau U/p, T + tau/beta0, from eight Gauss nodes and their spectral
@@ -612,8 +612,8 @@ int CavityMagnus_edge(
 //     w = (y rho + c_E V e/p, -x rho - c_E U e/p, ((xV - yU)/E) Im{e^{iT} l}),
 //     rho = Im{e^{iT}(c_B alpha0/(2 beta) + c_E alpha1/2)},
 //     l = c_E alpha1/(2 beta) - a gamma eps/(2(gamma+1)),
-// plus the spin-orbit term 1/2 int int_{tau2<tau1} [grad w(1) J grad H(2) - grad w(2) J
-// grad H(1)].
+// plus the spin-orbit term
+//     1/2 int int_{tau2<tau1} [grad w(1) J grad H(2) - grad w(2) J grad H(1)].
 GPUFUN
 void CavityMagnus_spin_step(
     const CavitySpin* spin,
@@ -872,7 +872,7 @@ int CavityModel_paraxial_interval(
     int status = CAVITY_MODEL_OK;
     if ((!reverse && entry_face) || (reverse && exit_face))
         status = CavityModel_averaged_static_face(q, source, &field, reverse, reverse);
-    // The inverse word crosses the same steps backwards with negated generators.
+    // The inverse crosses the same steps backwards with negated generators.
     if (status == CAVITY_MODEL_OK) {
         if (reverse)
             status = CavityMagnus_edge(q, source, Q, z_right, -f_right, -1., spin);

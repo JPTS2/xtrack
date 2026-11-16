@@ -5,7 +5,7 @@
 #ifndef XTRACK_CAVITY_MODELS_AVERAGED_H
 #define XTRACK_CAVITY_MODELS_AVERAGED_H
 
-// Phase-averaged (Sagan-type) cavity: each step is the symmetric word
+// Phase-averaged (Sagan-type) cavity: each step is the symmetric sequence
 // half drift, ponderomotive half-kick, synchronous radial term, energy kick,
 // ponderomotive half-kick, half drift, with a canonical E/p edge for every
 // jump of the stepped forward-wave gradient. Coordinates are those of the
@@ -261,7 +261,7 @@ void CavityModel_averaged_wave_gain(
 }
 
 // One symmetric step of signed length h around z_mid; a negative length
-// applies the inverse word.
+// applies the inverse map.
 GPUFUN
 int CavityModel_averaged_step(
     xt_float_or_tpsa q[6],
@@ -280,8 +280,8 @@ int CavityModel_averaged_step(
     int status = CavityModel_averaged_body(q, .5 * h, source, field);
     if (status == CAVITY_MODEL_OK)
         status = CavityModel_averaged_ponderomotive(q, coefficient, freeze_zeta, spin);
-    // The radial kick straddles the energy kick: all of it on one side would be read at
-    // the wrong energy, a first-order error of (dE/E per step) / 2.
+    // The radial kick straddles the energy kick: all of it on one side would be
+    // read at the wrong energy, a first-order error of (dE/E per step) / 2.
     for (int side = 0; side < 2 && status == CAVITY_MODEL_OK; ++side) {
         const xt_float_or_tpsa r2 = q[0] * q[0] + q[1] * q[1];
         status = CavityModel_averaged_midpoint(
@@ -432,8 +432,7 @@ int CavityModel_averaged_interval(
         CavityModel_source_envelope(z_mid, source, envelope);
         const xt_float_or_tpsa gradient = Q * source->forward * envelope[0];
         const xt_float_or_tpsa counter = Q * source->backward * envelope[0];
-        // The inverse word crosses the same boundaries with the same jump
-        // gradient-previous: the edge inverse negates the jump it undoes.
+        // The inverse crosses the same boundaries, negating each jump.
         status =
             CavityModel_averaged_edge(q, gradient - previous, boundary, source, spin);
         if (status == CAVITY_MODEL_OK)
