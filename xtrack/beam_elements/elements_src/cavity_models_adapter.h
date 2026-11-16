@@ -7,6 +7,7 @@
 
 #include "xtrack/headers/track.h"
 #include "xtrack/beam_elements/elements_src/track_rf.h"
+#include "xtrack/beam_elements/elements_src/track_magnet.h"
 #include "xtrack/beam_elements/elements_src/cavity_models.h"
 #include "xtrack/beam_elements/elements_src/cavity_models_frozen.h"
 #include "xtrack/beam_elements/elements_src/cavity_models_averaged.h"
@@ -636,6 +637,78 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
     }
 }
 
+// Longitudinal-kick model of a MagnetOverlappedCavity: the static fields are
+// tracked as a magnet by its integrator, and the RF energy kick of each step is
+// added to the magnet's kick at the same point. A thin slice is the kick alone,
+// a drift slice the magnet's drift; the fringe fields are not included.
+#define CAVITY_MAGNET_BODY 0
+#define CAVITY_MAGNET_KICK 1
+#define CAVITY_MAGNET_DRIFT 2
+
+GPUFUN
+void CavityModels_track_longitudinal_magnet(
+    LocalParticle* part0,
+    const RFModelFields* fields,
+    const RFBody* rf,
+    double weight,
+    int part_of_body
+) {
+    double inv_factorial_order = 1.;
+    for (int64_t n = 2; n <= fields->order; n++) inv_factorial_order /= (double)n;
+    const int with_kicks = part_of_body != CAVITY_MAGNET_DRIFT;
+    MagnetFace entry_face = MagnetFace_empty(0);
+    MagnetFace exit_face = MagnetFace_empty(1);
+    MagnetSettings magnet;
+    MagnetSettings_init_default(&magnet);
+    magnet.length = fields->length;
+    magnet.weight = weight;
+    magnet.order = with_kicks ? fields->order : -1;
+    magnet.inv_factorial_order = inv_factorial_order;
+    magnet.knl = with_kicks ? fields->knl : NULL;
+    magnet.ksl = with_kicks ? fields->ksl : NULL;
+    magnet.ks = fields->ks;
+    // The parent's count, scaled to the slice by the magnet; 0 is one kick, as
+    // for Cavity, so the RF kick is never dropped.
+    const int64_t num_kicks = fields->num_kicks > 0 ? fields->num_kicks : 1;
+    magnet.num_multipole_kicks = with_kicks ? num_kicks : 0;
+    magnet.integrator = with_kicks ? rf->integrator : INTEGRATOR_UNIFORM;
+    if (part_of_body == CAVITY_MAGNET_KICK) magnet.model = MODEL_KICK_ONLY;
+    else if (xt_float_or_tpsa_const_part(fields->ks) != 0.) magnet.model = MODEL_SOL_KICK_SOL;
+    else magnet.model = MODEL_DRIFT_KICK_DRIFT_EXPANDED;
+    MagnetPlan plan;
+    MagnetPlan_prepare(&plan, &magnet, &entry_face, &exit_face, part0);
+    const MagnetBody* body = &plan.body;
+
+#define LONGITUDINAL_MAGNET_DRIFT(part, dlength) MagnetDrift_apply(part, &body->drift, (dlength))
+#define LONGITUDINAL_MAGNET_KICK(part, kick_weight)                                       \
+    do {                                                                                  \
+        if (!body->kick_is_noop) MagnetKick_apply(part, &body->kick, (kick_weight));      \
+        if (rf) track_rf_kick_single_particle(                                            \
+            part, rf->voltage * (kick_weight), rf->frequency, rf->harmonic, rf->lag,      \
+            rf->phase, 0., 0., 0., rf->absolute_time, -1, 0., NULL, NULL, NULL, NULL,     \
+            NULL, NULL, rf->kill_energy_kick                                              \
+        );                                                                                \
+    } while (0)
+#define LONGITUDINAL_MAGNET_STEP(ll, code) \
+    {                                      \
+        code;                              \
+    }
+
+    START_PER_PARTICLE_BLOCK(part0, part)
+        ;
+        if (body->drift_only) LONGITUDINAL_MAGNET_DRIFT(part, body->length);
+        else
+            RUN_INTEGRATOR(
+                body->integrator, body->length, body->num_kicks, part,
+                LONGITUDINAL_MAGNET_DRIFT, LONGITUDINAL_MAGNET_KICK, LONGITUDINAL_MAGNET_STEP
+            );
+    END_PER_PARTICLE_BLOCK;
+
+#undef LONGITUDINAL_MAGNET_DRIFT
+#undef LONGITUDINAL_MAGNET_KICK
+#undef LONGITUDINAL_MAGNET_STEP
+}
+
 // Cavity and its thick and thin slices. In a thin layout the physical models
 // are transported on the source-bearing drift slices: the thin slices are
 // identity partition markers there, not RF kicks.
@@ -646,8 +719,15 @@ void track_cavity_plan(LocalParticle* part0, const RFPlan* plan) {
     const CavityPlan* cavity=&plan->cavity;
     // The taper pass (tapering.py) only shares the energy loss among the
     // cavities at zero frequency: every model uses the longitudinal map there.
-    if (LocalParticle_check_track_flag(part0,XS_FLAG_SR_TAPER)
-        || cavity->model<10) {
+    const int taper = LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER);
+    // Only a MagnetOverlappedCavity carries static fields.
+    if (!taper && cavity->model < 10 && cavity->fields.knl) {
+        CavityModels_track_longitudinal_magnet(
+            part0, &cavity->fields, &plan->body, fabs(plan->body.factor_knl_ksl),
+            cavity->thin_slice ? CAVITY_MAGNET_KICK : CAVITY_MAGNET_BODY
+        );
+    }
+    else if (taper || cavity->model < 10) {
         track_rf_body_particles(part0,&plan->body);
     } else {
         // Reference-only paraxial step generators, reused across the call.

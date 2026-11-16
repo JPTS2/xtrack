@@ -11,7 +11,12 @@ import xtrack as xt
 
 from ..base_element import FloatOrTpsa
 from ._common import _HasKnlKsl, _docstring_general_notes, _for_docstring_alignment
-from .cavity import Cavity, _constant_part
+from .cavity import Cavity, _CAVITY_MODELS, _MODEL_CHANGES, _constant_part
+
+# The longitudinal kicks with the magnet's own body, and the physical models.
+_MODELS = {0: 'longitudinal-kick', **{index: name for index, name in _CAVITY_MODELS.items()
+                                      if index >= 10}}
+_MODEL_IDS = {name: index for index, name in _MODELS.items()}
 
 
 class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
@@ -19,12 +24,23 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
     _docstring_start = Cavity._docstring_start.replace(
         'RF cavity element.',
         'RF cavity overlapped with static magnetic fields: a solenoid, and normal\n'
-        '    and skew multipoles. It is tracked by the experimental physical models.', 1) + '''
+        '    and skew multipoles.', 1) + '''
     ks : float
         Solenoid strength in 1/m. Normal and skew multipoles use `knl`, `ksl`.
     The static fields are uniform along the cavity.'''
 
-    __doc__ = '\n    '.join([_docstring_start, Cavity._docstring_models,
+    _docstring_models = '''model : str
+        "longitudinal-kick" (default) tracks the static fields as a magnet, with
+        the RF energy kick added to each of the magnet's kicks; it has no fringe
+        fields. The experimental physical models, "_phase-resolved",
+        "_phase-averaged", "_phase-resolved-paraxial" and "_phase-resolved-frozen",
+        are those of Cavity.
+    integrator : str
+        As for Cavity; for "longitudinal-kick" it places the magnet's kicks.
+    num_kicks : int
+        Number of kicks, or of integration cells for the physical models.'''
+
+    __doc__ = '\n    '.join([_docstring_start, _docstring_models,
         _HasKnlKsl._for_docstring,
         _for_docstring_alignment, '\n',
         _docstring_general_notes, '\n\n'])
@@ -63,6 +79,8 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
 
     _noexpr_fields = Cavity._noexpr_fields
 
+    _default_model = 'longitudinal-kick'
+
     def __init__(self, **kwargs):
         if '_xobject' in kwargs and kwargs['_xobject'] is not None:
             self.xoinitialize(**kwargs)
@@ -78,6 +96,22 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
             kwargs[name + '_tpsa'] = [0] * len(kwargs[name])
         # _HasKnlKsl comes first in the order and has its own __init__.
         Cavity.__init__(self, **kwargs)
+
+    @property
+    def model(self):
+        return _MODELS[self._model]
+
+    @model.setter
+    def model(self, value):
+        try:
+            self._model = _MODEL_IDS[value]
+        except KeyError:
+            raise ValueError(f'Invalid MagnetOverlappedCavity model: {value}') from None
+        _MODEL_CHANGES[0] += 1
+
+    @staticmethod
+    def get_available_models():
+        return list(_MODEL_IDS)
 
     def _present(self, name):
         """Entries of knl or ksl that are set: a nonzero value or a knob's series."""

@@ -10,6 +10,8 @@ from math import isfinite
 import numpy as np
 from scipy.constants import c as clight
 import xobjects as xo
+from ..random import RandomUniformAccurate, RandomExponential
+from ._common import SynchrotronRadiationRecord
 import xtrack as xt
 from ._common import (
     _HasIntegrator,
@@ -207,8 +209,8 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         higher one: r^6 is 50 times closer than r^4 to the exact field for
         protons at beta 0.6 10 mm off axis, for 16% more time.
     edge_entry_active, edge_exit_active : bool
-        Whether the entrance and exit faces of the static fields are applied,
-        on a MagnetOverlappedCavity. Default is True.
+        Whether the physical models apply the entrance and exit faces of the
+        static fields of a MagnetOverlappedCavity. Default is True.
     '''.strip()
 
     _docstring_models = '''model : str
@@ -252,6 +254,10 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
     isthick = True
     has_backtrack = True
     allow_loss_refinement = True
+
+    # The cavity kernels share the magnets' body, with its radiation record.
+    _depends_on = [RandomUniformAccurate, RandomExponential]
+    _internal_record_class = SynchrotronRadiationRecord
 
     _rf_plan = 'track_cavity_plan'
     _xofields = {

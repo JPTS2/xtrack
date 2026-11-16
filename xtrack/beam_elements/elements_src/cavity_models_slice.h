@@ -19,6 +19,10 @@ void CavityModels_track_drift_slice(
     const RFModelFields* parent = &plan.fields;
     const int8_t reverse = LocalParticle_check_track_flag(part0, XS_FLAG_BACKTRACK);
     const double drift_length = (reverse ? -weight : weight) * parent->length;
+    if (plan.model < 10 && parent->knl) {
+        CavityModels_track_longitudinal_magnet(part0, parent, NULL, weight, CAVITY_MAGNET_DRIFT);
+        return;
+    }
     if (plan.model < 10) {
         START_PER_PARTICLE_BLOCK(part0, part)
             ;

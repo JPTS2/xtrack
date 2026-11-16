@@ -7,6 +7,8 @@ from math import isfinite
 
 import numpy as np
 import xobjects as xo
+from ..random import RandomUniformAccurate, RandomExponential
+from ._common import SynchrotronRadiationRecord
 import xtrack as xt
 
 from ..base_element import BeamElement, FloatOrTpsa
@@ -58,6 +60,10 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
     isthick = True
     has_backtrack = True
     allow_loss_refinement = True
+
+    # The cavity kernels share the magnets' body, with its radiation record.
+    _depends_on = [RandomUniformAccurate, RandomExponential]
+    _internal_record_class = SynchrotronRadiationRecord
 
     _rf_plan = 'track_cavity_plan'
     _xofields = {

@@ -186,7 +186,7 @@ def test_thin_source_strength_readback_follows_parent_model(test_context, model)
     np.testing.assert_allclose(line.attr['k1l'][source].sum(), .012)
     np.testing.assert_allclose(line.attr['k1sl'][source].sum(), -.003)
     # Reuse the already-created attr cache through both selector changes.
-    line.set('rf', model='adaptive')
+    line.set('rf', model='longitudinal-kick')
     np.testing.assert_array_equal(line.attr['voltage'][source], 0.)
     np.testing.assert_allclose(line.attr['voltage'][marker].sum(), 20e3)
     line.set('rf', model=model)
@@ -209,7 +209,7 @@ def test_source_interval_alignment_readback_is_live():
     for name, value in [('shift_x', .0002), ('shift_y', -.0001),
                         ('rot_s_rad', .2), ('rot_y_rad', .001)]:
         np.testing.assert_array_equal(line.attr[name][intervals], value)
-    line.set('rf', model='adaptive')
+    line.set('rf', model='longitudinal-kick')
     np.testing.assert_array_equal(line.attr['shift_x'][intervals], 0.)
     line.set('rf', model='_phase-resolved', shift_x=.0003)
     np.testing.assert_array_equal(line.attr['shift_x'][intervals], .0003)
@@ -423,13 +423,13 @@ def test_optimized_source_layout_keeps_live_legacy_rf_switch(test_context, model
 
     reference = xt.Line(elements={'rf': xt.MagnetOverlappedCavity(
         **dict(SETTINGS[model], integrator='adaptive', num_kicks=24))})
-    reference['rf'].model = 'drift-kick-drift-expanded'
+    reference['rf'].model = 'longitudinal-kick'
     reference.reset_s_at_end_turn = False
     reference.slice_thick_elements([xt.Strategy(xt.Teapot(2, mode='thin'))])
     reference.build_tracker(_context=test_context)
     expected_legacy = initial.copy()
     reference.track(expected_legacy)
-    line['rf'].model = 'drift-kick-drift-expanded'
+    line['rf'].model = 'longitudinal-kick'
     actual = initial.copy()
     line.track(actual)
     assert expected_legacy.state[0] == actual.state[0] == 1
@@ -465,12 +465,11 @@ def test_matching_uses_normal_live_phase_knob(test_context):
 
 
 @for_all_test_contexts
-def test_legacy_models_ignore_physical_model_fields(test_context):
+def test_longitudinal_models_ignore_physical_model_fields(test_context):
     plain = xt.Cavity(_context=test_context, voltage=20e3, frequency=400e6,
                       phase=.7)
-    dressed = xt.MagnetOverlappedCavity(_context=test_context, voltage=20e3, frequency=400e6,
-        phase=.7, ks=.1, knl=[0., .01], ksl=[0., .02], n_cells=1,
-        counter_wave_amplitude=.55)
+    dressed = xt.Cavity(_context=test_context, voltage=20e3, frequency=400e6,
+                        phase=.7, n_cells=1, counter_wave_amplitude=.55)
     expected = xt.Particles(_context=test_context, **PROBE)
     actual = expected.copy()
     plain.track(expected)
