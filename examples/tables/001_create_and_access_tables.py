@@ -40,6 +40,8 @@ table = xt.Table(
 # Display the table
 ########################################
 # col_names identifies row arrays; title is a scalar table attribute.
+print('Table and dataset\n-----------------')
+print('s, x, y [m]')
 table.show()
 print('Number of rows:', len(table))
 print('Dataset:', table.title)
@@ -47,6 +49,7 @@ print('Dataset:', table.title)
 ########################################
 # Read an array or one named value
 ########################################
+print('\nRead columns and cells\n----------------------')
 print('Horizontal readings [m]:', table.x)
 print('The same column by key [m]:', table['x'])
 print('Horizontal reading at bpm.2 [m]:', table['x', 'bpm.2'])
@@ -60,6 +63,7 @@ print('Horizontal reading at bpm.2 [m]:', table['x', 'bpm.2'])
 ########################################
 # The name column remains a column, not a pandas index.
 dataframe = table.to_pandas()
+print('\nPandas DataFrame\n----------------')
 print(dataframe)
 
 ########################################
@@ -67,4 +71,5 @@ print(dataframe)
 ########################################
 # This exchanges columns; arbitrary scalar table attributes are not carried.
 table_from_pandas = xt.Table.from_pandas(dataframe, index = 'name')
+print('\nBack to an Xtrack table\n-----------------------')
 table_from_pandas.show()

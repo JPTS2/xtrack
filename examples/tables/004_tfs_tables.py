@@ -8,6 +8,7 @@
 ################################################################################
 import json
 from pathlib import Path
+from textwrap import fill
 
 import numpy as np
 import xtrack as xt
@@ -27,7 +28,7 @@ TITLE       = 'Illustrative BPM readings'
 ########################################
 # Reference for the element-table export
 ########################################
-P0C         = 1e9                        # Electron reference momentum [eV/c]
+P0C         = 1e9                        # Reference momentum times c [eV]
 DRIFT_LEN   = 1.0                        # [m]
 QUAD_LEN    = 0.25                       # [m]
 K1          = 0.8                        # [m^-2]
@@ -49,6 +50,9 @@ table = xt.Table(
         'title': TITLE},
     col_names   = ['name', 'x'],
     index       = 'name')
+
+print('Original measurements\n---------------------')
+print('x [m]')
 table.show()
 print('Dataset:', table.title)
 
@@ -76,6 +80,8 @@ format_spec = {
 tfs_path = Path(__file__).resolve().parent / TFS_FILE
 tfs_path.parent.mkdir(parents = True, exist_ok = True)
 
+print('\nTFS round trip with renamed columns'
+      '\n-----------------------------------')
 table.to_tfs(tfs_path, format_spec = format_spec)
 table_tfs = xt.Table.from_tfs(tfs_path)
 table_tfs.show()
@@ -89,6 +95,7 @@ print('Largest TFS x difference [m]:',
 json_path = tfs_path.with_name('bpm_format.json')
 json_path.write_text(json.dumps(format_spec, indent = 2), encoding = 'utf-8')
 toml_path = Path(__file__).with_name('bpm_format.toml')
+print('\nLayouts from JSON and TOML\n--------------------------')
 for label, source in [('json', json_path), ('toml', toml_path)]:
     output = tfs_path.with_name(f'bpm_from_{label}.tfs')
     table.to_tfs(output, format_spec = source)
@@ -116,9 +123,12 @@ measurement_spec['float_format'] = '.12e'
 ########################################
 preset_path = tfs_path.with_name('bpm_from_preset.tfs')
 table.to_tfs(preset_path, format_spec = measurement_spec)
+print('\nTailor a built-in layout\n------------------------')
 print(preset_path.read_text())
-print('Unchanged built-in columns:',
-      [field['name'] for field in xt.format_spec.optics_orbit_v1['columns']])
+print('Unchanged built-in columns:')
+print(fill(', '.join(
+    field['name'] for field in xt.format_spec.optics_orbit_v1['columns']),
+    width = 78))
 
 ################################################################################
 # Export an element table with physical-reference headers
@@ -167,6 +177,8 @@ element_spec = {
 element_path = tfs_path.with_name('element_description.tfs')
 export_table.to_tfs(element_path, format_spec = element_spec)
 element_table = xt.Table.from_tfs(element_path)
+print('\nElement table and reference\n---------------------------')
+print('l [m]')
 element_table.show()
 print('Reloaded mass [GeV/c^2]:', element_table.mass)
 print('Reloaded charge [e]:', element_table.charge)

@@ -41,6 +41,9 @@ table = xt.Table(
         'title': TITLE},
     col_names   = ['name', 'x'],
     index       = 'name')
+
+print('Original table\n--------------')
+print('x [m]')
 table.show()
 print('Dataset:', table.title)
 
@@ -51,6 +54,7 @@ print('Dataset:', table.title)
 ########################################
 # Reconstruct from a dictionary
 ########################################
+print('\nReconstruct from a dictionary\n-----------------------------')
 payload = table.to_dict()
 table_dict = xt.Table.from_dict(payload)
 table_dict.show()
@@ -64,6 +68,7 @@ print('Largest dictionary x difference [m]:',
 json_path = Path(__file__).resolve().parent / JSON_FILE
 json_path.parent.mkdir(parents = True, exist_ok = True)
 
+print('\nSave and reload JSON\n--------------------')
 table.to_json(json_path)
 table_json = xt.Table.from_json(json_path)
 table_json.show()
@@ -79,6 +84,7 @@ csv_path = Path(__file__).resolve().parent / CSV_FILE
 csv_path.parent.mkdir(parents = True, exist_ok = True)
 
 # Xtrack CSV includes comment metadata as well as the column data.
+print('\nSave and reload CSV\n-------------------')
 table.to_csv(csv_path)
 table_csv = xt.Table.from_csv(csv_path)
 table_csv.show()

@@ -14,9 +14,17 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
+
+########################################
+# Measurements
+########################################
 BPM_NAMES   = ['bpm.1', 'bpm.2', 'bpm.3']
 X_M         = [0.2e-3, -0.3e-3, 0.1e-3]   # Synthetic readings [m]
 TITLE       = 'Illustrative BPM readings'
+
+########################################
+# Output file and group
+########################################
 HDF5_FILE   = 'outputs/bpm_readings.h5'    # Relative to this script
 HDF5_GROUP  = 'measurements'
 
@@ -31,6 +39,9 @@ table = xt.Table(
         'title': TITLE},
     col_names   = ['name', 'x'],
     index       = 'name')
+
+print('Original table\n--------------')
+print('x [m]')
 table.show()
 print('Dataset:', table.title)
 
@@ -40,9 +51,12 @@ print('Dataset:', table.title)
 hdf5_path = Path(__file__).resolve().parent / HDF5_FILE
 hdf5_path.parent.mkdir(parents = True, exist_ok = True)
 
+print('\nSave and reload HDF5\n--------------------')
 table.to_hdf5(hdf5_path, group = HDF5_GROUP)
 table_hdf5 = xt.Table.from_hdf5(hdf5_path, group = HDF5_GROUP)
 table_hdf5.show()
 print('Restored HDF5 title:', table_hdf5.title)
 print('Largest HDF5 x difference [m]:',
       np.max(np.abs(table_hdf5.x - table.x)))
+print('Saved HDF5:', hdf5_path)
+print('HDF5 group:', HDF5_GROUP)
