@@ -48,7 +48,6 @@ void ThickSliceFieldExpansionCavity_prepare_rf(ThickSliceFieldExpansionCavityDat
     rf.phase_taper            = ThickSliceFieldExpansionCavityData_get__parent_phase_taper(el);
     rf.absolute_time          = ThickSliceFieldExpansionCavityData_get__parent_absolute_time(el);
     rf.num_kicks              = ThickSliceFieldExpansionCavityData_get__parent_num_kicks(el);
-    rf.model                  = ThickSliceFieldExpansionCavityData_get__parent_model(el) >= 10 ? MODEL_ADAPTIVE : ThickSliceFieldExpansionCavityData_get__parent_model(el);
     rf.integrator             = ThickSliceFieldExpansionCavityData_get__parent_integrator(el);
     // clang-format on
     RFPlan_prepare(plan, &rf, part0);

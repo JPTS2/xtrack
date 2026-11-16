@@ -27,7 +27,6 @@ void MagnetOverlappedCavity_prepare_rf(MagnetOverlappedCavityData el, RFPlan* pl
     rf.phase_taper            = MagnetOverlappedCavityData_get_phase_taper(el);
     rf.absolute_time          = MagnetOverlappedCavityData_get_absolute_time(el);
     rf.num_kicks              = MagnetOverlappedCavityData_get_num_kicks(el);
-    rf.model                  = MagnetOverlappedCavityData_get_model(el) >= 10 ? MODEL_ADAPTIVE : MagnetOverlappedCavityData_get_model(el);
     rf.integrator             = MagnetOverlappedCavityData_get_integrator(el);
     // clang-format on
     RFPlan_prepare(plan, &rf, part0);

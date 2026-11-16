@@ -1,5 +1,6 @@
 """MagnetOverlappedCavity's longitudinal-kick model: the static fields tracked as a
-magnet, with the RF energy kick added to each of the magnet's kicks.
+straight magnet with its faces, with the RF energy kick added to each of the magnet's
+kicks.
 """
 import numpy as np
 import pytest
@@ -18,18 +19,19 @@ LAUNCH = dict(x=1e-3, px=2e-4, y=-1e-3, py=1e-4, zeta=1e-2, delta=1e-3)
 @pytest.mark.parametrize('ks', [0., .3])
 def test_longitudinal_kick_is_the_magnet_with_a_thin_rf_kick_at_each_kick(test_context, ks):
     """With the uniform integrator each kick sits at the centre of its cell, so the
-    element is exactly the chain: half cell, multipole and thin cavity, half cell."""
+    body is exactly the chain: half cell, multipole and thin cavity, half cell."""
     end = {}
     for layout in ('element', 'chain'):
         if layout == 'element':
             elements = [xt.MagnetOverlappedCavity(length=LENGTH, num_kicks=NUM_KICKS, ks=ks,
+                                                   edge_entry_active=0, edge_exit_active=0,
                                                    **STATIC, **RF)]
         else:
             elements = []
             for _ in range(NUM_KICKS):
                 half_cell = (xt.UniformSolenoid(length=LENGTH / (2 * NUM_KICKS), ks=ks,
                                                 edge_entry_active=0, edge_exit_active=0)
-                             if ks else xt.Drift(length=LENGTH / (2 * NUM_KICKS)))
+                             if ks else xt.DriftExact(length=LENGTH / (2 * NUM_KICKS)))
                 elements += [half_cell,
                              xt.Multipole(knl=np.array(STATIC['knl']) / NUM_KICKS,
                                           ksl=np.array(STATIC['ksl']) / NUM_KICKS),
@@ -52,22 +54,26 @@ def test_longitudinal_kick_is_the_magnet_with_a_thin_rf_kick_at_each_kick(test_c
 
 
 @for_all_test_contexts
+@pytest.mark.parametrize('backtrack', [False, True])
 @pytest.mark.parametrize('case', ['no static fields', 'no voltage, multipoles',
-                                  'no voltage, solenoid'])
-def test_longitudinal_kick_reduces_to_the_cavity_and_to_the_magnet(test_context, case):
+                                  'no voltage, solenoid and multipoles'])
+def test_longitudinal_kick_reduces_to_the_cavity_and_to_the_magnet(test_context, case,
+                                                                   backtrack):
+    """Faces included: those of a Quadrupole or of a UniformSolenoid with "full" faces."""
     if case == 'no static fields':
         element = xt.MagnetOverlappedCavity(length=LENGTH, num_kicks=NUM_KICKS, **RF)
-        reference = xt.Cavity(length=LENGTH, num_kicks=NUM_KICKS, **RF)
+        reference = xt.Cavity(length=LENGTH, num_kicks=NUM_KICKS, **RF,
+                              model='drift-kick-drift-exact')
     elif case == 'no voltage, multipoles':
         element = xt.MagnetOverlappedCavity(length=LENGTH, num_kicks=NUM_KICKS, **STATIC)
         reference = xt.Magnet(length=LENGTH, **STATIC, num_multipole_kicks=NUM_KICKS,
-                              integrator='uniform', model='drift-kick-drift-expanded',
-                              edge_entry_active=0, edge_exit_active=0)
+                              integrator='uniform', model='drift-kick-drift-exact',
+                              edge_entry_model='full', edge_exit_model='full')
     else:
         element = xt.MagnetOverlappedCavity(length=LENGTH, num_kicks=NUM_KICKS, ks=.3, **STATIC)
         reference = xt.UniformSolenoid(length=LENGTH, ks=.3, **STATIC,
                                        num_multipole_kicks=NUM_KICKS, integrator='uniform',
-                                       edge_entry_active=0, edge_exit_active=0)
+                                       edge_entry_model='full', edge_exit_model='full')
     end = {}
     for name, chosen in (('element', element), ('reference', reference)):
         line = xt.Line(elements=[chosen])
@@ -75,7 +81,7 @@ def test_longitudinal_kick_reduces_to_the_cavity_and_to_the_magnet(test_context,
         line.build_tracker(_context=test_context)
 
         particles = line.build_particles(**LAUNCH)
-        line.track(particles)
+        line.track(particles, backtrack=backtrack)
         particles.move(_context=xo.ContextCpu())
         end[name] = np.array([getattr(particles, n)[0] for n in COORDS])
 
@@ -84,7 +90,8 @@ def test_longitudinal_kick_reduces_to_the_cavity_and_to_the_magnet(test_context,
 
 @for_all_test_contexts
 def test_longitudinal_kick_slices_keep_the_static_fields(test_context):
-    """Two thick slices split the kicks exactly; thin slices converge at second order."""
+    """Two thick slices split the kicks exactly, each taking the face at its end; thin
+    slices converge at second order."""
     end = {}
     for key, slicing in (('whole', None), ('thick 2', xt.Teapot(2, mode='thick')),
                          ('thin 8', xt.Teapot(8, mode='thin')),
@@ -108,9 +115,9 @@ def test_longitudinal_kick_slices_keep_the_static_fields(test_context):
 
 
 def test_only_the_longitudinal_kick_and_the_physical_models_are_offered():
-    assert xt.MagnetOverlappedCavity().model == 'longitudinal-kick'
+    assert xt.MagnetOverlappedCavity().model == 'adaptive'
     assert xt.MagnetOverlappedCavity.get_available_models() == [
-        'longitudinal-kick', '_phase-resolved', '_phase-averaged',
+        'adaptive', 'longitudinal-kick', '_phase-resolved', '_phase-averaged',
         '_phase-resolved-paraxial', '_phase-resolved-frozen']
     with pytest.raises(ValueError, match='Invalid MagnetOverlappedCavity model'):
         xt.MagnetOverlappedCavity(model='drift-kick-drift-exact')

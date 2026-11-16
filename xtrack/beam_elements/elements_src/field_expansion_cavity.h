@@ -27,7 +27,6 @@ void FieldExpansionCavity_prepare_rf(FieldExpansionCavityData el, RFPlan* plan, 
     rf.phase_taper            = FieldExpansionCavityData_get_phase_taper(el);
     rf.absolute_time          = FieldExpansionCavityData_get_absolute_time(el);
     rf.num_kicks              = FieldExpansionCavityData_get_num_kicks(el);
-    rf.model                  = FieldExpansionCavityData_get_model(el) >= 10 ? MODEL_ADAPTIVE : FieldExpansionCavityData_get_model(el);
     rf.integrator             = FieldExpansionCavityData_get_integrator(el);
     // clang-format on
     RFPlan_prepare(plan, &rf, part0);

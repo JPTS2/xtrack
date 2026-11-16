@@ -151,11 +151,11 @@ class ThinSliceCavity(_ThinSliceElementBase, BeamElement):
     @property
     def _inherit_strengths(self):
         parent = self._parent
-        return parent is not None and parent._model < 10
+        return parent is not None and parent._resolved_model < 10
 
     def get_equivalent_element(self):
 
-        if self._parent._model >= 10:
+        if self._parent._resolved_model >= 10:
             # Kept: a Marker would lose the RF kicks if the parent returns to a legacy model.
             return self
 

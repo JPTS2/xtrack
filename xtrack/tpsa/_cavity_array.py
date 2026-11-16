@@ -74,7 +74,7 @@ class CavityArrayView(np.lib.mixins.NDArrayOperatorsMixin):
     def _set_one(self, index, value):
         index = self._index(index)
         if isinstance(value, Tpsa):
-            if self.owner._model < 10:
+            if self.owner._resolved_model < 10:
                 raise ValueError('TPSA knobs on knl and ksl need a physical model: the '
                                  'longitudinal-kick model tracks their constant parts')
             if getattr(self.owner._xobject, '_tpsa_enabled', 0):

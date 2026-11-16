@@ -293,7 +293,7 @@ class Tracker:
         from .beam_elements.cavity import _MODEL_CHANGES
         if getattr(self, '_physical_cavity_stamp', None) != _MODEL_CHANGES[0]:
             self._physical_cavity_cache = tuple(
-                ee for ee in self.line._used_cavity_owners() if ee._model >= 10)
+                ee for ee in self.line._used_cavity_owners() if ee._resolved_model >= 10)
             self._physical_cavity_stamp = _MODEL_CHANGES[0]
         return self._physical_cavity_cache
 

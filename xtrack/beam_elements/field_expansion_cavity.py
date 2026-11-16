@@ -28,8 +28,8 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
     from the centre. The near-axis field follows from Maxwell's equations, and
     the element ends in hard edges. A Cavity of `n_cells` and counter-wave
     amplitude r is the case k = [k_z, -k_z], c = [1, r exp(-i counter_wave_phase)],
-    k_z = pi n_cells / length. It is tracked by the experimental
-    "_phase-resolved" model.
+    k_z = pi n_cells / length. Its model, "adaptive" (default), is for now the
+    experimental "_phase-resolved", its only one.
 
     Parameters
     ----------
@@ -106,6 +106,9 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
     _skip_in_to_dict = ['field_table', 'field_table_z0', 'field_table_dz', 'field_table_key']
     _store_in_to_dict = ['field_table_points']
 
+    _MODELS = {0: 'adaptive', 10: '_phase-resolved'}
+    _ADAPTIVE_MODEL = 10
+    _default_model = 'adaptive'
     _default_integrator = 'adaptive'
     _default_calibration_beta = 1.
     _default_frequency = 0.0
@@ -117,7 +120,7 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         if '_xobject' in kwargs and kwargs['_xobject'] is not None:
             self.xoinitialize(**kwargs)
             return
-        model = kwargs.pop('model', '_phase-resolved')
+        model = kwargs.pop('model', 'adaptive')
         integrator = kwargs.pop('integrator', None)
         frequency = kwargs.pop('frequency', None)
         harmonic = kwargs.pop('harmonic', None)
@@ -201,8 +204,6 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
     def _check_physical_model(self, tracking=False):
         """Raise for settings the phase-resolved model cannot track."""
         self._check_radial_order()
-        if self._model != 10:
-            raise ValueError('FieldExpansionCavity is tracked by "_phase-resolved" only')
         if self.integrator == 'teapot':
             raise ValueError('_phase-resolved has no kicks to place: "teapot" '
                              'does not apply')

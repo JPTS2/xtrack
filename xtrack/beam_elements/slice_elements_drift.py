@@ -115,21 +115,21 @@ class DriftSliceCavity(_CavitySliceOffset, _DriftSliceElementBase, BeamElement):
     @property
     def behaves_like_drift(self):
         parent = self._parent
-        return parent is not None and parent._model < 10
+        return parent is not None and parent._resolved_model < 10
 
     @property
     def _inherit_strengths(self):
         parent = self._parent
-        return parent is not None and parent._model >= 10
+        return parent is not None and parent._resolved_model >= 10
 
     @property
     def _rot_and_shift_from_parent_for_metadata(self):
         # The slice applies the parent frame itself.
         parent = self._parent
-        return parent is not None and parent._model >= 10
+        return parent is not None and parent._resolved_model >= 10
 
     def get_equivalent_element(self):
-        if self._parent._model >= 10:
+        if self._parent._resolved_model >= 10:
             # Kept: a Drift would drop the parent's field.
             return self
         out = Drift(length=self._parent.length * self.weight,

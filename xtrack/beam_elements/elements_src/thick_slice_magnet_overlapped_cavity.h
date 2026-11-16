@@ -48,7 +48,6 @@ void ThickSliceMagnetOverlappedCavity_prepare_rf(ThickSliceMagnetOverlappedCavit
     rf.phase_taper            = ThickSliceMagnetOverlappedCavityData_get__parent_phase_taper(el);
     rf.absolute_time          = ThickSliceMagnetOverlappedCavityData_get__parent_absolute_time(el);
     rf.num_kicks              = ThickSliceMagnetOverlappedCavityData_get__parent_num_kicks(el);
-    rf.model                  = ThickSliceMagnetOverlappedCavityData_get__parent_model(el) >= 10 ? MODEL_ADAPTIVE : ThickSliceMagnetOverlappedCavityData_get__parent_model(el);
     rf.integrator             = ThickSliceMagnetOverlappedCavityData_get__parent_integrator(el);
     // clang-format on
     RFPlan_prepare(plan, &rf, part0);

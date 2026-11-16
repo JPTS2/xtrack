@@ -15,6 +15,8 @@ void FieldExpansionCavity_prepare_cavity_plan(FieldExpansionCavityData el, Local
     RF_MODEL_FIELDS_FILL_RF(FieldExpansionCavityData, el, &plan->fields);
     RF_MODEL_FIELDS_FILL_HARMONICS(FieldExpansionCavityData, el, &plan->fields);
     RF_MODEL_FIELDS_CLEAR_STATIC(&plan->fields);
+    // "adaptive", the default, is "_phase-resolved" (FieldExpansionCavity._ADAPTIVE_MODEL).
+    if (plan->fields.model == 0) plan->fields.model = CAVITY_MODEL_FULL;
     CavityPlan_prepare(part0, weight, slice_start, plan);
 }
 

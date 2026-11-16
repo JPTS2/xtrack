@@ -28,7 +28,6 @@ from ._common import (
 _CAVITY_MODELS = dict(_INDEX_TO_MODEL_RF)
 _CAVITY_MODELS.update({10: '_phase-resolved', 11: '_phase-averaged',
                        12: '_phase-resolved-paraxial', 13: '_phase-resolved-frozen'})
-_CAVITY_MODEL_IDS = {value: key for key, value in _CAVITY_MODELS.items()}
 _CAVITY_INTEGRATORS = dict(_INDEX_TO_INTEGRATOR)
 _CAVITY_INTEGRATORS[7] = '_geometric'
 _CAVITY_INTEGRATOR_IDS = {
@@ -48,26 +47,33 @@ _RADIAL_ORDERS = (2, 4, 6, 8)
 class _CavityControls:
     """Model, integrator and RF clock controls shared by the cavity elements."""
 
+    _MODELS = _CAVITY_MODELS
+    # The model "adaptive" (index 0) tracks with: the element's default, which may change.
+    _ADAPTIVE_MODEL = 0
+
+    @property
+    def _resolved_model(self):
+        return self._ADAPTIVE_MODEL if self._model == 0 else self._model
+
     @property
     def model(self):
-        return _CAVITY_MODELS[self._model]
+        return self._MODELS[self._model]
 
     @model.setter
     def model(self, value):
-        try:
-            index = _CAVITY_MODEL_IDS[value]
-        except KeyError:
-            raise ValueError(f'Invalid Cavity model: {value}') from None
-        if index < 10 and self._integrator == 7:
+        index = next((key for key, name in self._MODELS.items() if name == value), None)
+        if index is None:
+            raise ValueError(f'Invalid {type(self).__name__} model: {value}')
+        if (self._ADAPTIVE_MODEL if index == 0 else index) < 10 and self._integrator == 7:
             raise ValueError('"_geometric" grades the cells of the physical models; the '
                              'longitudinal models take the magnet integrators')
         self._model = index
         # Trackers rebuild their list of physical cavities when this changes.
         _MODEL_CHANGES[0] += 1
 
-    @staticmethod
-    def get_available_models():
-        return list(_CAVITY_MODEL_IDS)
+    @classmethod
+    def get_available_models(cls):
+        return list(cls._MODELS.values())
 
     @property
     def integrator(self):
@@ -83,7 +89,7 @@ class _CavityControls:
             index = _CAVITY_INTEGRATOR_IDS[value]
         except KeyError:
             raise ValueError(f'Invalid Cavity integrator: {value}') from None
-        if value == '_geometric' and self._model < 10:
+        if value == '_geometric' and self._resolved_model < 10:
             raise ValueError('"_geometric" grades the cells of the physical models; the '
                              'longitudinal models take the magnet integrators')
         self._integrator = index
@@ -95,7 +101,7 @@ class _CavityControls:
     def _check_radial_order(self):
         if self.radial_order not in _RADIAL_ORDERS:
             raise ValueError(f'radial_order must be one of {_RADIAL_ORDERS}')
-        if self.radial_order != _RADIAL_ORDER and self._model != 10:
+        if self.radial_order != _RADIAL_ORDER and self._resolved_model != 10:
             raise ValueError('radial_order applies to "_phase-resolved" only: '
                              'the other models keep their own radial order')
 
@@ -217,8 +223,9 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
         higher one: r^6 is 50 times closer than r^4 to the exact field for
         protons at beta 0.6 10 mm off axis, for 16% more time.
     edge_entry_active, edge_exit_active : bool
-        Whether the physical models apply the entrance and exit faces of the
-        static fields of a MagnetOverlappedCavity. Default is True.
+        Whether the faces of a MagnetOverlappedCavity are applied: the RF and
+        static faces of the physical models, the magnet faces of
+        "longitudinal-kick". Default is True.
     '''.strip()
 
     _docstring_models = '''model : str
@@ -356,7 +363,7 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
     def _check_physical_model(self, tracking=False):
         """Raise for settings the physical models cannot track."""
         self._check_radial_order()
-        if self._model < 10:
+        if self._resolved_model < 10:
             return
         # Length is commonly assigned after construction.
         if tracking and not (isfinite(_constant_part(self.length))
@@ -364,7 +371,7 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
             raise ValueError(f'{self.model} requires a positive finite length')
         if self.num_kicks < 0:
             raise ValueError('num_kicks must be non-negative')
-        if self._model == 13:
+        if self._resolved_model == 13:
             if self.integrator not in ('adaptive', '_geometric', 'uniform'):
                 raise ValueError('_phase-resolved-frozen supports the "_geometric" '
                                  'and "uniform" integrators')
@@ -372,7 +379,7 @@ class Cavity(_HasModelRF, _HasIntegrator, _CavityControls, BeamElement):
                     or self.n_cells != 0):
                 raise ValueError('_phase-resolved-frozen requires a travelling '
                                  'wave: set counter_wave_amplitude=0 and n_cells=0')
-        elif self._model in (11, 12):
+        elif self._resolved_model in (11, 12):
             if self.integrator not in ('adaptive', 'uniform', '_geometric'):
                 raise ValueError(f'{self.model} supports the "uniform" and '
                                  '"_geometric" integrators: its cell-tied steps '

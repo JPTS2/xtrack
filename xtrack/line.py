@@ -8119,7 +8119,7 @@ def _is_drift(element, line):
         if parent is None and name is not None and line is not None:
             parent = line._element_dict.get(name)
         return not (isinstance(parent, (xt.Cavity, xt.FieldExpansionCavity))
-                    and parent._model >= 10)
+                    and parent._resolved_model >= 10)
     return False
 
 def _behaves_like_drift(element, line):

@@ -203,6 +203,11 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
     const int model=el->model;
     plan->model=model;
     plan->thin_slice=0;
+    // Slice ends within a few ulps of the parent's ends are taken as those ends.
+    const double left_fraction=fabs(slice_start)<8e-15 ? 0. : slice_start;
+    const double raw_right=slice_start+weight;
+    const double right_fraction=fabs(raw_right-1.)<8e-15 ? 1. : raw_right;
+    plan->left_fraction=left_fraction; plan->right_fraction=right_fraction;
     if (model<10) return;
 
     const double length=el->length;
@@ -219,13 +224,7 @@ void CavityPlan_prepare(LocalParticle* part0, double weight, double slice_start,
         counter_wave_amplitude,weight,controls,0.);
 
     const int reverse=LocalParticle_check_track_flag(part0,XS_FLAG_BACKTRACK);
-    // Slicing sums can differ from a parent boundary by a few ulps. Use
-    // the same admitted endpoint tolerance for finite face/prefix semantics.
-    const double left_fraction=fabs(slice_start)<8e-15 ? 0. : slice_start;
-    const double raw_right=slice_start+weight;
-    const double right_fraction=fabs(raw_right-1.)<8e-15 ? 1. : raw_right;
     plan->length=length; plan->weight=weight;
-    plan->left_fraction=left_fraction; plan->right_fraction=right_fraction;
     plan->start_fraction=reverse ? right_fraction : left_fraction;
     plan->end_fraction=reverse ? left_fraction : right_fraction;
     plan->direction=reverse ? -1. : 1.;
@@ -638,30 +637,38 @@ void track_cavity_single_particle(const CavityPlan* plan, int model,
 }
 
 // Longitudinal-kick model of a MagnetOverlappedCavity: the magnet's integrator,
-// with the RF energy kick added to each magnet kick; no fringe fields.
+// with the RF energy kick added to each magnet kick, and the faces of a straight
+// magnet where the piece meets the parent's ends.
 #define CAVITY_MAGNET_BODY 0
 #define CAVITY_MAGNET_KICK 1
 #define CAVITY_MAGNET_DRIFT 2
-
 GPUFUN
 void CavityModels_track_longitudinal_magnet(
     LocalParticle* part0,
-    const RFModelFields* fields,
+    const CavityPlan* cavity,
     const RFBody* rf,
     double weight,
     int part_of_body
 ) {
+    const RFModelFields* fields = &cavity->fields;
     const int with_kicks = part_of_body != CAVITY_MAGNET_DRIFT;
+    const int with_faces = part_of_body != CAVITY_MAGNET_KICK;
+    // The faces of a Quadrupole or UniformSolenoid: "full", with no soft fringe.
+    const int64_t face_flags = EDGE_ACTIVE | EDGE_BEND | EDGE_MULT | EDGE_QUAD_LW;
     MagnetFace entry_face = MagnetFace_empty(0);
     MagnetFace exit_face = MagnetFace_empty(1);
+    if (with_faces && fields->edge_entry_active && cavity->left_fraction == 0.)
+        entry_face.flags = face_flags;
+    if (with_faces && fields->edge_exit_active && cavity->right_fraction == 1.)
+        exit_face.flags = face_flags;
     MagnetSettings magnet;
     MagnetSettings_init_default(&magnet);
     magnet.length = fields->length;
     magnet.weight = weight;
-    magnet.order = with_kicks ? fields->order : -1;
+    magnet.order = fields->order;
     magnet.inv_factorial_order = fields->inv_factorial_order;
-    magnet.knl = with_kicks ? fields->knl : NULL;
-    magnet.ksl = with_kicks ? fields->ksl : NULL;
+    magnet.knl = fields->knl;
+    magnet.ksl = fields->ksl;
     magnet.ks = fields->ks;
     // The parent's count, scaled to the slice by the magnet; 0 is one kick, as
     // for Cavity, so the RF kick is never dropped.
@@ -670,10 +677,14 @@ void CavityModels_track_longitudinal_magnet(
     magnet.integrator = with_kicks ? rf->integrator : INTEGRATOR_UNIFORM;
     if (part_of_body == CAVITY_MAGNET_KICK) magnet.model = MODEL_KICK_ONLY;
     else if (xt_float_or_tpsa_const_part(fields->ks) != 0.) magnet.model = MODEL_SOL_KICK_SOL;
-    else magnet.model = MODEL_DRIFT_KICK_DRIFT_EXPANDED;
+    else magnet.model = MODEL_DRIFT_KICK_DRIFT_EXACT;
     MagnetPlan plan;
     MagnetPlan_prepare(&plan, &magnet, &entry_face, &exit_face, part0);
+    // A drift piece keeps the multipoles for its faces only.
+    if (!with_kicks) plan.body.drift_only = 1;
     const MagnetBody* body = &plan.body;
+    const uint8_t first_active = plan.first_active;
+    const uint8_t second_active = plan.second_active;
 
 #define LONGITUDINAL_MAGNET_DRIFT(part, dlength) MagnetDrift_apply(part, &body->drift, (dlength))
 #define LONGITUDINAL_MAGNET_KICK(part, kick_weight)                                       \
@@ -692,12 +703,14 @@ void CavityModels_track_longitudinal_magnet(
 
     START_PER_PARTICLE_BLOCK(part0, part)
         ;
+        if (first_active) MagnetFace_enter_single_particle(part, &plan.first_face);
         if (body->drift_only) LONGITUDINAL_MAGNET_DRIFT(part, body->length);
         else
             RUN_INTEGRATOR(
                 body->integrator, body->length, body->num_kicks, part,
                 LONGITUDINAL_MAGNET_DRIFT, LONGITUDINAL_MAGNET_KICK, LONGITUDINAL_MAGNET_STEP
             );
+        if (second_active) MagnetFace_leave_single_particle(part, &plan.second_face);
     END_PER_PARTICLE_BLOCK;
 
 #undef LONGITUDINAL_MAGNET_DRIFT
@@ -719,7 +732,7 @@ void track_cavity_plan(LocalParticle* part0, const RFPlan* plan) {
     // Only a MagnetOverlappedCavity carries static fields.
     if (!taper && cavity->model < 10 && cavity->fields.knl) {
         CavityModels_track_longitudinal_magnet(
-            part0, &cavity->fields, &plan->body, fabs(plan->body.factor_knl_ksl),
+            part0, cavity, &plan->body, fabs(plan->body.factor_knl_ksl),
             cavity->thin_slice ? CAVITY_MAGNET_KICK : CAVITY_MAGNET_BODY
         );
     }

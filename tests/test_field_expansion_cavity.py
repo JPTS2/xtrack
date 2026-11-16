@@ -106,6 +106,30 @@ def test_samples_of_a_fourier_series_give_its_field():
     np.testing.assert_allclose(ends[1], ends[0], rtol=1e-12, atol=1e-16)
 
 
+@pytest.mark.parametrize('mode', [None, 'thick', 'thin'])
+def test_adaptive_is_the_phase_resolved_model(mode):
+    """"adaptive" is resolved in Python for the checks and in C for tracking."""
+    ends = {}
+    for model in ('adaptive', '_phase-resolved'):
+        rf = xt.FieldExpansionCavity.from_fourier_series(
+            TESLA, length=TESLA_LENGTH, frequency=1.3e9, voltage=20e6, phase=1.2,
+            num_kicks=48, model=model)
+        line = xt.Line(elements={'rf': rf})
+        if mode is not None:
+            line.slice_thick_elements([xt.Strategy(slicing=xt.Teapot(2, mode=mode))])
+        line.particle_ref = xt.Particles(p0c=20e6, mass0=xt.ELECTRON_MASS_EV)
+        line.build_tracker(_context=xo.ContextCpu())
+
+        particles = xt.Particles(p0c=20e6, mass0=xt.ELECTRON_MASS_EV, x=1e-3, px=1e-4,
+                                 zeta=1e-3)
+        line.track(particles)
+
+        assert particles.state[0] == 1
+        ends[model] = [particles.x[0], particles.px[0], particles.zeta[0], particles.delta[0]]
+    assert xt.FieldExpansionCavity.get_available_models() == ['adaptive', '_phase-resolved']
+    np.testing.assert_array_equal(ends['adaptive'], ends['_phase-resolved'])
+
+
 @pytest.mark.parametrize('mode', ['thick', 'thin'])
 def test_slices_compose_and_serialize(mode):
     rf = xt.FieldExpansionCavity.from_fourier_series(

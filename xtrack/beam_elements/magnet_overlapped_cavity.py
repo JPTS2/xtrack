@@ -11,12 +11,8 @@ import xtrack as xt
 
 from ..base_element import FloatOrTpsa
 from ._common import _HasKnlKsl, _docstring_general_notes, _for_docstring_alignment
-from .cavity import Cavity, _CAVITY_MODELS, _MODEL_CHANGES, _constant_part
+from .cavity import Cavity, _CAVITY_MODELS, _constant_part
 
-# The longitudinal kicks with the magnet's own body, and the physical models.
-_MODELS = {0: 'longitudinal-kick', **{index: name for index, name in _CAVITY_MODELS.items()
-                                      if index >= 10}}
-_MODEL_IDS = {name: index for index, name in _MODELS.items()}
 
 
 class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
@@ -30,9 +26,10 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
     The static fields are uniform along the cavity.'''
 
     _docstring_models = '''model : str
-        "longitudinal-kick" (default) tracks the static fields as a magnet, with
-        the RF energy kick added to each of the magnet's kicks; it has no fringe
-        fields. The experimental physical models, "_phase-resolved",
+        "adaptive" (default) is "longitudinal-kick" for now. "longitudinal-kick"
+        tracks the static fields as a straight magnet with an exact drift, with
+        the RF energy kick added to each of the magnet's kicks, and its faces as
+        those of a Quadrupole or UniformSolenoid. The experimental physical models, "_phase-resolved",
         "_phase-averaged", "_phase-resolved-paraxial" and "_phase-resolved-frozen",
         are those of Cavity.
     integrator : str
@@ -79,7 +76,11 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
 
     _noexpr_fields = Cavity._noexpr_fields
 
-    _default_model = 'longitudinal-kick'
+    # The longitudinal kicks with the magnet's own body and faces, and the physical models.
+    _MODELS = {0: 'adaptive', 1: 'longitudinal-kick',
+               **{index: name for index, name in _CAVITY_MODELS.items() if index >= 10}}
+    _ADAPTIVE_MODEL = 1
+    _default_model = 'adaptive'
 
     def __init__(self, **kwargs):
         if '_xobject' in kwargs and kwargs['_xobject'] is not None:
@@ -97,28 +98,14 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
         # _HasKnlKsl comes first in the order and has its own __init__.
         Cavity.__init__(self, **kwargs)
 
-    @property
-    def model(self):
-        return _MODELS[self._model]
-
-    @model.setter
+    @Cavity.model.setter
     def model(self, value):
-        try:
-            index = _MODEL_IDS[value]
-        except KeyError:
-            raise ValueError(f'Invalid MagnetOverlappedCavity model: {value}') from None
-        if index < 10 and (np.any(self._knl_tpsa) or np.any(self._ksl_tpsa)):
+        index = next((key for key, name in self._MODELS.items() if name == value), None)
+        if (index is not None and (self._ADAPTIVE_MODEL if index == 0 else index) < 10
+                and (np.any(self._knl_tpsa) or np.any(self._ksl_tpsa))):
             raise ValueError('TPSA knobs on knl and ksl need a physical model: the '
                              'longitudinal-kick model tracks their constant parts')
-        if index < 10 and self.integrator == '_geometric':
-            raise ValueError('"_geometric" grades the cells of the physical models; '
-                             'longitudinal-kick takes the magnet integrators')
-        self._model = index
-        _MODEL_CHANGES[0] += 1
-
-    @staticmethod
-    def get_available_models():
-        return list(_MODEL_IDS)
+        Cavity.model.fset(self, value)
 
     def _present(self, name):
         """Entries of knl or ksl that are set: a nonzero value or a knob's series."""
@@ -130,9 +117,9 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
         super()._check_physical_model(tracking=tracking)
         normal, skew = self._present('knl'), self._present('ksl')
         solenoid = _constant_part(self.ks) != 0.
-        if self._model < 10:
+        if self._resolved_model < 10:
             return
-        if self._model in (11, 12):
+        if self._resolved_model in (11, 12):
             others = np.any(normal[np.arange(len(normal)) != 1]) or np.any(skew)
             if others or (solenoid and (np.any(normal) or self.edge_entry_active
                                         or self.edge_exit_active)):
