@@ -159,6 +159,7 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         if lag is not None:
             self.lag = lag
         self._check_physical_model()
+        self._settings_checked = True
 
     @classmethod
     def from_fourier_series(cls, cos_coefficients, sin_coefficients=None, period=None,

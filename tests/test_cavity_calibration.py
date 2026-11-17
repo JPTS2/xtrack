@@ -49,7 +49,7 @@ class _CalibrationProbe(xt.BeamElement):
                     LocalParticle_set_px(part,source.backward);
                     LocalParticle_set_y(part,cos(source.clock_origin));
                     LocalParticle_set_py(part,sin(source.clock_origin));
-                } else LocalParticle_set_state(part,-99740+status);
+                } else LocalParticle_set_state(part,status);
             END_PER_PARTICLE_BLOCK;
         }
     ''']

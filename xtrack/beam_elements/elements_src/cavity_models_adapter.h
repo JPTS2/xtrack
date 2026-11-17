@@ -130,10 +130,6 @@ int CavityPlan_controls(
     ) {
         controls = CAVITY_MODEL_ARGUMENT;
     }
-    // The whole-cavity taper pass takes the longitudinal map (track_cavity_plan);
-    // tapering refuses cavity slices.
-    if (LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER))
-        controls = CAVITY_MODEL_ARGUMENT;
     return controls;
 }
 
@@ -453,18 +449,11 @@ void track_cavity_single_particle(
 #if !defined(XTRACK_TPSA_TRACK) && !defined(XTRACK_MULTIPOLE_NO_SYNRAD)
         if (LocalParticle_get_spin_x(part) != 0. || LocalParticle_get_spin_y(part) != 0.
             || LocalParticle_get_spin_z(part) != 0.) {
-            if (plan->spin_supported)
-                spin_tracking = 1;
-            else
-                status = CAVITY_MODEL_ARGUMENT;
+            // In TPSA tracking spin is left as it is, as by the magnets.
+            spin_tracking = plan->spin_supported;
         }
 #endif
         if (spin_tracking) {
-            if (XT_LP_IS_FROZEN(s)
-                || XT_LP_IS_FROZEN(rpp) || XT_LP_IS_FROZEN(rvv) || XT_LP_IS_FROZEN(ax)
-                || XT_LP_IS_FROZEN(ay) || XT_LP_IS_FROZEN(spin_x)
-                || XT_LP_IS_FROZEN(spin_y) || XT_LP_IS_FROZEN(spin_z))
-                status = CAVITY_MODEL_ARGUMENT;
 #ifndef XTRACK_TPSA_TRACK
             if (status == CAVITY_MODEL_OK) {
                 anomaly = LocalParticle_get_anomalous_magnetic_moment(part);
@@ -806,11 +795,12 @@ void track_cavity_single_particle(
         }
 #endif
     }
-    else if (status != CAVITY_MODEL_LOST) {
-        // -99741 domain, -99742 stage exhaustion, -99743 nonfinite,
-        // -99744 invalid/unfinished source or numerical configuration.
-        LocalParticle_set_state(part, -99740 + status);
-    }
+    // A particle the field stops (a turning point, where no step converges);
+    // settings found invalid only while tracking, as a knob's value.
+    else if (status == CAVITY_MODEL_DOMAIN || status == CAVITY_MODEL_ITERATIONS)
+        LocalParticle_set_state(part, XT_LOST_STOPPED_IN_CAVITY);
+    else if (status != CAVITY_MODEL_LOST)
+        LocalParticle_set_state(part, XT_INVALID_CAVITY_SETTINGS);
 }
 
 // Longitudinal-kick model of a MagnetOverlappedCavity: the magnet's integrator,
@@ -851,7 +841,10 @@ void CavityModels_track_longitudinal_magnet(
     // for Cavity, so the RF kick is never dropped.
     const int64_t num_kicks = fields->num_kicks > 0 ? fields->num_kicks : 1;
     magnet.num_multipole_kicks = with_kicks ? num_kicks : 0;
-    magnet.integrator = with_kicks ? rf->integrator : INTEGRATOR_UNIFORM;
+    // A physical model's graded cells (the taper pass) are uniform magnet steps.
+    magnet.integrator = with_kicks && rf->integrator != CAVITY_INTEGRATOR_GEOMETRIC
+                            ? rf->integrator
+                            : INTEGRATOR_UNIFORM;
     magnet.radiation_flag = cavity->reverse ? 0 : fields->radiation_flag;
     if (part_of_body == CAVITY_MAGNET_KICK)
         magnet.model = MODEL_KICK_ONLY;
@@ -960,8 +953,9 @@ void track_cavity_plan(LocalParticle* part0, const RFPlan* plan) {
     // The taper pass (tapering.py) only shares the energy loss among the
     // cavities at zero frequency: every model uses the longitudinal map there.
     const int taper = LocalParticle_check_track_flag(part0, XS_FLAG_SR_TAPER);
-    // Only a MagnetOverlappedCavity carries static fields.
-    if (!taper && cavity->model < 10 && cavity->fields.knl) {
+    // Only a MagnetOverlappedCavity carries static fields, which radiate in the
+    // taper pass too.
+    if ((taper || cavity->model < 10) && cavity->fields.knl) {
         CavityModels_track_longitudinal_magnet(
             part0,
             cavity,

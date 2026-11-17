@@ -69,6 +69,19 @@ class _CavityControls:
                              'longitudinal models take the magnet integrators')
         self._model = index
 
+    def __setattr__(self, name, value):
+        # Settings changed after construction are checked as at construction:
+        # a physical model never meets settings it cannot track.
+        if name.startswith('_') or not getattr(self, '_settings_checked', False):
+            return super().__setattr__(name, value)
+        previous = getattr(self, name, None)
+        super().__setattr__(name, value)
+        try:
+            self._check_physical_model()
+        except ValueError:
+            super().__setattr__(name, previous)
+            raise
+
     @classmethod
     def get_available_models(cls):
         return list(cls._MODELS.values())
@@ -195,7 +208,9 @@ class Cavity(_CavityControls, BeamElement):
     every model, when the line is configured for radiation (mean, quantum or
     quantum-kick): their field across the motion over each cell, with a
     collinear recoil. The RF fields do not radiate yet. Settings a physical model cannot track are refused at
-    construction; set later, they lose the particle (state -99744).
+    construction and when changed later. A particle the field stops is lost
+    with state XT_LOST_STOPPED_IN_CAVITY; settings found invalid only while
+    tracking (a knob's value) lose it with XT_INVALID_CAVITY_SETTINGS.
 
     counter_wave_amplitude : float
         Amplitude of the counter-propagating RF wave over that of the
@@ -363,6 +378,7 @@ class Cavity(_CavityControls, BeamElement):
         self.nominal_energy_gain = nominal_energy_gain
 
         self._check_physical_model()
+        self._settings_checked = True
 
     def _check_physical_model(self):
         """Raise for settings the physical models cannot track."""
@@ -371,6 +387,10 @@ class Cavity(_CavityControls, BeamElement):
             return
         if self.num_kicks < 0:
             raise ValueError('num_kicks must be non-negative')
+        if (self._resolved_model == 13 and _constant_part(self.voltage) != 0.
+                and _constant_part(self.harmonic) == 0.
+                and not _constant_part(self.frequency) > 0.):
+            raise ValueError('_phase-resolved-frozen needs a positive frequency')
         if self.integrator == 'teapot':
             raise ValueError(f'{self.model} has symmetric steps: "teapot" '
                              'does not apply')

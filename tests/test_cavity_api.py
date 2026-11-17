@@ -571,17 +571,35 @@ def test_sliced_cavity_line_saves_after_reload():
             if name.startswith('rf..')] == offsets
 
 
-def test_cavity_switched_to_a_physical_model_after_tracking_loses_what_it_cannot_track():
+def test_settings_changed_later_are_checked_as_at_construction():
     cavity = xt.Cavity(frequency=400e6, length=1., voltage=1e6)
     line = xt.Line(elements={'drift': xt.Drift(length=1.), 'rf': cavity})
     line.particle_ref = xt.Particles(p0c=1e9)
     line.build_tracker()
     line.track(line.build_particles(x=[1e-3]))
     cavity.model = '_phase-resolved'
-    cavity.length = 0.
-    particles = line.build_particles(x=[1e-3])
+    with pytest.raises(ValueError, match='teapot'):
+        cavity.integrator = 'teapot'
+    assert cavity.integrator == 'adaptive'
+    frozen = xt.Cavity(model='_phase-resolved-frozen', frequency=400e6, length=1.,
+                       voltage=1e6, counter_wave_amplitude=0.)
+    for name, value in (('integrator', 'teapot'), ('n_cells', 2),
+                        ('counter_wave_amplitude', .55), ('num_kicks', -1)):
+        with pytest.raises(ValueError):
+            setattr(frozen, name, value)
+    assert (frozen.integrator, frozen.n_cells, frozen.counter_wave_amplitude,
+            frozen.num_kicks) == ('adaptive', 0, 0., 0)
+
+
+def test_a_particle_the_field_stops_is_lost_with_a_named_state():
+    """A decelerating field that exceeds the kinetic energy stops the particle."""
+    cavity = xt.Cavity(model='_phase-resolved', frequency=400e6, length=.5,
+                       voltage=-20e6, phase=np.pi / 2, counter_wave_amplitude=0.)
+    line = xt.Line(elements={'rf': cavity})
+    line.particle_ref = xt.Particles(p0c=5e6, mass0=xt.PROTON_MASS_EV)
+    particles = line.build_particles(x=[0.])
     line.track(particles)
-    assert particles.state[0] == -99744
+    assert particles.state[0] == -60  # XT_LOST_STOPPED_IN_CAVITY
 
 
 @pytest.mark.parametrize('model, is_drift', [('adaptive', True), ('_phase-resolved', False)])
