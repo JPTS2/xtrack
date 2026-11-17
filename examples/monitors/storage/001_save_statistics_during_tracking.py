@@ -78,7 +78,7 @@ output_path.parent.mkdir(parents = True, exist_ok = True)
 monitor = xt.BeamStatsMonitor(
     start_at_turn       = 0,
     stop_at_turn        = N_TURNS,
-    filling_scheme      = FILLING,
+    filling_pattern     = FILLING,
     bunch_spacing_zeta  = spacing,
     stats               = ['num_particles', 'mean_x', 'sigma_x'],
     output_file         = output_path)

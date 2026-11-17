@@ -9,6 +9,8 @@ Start with reference quantities and coordinates (`001`–`003`), then particle
 preparation (`004`–`006`). Container operations follow in `007`–`010`; `011`
 extends the reference conventions to mixed species. Each script runs
 independently in your Xsuite environment.
+`012` returns to preparation, extending the single-bunch RF recipe to a train
+with gaps and a selected subset of its bunches.
 
 | Example | Subject |
 | --- | --- |
@@ -23,6 +25,7 @@ independently in your Xsuite environment.
 | [009_select_and_merge.py](009_select_and_merge.py) | Follow particle IDs while sorting, selecting and combining subsets |
 | [010_capacity_and_insertion.py](010_capacity_and_insertion.py) | Reserve particle storage, append a population and distinguish lost histories from unused slots |
 | [011_multispecies_kicks.py](011_multispecies_kicks.py) | Compare proton, deuteron and helium deflections at equal velocity or momentum |
+| [012_multibunch_train.py](012_multibunch_train.py) | Prepare a matched train with gaps; distinguish RF buckets, physical filling slots and compact bunch selection |
 
 The reference and coordinate examples use a 1 GeV/c proton reference.
 `003`, `004` and `005` use the
@@ -57,6 +60,16 @@ stability from an RF phase. Xpart samples Gaussian `delta`; the map rotates
 linear, small-spread accuracy, without a nonlinear bucket or separatrix.
 No acceleration, radiation or collective force is included. Finite random samples
 have fluctuating moments even when drawn from a matched distribution.
+
+`012` uses the same ideal RF model. A filling slot spans two RF buckets; the
+ten-slot occupancy array covers the ring. Positive slot numbers have negative
+`zeta`. Xpart's `bunch_selection` indexes the ordered list of occupied slots,
+whereas monitor `selected_slots` names physical slots. Selecting bunches creates
+a fresh sample rather than filtering an existing particle container. See
+[bunch statistics](../monitors/beam_statistics/003_bunch_statistics.py) for
+recording the train, and
+[bunch-dependent beam-beam optics](../optics/collective/002_bunch_dependent_beambeam_optics.py)
+for a filling-dependent force model.
 
 These recipes cover Xtrack particle containers and Xpart preparation for a line.
 `010` concerns container storage and insertion, without an interaction model.

@@ -136,7 +136,8 @@ extend the reference conventions to ions and different charge-to-mass ratios.
 - [Nonlinear](optics/nonlinear/README.md): chromatic optics, detuning and
   resonance-driving terms.
 - [Collective-element boundaries](optics/collective/README.md): prescribed
-  frozen fields and the treatment of updating collective elements in Twiss.
+  frozen fields, the treatment of updating collective elements in Twiss, and
+  filling-dependent beam-beam optics.
 
 ## matching
 

@@ -148,7 +148,7 @@ for name in names:
     bucket_length           = beta0 * c / line[name].frequency
     train                   = xp.generate_matched_gaussian_multibunch_beam(
         line                        = line,
-        filling_scheme              = filling,
+        filling_pattern             = filling,
         bunch_num_particles         = N_PER_BUNCH,
         bunch_intensity_particles   = 1e10,
         bucket_length               = bucket_length,
