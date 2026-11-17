@@ -67,3 +67,26 @@ def test_radiation_is_off_until_configured():
     assert particles.delta[0] == 0.
     line.configure_radiation(model='mean')
     assert cavity.radiation_flag == 1
+
+
+@pytest.mark.parametrize('model', MODELS)
+def test_kick_as_first_particle_gives_every_particle_the_first_ones_kick(model):
+    """As in the magnets, the others take the first particle's kick of its last
+    step at every step, whatever their own orbit."""
+    deltas = {}
+    for name in ('longitudinal-kick', model):
+        cavity = xt.MagnetOverlappedCavity(length=LENGTH, frequency=400e6,
+                                           knl=[0., K1 * LENGTH], model=name, num_kicks=24,
+                                           counter_wave_amplitude=0., edge_entry_active=0,
+                                           edge_exit_active=0)
+        line = xt.Line(elements={'rf': cavity})
+        line.particle_ref = xt.Particles(p0c=P0C, mass0=xt.ELECTRON_MASS_EV)
+        line.build_tracker()
+        line.configure_radiation(model='mean')
+        line.tracker.track_flags.XS_FLAG_SR_KICK_SAME_AS_FIRST = True
+        particles = line.build_particles(x=[X, 2 * X, -3 * X])
+        line.track(particles)
+        deltas[name] = particles.delta.copy()
+    assert deltas[model][1] < 0.
+    np.testing.assert_allclose(deltas[model][2], deltas[model][1], rtol=1e-12)
+    np.testing.assert_allclose(deltas[model], deltas['longitudinal-kick'], rtol=1e-3)

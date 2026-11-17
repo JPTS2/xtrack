@@ -23,6 +23,9 @@ typedef struct {
     double rigidity, length, ks;
     int64_t order;
     GPUGLMEM const double *knl, *ksl;
+    // With XS_FLAG_SR_KICK_SAME_AS_FIRST, the first particle's mean kick (energy,
+    // px, py), given to the others as by the magnets; NULL otherwise.
+    double* first_kick;
 } CavityEffects;
 
 GPUFUN

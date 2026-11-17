@@ -62,9 +62,10 @@ void CavityModels_track_drift_slice(
     else {
         CavityMagnusCache magnus_cache;
         CavityMagnusCache_init(&magnus_cache);
+        double first_kick[3] = {0., 0., 0.};
         START_PER_PARTICLE_BLOCK(part0, part)
             ;
-            track_cavity_single_particle(&plan, plan.model, part, &magnus_cache);
+            track_cavity_single_particle(&plan, plan.model, part, &magnus_cache, first_kick);
         END_PER_PARTICLE_BLOCK;
         CavityMagnusCache_free(&magnus_cache);
     }

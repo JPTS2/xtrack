@@ -51,10 +51,19 @@ int CavityEffects_radiate(
 ) {
     if (!effects || effects->radiation_flag <= 0 || !(path > 0.)) return CAVITY_MODEL_OK;
     LocalParticle* part = effects->part;
+    double* first = effects->first_kick;
+    if (first && part->ipart != 0) {
+        *energy += first[0];
+        *px += first[1];
+        *py += first[2];
+        return CAVITY_MODEL_OK;
+    }
+    const double energy0 = *energy, px0 = *px, py0 = *py;
     double B[3];
     CavityEffects_static_field(effects, x, y, B);
     const double gamma = *energy, p = sqrt(gamma * gamma - 1.);
     const double pz2 = p * p - *px * *px - *py * *py;
+    if (first) first[0] = first[1] = first[2] = 0.;
     if (!(pz2 > 0.)) return CAVITY_MODEL_OK;
     const double n[3] = {*px / p, *py / p, sqrt(pz2) / p};
     const double along = B[0] * n[0] + B[1] * n[1] + B[2] * n[2];
@@ -96,6 +105,11 @@ int CavityEffects_radiate(
     *px *= scale;
     *py *= scale;
     *energy = after;
+    if (first) {
+        first[0] = *energy - energy0;
+        first[1] = *px - px0;
+        first[2] = *py - py0;
+    }
     return CAVITY_MODEL_OK;
 }
 

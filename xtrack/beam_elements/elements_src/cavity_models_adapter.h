@@ -278,7 +278,8 @@ void track_cavity_single_particle(
     const CavityPlan* plan,
     int model,
     LocalParticle* part,
-    CavityMagnusCache* magnus_cache
+    CavityMagnusCache* magnus_cache,
+    double first_kick[3]
 ) {
     const RFModelFields* el = &plan->fields;
     const int controls = plan->choice.controls;
@@ -301,13 +302,16 @@ void track_cavity_single_particle(
     int status = controls;
     double anomaly = 0., spin[3] = {0., 0., 0.};
     // Spin is set below once tracked; the static fields radiate going forward.
-    CavityEffects effects = {NULL, 0., part, 0, 0., el->length, 0., -1, el->knl, el->ksl};
+    CavityEffects effects = {NULL, 0., part, 0, 0., el->length, 0., -1, el->knl, el->ksl, NULL};
 #if !defined(XTRACK_TPSA_TRACK) && !defined(XTRACK_MULTIPOLE_NO_SYNRAD)
     if (!reverse && LocalParticle_get_q0(part) != 0.) {
         effects.radiation_flag = el->radiation_flag;
         effects.rigidity = LocalParticle_get_p0c(part) / (C_LIGHT * LocalParticle_get_q0(part));
         effects.ks = xt_float_or_tpsa_const_part(el->ks);
         effects.order = el->knl_len > 0 ? el->order : -1;
+        if (effects.radiation_flag == 1
+            && LocalParticle_check_track_flag(part, XS_FLAG_SR_KICK_SAME_AS_FIRST))
+            effects.first_kick = first_kick;
     }
 #endif
     const double mass0 = LocalParticle_get_mass0(part);
@@ -971,13 +975,14 @@ void track_cavity_plan(LocalParticle* part0, const RFPlan* plan) {
         // Reference-only paraxial step generators, reused across the call.
         CavityMagnusCache magnus_cache;
         CavityMagnusCache_init(&magnus_cache);
+        double first_kick[3] = {0., 0., 0.};
         START_PER_PARTICLE_BLOCK(part0, part)
             ;
             const int model = cavity->model;
             if (model < 10)
                 track_rf_body_single_particle(part, &plan->body);
             else if (!cavity->thin_slice)
-                track_cavity_single_particle(cavity, model, part, &magnus_cache);
+                track_cavity_single_particle(cavity, model, part, &magnus_cache, first_kick);
         END_PER_PARTICLE_BLOCK;
         CavityMagnusCache_free(&magnus_cache);
     }
