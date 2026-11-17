@@ -806,7 +806,7 @@ void track_cavity_single_particle(
         }
 #endif
     }
-    else {
+    else if (status != CAVITY_MODEL_LOST) {
         // -99741 domain, -99742 stage exhaustion, -99743 nonfinite,
         // -99744 invalid/unfinished source or numerical configuration.
         LocalParticle_set_state(part, -99740 + status);
