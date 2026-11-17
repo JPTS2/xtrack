@@ -60,6 +60,8 @@ else:
 ########################################
 # Record the software and workload
 ########################################
+print('Select and report the execution context\n'
+      '---------------------------------------')
 print('Host:', platform.platform(), platform.machine())
 print('Xtrack / Xobjects:', xt.__version__, xo.__version__)
 print('Context:', context)
@@ -106,8 +108,10 @@ initial = line.build_particles(
 rng = xt.RandomUniform(_context = context)
 rng.generate(n_samples = N_PARTICLES, particles = initial)
 context.synchronize()
+print('\nPrepare one compensated and tapered configuration\n'
+      '-------------------------------------------------')
 print('Particles / elements:', N_PARTICLES, len(line.element_names))
-print('Electron reference p0*c [GeV]:', P0C * 1e-9)
+print('Electron reference momentum [GeV/c]:', P0C * 1e-9)
 print('RF voltage [MV] / harmonic:', RF_VOLTAGE * 1e-6, HARMONIC)
 
 ################################################################################
@@ -158,6 +162,8 @@ labels      = np.array(['off', 'mean', 'quantum', 'quantum-kick'])
 medians     = np.array(medians)
 lower       = np.array(lower)
 upper       = np.array(upper)
+print('\nReport cost at this fixed field configuration\n'
+      '---------------------------------------------')
 xt.Table(
     data    = {
         'model':            labels,

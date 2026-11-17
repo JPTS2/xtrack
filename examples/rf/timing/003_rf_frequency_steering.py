@@ -93,12 +93,14 @@ for shift in FREQUENCY_SHIFTS:
 # Compare the native solution with the local slip-factor prediction
 ################################################################################
 columns = ['df_hz', 'delta', 'linear_delta', 'period_s', 'rf_cycles', 'dzeta_m']
+print('\nCompare the native solution with the local slip-factor prediction\n'
+      '-----------------------------------------------------------------')
 xt.Table(
     data    = {name: np.array(values)
                for name, values in zip(columns, zip(*rows))},
     index   = 'df_hz',
 ).show(maxwidth = 'full')
-print('Harmonic / fixed reference p0*c [eV]:',
+print('Harmonic / fixed reference momentum [eV/c]:',
       harmonic, line.particle_ref.p0c[0])
 # f_rf*T_synchronous=h. The transverse orbit and momentum return, while zeta
 # slips against the fixed reference clock by beta0*c*(T0-T_synchronous).

@@ -124,6 +124,8 @@ data    = {
     'qs':                   np.array([synchronous[name].qs for name in names]),
 }
 centers = xt.Table(data = data, index = 'rf_system')
+print('Find the synchronous center of each RF system separately\n'
+      '--------------------------------------------------------')
 centers.show(maxwidth = 'full')
 print('Each isolated RF makes', HARMONIC, 'cycles per synchronous turn.')
 
@@ -198,6 +200,8 @@ rf_beat_cycles          = frequency_difference * clock_s
 rf_spacing              = CIRCUMFERENCE / HARMONIC
 relative_slip           = ((mean_zeta[0] - mean_zeta[1])
                    - (mean_zeta[0][0] - mean_zeta[1][0])) / rf_spacing
+print('\nCompare population motion with the two RF clocks\n'
+      '------------------------------------------------')
 print('Final common-clock RF phase difference [cycles]:', rf_beat_cycles[-1])
 print('Final centroid separation change [nominal RF periods]:',
       relative_slip[-1])

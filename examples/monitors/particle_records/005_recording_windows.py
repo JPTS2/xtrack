@@ -63,6 +63,8 @@ line.track(
     num_turns               = N_TURNS,
     turn_by_turn_monitor    = monitor,
 )
+print('Record a contiguous window for selected particle IDs\n'
+      '----------------------------------------------------')
 print('Record shape (ID slot, sample):', monitor.x.shape)
 print('Recorded particle IDs:', monitor.particle_id[:, 0])
 print('Absolute recorded turns:', monitor.at_turn[0])
@@ -76,6 +78,8 @@ print('Absolute recorded turns:', monitor.at_turn[0])
 ########################################
 # Monitor dictionary round trips preserve configuration, not trajectories.
 manual = xt.ParticlesMonitor.from_dict(monitor.to_dict())
+print('\nSample the same window inside a manual turn loop\n'
+      '------------------------------------------------')
 print('Valid samples before filling:', np.sum(manual.state > 0))
 
 ########################################
@@ -114,6 +118,8 @@ line.track(
     turn_by_turn_monitor    = frames,
 )
 # Multiple frames add a leading axis; a single frame has no frame axis.
+print('\nRepeat the window at separated turns\n'
+      '------------------------------------')
 print('Repeated-window record shape:', frames.x.shape)
 if N_FRAMES > 1:
     print('Absolute turns in each frame:', frames.at_turn[:, 0, :])

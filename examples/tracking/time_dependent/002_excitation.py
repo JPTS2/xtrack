@@ -74,6 +74,8 @@ zeta_start = -beta0 * c / (2 * fs)
 # For the reference species chi=1: Delta px=-knl[0]*sample.
 # Sample clock: i=int(fs*((at_turn-start_turn)/frev-zeta/(beta0*c))).
 results = []
+print('Compare a near-resonant drive with a more detuned drive\n'
+      '-------------------------------------------------------')
 for detuning in DRIVE_DETUNINGS:
     ########################################
     # Prepare the waveform and driven ring

@@ -109,6 +109,8 @@ particles = line.build_particles(
     px_norm     = grid_px,
     nemitt_x    = NEMITT_X,
     nemitt_y    = NEMITT_Y)
+print('Build physical particles from the normalized scan\n'
+      '-------------------------------------------------')
 print('First eight grid particles in physical coordinates:')
 particles.get_table().rows[:8].cols[
     'particle_id x px y py'].show(maxwidth = 'full')

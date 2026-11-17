@@ -60,6 +60,8 @@ entrance = xt.TwissInit(
     spin_z  = SPIN_ENTRANCE[2],
 )
 transport = line.twiss4d(init = entrance, spin = True)
+print('Propagate specified entrance conditions through an open line\n'
+      '------------------------------------------------------------')
 transport.cols['name s x px spin_x spin_y spin_z'].show(maxwidth = 'full')
 # This is initial-value spin transport. It does not search for a periodic
 # invariant spin direction or assign a closed-ring spin tune.
@@ -77,6 +79,8 @@ spin_twiss      = np.array([
     transport.spin_x[-1], transport.spin_y[-1], transport.spin_z[-1]])
 spin_tracked    = np.array([
     tracked.spin_x[0], tracked.spin_y[0], tracked.spin_z[0]])
+print('\nCompare Twiss propagation, direct tracking and the planar BMT angle\n'
+      '-------------------------------------------------------------------')
 print('Exit spin: open Twiss / direct tracking:', spin_twiss, spin_tracked)
 print('Maximum spin-component difference:',
       np.max(np.abs(spin_twiss - spin_tracked)))
@@ -111,6 +115,8 @@ spin_global_in  = (SPIN_ENTRANCE[0] * frames['ref_start'].ex
 spin_global_out = (spin_twiss[0] * frames['ref_end'].ex
                    + spin_twiss[1] * frames['ref_end'].ey
                    + spin_twiss[2] * frames['ref_end'].es)
+print('\nDistinguish the entrance and exit reference frames\n'
+      '--------------------------------------------------')
 print('Entrance / exit longitudinal reference axes in global XYZ:',
       frames['ref_start'].es, frames['ref_end'].es)
 print('Entrance / exit spins in global XYZ:', spin_global_in, spin_global_out)

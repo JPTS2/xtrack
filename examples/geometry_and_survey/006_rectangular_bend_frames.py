@@ -35,6 +35,8 @@ N_SLICES        = 8
 ########################################
 fig, axes = plt.subplots(2, 2, figsize = (11, 8), layout = 'constrained')
 results = {}
+print('Compare horizontal and vertical rectangular-bend representations\n'
+      '----------------------------------------------------------------')
 for row, (plane, roll) in enumerate([('Horizontal', 0.0),
                                      ('Vertical', np.pi / 2)]):
     for body in ['curved-body', 'straight-body']:

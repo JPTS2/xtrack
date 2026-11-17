@@ -78,6 +78,8 @@ line.track(particles, num_turns = N_TURNS)
 # Arrival in turn units is reference_turns-zeta/C. The record turn is its
 # nearest integer; slices order the residual arrival phase from -1/2 to +1/2.
 # Outlying zeta can therefore populate neighboring effective-turn records.
+print('Inspect the local arrival clock and full-turn slice arrays\n'
+      '----------------------------------------------------------')
 print('Levels/default/shape:', monitor.available_levels,
       monitor.default_level, monitor.mean_x.shape)
 print('Recorded reference-turn bins:', monitor.turns)

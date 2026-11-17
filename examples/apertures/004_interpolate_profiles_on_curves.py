@@ -71,6 +71,8 @@ line.aperture.build_model()
 s_samples   = s_start + np.linspace(
     SAMPLE_MARGIN, length - SAMPLE_MARGIN, N_SAMPLES)
 sections    = line.aperture.get_cross_sections_at_s(s_samples, extents = True)
+print('Interpolate cross-sections in the changing local survey frames\n'
+      '--------------------------------------------------------------')
 sections.cols['s min_x max_x min_y max_y'].show(maxwidth = 'full')
 # Each cross_section is in its own local transverse survey plane. The pose
 # column maps that plane into global coordinates. Do not overlay all polygons

@@ -49,6 +49,8 @@ half_traces = np.array(half_traces)
 stable      = np.all(np.abs(half_traces) < 1, axis = 1)
 # Each uncoupled, symplectic 2 by 2 block is elliptic when |Tr(M)/2|<1.
 # At +/-1 the limit is marginal; this is not nonlinear dynamic aperture.
+print('Track linear maps even where periodic Twiss is unstable\n'
+      '-------------------------------------------------------')
 print('Scanned scale range with both planes linearly stable:',
       STRENGTH_SCALES[stable].min(), STRENGTH_SCALES[stable].max())
 

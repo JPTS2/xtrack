@@ -66,6 +66,8 @@ context.allow_kernel_compilation    = True
 line.build_tracker(_context = context)
 # This diagnostic uses frozen-coordinate tracking and needs its own kernel.
 table       = line.get_aperture_table()
+print('Inspect axis cuts at elements and their interpolated table values\n'
+      '-----------------------------------------------------------------')
 table.cols['name s x_aper_low x_aper_high '
            'x_aper_low_discrete x_aper_high_discrete'].show(maxwidth = 'full')
 print('Vertical discrete cuts at the co-located limits [m]:')
@@ -86,6 +88,8 @@ table.rows[['wide', 'narrow']].cols[
 ########################################
 reconstructed   = line.copy()
 reconstructed.aperture.from_limits(with_progress = False)
+print('\nReconstruct chamber profiles on a separate copy of the line\n'
+      '-----------------------------------------------------------')
 reconstructed.aperture.get_bounds_table().cols[
     'name pipe_name profile_name s'].show(maxwidth = 'full')
 # The source line still has only its original tracking limits. Reconstruction
@@ -127,6 +131,8 @@ associated_line = associated_env.new_line(
 )
 # The shape is in the registry, not the tracking sequence. This metadata can
 # also come from legacy data loaded without installing separate Limit elements.
+print('\nImport aperture definitions associated with magnets\n'
+      '---------------------------------------------------')
 print('Associated-data line:')
 associated_line.get_table().cols['name s element_type'].show()
 

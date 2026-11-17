@@ -41,6 +41,7 @@ BASELINE_MODEL  = 'drift-kick-drift-exact'
 # Inspect supported map choices
 ################################################################################
 models = xt.Cavity.get_available_models()
+print('Inspect supported map choices\n-----------------------------')
 print('Available cavity maps:', models)
 print('Available integrators:', xt.Cavity.get_available_integrators())
 # Here model selects the transport-map approximation, not an RF field profile.
@@ -97,6 +98,8 @@ table       = xt.Table(
         'dzeta_um': dzeta * 1e6,
         'dE_eV':    denergy},
     index   = 'name')
+print('\nInspect differences from the chosen baseline\n'
+      '--------------------------------------------')
 table.show()
 print('Baseline model, integrator and kick count:',
       BASELINE_MODEL, INTEGRATOR, N_KICKS)

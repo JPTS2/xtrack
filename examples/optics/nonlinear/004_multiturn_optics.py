@@ -78,6 +78,8 @@ island  = line.twiss4d(
 # num_turns searches an N-turn periodic orbit, not an amplitude scan or an open
 # Twiss continuation. The seed selects this island instead of the zero core.
 turn_starts = island.rows['_turn_.*']
+print('Seed the nonzero orbit and solve its multi-turn periodic optics\n'
+      '---------------------------------------------------------------')
 turn_starts.cols['name s x px betx alfx mux'].show(maxwidth = 'full')
 print('Multi-turn endpoint minus entrance (x [m], px normalized to p0):',
       island.x[-1] - island.x[0], island.px[-1] - island.px[0])
@@ -93,6 +95,8 @@ print('Island cumulative local phase advance over four turns:', island.mux[-1])
 particle = line.build_particles(x = island.x[0], px = island.px[0])
 line.track(particle, num_turns = N_TURNS, turn_by_turn_monitor = True)
 record = line.record_last_track
+print('\nTrack the same periodic orbit and compare turn-start coordinates\n'
+      '----------------------------------------------------------------')
 print('Maximum tracked-minus-Twiss turn-start residual (x [m], px):',
       np.max(np.abs(record.x[0] - turn_starts.x)),
       np.max(np.abs(record.px[0] - turn_starts.px)))

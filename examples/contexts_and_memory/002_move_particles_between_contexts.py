@@ -35,7 +35,8 @@ source_context      = xo.ContextCpu(omp_num_threads = 0)
 destination_context = xo.ContextCpu(omp_num_threads = N_THREADS)
 # CUDA alternative: destination_context = xo.ContextCupy()
 # OpenCL alternative: destination_context = xo.ContextPyopencl()
-# Both default contexts use host memory. A GPU context also requires data transfers.
+# Both default contexts use host memory. A GPU context also requires data
+# transfers.
 
 ################################################################################
 # Convert between NumPy and context arrays
@@ -70,6 +71,8 @@ aperture    = xt.LimitRect(
     max_x       = HALF_APERTURE,
 )
 aperture.track(particles)
+print('\nCreate a loss before transferring the particles\n'
+      '-----------------------------------------------')
 print('Source after the aperture:')
 particles.get_table().cols['particle_id state x px s'].show()
 
@@ -90,6 +93,8 @@ drift       = xt.Drift(
 # Advance only the copy
 ########################################
 drift.track(copied)
+print('\nCopy to another context and track independently\n'
+      '-----------------------------------------------')
 print('Copy after destination tracking; lost particles do not advance:')
 copied.get_table().cols['particle_id state x px s'].show()
 print('The source coordinates are unchanged:')
@@ -101,6 +106,8 @@ particles.get_table().cols['particle_id state x px s'].show()
 ################################################################################
 original    = particles
 particles.move(_context = destination_context)
+print('\nMove the original object to the destination context\n'
+      '---------------------------------------------------')
 print('Move keeps the same Python object:', particles is original)
 drift.track(particles)
 print('Moved original after the same destination tracking:')
@@ -116,6 +123,8 @@ particles.get_table().cols['particle_id state x px s'].show()
 returned        = copied.copy(_context = source_context)
 source_drift    = drift.copy(_context = source_context)
 source_drift.track(returned)
+print('\nReturn to the source context and resume tracking there\n'
+      '------------------------------------------------------')
 print('Returned copy after one more source-context drift:')
 returned.get_table().cols['particle_id state x px s'].show()
 

@@ -51,6 +51,7 @@ line.set_particle_ref('proton', p0c = P0C)
 # The native dipole kicks have zero length. Radiation is off.
 particles_before = line.particle_ref.copy()
 line.track(particles_before)
+print('Build the tracking line\n-----------------------')
 print('Before matching:')
 particles_before.get_table().cols['state at_element'].show()
 
@@ -90,6 +91,7 @@ tw = line_optics.twiss(
     betx        = BETX_START,
     bety        = BETY_START,
 )
+print('\nMatch a local orbit bump\n------------------------')
 tw.cols['name s x px'].show()
 
 ################################################################################
@@ -98,6 +100,8 @@ tw.cols['name s x px'].show()
 # The shared kick variables apply the matched bump in both sequences.
 particles_after = line.particle_ref.copy()
 line.track(particles_after)
+print('\nTrack through the original aperture\n'
+      '-----------------------------------')
 print('After matching:')
 particles_after.get_table().cols['state at_element'].show()
 

@@ -65,6 +65,8 @@ bare_max    = np.array([np.max(np.abs(bare[rdt])) for rdt in RDTS])
 powered_max = np.array([np.max(np.abs(powered[rdt])) for rdt in RDTS])
 change_max  = np.array([
     np.max(np.abs(powered[rdt] - bare[rdt])) for rdt in RDTS])
+print('Power the sextupoles and recompute the resonance driving terms\n'
+      '--------------------------------------------------------------')
 print('RDT magnitudes and magnitudes of their differences are in m^-1/2.')
 xt.Table(
     data    = {

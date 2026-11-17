@@ -80,6 +80,8 @@ opt.target_status()
 # Recalculate independently from the optimizer
 ########################################
 tw = env.twiss(method = '4d')
+print('Check the periodic optics and the unconstrained consequences\n'
+      '------------------------------------------------------------')
 for name in ['lhcb1', 'lhcb2']:
     print('\n' + name)
     tw[name].rows[['ip1', 'ip5', 'ip8']].cols[

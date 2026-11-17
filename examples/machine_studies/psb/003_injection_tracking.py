@@ -126,6 +126,8 @@ injection.num_particles_to_inject = 0
 line.track(particles, num_turns = N_TURNS - N_INJECT_TURNS)
 # The source is now off; follow the stored population through the collapse.
 # There is no foil scattering, space charge or validated aperture acceptance.
+print('\nTrack the accumulating population with the collapse clock enabled\n'
+      '-----------------------------------------------------------------')
 print('Final live macroparticle count:', np.count_nonzero(particles.state > 0))
 print('Tracked laboratory interval [us]:', line['t_turn_s'] * 1e6)
 print('Final represented population:',

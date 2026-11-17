@@ -79,6 +79,8 @@ initial = base.build_particles(zeta = ZETA_START, delta = DELTA_START)
 # Compare the phase switch with retaining the below-transition phase
 ################################################################################
 results = []
+print('Compare the phase switch with retaining the below-transition phase\n'
+      '------------------------------------------------------------------')
 for label, switch_phase in [('Phase switch', True), ('No switch', False)]:
     ########################################
     # Prepare an independent map and native turn-by-turn recording

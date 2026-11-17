@@ -81,6 +81,8 @@ accelerating_line['turn_map'].energy_ref_increment = ENERGY_GAIN
 accelerating_line['turn_map'].phase_rf[0] = (
     np.pi - np.arcsin(ENERGY_GAIN / RF_VOLTAGE))
 accelerating_bucket = xp.longitudinal.get_bucket(accelerating_line)
+print('Tilt the ideal bucket for reference acceleration\n'
+      '------------------------------------------------')
 print('Accelerating bucket interval [m]:',
       accelerating_bucket.z_left, accelerating_bucket.z_right)
 print('Effective force at its stable point [N]:',
@@ -122,7 +124,7 @@ for sign in [-1, 1]:
 accelerating_line.track(accelerating_bunch, num_turns = ACCEL_TURNS,
                         turn_by_turn_monitor = True)
 accelerating_record = accelerating_line.record_last_track
-print('After acceleration: states / reference p0*c [GeV]:',
+print('After acceleration: states / reference momentum [GeV/c]:',
       np.unique(accelerating_bunch.state), accelerating_bunch.p0c[0] * 1e-9)
 print('Fraction still inside the initial bucket:', np.mean(
     accelerating_bucket.is_in_separatrix(

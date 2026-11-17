@@ -67,6 +67,8 @@ bz_edges        = np.interp(z_edges, field[:, 0], field[:, 1])
 bz_edges[[0, -1]]   = 0.0
 rigidity            = line.particle_ref.rigidity0[0]  # Signed B rho [T m]
 ks_edges            = bz_edges / rigidity            # [m^-1]
+print('Load the stored lattice and sample the tabulated axial field\n'
+      '------------------------------------------------------------')
 print('Reference momentum [GeV/c]:', P0C * 1e-9)
 print('Signed rigidity [T m]:', rigidity)
 print('Sampled integral Bz dz [T m]:', np.trapezoid(bz_edges, z_edges))
@@ -173,6 +175,8 @@ for side, sites in corrector_sites.items():
 reference           = line.twiss4d()
 env['on_detector']  = 1.0
 uncorrected         = line.twiss4d()
+print('\nEstablish the field-free reference and the uncorrected perturbation\n'
+      '-------------------------------------------------------------------')
 print('Field-free IP physical horizontal slope:', reference['kin_xp', IP])
 print('Expected tan(TILT):', np.tan(TILT))
 print('Uncorrected coupling c_minus:', uncorrected.c_minus)
@@ -300,6 +304,8 @@ for side, start, end, init_at in [
 # Compare independent periodic optics and physical orbit quantities
 ########################################
 corrected       = line.twiss4d()
+print('\nInspect the periodic machine after the local corrections\n'
+      '--------------------------------------------------------')
 for label, tw in [('Field off', reference), ('Field on', uncorrected),
                   ('Corrected', corrected)]:
     print(label, 'c_minus:', tw.c_minus)

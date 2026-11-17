@@ -82,6 +82,8 @@ line.set_particle_ref('proton', p0c = P0C)
 # Inspect periodic optics of the assigned map
 ################################################################################
 tw = line.twiss()
+print('Inspect periodic optics of the assigned map\n'
+      '-------------------------------------------')
 print('Assigned qx, qy, qs [turns/pass]:', QX, QY, QS)
 print('Twiss qx, qy, qs [turns/pass]:', tw.qx, tw.qy, tw.qs)
 tw.cols['s betx alfx bety alfy'].show()
@@ -169,6 +171,8 @@ open_twiss = transport_line.twiss(
     x       = X_REF[0],
     px      = PX_REF[0],
 )
+print('\nAssign different entrance and exit optics\n'
+      '-----------------------------------------')
 open_twiss.cols['s x px betx alfx'].show()
 reference_probe = transport_line.build_particles(x = X_REF[0], px = PX_REF[0])
 transport.track(reference_probe)
@@ -199,6 +203,8 @@ rf_line = xt.Line(elements = [rf_segment])
 rf_line.particle_ref = line.particle_ref.copy()
 bucket_spacing = line.particle_ref.beta0[0] * c / RF_FREQUENCY
 eta = ALPHA_C - 1 / line.particle_ref.gamma0[0]**2
+print('\nRepeat a linear RF rotation in neighboring buckets\n'
+      '--------------------------------------------------')
 print('Slip factor and bucket spacing [m]:', eta, bucket_spacing)
 
 ########################################

@@ -30,9 +30,11 @@ STRENGTH_CHANGE = 0.001                  # Fractional circuit change
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / MODEL_FILE)
 tw0         = env.twiss(method = '4d', chrom = False)
+print('Inspect the two native beam representations\n'
+      '-------------------------------------------')
 for name in ['lhcb1', 'lhcb2']:
     line = env[name]
-    print(name, 'p0*c [TeV]:', line.particle_ref.p0c[0] * 1e-12)
+    print(name, 'momentum [TeV/c]:', line.particle_ref.p0c[0] * 1e-12)
     print('Twiss reference frame:', tw0[name].reference_frame)
     tw0[name].rows[['ip1', 'ip5', 'ip8']].cols[
         'name s betx bety'].show()
@@ -67,6 +69,8 @@ before              = [env[name][f'{MAGNET}/{name}'].k1
 env[SHARED_CIRCUIT] = reference_strength * (1 + STRENGTH_CHANGE)
 after               = [env[name][f'{MAGNET}/{name}'].k1
          for name in ['lhcb1', 'lhcb2']]
+print('\nChange one physical triplet circuit and observe both beam elements\n'
+      '------------------------------------------------------------------')
 print('Shared circuit:', SHARED_CIRCUIT)
 print('Before k1 for beam1/beam2 [m^-2]:', before)
 print('After  k1 for beam1/beam2 [m^-2]:', after)

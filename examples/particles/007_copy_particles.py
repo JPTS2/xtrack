@@ -47,6 +47,8 @@ xt.Multipole(knl = [0, K1L_B]).track(case_b)
 ########################################
 # Inspect the unchanged launch and the two responses
 ########################################
+print('Apply two strengths to the same launch\n'
+      '--------------------------------------')
 xt.Table(
     data    = {
         'particle_id': initial.particle_id,

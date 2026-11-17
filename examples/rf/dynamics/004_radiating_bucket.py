@@ -60,6 +60,8 @@ radiation_bucket    = xp.longitudinal.get_bucket(radiation_line)
 # The RF restores the actual mean energy loss; native tapering follows the
 # local momentum sawtooth. This illustrative 10 GeV/c setting uses the same
 # geometry and normalized strengths, not hardware-qualified magnet fields.
+print('Inspect a tilted bucket with a radiation-shifted momentum centre\n'
+      '----------------------------------------------------------------')
 print('Compensated mean energy loss per turn [eV]:',
       radiation_twiss.energy_loss)
 print('Compensated Twiss zeta [m] / delta:',

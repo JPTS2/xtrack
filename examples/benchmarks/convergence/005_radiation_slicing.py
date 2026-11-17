@@ -59,6 +59,8 @@ reference       = references[-1]
 reference_loss  = initial.energy[0] - reference.energy[0]
 loss_refinement = abs(references[0].energy[0] - reference.energy[0])
 orbit_refinement    = abs(references[0].x[0] - reference.x[0])
+print('Refine the numerical reference before using it to measure errors\n'
+      '----------------------------------------------------------------')
 print('Reference energy loss [eV]:', reference_loss)
 print('Change on doubling reference kicks:')
 print('  Energy [eV]:', references[0].energy[0] - reference.energy[0])

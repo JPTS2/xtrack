@@ -122,6 +122,8 @@ loss_table  = xt.Table(
         'error_s':      refined_s - analytical_loss_s},
     index   = 'particle_id',
 )
+print('Compare with the analytical intersection, preserving particle identity\n'
+      '----------------------------------------------------------------------')
 print('Loss distances and errors [m]; NaN means survival over this line.')
 loss_table.show(maxwidth = 'full')
 print('Longitudinal sampling DS [m]:', DS)

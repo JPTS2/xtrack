@@ -33,6 +33,8 @@ line        = env['demo']
 line.twiss_default['method']    = '4d'      # RF voltage is zero.
 tw_ref      = line.twiss4d()
 bpms        = line.steering_monitors_x
+print('Prepare the nominal response and alignment errors\n'
+      '-------------------------------------------------')
 print('BPMs:', bpms)
 print('Correctors:', line.steering_correctors_x)
 

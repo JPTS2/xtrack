@@ -54,6 +54,8 @@ survey = line.survey()
 tw = line.twiss4d(betx = 1.0, bety = 1.0, x = X_START, y = Y_START)
 trajectory = (survey.XYZ + tw.x[:, None] * survey.ex
                + tw.y[:, None] * survey.ey)
+print('Reconstruct the physical ray in global coordinates\n'
+      '--------------------------------------------------')
 print('Maximum physical X/Y change [m]:',
       np.ptp(trajectory[:, 0]), np.ptp(trajectory[:, 1]))
 print('Reference exit XYZ [m]:', survey.XYZ[-1])

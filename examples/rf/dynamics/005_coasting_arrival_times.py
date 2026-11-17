@@ -79,6 +79,8 @@ for turn in range(N_TURNS + 1):
 ########################################
 # eta = alpha_c - 1/gamma0^2. Positive eta means positive delta arrives later.
 prediction = clock[-1] * tw.slip_factor * DELTA
+print('Compare the shared reference clock with individual arrival times\n'
+      '----------------------------------------------------------------')
 xt.Table(
     data    = {
         'delta':                DELTA,

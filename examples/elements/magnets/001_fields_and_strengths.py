@@ -15,7 +15,7 @@ import xtrack as xt
 ########################################
 # Reference particle
 ########################################
-P0C                 = 1.0e9             # Proton reference p0*c [eV]
+P0C                 = 1.0e9             # Proton momentum times c [eV]
 
 ########################################
 # Physical fields and magnetic lengths
@@ -40,10 +40,15 @@ rigidity    = reference.rigidity0[0]
 k0  = DIPOLE_FIELD / rigidity
 k1  = QUAD_GRADIENT / rigidity
 k2  = SEXT_DERIVATIVE / rigidity
-print('Reference rigidity B*rho [T m]:', rigidity)
-print('Normalized dipole k0 [m^-1]:', k0)
-print('Normalized quadrupole k1 [m^-2]:', k1)
-print('Normalized sextupole k2 [m^-3]:', k2)
+print('Normalize physical fields to the reference rigidity'
+      '\n---------------------------------------------------')
+print('Positive-charge proton reference; strengths use its signed rigidity.')
+print(f'Reference momentum [GeV/c]: {reference.p0c[0] * 1e-9:.3f}')
+print(f'Reference rigidity [T m]: {rigidity:.6f}')
+print(f'B_y [T]: {DIPOLE_FIELD:.3f} -> k0 [m^-1]: {k0:.6f}')
+print(f'dB_y/dx [T/m]: {QUAD_GRADIENT:.3f} -> k1 [m^-2]: {k1:.6f}')
+print(f'd^2 B_y/dx^2 [T/m^2]: {SEXT_DERIVATIVE:.3f} '
+      f'-> k2 [m^-3]: {k2:.6f}')
 
 ################################################################################
 # Define the corresponding magnetic elements
@@ -60,10 +65,14 @@ bend = xt.Bend(
 )
 quad = xt.Quadrupole(length = MAGNET_LENGTH, k1  = k1)
 sext = xt.Sextupole(length = MAGNET_LENGTH, k2  = k2)
-print('Bend angle [rad] and integral(k0 ds) [1]:',
-      bend.angle, k0 * bend.length)
-print('Quadrupole integrated strength [m^-1]:', quad.k1 * quad.length)
-print('Sextupole integrated strength [m^-2]:', sext.k2 * sext.length)
+print('\nDistributed magnets and integrated strengths'
+      '\n--------------------------------------------')
+print('Bend angle defines reference geometry; k0 specifies the powered field.')
+print('Here the reference angle is chosen to equal k0 times the magnet length.')
+print(f'Bend angle [rad]: {bend.angle:.6f}')
+print(f'Integrated dipole k0 * L [1]: {k0 * bend.length:.6f}')
+print(f'Integrated quadrupole k1 * L [m^-1]: {quad.k1 * quad.length:.6f}')
+print(f'Integrated sextupole k2 * L [m^-2]: {sext.k2 * sext.length:.6f}')
 
 ########################################
 # Integrated coefficients for a thin multipole
@@ -71,8 +80,13 @@ print('Sextupole integrated strength [m^-2]:', sext.k2 * sext.length)
 # knl[n] is integral(k_n ds), without dividing by n!. The factorial enters
 # the field/kick polynomial. Here we combine quadrupole and sextupole terms.
 thin = xt.Multipole(knl = [0.0, k1 * MAGNET_LENGTH, k2 * MAGNET_LENGTH])
-print('Thin knl[1] [m^-1]:', thin.knl[1])
-print('Thin knl[2] [m^-2]:', thin.knl[2])
+print('\nThin multipole coefficients\n---------------------------')
+print('This thin element combines quadrupole and sextupole terms, '
+      'without a dipole.')
+print('knl[n] stores the integral of k_n, without division by n!.')
+print('The factorial belongs in the field and kick polynomial.')
+print(f'knl[1] [m^-1]: {thin.knl[1]:.6f}')
+print(f'knl[2] [m^-2]: {thin.knl[2]:.6f}')
 
 ################################################################################
 # Inspect the horizontal thin kick at y = 0
@@ -82,7 +96,16 @@ print('Thin knl[2] [m^-2]:', thin.knl[2])
 # Calculate the expected normalized momentum change
 ########################################
 # For the reference species, delta_px = -knl[1]*x - knl[2]*x^2/2.
-expected_px = -thin.knl[1] * X_START - thin.knl[2] * X_START**2 / 2
+quadrupole_px   = -thin.knl[1] * X_START
+sextupole_px    = -thin.knl[2] * X_START**2 / 2
+expected_px     = quadrupole_px + sextupole_px
+print('\nPredict and track the thin kick\n-------------------------------')
+print('px is canonical horizontal momentum divided by the reference momentum.')
+print('At y = 0, the kick is -knl[1]*x - knl[2]*x**2/2.')
+print(f'Initial x [m]: {X_START:.6f}')
+print(f'Quadrupole contribution to px [1]: {quadrupole_px:.9e}')
+print(f'Sextupole contribution to px [1]: {sextupole_px:.9e}')
+print(f'Predicted px after the kick [1]: {expected_px:.9e}')
 
 ########################################
 # Track through the thin element
@@ -91,6 +114,6 @@ line = xt.Line(elements = [thin])
 line.set_particle_ref('proton', p0c = P0C)
 particles = line.build_particles(x = X_START)
 line.track(particles)
-print('Expected horizontal kick P_x/p0:', expected_px)
-print('Tracked horizontal momentum P_x/p0:', particles.px[0])
-print('Horizontal position before and after [m]:', X_START, particles.x[0])
+print(f'Tracked px after the kick [1]: {particles.px[0]:.9e}')
+print(f'Tracked minus predicted px [1]: {particles.px[0] - expected_px:.3e}')
+print(f'Unchanged x after the thin kick [m]: {particles.x[0]:.6f}')

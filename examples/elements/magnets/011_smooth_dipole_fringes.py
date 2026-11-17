@@ -76,6 +76,8 @@ for steps in [RAMP_STEPS, 2 * RAMP_STEPS]:
     outputs[steps] = particles
 initial = xt.Particles('proton', p0c = P0C, y = Y_START)
 hard_edge.track(initial)
+print('Keep the field integral and exterior planes fixed\n'
+      '-------------------------------------------------')
 print('Common length [m]:', hard_edge.get_length(), smooth.get_length())
 print('Common integral k0 ds:', K0 * MAGNET_LENGTH)
 
@@ -87,6 +89,8 @@ print('Common integral k0 ds:', K0 * MAGNET_LENGTH)
 # Compare the common field-free outputs
 ########################################
 resolved = outputs[2 * RAMP_STEPS]
+print('\nSeparate finite-profile changes from ramp integration error\n'
+      '-----------------------------------------------------------')
 print('Ramp-step refinement: largest x/py difference:',
       np.max(np.abs(outputs[RAMP_STEPS].x - resolved.x)),
       np.max(np.abs(outputs[RAMP_STEPS].py - resolved.py)))

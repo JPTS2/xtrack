@@ -73,6 +73,8 @@ rdts = xt.rdt_first_order_perturbation(
     orbit       = perturbed,
     feed_down   = True,
 )
+print('\nCalculate RDTs using explicit optics, strengths and orbit\n'
+      '---------------------------------------------------------')
 rdts.rows[[OBSERVATION]].cols['name f3000 f1200 f1001 f1010'].show(
     maxwidth = 'full')
 # Sextupole f3000/f1200 have units m^-1/2. Coupling f1001/f1010 are
@@ -104,6 +106,8 @@ print('f1001 including feed-down:', rdts['f1001', OBSERVATION])
 ########################################
 # Compare the same observation plane and phase convention
 ########################################
+print('\nCompare weak-coupling optics and repeat at half strength\n'
+      '--------------------------------------------------------')
 print('First-order f1001 at IP:', rdts['f1001', OBSERVATION])
 print('Native Edwards-Teng f1001 at IP:', perturbed['f1001', OBSERVATION])
 relative_difference = abs(

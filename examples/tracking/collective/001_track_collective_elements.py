@@ -80,7 +80,7 @@ factor          = (2 * particle_ref.get_classical_particle_radius0()
                    * line_density * SC_LENGTH / (beta0**2 * gamma0**3))
 kappa_x         = factor / (sigma_x * (sigma_x + sigma_y))
 kappa_y         = factor / (sigma_y * (sigma_x + sigma_y))
-print('Reference electron p0*c [eV], gamma:', particle_ref.p0c[0], gamma0)
+print('Reference electron momentum [eV/c], gamma:', particle_ref.p0c[0], gamma0)
 print('Prescribed sigma_x, sigma_y [m]:', sigma_x, sigma_y)
 print('Peak line density [electrons/m]:', line_density)
 print('Central kick gradients Delta px/x, Delta py/y [m^-1]:', kappa_x, kappa_y)
@@ -158,6 +158,9 @@ for label, line in lines.items():
 ########################################
 # Compare input moments with the source used at each interaction
 ########################################
+print('\n'
+      'Inspect the collective contract and the resulting physical differences\n'
+      '----------------------------------------------------------------------')
 print('All moments below are in metres, at the interaction before each turn:')
 print('Case/turn       input mean_x      source mean_x      input sigma_x'
       '     source sigma_x')

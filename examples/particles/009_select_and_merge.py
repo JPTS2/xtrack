@@ -28,6 +28,7 @@ particles = xt.Particles(
     particle_id = PARTICLE_ID,
     x           = X,
 )
+print('Create identified particles\n---------------------------')
 particles.get_table().cols['particle_id x state'].show(maxwidth = 'full')
 row_before  = np.flatnonzero(particles.particle_id == FOLLOW_ID)[0]
 x_before    = particles.x[row_before]
@@ -41,12 +42,13 @@ x_before    = particles.x[row_before]
 ########################################
 # Sorting is a CPU operation. Array position is not the particle identifier.
 particles.sort(by = 'x')
+print('\nSort and select\n---------------')
 print('Sorted by x:')
 particles.get_table().cols['particle_id x state'].show(maxwidth = 'full')
 row_after   = np.flatnonzero(particles.particle_id == FOLLOW_ID)[0]
 x_after     = particles.x[row_after]
 print(f'Particle {FOLLOW_ID}: storage row {row_before} -> {row_after}')
-print(f'Its x coordinate is unchanged: {x_before:g} -> {x_after:g} m')
+print(f'Its x coordinate is unchanged [m]: {x_before:g} -> {x_after:g}')
 
 ########################################
 # Select an independent subset
@@ -65,6 +67,8 @@ particles.get_table().cols['particle_id x state'].show(maxwidth = 'full')
 # shifts the later batch's valid IDs and corresponding parent IDs.
 # Both copies have compatible scalar reference and clock fields, as required.
 merged = xt.Particles.merge([selected, selected.copy()])
+print('\nMerge batches with colliding identifiers\n'
+      '----------------------------------------')
 merged.get_table().cols[
     'particle_id parent_particle_id x state'].show(maxwidth = 'full')
 print('Merged particle count:', len(merged.particle_id))

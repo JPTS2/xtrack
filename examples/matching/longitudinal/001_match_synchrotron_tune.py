@@ -44,6 +44,8 @@ line        = env['demo']
 env['voltage_rf'] = RF_VOLTAGE
 env.set('rf.1', voltage = 'voltage_rf')
 before = line.twiss6d(chrom = False)
+print('Match voltage at fixed RF phase and frequency\n'
+      '---------------------------------------------')
 print('Initial voltage [V] and positive qs:', env['voltage_rf'], before.qs)
 print('Cavity phase [rad], frequency [Hz]:',
       line['rf.1'].phase, line['rf.1'].frequency)
@@ -73,7 +75,9 @@ opt = line.match(
 ########################################
 after = line.twiss6d(chrom = False)
 opt.target_status()
-print(f'Matched voltage: {env["voltage_rf"]:.6f} V')
+print('\nRecompute the matched tune and verify the synchronous return\n'
+      '------------------------------------------------------------')
+print(f'Matched voltage [V]: {env["voltage_rf"]:.6f}')
 print(f'Recomputed qs: {after.qs:.10f}; residual: {after.qs - QS_TARGET:+.3e}')
 
 # qs is positive, while the signed longitudinal phase muzeta decreases around

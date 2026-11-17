@@ -83,6 +83,8 @@ line.track(particles, turn_by_turn_monitor = 'ONE_TURN_EBE')
 record = line.record_last_track
 # Axes are (particle-ID slot, element boundary). The final column is the line
 # end, not an additional element. Twiss includes that same final boundary.
+print('Track a transverse Gaussian bunch through one turn\n'
+      '--------------------------------------------------')
 print('Recorded boundary count:', record.x.shape[1])
 print('Surviving macroparticles:', np.count_nonzero(particles.state > 0))
 print('First and last s [m]:', record.s[0, 0], record.s[0, -1])

@@ -63,6 +63,8 @@ base['phase_integral'] = 2 * np.pi * (
 # Compare the integrated-phase programme with frequency changes alone
 ################################################################################
 results = []
+print('Compare the integrated-phase programme with frequency changes alone\n'
+      '-------------------------------------------------------------------')
 for label, integrate_phase in [('Integrated phase', True),
                                 ('Frequency only', False)]:
     ########################################
@@ -104,7 +106,7 @@ for label, integrate_phase in [('Integrated phase', True),
           np.max(np.abs(arrival - time)))
     print(label, 'maximum kick error vs continuous chirp [eV]:',
           np.max(np.abs(kicks - ideal_kicks)))
-    print('Final state / fixed reference p0*c [eV]:',
+    print('Final state / fixed reference momentum [eV/c]:',
           particle.state, particle.p0c)
     results.append((label, time, frequency, offset, kicks, ideal_kicks,
                     arrival, particle))

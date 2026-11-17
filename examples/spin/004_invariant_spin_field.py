@@ -68,6 +68,8 @@ matrix  = tw.spin_n_matrix[0]
 # Column order is x, px, y, py, zeta, pzeta, with pzeta = ptau/beta0.
 # Position derivatives have units m^-1; momentum derivatives are dimensionless.
 # With RF off, the 4D field has no zeta dependence.
+print('Obtain the native linear invariant spin field\n'
+      '---------------------------------------------')
 xt.Table(
     data    = {
         'component': np.array(['nx', 'ny', 'nz']),
@@ -137,6 +139,8 @@ fields  = np.asarray(fields)
 # Inspect the accuracy of the linear field approximation
 ########################################
 errors  = np.linalg.norm(tracked - fields, axis = 1)
+print('\nFollow the invariant field as the orbital coordinates change\n'
+      '------------------------------------------------------------')
 for index, scale in enumerate(SCALES):
     print('Amplitude scale / maximum spin-field difference:',
           scale, np.max(errors[:, index]))

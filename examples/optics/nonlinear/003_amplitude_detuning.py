@@ -69,7 +69,9 @@ line.set_particle_ref('proton', p0c = P0C)
 # The emittance sets the launch scale, rather than a statistical beam sample.
 beta_gamma  = float(line.particle_ref.beta0[0] * line.particle_ref.gamma0[0])
 gemitt      = NEMITT / beta_gamma
-print(f'Geometric emittance scale: {gemitt:.6e} m')
+print('Measure the four amplitude-detuning coefficients\n'
+      '------------------------------------------------')
+print(f'Geometric emittance scale [m]: {gemitt:.6e}')
 print('Finite-difference actions [m]:', gemitt * np.array([A1, A2])**2 / 2)
 
 ########################################

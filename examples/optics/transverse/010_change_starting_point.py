@@ -40,6 +40,8 @@ wrapped = line.twiss4d(start = NEW_START)
 ########################################
 # Inspect row order and the phase origins
 ########################################
+print('Start the calculation at another entrance\n'
+      '-----------------------------------------')
 for label, optics in [
     ('Original', original), ('New calculation start', wrapped),
 ]:
@@ -61,6 +63,8 @@ zeroed  = line.twiss4d(zero_at = NEW_START)
 # Inspect negative coordinates upstream of the chosen zero
 ########################################
 # This does not reorder rows or wrap negative s/phase values into one turn.
+print('\nMove the coordinate zeros while keeping the original row order\n'
+      '--------------------------------------------------------------')
 zeroed.rows[DISPLAY_ROWS].cols[
     'name s mux muy betx bety'].show(maxwidth = 'full')
 
@@ -76,6 +80,8 @@ open_wrap   = line.twiss4d(
     end     = open_end,
     init    = original.get_twiss_init(open_start),
 )
+print('\nPropagate an open range across the stored end of the line\n'
+      '---------------------------------------------------------')
 print('Wrapped open range:', open_wrap.name[0], 'to', open_wrap.name[-2])
 print('Continuous s across the seam [m]:', open_wrap.s[0], open_wrap.s[-1])
 print('Beta at the final BPM: propagated/full-ring [m]:',
@@ -98,6 +104,8 @@ tw_cycled   = cycled.twiss4d()
 ########################################
 # Compare the two full-turn solutions at named planes
 ########################################
+print('\nChange the line order when tracking should also start there\n'
+      '-----------------------------------------------------------')
 print('Cycled line starts at:', cycled.element_names[0])
 tw_cycled.rows[DISPLAY_ROWS].cols[
     'name s mux muy betx bety'].show(maxwidth = 'full')

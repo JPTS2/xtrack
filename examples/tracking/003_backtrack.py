@@ -66,6 +66,7 @@ coordinates = np.array(['x', 'px', 'y', 'py', 'zeta', 'delta'])
 # Backtracking applies inverse element maps; it is not a model of a beam whose
 # velocity has been reversed in the same magnetic field.
 line.track(particles, num_turns = N_TURNS)
+print('Reverse complete turns\n----------------------')
 particles.get_table().cols[
     'x px y py zeta delta at_turn'].show(maxwidth = 'full')
 
@@ -97,6 +98,7 @@ print('Restored turn and element:', particles.at_turn, particles.at_element)
 ########################################
 partial = initial.copy()
 line.track(partial, ele_stop = STOP_ELEMENT)
+print('\nReverse a partial path\n----------------------')
 partial.get_table().cols['x px s at_element'].show(maxwidth = 'full')
 
 ########################################

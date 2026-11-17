@@ -60,6 +60,8 @@ initial = xt.Particles(
 )
 translated = initial.copy()
 xt.Translation(shift_x = SHIFT_X, shift_y = SHIFT_Y).track(translated)
+print('Inspect transverse coordinate signs\n'
+      '-----------------------------------')
 print('Expected translated x, y [m]:', X_START - SHIFT_X, Y_START - SHIFT_Y)
 print('Tracked translated x, y [m]:', translated.x[0], translated.y[0])
 
@@ -174,6 +176,7 @@ table = xt.Table(
 ########################################
 # Read the frame changes and their inverse
 ########################################
+print('\nInspect the resulting coordinates\n---------------------------------')
 table.rows[['initial', 'translated', 'rolled', 'new frame', 'restored']].cols[
     'x_mm y_mm px py'].show()
 table.rows[['initial', 'new frame', 'restored']].cols[

@@ -42,6 +42,7 @@ line        = env[LINE_NAME]
 # OpenMP distributes particles over threads. This tiny batch illustrates the
 # setup; it is not a performance comparison.
 context     = xo.ContextCpu(omp_num_threads = N_THREADS)
+print('Select a CPU context and track\n------------------------------')
 print('Selected context:', context)
 line.build_tracker(_context = context)
 particles   = line.build_particles(x = X)
@@ -57,6 +58,8 @@ print('Completed turns before the edit:', particles.at_turn)
 ########################################
 # Structural edits invalidate the tracker. A marker adds no length or kick.
 line.append('end_marker', xt.Marker())
+print('\nEdit the line and rebuild on the same context\n'
+      '---------------------------------------------')
 print('Tracker invalidated:', line.tracker is None)
 
 ########################################
@@ -75,6 +78,7 @@ print('Rebuilt tracker available:', line.tracker is not None)
 ########################################
 # The demo ring has no RF focusing at its default operating point.
 tw  = line.twiss4d()
+print('\nUse the rebuilt line\n--------------------')
 print(f'Tunes after adding the marker: Qx = {tw.qx:.6f}, Qy = {tw.qy:.6f}')
 
 ########################################

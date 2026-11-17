@@ -74,6 +74,8 @@ element.track(particles)
 # Inspect both maps at the same coordinates
 ########################################
 xt.Multipole(_context = context, knl = [0, K1L]).track(built_in)
+print('Compare with the built-in magnetic kick\n'
+      '---------------------------------------')
 xt.Table(
     data    = {
         'particle_id':   particles.particle_id,
@@ -112,6 +114,7 @@ line.append('python_quad', PythonQuadrupole(K1L))
 line.build_tracker(_context = context)
 python_particles = xt.Particles(_context = context, p0c = P0C, x = X, y = Y)
 line.track(python_particles)
+print('\nUse a Python tracking object\n----------------------------')
 print('Maximum Python/compiled px difference:',
       np.max(np.abs(python_particles.px - particles.px)))
 print('Maximum Python/compiled py difference:',

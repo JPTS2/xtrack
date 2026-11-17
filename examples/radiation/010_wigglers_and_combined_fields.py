@@ -87,6 +87,8 @@ wiggler_optics  = wiggler_line.twiss4d(radiation_integrals = True)
 wiggler_end     = wiggler_start + 4 * WIGGLER_LENGTH
 outside         = ((wiggler_optics.s < wiggler_start)
                    | (wiggler_optics.s >= wiggler_end))
+print('Add a closed vertical field wiggler to one independent copy\n'
+      '-----------------------------------------------------------')
 print('Radiation-free wiggler max outside |y| [m], |py|:',
       np.max(np.abs(wiggler_optics.y[outside])),
       np.max(np.abs(wiggler_optics.py[outside])))
@@ -113,6 +115,8 @@ cases['Bend gradient'].env.set(GRADIENT_BEND, k1 = BEND_K1)
 # Compensate and taper each case, then compare on the same local optics
 ########################################
 comparisons = {}
+print('\nCompare radiation integrals with full mean-map linearization\n'
+      '------------------------------------------------------------')
 for label, case in cases.items():
     case.vars['frequency_rf']   = 0.0
     case['rf.1'].harmonic       = RF_HARMONIC
@@ -170,6 +174,7 @@ for label, case in cases.items():
 # The integral momentum spread is a smooth longitudinal estimate. The full
 # entrance covariance includes longitudinal alpha and cross-mode correlations;
 # its local RMS need not equal that scalar estimate.
+
 # Full analysis uses the tracked mean-radiation map and diffusion prediction,
 # not a stochastic bunch equilibrated over many damping times. Integral and
 # full-map predictions need not agree exactly at finite element resolution.

@@ -59,6 +59,8 @@ covariance = tw.get_beam_covariance(
     nemitt_x        = NEMITT_X,
     nemitt_y        = NEMITT_Y,
     gemitt_zeta     = gemitt_zeta)
+print('Specify longitudinal emittance in the canonical coordinate convention\n'
+      '---------------------------------------------------------------------')
 print('Geometric longitudinal emittance [m]:', gemitt_zeta)
 print('Mode-3 entrance sigma_zeta [m]:', mode3.sigma_zeta[0])
 print('Full entrance sigma_zeta [m]:', covariance.sigma_zeta[0])
@@ -74,6 +76,8 @@ print('Full entrance sigma_zeta [m]:', covariance.sigma_zeta[0])
 ########################################
 # The longitudinal block has diagonal units m^2 and 1, and covariance in m.
 # pzeta agrees with delta only to first order near the reference particle.
+print('\nInspect the longitudinal covariance and its contour\n'
+      '---------------------------------------------------')
 covariance.rows[['arc.s1.c1.qf.in', 'ip.1', 'rf.1']].cols[
     'name sigma_zeta sigma_pzeta'].show(maxwidth = 'full')
 longitudinal = covariance.Sigma[0, 4:6, 4:6]

@@ -74,6 +74,8 @@ norms           = np.linalg.norm(spins, axis = -1)
 mean_spin       = np.mean(spins[:N_PROBES], axis = 0)
 polarization    = np.linalg.norm(mean_spin, axis = 1)
 turns           = np.arange(N_TURNS)
+print('Track individual spins and the vector average of the momentum sample\n'
+      '--------------------------------------------------------------------')
 print('Individual spin norm range:', norms.min(), norms.max())
 print('Initial / final sampled polarization magnitude:',
       polarization[0], polarization[-1])

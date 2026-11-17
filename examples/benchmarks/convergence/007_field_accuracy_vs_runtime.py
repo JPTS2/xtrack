@@ -148,6 +148,8 @@ if reference_change > TOLERANCE / 100:
 ################################################################################
 results         = {}
 matched_target  = TOLERANCE
+print('\nCalibrate each integrator against the common error requirement\n'
+      '--------------------------------------------------------------')
 for name, element in elements.items():
     low, high   = 0, 1
     history     = {}

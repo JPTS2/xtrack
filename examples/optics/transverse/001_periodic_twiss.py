@@ -50,6 +50,7 @@ tw = line.twiss4d(delta0 = DELTA0)
 ########################################
 # Rows are element entrances; _end_point is the final exit. Orbit, beta,
 # alpha and dispersion return to their initial values in a periodic solution.
+print('Inspect the optics\n------------------')
 tw.rows[[line.element_names[0], '_end_point']].cols[
     'name s x px betx alfx bety alfy dx dpx'].show(maxwidth = 'full')
 
@@ -64,22 +65,6 @@ tw.rows[[line.element_names[0], 'ip.1', '_end_point']].cols[
 ################################################################################
 # Plot the result
 ################################################################################
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
-
-########################################
-# Beta functions
-########################################
-axes[0].plot(tw.s, tw.betx, label = r'$\beta_x$')
-axes[0].plot(tw.s, tw.bety, label = r'$\beta_y$')
-axes[0].set_ylabel(r'$\beta$ [m]')
-axes[0].legend()
-
-########################################
-# Horizontal dispersion
-########################################
-axes[1].plot(tw.s, tw.dx)
-axes[1].set_ylabel(r'$D_x$ [m]')
-axes[1].set_xlabel('s [m]')
-fig.suptitle(f'Periodic 4D optics: Qx = {tw.qx:.3f}, Qy = {tw.qy:.3f}')
-fig.tight_layout()
+# Use the native optics view; it includes the element layout.
+tw.plot()
 plt.show()

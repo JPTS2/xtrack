@@ -55,6 +55,8 @@ qx_upper    = reference.qx + QX_HALF_WIDTH
 ########################################
 env['kqf'] *= KQF_FACTOR
 before = line.twiss4d()
+print('Capture the reference and define a tune interval\n'
+      '------------------------------------------------')
 print('Before: Qx and local betx/bety:', before.qx,
       before['betx', OBSERVATION] / before['bety', OBSERVATION])
 print('Allowed Qx interval:', qx_lower, qx_upper)
@@ -102,6 +104,9 @@ opt = line.match(
 # freeze() changes the target value to the current observable. It does not
 # disable the constraint or hold either quadrupole family fixed.
 opt.targets[2].freeze()
+print('\n'
+      'Freeze a target at its current value, then restore its requested value\n'
+      '----------------------------------------------------------------------')
 print('Frozen beta-ratio target:', opt.targets[2].value)
 opt.target_status()
 
@@ -122,6 +127,8 @@ opt.solve()
 opt.target_status()
 after       = line.twiss4d()
 ratio_after = after['betx', OBSERVATION] / after['bety', OBSERVATION]
+print('\nInspect physical values as well as target status\n'
+      '------------------------------------------------')
 print(f'After: Qx = {after.qx:.10f}, betx/bety = {ratio_after:.10f}')
 print(f'Ratio residual: {ratio_after - ratio_ref:+.3e}')
 print('Distances from lower/upper Qx limits:',
@@ -147,6 +154,8 @@ for name in ['kqf', 'kqd']:
 # into the forbidden region is gradual instead of the default linear penalty.
 
 initial_strengths = opt.get_knob_values(iteration = 0)
+print('\nAllocate an underdetermined correction with variable weights\n'
+      '------------------------------------------------------------')
 for qf_weight in QF_WEIGHTS:
     for name, value in initial_strengths.items():
         env[name] = value

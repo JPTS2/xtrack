@@ -15,9 +15,10 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-STATE_DIR   = 'outputs/correction'   # Produced by 003, relative here
-STATES      = ['aligned', 'errors', 'orbit']
-IP          = 'ipd'
+STATE_DIR       = 'outputs/correction'   # Produced by 003, relative here
+STATES          = ['aligned', 'errors', 'orbit']
+STATE_LABELS    = ['Aligned', 'Errors', 'Orbit corrected']
+IP              = 'ipd'
 
 ################################################################################
 # Calculate radiating equilibrium for each saved correction state
@@ -28,6 +29,8 @@ IP          = 'ipd'
 ########################################
 state_dir   = Path(__file__).resolve().parent / STATE_DIR
 results     = []
+print('Calculate radiating equilibrium for each saved correction state\n'
+      '---------------------------------------------------------------')
 for state in STATES:
     line = xt.load(state_dir / f'{state}.json')
     line.configure_radiation(model = 'mean')
@@ -66,7 +69,7 @@ values      = [[tw.eq_gemitt_y * 1e12 for tw in results],
 labels      = ['Vertical-like equilibrium mode emittance [pm]',
           f'Projected sigma_y at {IP.upper()} [nm]']
 for axis, numbers, label in zip(axes, values, labels):
-    bars = axis.bar(STATES, numbers)
+    bars = axis.bar(STATE_LABELS, numbers)
     axis.bar_label(bars, fmt = '%.3g', padding = 3)
     axis.set_yscale('log')
     axis.set(ylabel = label, ylim = (min(numbers) / 4, max(numbers) * 6))

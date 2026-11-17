@@ -74,6 +74,8 @@ reference   = action.run()
 env['kqf'] *= KQF_FACTOR
 env['kqd'] *= KQD_FACTOR
 before = action.run()
+print('Measure the clean reference before perturbing the strengths\n'
+      '-----------------------------------------------------------')
 print('Reference approximate average beta functions [m]:', reference)
 print('Perturbed approximate average beta functions [m]:', before)
 
@@ -109,9 +111,11 @@ opt = line.match(
 ########################################
 opt.target_status()
 after = action.run()
+print('\nVerify the derived observables and inspect the resulting optics\n'
+      '---------------------------------------------------------------')
 for name in reference:
-    print(f'{name}: {after[name]:.10f} m; '
-          f'reference residual = {after[name] - reference[name]:+.3e} m')
+    print(f'{name} [m]: {after[name]:.10f}; '
+          f'reference residual [m] = {after[name] - reference[name]:+.3e}')
 
 ########################################
 # Inspect quantities that were not directly targeted

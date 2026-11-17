@@ -29,7 +29,9 @@ tw          = line.twiss4d()
 survey      = line.survey()
 # The 100 MeV/c antiproton model has six 60-degree bends. Their fitted fields
 # extend into straight reference sections. RF, apertures and cooler are absent.
-print('Reference p0c [MeV/c]:', line.particle_ref.p0c[0] * 1e-6)
+print('Load the simplified ELENA field-expansion ring\n'
+      '----------------------------------------------')
+print('Reference momentum [MeV/c]:', line.particle_ref.p0c[0] * 1e-6)
 print('Circumference [m]:', line.get_length())
 print('Tunes Qx, Qy:', tw.qx, tw.qy)
 print('Maximum horizontal closed orbit [mm]:', np.max(np.abs(tw.x)) * 1e3)

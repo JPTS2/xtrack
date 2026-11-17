@@ -98,6 +98,8 @@ winged_shape    = env.aperture.new_profile(
 )
 # SVGShape is another transverse profile type, alongside Circle and Ellipse.
 # resolution samples the SVG first; PROFILE_POINTS resamples the final polygon.
+print('Define reusable transverse profiles\n'
+      '-----------------------------------')
 print('SVG path (coordinates in mm):', svg_path)
 print('SVG sampling distance [m]:', SVG_RESOLUTION)
 
@@ -128,6 +130,8 @@ winged_pipe = env.aperture.new_pipe(
         winged_shape.place(at = PIPE_LENGTH),
     ],
 )
+print('\nCompose pipes from profile positions\n'
+      '------------------------------------')
 print('Profiles:', env.aperture.profiles.keys())
 print('Pipes:', env.aperture.pipes.keys())
 print('Round-to-flat pipe length [m]:', pipe.length)

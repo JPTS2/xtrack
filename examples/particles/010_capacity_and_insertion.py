@@ -40,6 +40,8 @@ particles   = xt.Particles(
     p0c         = P0C,
     x           = X_INITIAL,
 )
+print('Reserve storage and retain a lost-particle history\n'
+      '--------------------------------------------------')
 print('Initial occupied slots:')
 particles.remove_unused_space().get_table().cols[
     'particle_id x state'].show(maxwidth = 'full')
@@ -63,6 +65,9 @@ incoming    = xt.Particles(
     x           = X_ADDED,
     particle_id = INPUT_IDS,
 )
+print('\n'
+      'Add particles with the same reference and inspect native ID assignment\n'
+      '----------------------------------------------------------------------')
 print('Incoming container IDs:', incoming.particle_id)
 
 # This is container insertion, not particle production or a physical collision.
@@ -82,6 +87,8 @@ occupied.get_table().cols['particle_id x state'].show(maxwidth = 'full')
 ################################################################################
 # Count live, lost and unused slots separately
 ################################################################################
+print('\nCount live, lost and unused slots separately\n'
+      '--------------------------------------------')
 print('Allocated / occupied / unused slots:', len(particles.x),
       len(occupied.x), len(particles.x) - len(occupied.x))
 print('Live / lost histories:', np.count_nonzero(occupied.state > 0),

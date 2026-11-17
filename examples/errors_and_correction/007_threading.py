@@ -68,12 +68,14 @@ closed_threaded = line.twiss4d()
 ########################################
 correction.correct(rcond = RESPONSE_CUTOFF)
 closed_after    = line.twiss4d()
+print('Steer successively longer passes, then close the orbit\n'
+      '------------------------------------------------------')
 for plane in ['x', 'y']:
     monitors    = getattr(line, 'steering_monitors_' + plane)
     for label, tw in [('Threaded', closed_threaded),
                       ('Periodic correction', closed_after)]:
         rms = np.sqrt(np.mean(tw[plane, monitors]**2))
-        print(f'{label}, {plane}: closed-orbit BPM RMS = {rms:.3e} m')
+        print(f'{label}, {plane}: closed-orbit BPM RMS [m] = {rms:.3e}')
 # Threading can supply a first pass when a closed-orbit search fails. Here the
 # errors are deliberately modest: failure of that search is not required.
 

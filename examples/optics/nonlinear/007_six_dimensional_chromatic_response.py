@@ -51,6 +51,8 @@ for shift in np.linspace(-zeta_step, zeta_step, N_SAMPLES):
                  tw.zeta[-1] - tw.zeta[0], tw['delta', OBSERVATION],
                  tw['x', OBSERVATION], tw['px', OBSERVATION]])
 rows = np.array(rows)
+print('Scan the imposed slippage and measure the actual momentum offsets\n'
+      '-----------------------------------------------------------------')
 xt.Table(
     data    = {
         'zeta_shift_m': rows[:, 0],
@@ -79,6 +81,8 @@ qy_coeff    = np.polynomial.polynomial.polyfit(rows[:, 1], rows[:, 3], 2)
 magnetic    = line.copy()
 magnetic['voltage_rf'] = 0.0
 fixed_delta = magnetic.twiss4d(chrom = True, delta_chrom = CHROM_STEP)
+print('\nCompare 6D response with fixed-momentum 4D optics\n'
+      '-------------------------------------------------')
 print('6D scan / fixed-delta4D first tune derivatives:')
 print('x:', qx_coeff[1], fixed_delta.dqx)
 print('y:', qy_coeff[1], fixed_delta.dqy)

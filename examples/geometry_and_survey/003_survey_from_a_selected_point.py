@@ -74,6 +74,8 @@ placed = line.survey(
 ########################################
 # Compare global poses
 ########################################
+print('Inspect the selected entrance and the start of the line\n'
+      '-------------------------------------------------------')
 for label, survey in [
     ('Default origin', reference), ('Assigned origin', placed),
 ]:
@@ -106,6 +108,8 @@ orbit_reference = (reference.XYZ + tw.x[:, None] * reference.ex
                    + tw.y[:, None] * reference.ey)
 orbit_placed = (placed.XYZ + tw.x[:, None] * placed.ex
                 + tw.y[:, None] * placed.ey)
+print('\nPut the same local closed orbit in both global frames\n'
+      '-----------------------------------------------------')
 print('Maximum closed-orbit |x| and |y| [mm]:',
       np.max(np.abs(tw.x)) * 1e3, np.max(np.abs(tw.y)) * 1e3)
 

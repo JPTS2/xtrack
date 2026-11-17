@@ -56,6 +56,8 @@ energy_table = xt.Table(
     },
     index   = 'particle_id',
 )
+print('Supply momentum deviation and inspect linked quantities\n'
+      '-------------------------------------------------------')
 energy_table.show(maxwidth = 'full')
 
 ################################################################################
@@ -80,6 +82,8 @@ comparison = xt.Table(
     },
     index   = 'particle_id',
 )
+print('\nUse another energy coordinate or update delta\n'
+      '---------------------------------------------')
 comparison.show(maxwidth = 'full')
 
 ########################################
@@ -122,6 +126,8 @@ transverse = xt.Table(
     },
     index   = 'particle_id',
 )
+print('\nInterpret transverse momentum and longitudinal position\n'
+      '-------------------------------------------------------')
 transverse.show(maxwidth = 'full')
 
 ########################################

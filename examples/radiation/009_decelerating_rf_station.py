@@ -75,6 +75,8 @@ decelerating_optics = decelerating_line.twiss6d(
 # Measure the negative kick and inspect the damping partitions
 ########################################
 station_kicks = {}
+print('Add a weak decelerating RF station with the tapered magnets held fixed\n'
+      '----------------------------------------------------------------------')
 for station in ['rf.1', 'rf.decelerating']:
     probe           = decelerating_optics.get_twiss_init(
         at_element = station).particle_on_co.copy()

@@ -64,6 +64,8 @@ line.track(particles, num_turns = FOLLOWUP_TURNS)
 # Rows are particle-ID slots. Each column samples the entrance BEFORE that
 # turn's first element. After further unmonitored tracking, the final state
 # is later than every sample in the saved record.
+print('Relate recorded samples to the final particle state\n'
+      '---------------------------------------------------')
 print('First record turns:', first.at_turn[0])
 print('First sampled x and launch x [m]:', first.x[0, 0], X)
 print('Final particle turn and x [m]:', particles.at_turn, particles.x)

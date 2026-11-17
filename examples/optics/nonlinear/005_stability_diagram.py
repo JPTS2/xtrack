@@ -112,6 +112,8 @@ diagram_x, diagram_y = footprint.get_stability_diagram(
 # This fixed epsilon, action cutoff and quadrature grid do not establish a
 # converged threshold. No coherent mode or growth rate is supplied, so no
 # stability verdict follows.
+print('\nEvaluate the Gaussian transverse dispersion integral\n'
+      '----------------------------------------------------')
 print('Fixed imaginary regulator:', EPSILON)
 print('Peak imaginary boundary x/y:',
       np.max(diagram_x.imag), np.max(diagram_y.imag))

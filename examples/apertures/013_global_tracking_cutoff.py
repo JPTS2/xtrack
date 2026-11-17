@@ -63,6 +63,8 @@ line.track(restricted)
 ########################################
 # Compare the two configurations on identical launches
 ########################################
+print('\nLocate the discrete safety loss in particle-ID order\n'
+      '----------------------------------------------------')
 for label, particles in [('Default guard', standard),
                          ('Tightened guard', restricted)]:
     particles.sort(interleave_lost_particles = True)

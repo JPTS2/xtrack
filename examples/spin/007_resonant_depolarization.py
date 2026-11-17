@@ -58,6 +58,8 @@ line.insert(
 twiss       = line.twiss4d(polarization_analysis = True)
 spin_tune   = twiss.spin_tune_fractional
 period      = twiss.t_rev0
+print('Set up a native spin-capable magnet and a vertically polarized sample\n'
+      '---------------------------------------------------------------------')
 print('Fractional spin tune / reference period [s]:', spin_tune, period)
 print('Orbital tunes Qx / Qy:', twiss.qx, twiss.qy)
 
@@ -94,6 +96,9 @@ histories   = {}
 ########################################
 # Track each drive and record projection and ensemble-mean magnitude
 ########################################
+print('\n'
+      'Compare resonant and detuned tracking with the same magnetic amplitude\n'
+      '----------------------------------------------------------------------')
 for label, frequency in [('Resonant', spin_tune),
                           ('Detuned', spin_tune + DETUNING)]:
     env.functions['spin_drive'] = xt.FunctionPieceWiseLinear(

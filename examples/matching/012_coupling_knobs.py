@@ -90,6 +90,8 @@ for knob, real_target, imag_target in [
 ################################################################################
 # Recompute actual coupling at the calibrated endpoints and combinations
 ################################################################################
+print('Recompute actual coupling at the calibrated endpoints and combinations\n'
+      '----------------------------------------------------------------------')
 print('Requested real/imag; native real/imag; native c_minus; maximum error:')
 results = []
 for real_factor, imag_factor in CASE_FACTORS:
@@ -139,6 +141,8 @@ correction  = line.match(
         tol             = COUPLING_TOL),
 )
 corrected   = line.twiss4d(chrom = False)
+print('\nUse the calibrated knobs to cancel a fixed skew error\n'
+      '-----------------------------------------------------')
 print('Native c_minus before error / with error / after correction:',
       reference.c_minus, perturbed.c_minus, corrected.c_minus)
 print('Correction knob values:', env['coupling_real'], env['coupling_imag'])

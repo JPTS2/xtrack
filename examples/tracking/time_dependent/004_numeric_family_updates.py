@@ -46,6 +46,8 @@ baseline    = setter.get_values().copy()
 ########################################
 # Apply one sampled ripple cycle and restore the baseline
 ########################################
+print('Update a numeric family snapshot with MultiSetter\n'
+      '-------------------------------------------------')
 for phase in np.linspace(0.0, 2 * np.pi, RIPPLE_SAMPLES):
     setter.set_values(baseline * (1 + RIPPLE_FRACTION * np.sin(phase)))
     values = setter.get_values()

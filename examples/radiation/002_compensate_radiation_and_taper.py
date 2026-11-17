@@ -91,6 +91,8 @@ fields.rows['arc.s1.c1.*'].cols[
 ########################################
 # Compare orbit displacement and all six returned coordinates
 ########################################
+print('\nInspect periodic closure and the energy sawtooth around the ring\n'
+      '----------------------------------------------------------------')
 print('Maximum closed-orbit change x / y [m]:',
       np.max(np.abs(twiss.x - reference.x)),
       np.max(np.abs(twiss.y - reference.y)))
@@ -123,6 +125,7 @@ fig.tight_layout()
 ################################################################################
 # Choose an entrance or a mean momentum convention
 ################################################################################
+
 ########################################
 # Contrast a fixed entrance momentum with the default mean convention
 ########################################
@@ -132,6 +135,8 @@ entrance_optics = entrance_line.twiss6d(
     chrom               = False,
     radiation_method    = 'full',
 )
+print('\nChoose an entrance or a mean momentum convention\n'
+      '------------------------------------------------')
 print('Taper convention / entrance delta / length-weighted delta estimate:')
 for label, optics in [('Default zero mean', twiss),
                        ('Requested entrance delta=0', entrance_optics)]:

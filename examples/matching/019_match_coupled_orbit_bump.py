@@ -117,6 +117,8 @@ closed = line.twiss4d()
 # Recompute the periodic orbit independently
 ########################################
 outside = (reference.s < START_S) | (reference.s > END_S)
+print('Use two more controls to close the horizontal leakage\n'
+      '-----------------------------------------------------')
 for label, tw in [('Vertical closure only', vertical_only),
                   ('Both-plane closure', closed)]:
     print(label)

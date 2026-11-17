@@ -76,6 +76,8 @@ line.aperture.place_pipe(
 ########################################
 line.aperture.num_profile_points    = PROFILE_POINTS
 line.aperture.build_model()
+print('Build the aperture geometry and inspect the installed cross-sections\n'
+      '--------------------------------------------------------------------')
 line.aperture.get_pipe_table().cols[
     'name pipe_name survey_reference s_start s_end'].show(maxwidth = 'full')
 line.aperture.get_bounds_table().cols[
@@ -101,8 +103,13 @@ sections.cols['s min_x max_x min_y max_y'].show(maxwidth = 'full')
 # Plot the global placement and local transverse geometry
 ################################################################################
 fig, axes   = plt.subplots(1, 2, figsize = (11, 4))
-line.aperture.plot_floor_projection(ax = axes[0], aspect = 'auto')
-axes[0].set_title('Installed pipes in the global survey frame')
+# Limit the floor view to the installed region so both pipe walls are visible.
+pipe_starts = [table['s', name] for name in ['qf.1', 'qd.1']]
+line.aperture.plot_floor_projection(
+    ax      = axes[0],
+    s_range = (min(pipe_starts) - 0.25, max(pipe_starts) + PIPE_LENGTH + 0.25),
+    aspect  = 'auto')
+axes[0].set_title('Installed region in the global survey frame')
 for label, polygon in zip(['Aligned', 'Shifted and rolled'],
                            sections.cross_section):
     closed  = np.vstack([polygon, polygon[0]])

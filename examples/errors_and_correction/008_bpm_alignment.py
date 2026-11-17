@@ -81,6 +81,8 @@ tw_after    = line.twiss4d()
 ########################################
 correction.clear_correction_knobs()
 tw_reset    = line.twiss4d()
+print('Reset the steering, then thread with the same BPM readout geometry\n'
+      '------------------------------------------------------------------')
 print('Reset maximum physical x/y difference from the initial orbit [m]:',
       np.max(np.abs(tw_reset.x - tw_before.x)),
       np.max(np.abs(tw_reset.y - tw_before.y)))
@@ -118,6 +120,8 @@ snapshots   = {
     'Threaded pass':        tw_thread,
 }
 readings    = {}
+print('\nDistinguish physical orbit from instrument readings\n'
+      '---------------------------------------------------')
 for label, tw in snapshots.items():
     physical    = tw.rows[bpms]
     x_shifted   = physical.x - BPM_SHIFT_X

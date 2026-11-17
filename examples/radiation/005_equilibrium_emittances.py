@@ -68,6 +68,8 @@ tw      = line.twiss(
     radiation_method    = 'full',
 )
 emittances  = np.array([tw.eq_gemitt_x, tw.eq_gemitt_y, tw.eq_gemitt_zeta])
+print("Analyse mean damping together with the model's quantum excitation\n"
+      '-----------------------------------------------------------------')
 print('Mode; equilibrium geometric emittance [m]; amplitude decrement [1/turn]')
 for mode, emittance, rate in zip(
     ['horizontal', 'vertical', 'longitudinal'],
@@ -88,6 +90,8 @@ for mode, emittance, rate in zip(
 # Use the full-analysis covariance, including its inter-mode correlations
 ########################################
 covariance  = tw.eq_beam_covariance_matrix
+print('\nInspect the predicted equilibrium covariance through native APIs\n'
+      '----------------------------------------------------------------')
 print('Sizes [m] and normalized canonical momentum spread [dimensionless]:')
 covariance.rows[OBSERVATIONS].cols[
     'name sigma_x sigma_y sigma_zeta sigma_pzeta'].show(maxwidth = 'full')
@@ -141,6 +145,8 @@ line.insert('equilibrium.monitor', monitor, at = 0)
 predicted           = {name: covariance[name][0] for name in quantities}
 moment_histories    = {}
 tracked_populations = {}
+print('\nPrepare native Gaussian bunches from the equilibrium prediction\n'
+      '---------------------------------------------------------------')
 print('Tracked amplitude damping times x/y/z:',
       N_TURNS * tw.damping_constants_turns)
 print('Approximate single-snapshot Gaussian RMS sampling scale:',

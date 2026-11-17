@@ -93,6 +93,8 @@ output  = xt.Table(
     },
     index   = 'particle_id',
 )
+print('Inspect the transported coordinates and agreement\n'
+      '-------------------------------------------------')
 output.show(maxwidth = 'full')
 
 ########################################
@@ -106,5 +108,5 @@ for coordinate, unit in [
                    - getattr(particles_xt, coordinate))
     print(f'Max |RF-Track - Xtrack| in {coordinate} [{unit}]: '
           f'{np.max(np.abs(difference)):.3e}')
-print(f'Initial p0*c: {P0C * 1e-9:.9f} GeV')
-print(f'Final p0*c:   {particles_rft.p0c[0] * 1e-9:.9f} GeV')
+print(f'Initial momentum [GeV/c]: {P0C * 1e-9:.9f}')
+print(f'Final momentum [GeV/c]:   {particles_rft.p0c[0] * 1e-9:.9f}')

@@ -121,7 +121,11 @@ line.to_json(output_dir / 'orbit.json')
 ########################################
 # Print physical residuals and saved states for the radiation study
 ########################################
-results = [('Aligned', tw0), ('Errors', tw_errors), ('Orbit', tw_orbit)]
+results = [
+    ('Aligned', tw0), ('Errors', tw_errors), ('Orbit corrected', tw_orbit),
+]
+print('Inspect orbit correction and the remaining dispersion\n'
+      '-----------------------------------------------------')
 for label, tw in results:
     print('\n' + label)
     for coordinate in ['x', 'y', 'dy']:

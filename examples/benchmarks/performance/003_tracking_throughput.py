@@ -53,6 +53,8 @@ else:
 ########################################
 # Record the software and workload
 ########################################
+print('Select and report the execution context\n'
+      '---------------------------------------')
 print('Host:', platform.platform(), platform.machine())
 print('Xtrack / Xobjects:', xt.__version__, xo.__version__)
 print('Context:', context)
@@ -68,9 +70,11 @@ repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env['demo']
 line.build_tracker(_context = context)
+print('\nLoad the fixed radiation-free ring\n'
+      '----------------------------------')
 print('Elements / circumference [m]:',
       len(line.element_names), line.get_length())
-print('Electron reference p0*c [GeV]:', line.particle_ref.p0c[0] * 1e-9)
+print('Electron reference momentum [GeV/c]:', line.particle_ref.p0c[0] * 1e-9)
 # This nominal 1 GeV/c ring has RF and radiation off. No monitor is recorded.
 
 ################################################################################
@@ -122,6 +126,8 @@ counts      = np.array(PARTICLE_COUNTS)
 medians     = np.array(medians)
 lower       = np.array(lower)
 upper       = np.array(upper)
+print('\nReport cost and throughput with the measured spread\n'
+      '---------------------------------------------------')
 xt.Table(
     data    = {
         'particles':        counts,

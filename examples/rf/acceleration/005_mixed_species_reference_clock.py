@@ -154,6 +154,8 @@ energy      = np.take_along_axis(np.array(logged['energy']), order, axis = 1)
 # SyncTime can store waiting probes with negative states. Their events span
 # frame windows, rather than forming a simultaneous snapshot at time_s.
 order   = np.argsort(particles.particle_id)
+print('\nTrack the two probes on a common native frame clock\n'
+      '---------------------------------------------------')
 xt.Table(
     data    = {
         'species':          np.array(['Fe-56(25+)', 'Bi-209(68+)']),
@@ -165,7 +167,7 @@ xt.Table(
                              - iron.mass0 * particles.mass_ratio[order]) / 1e6,
         'state':            particles.state[order]},
     index   = 'species').show(maxwidth = 'full')
-print('Shared reference p0*c [GeV]:', particles.p0c / 1e9)
+print('Shared reference momentum [GeV/c]:', particles.p0c / 1e9)
 print('Last RF/reference update epoch [us]:', line['t_turn_s'] * 1e6)
 print('Common clock [us] / reference turns:',
       particles.time_s * 1e6, particles.reference_turns)

@@ -52,6 +52,8 @@ for name in quad_names:
 # Each matrix maps corrector momentum kicks to BPM positions
 ########################################
 fig, axes   = plt.subplots(1, 2, figsize = (10, 4))
+print('Inspect the response and compare singular-value truncations\n'
+      '-----------------------------------------------------------')
 for plane in ['x', 'y']:
     setup   = getattr(correction, plane + '_correction')
     print(plane, 'response shape (BPMs, correctors):',

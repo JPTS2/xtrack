@@ -85,6 +85,8 @@ particles   = xt.Particles(
     p0c         = P0C,
     x           = X,
 )
+print('Invoke the CPU interaction once and follow the resulting IDs\n'
+      '------------------------------------------------------------')
 print('Original live IDs:', particles.particle_id[particles.state > 0])
 
 ########################################

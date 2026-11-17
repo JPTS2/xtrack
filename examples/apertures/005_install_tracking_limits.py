@@ -74,6 +74,8 @@ limits  = line.aperture.get_limit_elements_at_s(CHECK_S)
 line.discard_tracker()
 for index, (s, limit) in enumerate(limits.items()):
     line.insert(f'aper.{index}', limit, at = s)
+print('\nSample the chamber into native tracking elements\n'
+      '------------------------------------------------')
 line.get_table().cols['name s element_type'].show(maxwidth = 'full')
 # Snapshots must be regenerated after changing the chamber model. The chosen
 # stations set the longitudinal sampling; no material interaction is included.

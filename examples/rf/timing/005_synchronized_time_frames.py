@@ -88,6 +88,8 @@ st.install_sync_time_at_collective_elements(
     at_element_names        = ['pickup'],
     with_progress           = False)
 line.build_tracker()
+print('Install synchronization boundaries before building the tracker\n'
+      '--------------------------------------------------------------')
 line.get_table().cols['name s element_type'].show()
 
 ################################################################################
@@ -115,6 +117,8 @@ for frame in range(1, N_FRAMES + 1):
 # Waiting particles resume automatically in the appropriate later frame.
 order   = np.argsort(particles.particle_id)
 arrival = particles.time_s + (particles.s - particles.zeta) / (beta0 * c)
+print('\nAdvance complete frames and inspect the particle passage counters\n'
+      '-----------------------------------------------------------------')
 xt.Table(
     data    = {
         'particle_id':      particles.particle_id[order],
@@ -197,6 +201,8 @@ order               = np.argsort(particles.particle_id)
 expected_frequency  = beta0 * particles.rvv[order] * c / CIRCUMFERENCE
 measured_frequency  = np.array(measured_frequency)
 bin_bound           = np.array(bin_bound)
+print('\nMeasure revolution frequencies from actual pickup passages\n'
+      '----------------------------------------------------------')
 xt.Table(
     data    = {
         'delta':            DELTA,

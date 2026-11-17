@@ -115,6 +115,8 @@ derivatives             = [
 ]
 normal_form_detuning    = np.array([
     getattr(normal_form, field) for label, key, field in derivatives])
+print('\nCompare all four amplitude-detuning derivatives with native tracking\n'
+      '--------------------------------------------------------------------')
 for label, values in tracked_detuning.items():
     native_values       = np.array(
         [values[key] for name, key, field in derivatives])
@@ -140,6 +142,9 @@ normal_form_chromaticity    = np.array([
     normal_form.dq1_nf_ng, normal_form.dq2_nf_ng,
     normal_form.d2q1_nf_ng, normal_form.d2q2_nf_ng,
 ])
+print('\n'
+      'Compare first and second momentum derivatives with native Twiss scans\n'
+      '---------------------------------------------------------------------')
 for half_range in [DELTA_MAX, DELTA_MAX / 2]:
     fitted                      = line.get_non_linear_chromaticity(
         delta0_range    = (-half_range, half_range),

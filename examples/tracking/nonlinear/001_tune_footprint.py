@@ -109,6 +109,8 @@ jy          = (NEMITT_Y / beta_gamma) * footprint.y_norm_2d**2 / 2
 # These are initial linear-optics actions, not invariants of the octupole map.
 alias_x     = min(reference.qx % 1, 1 - reference.qx % 1)
 alias_y     = min(reference.qy % 1, 1 - reference.qy % 1)
+print('Measure a footprint from actual turn-by-turn tracking\n'
+      '-----------------------------------------------------')
 print('Full small-amplitude reference tunes:', reference.qx, reference.qy)
 print('Their real-signal FFT aliases:', alias_x, alias_y)
 print('Measured FFT-frequency ranges:',
@@ -164,6 +166,8 @@ off_momentum = line.get_footprint(
 off_reference = line.twiss4d(delta0 = DELTA_OFF, chrom = False)
 off_alias_x   = min(off_reference.qx % 1, 1 - off_reference.qx % 1)
 off_alias_y   = min(off_reference.qy % 1, 1 - off_reference.qy % 1)
+print('\nSeparate momentum dependence from strength extrapolation\n'
+      '--------------------------------------------------------')
 print('Recorded off-momentum delta range:',
       np.min(off_momentum.tracking_data.delta),
       np.max(off_momentum.tracking_data.delta))

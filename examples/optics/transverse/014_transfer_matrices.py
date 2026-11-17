@@ -66,6 +66,8 @@ r_middle_stop   = tw.get_R_matrix(start = MIDDLE, end = STOP)[:4, :4]
 ########################################
 # Column vectors propagate as u_stop = R_middle_stop @ R_start_middle @ u_start.
 r_composed  = r_middle_stop @ r_start_middle
+print('Compose the transverse maps between element entrances\n'
+      '-----------------------------------------------------')
 print('Largest matrix-composition residual:',
       np.max(np.abs(r_composed - r_start_stop)))
 print('Direct transverse matrix:')
@@ -136,6 +138,8 @@ result      = xt.Table(
 # Differences include nonlinear and numerical transport terms. Reduce the
 # displacement to examine the linear regime. Both particles stop before STOP,
 # at its entrance.
+print('\nCompare the linear prediction with particle tracking\n'
+      '----------------------------------------------------')
 result.show(maxwidth = 'full')
 print('Particle stopping indices:', particles.at_element)
 
@@ -155,6 +159,8 @@ ring_start = ring.element_names[0]
 r6_direct = tw6.get_R_matrix(start = ring_start, end = '_end_point')
 r6_first = tw6.get_R_matrix(start = ring_start, end = RING_MIDDLE)
 r6_second = tw6.get_R_matrix(start = RING_MIDDLE, end = '_end_point')
+print('\nCompose full 6D maps with RF focusing\n'
+      '-------------------------------------')
 print('6D matrix composition residual:',
       np.max(np.abs(r6_second @ r6_first - r6_direct)))
 print('One-turn reconstruction versus tracked linearization:',

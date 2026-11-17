@@ -42,6 +42,8 @@ for name, dx, dy in zip(quads, shift_x, shift_y):
     line[name].shift_x  = dx
     line[name].shift_y  = dy
 # These are independent offsets of magnet sections, not coherent girder errors.
+print('Compare the same errors at two optics settings\n'
+      '----------------------------------------------')
 print('Final-doublet sections:', len(quads))
 
 ########################################

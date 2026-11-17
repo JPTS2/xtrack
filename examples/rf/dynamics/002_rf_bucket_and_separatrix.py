@@ -81,6 +81,8 @@ bucket  = xp.longitudinal.get_bucket(line)
 zeta    = np.linspace(bucket.z_left, bucket.z_right, 401)
 upper   = bucket.separatrix(zeta)
 lower   = bucket.separatrix(zeta, sgn = -1)
+print('Obtain the native RF-bucket object and its separatrix\n'
+      '-----------------------------------------------------')
 print('Selected bucket zeta interval [m]:', bucket.z_left, bucket.z_right)
 print('Stable point zeta [m], delta:', bucket.z_sfp, bucket.dp0)
 
@@ -107,6 +109,8 @@ print('Initially inside the selected bucket:',
 ########################################
 line.track(particles, num_turns = N_TURNS, turn_by_turn_monitor = True)
 record  = line.record_last_track
+print('\nCompare librating trajectories with circulating longitudinal motion\n'
+      '-------------------------------------------------------------------')
 print('Final states:', particles.state)
 print('Sampled zeta ranges [m]:', np.ptp(record.zeta, axis = 1))
 

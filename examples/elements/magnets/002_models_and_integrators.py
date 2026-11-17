@@ -7,6 +7,7 @@
 # Required packages
 ################################################################################
 from pathlib import Path
+from textwrap import fill
 
 import numpy as np
 import xtrack as xt
@@ -51,11 +52,19 @@ SINGLE_KICKS        = 10
 # num_multipole_kicks sets the requested kick count for that integration.
 # Kick settings apply where the model needs thin kicks. Yoshida-6 rounds the
 # count up to complete seven-kick slices (the choices below use 7 and 21).
+print('Available body models and integrators'
+      '\n-------------------------------------')
+print('The model chooses the body map; the integrator composes its steps.')
+print('num_multipole_kicks is a requested count, '
+      'used where the model needs kicks.')
+print('Yoshida-6 uses complete seven-kick slices; '
+      'this example requests 7 or 21.')
 for element_class in [xt.Bend, xt.Quadrupole]:
-    print(f'{element_class.__name__} models:')
-    print(element_class.get_available_models())
+    print(f'\n{element_class.__name__} models:')
+    print(fill(', '.join(element_class.get_available_models()), width = 78))
     print(f'{element_class.__name__} integrators:')
-    print(element_class.get_available_integrators())
+    print(fill(', '.join(element_class.get_available_integrators()),
+               width = 78))
 
 ########################################
 # Load the ring and calculate the baseline
@@ -64,7 +73,7 @@ repo_root       = Path(__file__).resolve().parents[3]
 env             = xt.load(repo_root / LATTICE_FILE)
 line            = env[LINE_NAME]
 
-# The model supplies an electron reference particle with p0*c = 1 GeV.
+# The model supplies a 1 GeV/c electron reference; RF and radiation are off.
 table_before    = line.get_table(attr = True)
 tw0             = line.twiss(method = '4d')
 
@@ -108,13 +117,28 @@ line.set(
 ########################################
 # Override one focusing quadrupole
 ########################################
-line[SINGLE_ELEMENT].model               = SINGLE_MODEL
-line[SINGLE_ELEMENT].integrator          = SINGLE_INTEGRATOR
-line[SINGLE_ELEMENT].num_multipole_kicks = SINGLE_KICKS
-print('Configured body-map fields (name, model, integrator, kick count):')
-for name in ['arc.s1.c1.b1', 'arc.s1.c1.qd', 'arc.s1.c2.qf.in', SINGLE_ELEMENT]:
+line[SINGLE_ELEMENT].model                  = SINGLE_MODEL
+line[SINGLE_ELEMENT].integrator             = SINGLE_INTEGRATOR
+line[SINGLE_ELEMENT].num_multipole_kicks    = SINGLE_KICKS
+print('\nApply class settings, then family and individual overrides'
+      '\n----------------------------------------------------------')
+print('These are assignments in sequence: later settings replace earlier ones.')
+print(f'Class selections: {len(bends)} bends, {len(quadrupoles)} quadrupoles.')
+print(f'Family selection: {len(focusing)} arc QF halves; '
+      'insertion quads excluded.')
+print('Final settings for representative elements:')
+print(f'{"Scope":<12} {"Element":<22} {"Model":<25}'
+      f' {"Integrator":<12} {"Requested kicks":>15}')
+for scope, name in [
+    ('Bend class', 'arc.s1.c1.b1'),
+    ('Quad class', 'arc.s1.c1.qd'),
+    ('Quad class', 'straight.s1.r.q0'),
+    ('QF family', 'arc.s1.c2.qf.in'),
+    ('Individual', SINGLE_ELEMENT),
+]:
     element = line[name]
-    print(name, element.model, element.integrator, element.num_multipole_kicks)
+    print(f'{scope:<12} {name:<22} {element.model:<25}'
+          f' {element.integrator:<12} {element.num_multipole_kicks:15d}')
 
 ################################################################################
 # Compare the configured optics with the baseline
@@ -123,17 +147,22 @@ for name in ['arc.s1.c1.b1', 'arc.s1.c1.qd', 'arc.s1.c2.qf.in', SINGLE_ELEMENT]:
 ########################################
 # Check geometry and integrated quadrupole strengths
 ########################################
+print('\nGeometry and integrated strengths stay fixed'
+      '\n--------------------------------------------')
 table_after = line.get_table(attr = True)
 for column, unit in [('s_start', 'm'), ('s_end', 'm'), ('angle', 'rad'),
-                     ('k1l', 'm^-1')]:
+                     ('k0l', '1'), ('k1l', 'm^-1')]:
     difference = np.max(np.abs(table_after[column] - table_before[column]))
-    print(f'Maximum change in {column}: {difference:.3e} {unit}')
+    print(f'Maximum change in {column} [{unit}]: {difference:.3e}')
 
 ########################################
 # Recalculate four-dimensional periodic optics
 ########################################
 # Strengths and geometry stay fixed, but different map approximations can give
 # different optics. This comparison is not an accuracy or speed ranking.
+print('\nCompare periodic 4D optics\n--------------------------')
+print('Same strengths and geometry, different body-map settings.')
+print('Tune differences alone do not establish an accuracy or speed ranking.')
 tw = line.twiss(method = '4d')
 print(f'Baseline tunes:   Qx = {tw0.qx:.9f}, Qy = {tw0.qy:.9f}')
 print(f'Configured tunes: Qx = {tw.qx:.9f}, Qy = {tw.qy:.9f}')

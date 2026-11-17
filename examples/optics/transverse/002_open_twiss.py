@@ -25,12 +25,12 @@ LINE_NAME       = 'transport'
 ########################################
 # Entrance optics
 ########################################
-BETX_START  = 2.0                   # [m]
-BETY_START  = 3.0                   # [m]
-ALFX_START  = 0.2
-ALFY_START  = -0.1
-DX_START    = 0.1                   # Horizontal dispersion [m]
-DPX_START   = 0.01                  # d(px)/d(delta)
+BETX_START  = 10.0                      # [m]
+BETY_START  = 2.0                       # [m]
+ALFX_START  = -2.2
+ALFY_START  = 0.5
+DX_START    = 0.0                       # Horizontal dispersion [m]
+DPX_START   = 0.0                       # d(px)/d(delta)
 
 ################################################################################
 # Load the model
@@ -42,6 +42,8 @@ line        = env[LINE_NAME]
 ################################################################################
 # Calculate open-line optics
 ################################################################################
+# The entrance beta/alpha are near the cell-periodic values, so focusing
+# remains visible without a large imposed envelope mismatch.
 # No periodicity is imposed. Unspecified entrance orbit and vertical dispersion
 # components are zero; delta is zero and there is no RF.
 tw = line.twiss4d(
@@ -60,6 +62,7 @@ tw = line.twiss4d(
 ########################################
 # Compare the entrance and final exit
 ########################################
+print('Inspect the optics\n------------------')
 tw.rows[[line.element_names[0], '_end_point']].cols[
     'name s betx alfx bety alfy dx dpx'].show(maxwidth = 'full')
 
@@ -72,22 +75,6 @@ tw.cols['name s betx bety dx mux muy'].show(maxwidth = 'full')
 ################################################################################
 # Plot the result
 ################################################################################
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
-
-########################################
-# Beta functions
-########################################
-axes[0].plot(tw.s, tw.betx, label = r'$\beta_x$')
-axes[0].plot(tw.s, tw.bety, label = r'$\beta_y$')
-axes[0].set_ylabel(r'$\beta$ [m]')
-axes[0].legend()
-
-########################################
-# Horizontal dispersion
-########################################
-axes[1].plot(tw.s, tw.dx)
-axes[1].set_ylabel(r'$D_x$ [m]')
-axes[1].set_xlabel('s [m]')
-fig.suptitle('Transport line: optics from specified entrance conditions')
-fig.tight_layout()
+# Use the native optics view; it includes the element layout.
+tw.plot()
 plt.show()

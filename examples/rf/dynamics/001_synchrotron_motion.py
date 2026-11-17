@@ -48,6 +48,8 @@ env['voltage_rf'] = RF_VOLTAGE
 # Calculate the positive small-amplitude synchrotron tune
 ########################################
 tw  = line.twiss6d()
+print('Power the native cavity and find the synchronous reference\n'
+      '----------------------------------------------------------')
 print('Positive linear synchrotron tune:', tw.qs)
 print('Linear oscillation period [turns]:', 1 / tw.qs)
 
@@ -68,6 +70,8 @@ particles   = line.build_particles(
 ########################################
 line.track(particles, num_turns = N_TURNS, turn_by_turn_monitor = True)
 record  = line.record_last_track
+print('\nTrack small offsets with the sinusoidal RF kick\n'
+      '-----------------------------------------------')
 print('Final states:', particles.state)
 print('Largest sampled |delta|:', np.max(np.abs(record.delta)))
 peaks, _    = find_peaks(record.zeta[0])

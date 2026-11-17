@@ -72,6 +72,8 @@ ax.grid()
 ################################################################################
 
 lines = {}
+print('\nTranslate a variable field and follow mean-radiation loss\n'
+      '---------------------------------------------------------')
 for label, dx, dy in [('Centred', 0.0, 0.0),
                        ('Translated', AXIS_X, AXIS_Y)]:
     line = xt.Line(elements = [

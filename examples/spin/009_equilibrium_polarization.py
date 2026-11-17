@@ -74,6 +74,8 @@ bend_name   = table.rows[table.element_type == 'Bend'].name[0]
 # P = spin_polarization_eq * n0: reversing n0 reverses the scalar coefficient,
 # leaving P unchanged. spin_n0_ib projects n0 on the physical magnetic field.
 results = []
+print('Compare the planar limit with a spin-orbit-sensitive solenoid setting\n'
+      '---------------------------------------------------------------------')
 for strength in [0.0, SOLENOID_KS]:
     ########################################
     # Find the invariant spin field and its orbital dependence

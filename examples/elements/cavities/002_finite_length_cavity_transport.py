@@ -104,10 +104,12 @@ table = xt.Table(
         'time_ns':      times * 1e9,
         'phase_rad':    phases},
     index   = 'name')
+print('Inspect longitudinal transport and time of flight\n'
+      '-------------------------------------------------')
 table.show()
 print('Reference flight time over LENGTH [ns]:',
       LENGTH / (beta0 * clight) * 1e9)
-print('Reference p0*c before and after [eV]:', initial.p0c[0], on.p0c[0])
+print('Reference momentum before and after [eV/c]:', initial.p0c[0], on.p0c[0])
 
 ################################################################################
 # Inspect transverse momentum and slope
@@ -121,4 +123,6 @@ transverse = xt.Table(
         'px':           np.array([p.px[0] for p in states.values()]),
         'dx_ds':        np.array([p.kin_xp[0] for p in states.values()])},
     index   = 'name')
+print('\nInspect transverse momentum and slope\n'
+      '-------------------------------------')
 transverse.show()

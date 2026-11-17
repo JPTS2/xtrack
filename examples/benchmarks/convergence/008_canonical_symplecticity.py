@@ -41,6 +41,8 @@ scales          = np.diag([LENGTH_SCALE, 1, LENGTH_SCALE, 1, LENGTH_SCALE, 1])
 # Separate integration error from finite-difference error
 ################################################################################
 fig, axes = plt.subplots(2, 2, figsize = (11, 8), layout = 'constrained')
+print('Separate integration error from finite-difference error\n'
+      '-------------------------------------------------------')
 for axis, (label, fields) in zip(axes.ravel(), cases.items()):
     element = xt.BFieldExpansion(
         length = LENGTH, num_phi = 7, pkin_const = False, **fields)

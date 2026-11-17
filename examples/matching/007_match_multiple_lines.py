@@ -93,6 +93,8 @@ opt = env.match(
 # Compare both sets of tunes
 ########################################
 after       = {name: env[name].twiss4d() for name in LINE_NAMES}
+print('Recompute each physical line and inspect the shared solution\n'
+      '------------------------------------------------------------')
 print(f'{"Line":<6} {"Qx before":>14} {"Qx after":>14}'
       f' {"Qy before":>14} {"Qy after":>14}')
 for name in LINE_NAMES:

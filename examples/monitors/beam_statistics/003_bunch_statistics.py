@@ -61,6 +61,8 @@ monitor.track(particles)
 ########################################
 # Read by physical slot number rather than array index
 ########################################
+print('Inspect the slot axis and pooled population\n'
+      '-------------------------------------------')
 print('Levels/default:', monitor.available_levels, monitor.default_level)
 print('Selected slots and array shape:', monitor.selected_slots,
       monitor.mean_x.shape)

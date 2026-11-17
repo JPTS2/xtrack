@@ -40,6 +40,8 @@ magnetic            = magnetic_env['demo']
 ordinary    = rf_ring.twiss6d()
 beta0       = rf_ring.particle_ref.beta0[0]
 from_length = rf_ring.get_length() / (beta0 * c)
+print('Compare reference and tracked synchronous revolution periods\n'
+      '------------------------------------------------------------')
 print('Length/(beta0*c) [s]:', from_length)
 print('Twiss reference t_rev0 [s]:', ordinary.t_rev0)
 
@@ -80,6 +82,8 @@ for i, delta in enumerate(DELTA_SCAN):
 # eta = alpha_c - 1/gamma0^2; positive eta means increasing period with delta.
 # Both path-length and speed changes enter this derivative at fixed p0.
 relative = periods / nominal.t_rev0 - 1
+print('\nMeasure off-momentum periods without RF confinement\n'
+      '---------------------------------------------------')
 xt.Table(
     data    = {
         'delta':            DELTA_SCAN,

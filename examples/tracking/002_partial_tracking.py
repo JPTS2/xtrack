@@ -42,6 +42,8 @@ initial = line.build_particles(x = X, px = PX)
 # ele_start is inclusive; ele_stop is exclusive. No end-of-line crossing yet.
 partial = initial.copy()
 line.track(partial, ele_stop = 'drift.5')
+print('Stop before an element and resume\n---------------------------------')
+print('Stopped before drift.5: five drifts traversed.')
 partial.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ########################################
@@ -49,6 +51,7 @@ partial.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 ########################################
 # Keep ele_start consistent with the particle's at_element and s.
 line.track(partial, ele_start = 'drift.5')
+print('Resumed to the end: ten drifts traversed in total.')
 partial.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ################################################################################
@@ -66,6 +69,8 @@ line.track(wrapped, ele_stop = 'drift.7')
 ########################################
 # Traverses 7, 8, 9, 0, 1, 2: one boundary crossing increments at_turn.
 line.track(wrapped, ele_start = 'drift.7', ele_stop = 'drift.3')
+print('\nCross the end of the line\n-------------------------')
+print('From drift.7 to before drift.3: one line-end crossing.')
 wrapped.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ################################################################################
@@ -77,6 +82,9 @@ wrapped.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 ########################################
 counted = initial.copy()
 line.track(counted, num_elements = N_ELEMENTS + 3)
+print('\nCount elements or extend a partial path over turns\n'
+      '--------------------------------------------------')
+print('Thirteen elements from the start: one crossing, then three drifts.')
 counted.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ########################################
@@ -86,6 +94,7 @@ counted.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 # followed by the final partial turn. at_turn counts line-end crossings.
 multiple = initial.copy()
 line.track(multiple, ele_stop = 'drift.3', num_turns = 3)
+print('Three requested turns to drift.3: two crossings, then three drifts.')
 multiple.get_table().cols['x s at_turn at_element'].show(maxwidth = 'full')
 
 ########################################
@@ -101,5 +110,6 @@ line.track(
     ele_stop    = 'drift.3',
     num_turns   = 3,
 )
+print('Three wrapped paths from drift.7 to drift.3: three crossings.')
 wrapped_multiple.get_table().cols[
     'x s at_turn at_element'].show(maxwidth = 'full')

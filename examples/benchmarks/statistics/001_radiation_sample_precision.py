@@ -106,6 +106,8 @@ for estimates in [means, spreads]:
     intervals.append(np.quantile(bootstraps, [0.025, 0.975], axis = 1))
 # These percentile intervals describe uncertainty from only N_REPEATS batches.
 # They are approximate, and do not certify native-model accuracy or rare tails.
+print('\nRepeat each sample size rather than subdividing a single realization\n'
+      '--------------------------------------------------------------------')
 xt.Table(
     data    = {
         'N':                    SAMPLE_SIZES,

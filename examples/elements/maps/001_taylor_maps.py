@@ -81,6 +81,8 @@ second_order = xt.SecondOrderTaylorMap.from_line(
 ########################################
 # z_out = k + R @ z + sum_jk T[:, j, k]*z[j]*z[k]; no extra 1/2.
 # Here z = (x, px, y, py, zeta, pzeta), with pzeta = ptau/beta0.
+print('Extract the quadratic map about the on-axis trajectory\n'
+      '------------------------------------------------------')
 print('Extracted T[px, x, x] and -K2L/2 [m^-2]:',
       second_order.T[1, 0, 0], -K2L / 2)
 print('Mixed py entries, whose sum multiplies x*y [m^-2]:',
@@ -102,6 +104,8 @@ first_order = xt.FirstOrderTaylorMap(
     m0      = np.linalg.solve(basis, second_order.k),
     m1      = np.linalg.solve(basis, second_order.R @ basis),
 )
+print('\nConstruct the corresponding affine first-order map\n'
+      '--------------------------------------------------')
 print('Longitudinal shear coefficients in the two coordinate conventions [m]:')
 print('R[zeta, pzeta]:', second_order.R[4, 5])
 print('m1[tau, ptau]:', first_order.m1[4, 5])
@@ -149,6 +153,8 @@ outputs     = {}
 reference   = initial.copy()
 # Stop at the exit marker so open-pass s is retained.
 line.track(reference, ele_stop = 'end')
+print('\nTrack a common family of entrance amplitudes\n'
+      '--------------------------------------------')
 for label, element in [
     ('first order', first_order), ('second order', second_order)
 ]:
@@ -191,6 +197,8 @@ ring = xt.load(repo_root / LATTICE_FILE)['demo']
 # The demo ring has RF off. Map extraction uses this periodic 4D solution.
 ring.twiss_default['method'] = '4d'
 reduced = ring.get_line_with_second_order_maps(split_at = SPLIT_AT)
+print('\nReplace ring segments by local quadratic maps\n'
+      '---------------------------------------------')
 reduced.get_table().cols['name s_start s_end element_type'].show()
 
 ########################################

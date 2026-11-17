@@ -52,6 +52,7 @@ tw      = line.madng_twiss()
 # The returned table contains Xtrack columns and MAD-NG columns ending in _ng.
 # This uncoupled ring has beta11 = betx and beta22 = bety.
 bpms    = tw.rows[line.steering_monitors_x]
+print('Compare periodic optics\n-----------------------')
 bpms.cols['name s betx beta11_ng bety beta22_ng'].show(maxwidth = 'full')
 print(f'Xtrack tunes: Qx = {tw.qx:.8f}, Qy = {tw.qy:.8f}')
 qx_ng   = tw.mu1_ng[-1] - tw.mu1_ng[0]
@@ -65,6 +66,7 @@ print(f'MAD-NG tunes: Qx = {qx_ng:.8f}, Qy = {qy_ng:.8f}')
 # Changing the lattice structure would instead require rebuilding that model.
 line['dkqf']    = DKQF
 tw_trimmed      = line.madng_twiss()
+print('\nChange a shared family knob\n---------------------------')
 print(f'Focusing family trim: dkqf = {DKQF:.3g} m^-2')
 print(f'Xtrack tune shifts: dQx = {tw_trimmed.qx - tw.qx:.8f}, '
       f'dQy = {tw_trimmed.qy - tw.qy:.8f}')

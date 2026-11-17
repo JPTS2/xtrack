@@ -49,6 +49,8 @@ env.ref['segment'].voltage_rf[0] = (
 ########################################
 # Inspect expression and interpolated values
 ########################################
+print('Bind a clock function to a native RF array entry\n'
+      '------------------------------------------------')
 print('Array-entry expression:')
 env.ref['segment'].voltage_rf[0].xdeps.info()
 for time_s in [0.0, 0.5e-3, 1e-3, 1.5e-3, 2e-3]:

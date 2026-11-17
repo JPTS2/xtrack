@@ -108,6 +108,8 @@ fig.tight_layout()
 # The open response has zeros for downstream correctors
 ########################################
 response    = correction.x_correction.response_matrix
+print('\nInspect the single-pass trajectory and the causal response\n'
+      '----------------------------------------------------------')
 print('Horizontal response [m/rad]; BPM rows, corrector columns:')
 print(np.array2string(response, precision = 2, suppress_small = True))
 print('BPM row names:', bpms)

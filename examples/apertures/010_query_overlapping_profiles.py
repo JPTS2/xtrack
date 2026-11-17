@@ -54,6 +54,8 @@ line.aperture.build_model()
 # Inspect installed centres and their native longitudinal bounds
 ########################################
 bounds          = line.aperture.get_bounds_table()
+print('Install profile planes with overlapping longitudinal footprints\n'
+      '---------------------------------------------------------------')
 bounds.cols['name s s_start s_end'].show(maxwidth = 'full')
 intersected     = (bounds.s_start <= QUERY_S) & (QUERY_S <= bounds.s_end)
 print('Installed profiles whose longitudinal bounds contain the query:',
@@ -63,6 +65,8 @@ print('Installed profiles whose longitudinal bounds contain the query:',
 # Request the combined cross-section in the survey plane
 ################################################################################
 sections    = line.aperture.get_cross_sections_at_s([QUERY_S], extents = True)
+print('\nRequest the combined cross-section in the survey plane\n'
+      '------------------------------------------------------')
 sections.cols['s min_x max_x min_y max_y'].show(maxwidth = 'full')
 polygon     = sections.cross_section[0]
 print('Finite returned polygon vertices / total:',

@@ -99,7 +99,7 @@ for _ in range(N_TURNS):
 ########################################
 # Inspect the clock-to-field expression chain
 ########################################
-print(f'Reference revolution period: {period:.12e} s')
+print(f'Reference revolution period [s]: {period:.12e}')
 print('Entrance clocks [s] and strengths [m^-2]:')
 print(f'{"turn":>5} {"particle time_s":>18} {"applied t_turn_s":>18}'
       f' {"kqf":>14} {"arc QF k1":>14}')

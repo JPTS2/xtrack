@@ -82,6 +82,8 @@ settings    = [
     ('With eddy sextupole', BUMP_ANGLE, EDDY_K2L),
 ]
 results     = []
+print('Compare the chicane orbit, edge focusing and eddy-current feed-down\n'
+      '-------------------------------------------------------------------')
 for label, angle, k2l in settings:
     env['bsw_k0l']  = angle
     env['bsw_k2l']  = k2l

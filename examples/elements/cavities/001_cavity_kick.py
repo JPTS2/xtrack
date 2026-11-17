@@ -85,8 +85,10 @@ scaled_kicks = (scaled_particles.ptau - initial.ptau) * initial.p0c
 ################################################################################
 # The RF kick changes particle energy, delta and ptau; p0c stays fixed.
 i = len(ZETA_SCAN) // 2
+print('Inspect the reference and particle quantities\n'
+      '---------------------------------------------')
 print('At zeta = 0, energy kick [MeV]:', energy_kicks[i] * 1e-6)
-print('Reference p0*c before and after [eV]:',
+print('Reference momentum before and after [eV/c]:',
       initial.p0c[i], particles.p0c[i])
 print('Particle delta before and after:', initial.delta[i], particles.delta[i])
 print('Particle ptau before and after:', initial.ptau[i], particles.ptau[i])

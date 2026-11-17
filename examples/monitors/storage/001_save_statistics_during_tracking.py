@@ -91,6 +91,8 @@ line.insert('statistics', monitor, at = 'arc.s1.c1.qf.in@start')
 ########################################
 # Save after each tracking interval
 ########################################
+print('Append newly filled records while tracking continues\n'
+      '----------------------------------------------------')
 for start in range(0, N_TURNS, SAVE_EVERY):
     interval = min(SAVE_EVERY, N_TURNS - start)
     line.track(particles, num_turns = interval)
@@ -120,6 +122,8 @@ print('Rows after the repeated save:', len(saved_turns))
 # Inspect turn labels and weighted moments
 ########################################
 beam_mean   = monitor.get('mean_x', level = 'beam')
+print('\nCompare the saved history with the full in-memory frame\n'
+      '-------------------------------------------------------')
 xt.Table(
     data    = {
         'turn':          saved_turns,

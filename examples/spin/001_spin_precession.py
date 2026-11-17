@@ -69,6 +69,8 @@ anomaly         = initial.anomalous_magnetic_moment[0]
 angle_tracked   = np.arctan2(spins[:, 2], spins[:, 0])
 angle_expected  = anomaly * initial.gamma0[0] * BEND_ANGLES
 spin_norm       = np.linalg.norm(spins, axis = 1)
+print('Compare native precession with the planar Thomas–BMT prediction\n'
+      '---------------------------------------------------------------')
 xt.Table(
     data    = {
         'bend_angle':       BEND_ANGLES,

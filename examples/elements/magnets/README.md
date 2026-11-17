@@ -42,9 +42,9 @@ retain the class-level settings. RF voltage is zero and radiation is off.
 
 `003` first compares one fringe-free quadrupole with a common 1 GeV/c proton
 ensemble. The thin and thick representations preserve geometric
-length and integrated strength. Their exit maps are compared with the unsliced
-adaptive parent at one chosen slice count. Numerical convergence needs its own
-study. The plot uses Matplotlib; `px` and `py` are normalized canonical momenta.
+length and integrated strength. A short slice-count scan compares their exit maps with the unsliced
+adaptive parent, keeping the entrance probes and physical fields fixed. Thin-map
+errors decrease; thick slices agree to round-off for this fringe-free quadrupole. The plot uses Matplotlib; `px` and `py` are normalized canonical momenta.
 Later sections show class/name rules, last-match precedence, a no-slice override
 and one repeated occurrence. Tables expose parent-linked normal/skew strengths
 and alignment; absolute error strengths are kept separate from relative errors.

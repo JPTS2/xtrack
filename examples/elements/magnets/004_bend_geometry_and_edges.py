@@ -42,6 +42,8 @@ sector = xt.Bend(length = rectangular.length, angle = BEND_ANGLE)
 # RBend is specified by its chord. Bend is specified by its reference arc.
 # Both use k0 = from_h here: the normalized field follows angle / arc length.
 expected_arc = CHORD_LENGTH / np.sinc(BEND_ANGLE / (2 * np.pi))
+print('Compare sector and rectangular bend geometry\n'
+      '--------------------------------------------')
 print('Rectangular chord and arc lengths [m]:',
       rectangular.length_straight, rectangular.length)
 print('Analytic arc length [m]:', expected_arc)
@@ -70,6 +72,8 @@ print('Changed reference curvature and field k0 [m^-1]:',
 # For this curved-body RBend, effective face angles include angle/2.
 # A sector bend with zero user edge angles has zero face incidence instead.
 # This comparison uses linear edges with zero fringe integrals.
+print('\nInspect edge focusing at the original geometry\n'
+      '----------------------------------------------')
 print('Sector effective entry angle [rad]:', sector.edge_entry_angle)
 print('RBend effective entry angle [rad]:',
       rectangular.edge_entry_angle + rectangular.angle / 2)
@@ -104,6 +108,8 @@ for label, magnet in [('sector', sector), ('rectangular', rectangular)]:
 powered = rectangular.copy()
 powered.k0 = rectangular.h
 powered.angle = CHANGED_ANGLE
+print('\nDistinguish geometric curvature from the powered field\n'
+      '------------------------------------------------------')
 print('Geometry-following flag, h and effective k0 [m^-1]:',
       changed.k0_from_h, changed.h, changed.h)
 print('Independently powered k0_from_h, h and k0 [m^-1]:',
@@ -133,6 +139,8 @@ for magnet in [sector, rectangular, powered]:
 # Full edge maps are used here, unlike the linear-edge illustration above.
 # The geometry and field are identical; rbend_model selects the body map.
 body_outputs = {}
+print('\nCompare rectangular body models at common reference frames\n'
+      '----------------------------------------------------------')
 for body in ['curved-body', 'straight-body']:
     magnet = rectangular.copy()
     magnet.rbend_model = body

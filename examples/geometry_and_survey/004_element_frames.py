@@ -77,6 +77,8 @@ elem_end    = frames['elem_end']
 ########################################
 # Compare frame origins and misalignment pivots
 ########################################
+print('Inspect reference and actual element frames\n'
+      '-------------------------------------------')
 print('Frame origins in global survey (X, Y, Z) [m]:')
 for name, frame in frames.items():
     print(f'{name:12s}', frame.XYZ)
@@ -96,6 +98,8 @@ print('Actual pivot [m]:   ', actual_pivot)
 basis           = np.column_stack([elem_start.ex, elem_start.ey, elem_start.es])
 global_point    = elem_start.XYZ + basis @ LOCAL_POINT
 recovered_local = basis.T @ (global_point - elem_start.XYZ)
+print('\nTransform a local point and convert an actual frame to CCS\n'
+      '----------------------------------------------------------')
 print('Local point (x, y, s) [m]:', LOCAL_POINT)
 print('Global point (X, Y, Z) [m]:', global_point)
 print('Recovered local point [m]:', recovered_local)
@@ -125,6 +129,8 @@ slice_names = [name for name in sliced.element_names
                if isinstance(sliced.get(name), xt.ThickSliceQuadrupole)]
 first_slice = sliced_survey.get_all_frames(slice_names[0])
 last_slice  = sliced_survey.get_all_frames(slice_names[-1])
+print('\nPreserve the element frames through thick slicing\n'
+      '-------------------------------------------------')
 sliced_survey.rows[slice_names].cols[
     'name s X_elem_start Z_elem_start X_elem_end Z_elem_end'].show()
 
@@ -149,6 +155,8 @@ save_path.parent.mkdir(parents = True, exist_ok = True)
 survey.to_json(save_path, exclude = 'line')
 loaded = SurveyTable.from_json(save_path)
 loaded_frame = loaded.get_all_frames('q')['elem_start']
+print('\nSave and reload the surveyed frames\n'
+      '-----------------------------------')
 print('Saved survey:', save_path)
 print('Reloaded actual entrance minus original [m]:',
       loaded_frame.XYZ - elem_start.XYZ)

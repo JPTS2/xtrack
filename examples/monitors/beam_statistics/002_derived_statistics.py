@@ -140,6 +140,8 @@ sigma_x = np.sqrt(var_x)
 # Multiplication by reference beta0*gamma0 gives normalized emittance.
 beta_gamma  = line.particle_ref.beta0[0] * line.particle_ref.gamma0[0]
 nemitt_x    = beta_gamma * np.sqrt(var_x * var_px - cov_x_px**2)
+print('Derive the first sample directly from the input particles\n'
+      '---------------------------------------------------------')
 print('Macroparticles and represented intensity:',
       N_PARTICLES, monitor.num_particles[0])
 print('Direct and monitored centroid [m]:', mean_x, monitor.mean_x[0])
@@ -186,6 +188,8 @@ result  = xt.Table(
     },
     index   = 'statistic',
 )
+print('\nDistinguish plane projections from covariance normal modes\n'
+      '----------------------------------------------------------')
 print('Normalized emittances before and after rotation [m rad]:')
 result.show(maxwidth = 'full')
 print('Covariance calculation status:',

@@ -30,6 +30,8 @@ line        = env['demo']
 baseline    = line.twiss4d(chrom = False)
 output      = Path(__file__).resolve().parent / OUTPUT_FOLDER
 output.mkdir(parents = True, exist_ok = True)
+print('Prepare the native environment and generated output paths\n'
+      '---------------------------------------------------------')
 print('Python / Xtrack:', platform.python_version(), xt.__version__)
 print('Platform:', platform.platform())
 print('Elements / circumference [m]:',
@@ -43,6 +45,8 @@ print('Elements / circumference [m]:',
 # Measure plain JSON and gzip JSON on the same model
 ########################################
 rows    = []
+print('\nTime environment serialization and loading\n'
+      '------------------------------------------')
 for filename in ['demo.json', 'demo.json.gz']:
     path        = output / filename
     save_times  = []
@@ -67,7 +71,7 @@ for filename in ['demo.json', 'demo.json.gz']:
     ########################################
     restored_line   = restored['demo']
     tw              = restored_line.twiss4d(chrom = False)
-    print(filename, 'length / p0c:',
+    print(filename, 'length [m] / reference momentum [eV/c]:',
           restored_line.get_length(), restored_line.particle_ref.p0c[0])
     print('Restored - source tunes:', tw.qx - baseline.qx, tw.qy - baseline.qy)
     print('Restored - source kqf:', restored['kqf'] - env['kqf'])
@@ -91,6 +95,8 @@ rows.append(('lattice.py', 'build',
 # Inspect costs with explicit timing boundaries
 ################################################################################
 columns = ['format', 'operation', 'median_s', 'q25_s', 'q75_s', 'bytes']
+print('\nInspect costs with explicit timing boundaries\n'
+      '---------------------------------------------')
 xt.Table(
     data    = {name: np.array(values)
                for name, values in zip(columns, zip(*rows))},

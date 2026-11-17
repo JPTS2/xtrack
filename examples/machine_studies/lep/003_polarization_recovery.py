@@ -31,7 +31,9 @@ SETTINGS        = [
 repo_root   = Path(__file__).resolve().parents[3]
 line        = xt.load(repo_root / LATTICE_FILE)
 reference   = line.particle_ref
-print('Stored reference q0 [e], mass0 [eV/c^2], p0c [GeV]:',
+print('Load the LEP comparison model and inspect its physical reference\n'
+      '----------------------------------------------------------------')
+print('Stored reference q0 [e], mass0 [eV/c^2], momentum [GeV/c]:',
       reference.q0, reference.mass0, reference.p0c[0] * 1e-9)
 print('Stored reference gamma0 / magnetic-moment anomaly:',
       reference.gamma0[0], reference.anomalous_magnetic_moment[0])

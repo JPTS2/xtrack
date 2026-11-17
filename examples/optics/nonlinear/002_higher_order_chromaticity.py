@@ -57,6 +57,8 @@ fitted = line.get_non_linear_chromaticity(
 # dnqx[n] is d^n Qx/d(delta)^n at zero, including the factorial. Order zero
 # is the fitted intercept, not an independently calculated on-momentum tune.
 orders = np.arange(FIT_ORDER + 1)
+print('Interpret derivatives and reconstruct the fitted tunes\n'
+      '------------------------------------------------------')
 xt.Table(
     data    = {
         'order': orders,
@@ -84,6 +86,8 @@ print('Largest sampled tune-fit residuals (x, y):',
 # First and second tune derivatives
 ########################################
 local = line.twiss4d(chrom = True, delta_chrom = LOCAL_STEP)
+print('\nCompare finite-range fits with local Twiss derivatives\n'
+      '------------------------------------------------------')
 xt.Table(
     data    = {
         'quantity': np.array(['dqx', 'ddqx', 'dqy', 'ddqy']),
@@ -157,6 +161,8 @@ higher  = line.get_non_linear_chromaticity(
     num_delta       = NUM_DELTA,
     fit_order       = FIT_ORDER + 1,
     chrom           = False)
+print('\nTest fit-window and polynomial-order sensitivity\n'
+      '------------------------------------------------')
 print('Second tune derivatives: original / half range / higher degree')
 print('x:', fitted.ddqx, narrow.ddqx, higher.ddqx)
 print('y:', fitted.ddqy, narrow.ddqy, higher.ddqy)

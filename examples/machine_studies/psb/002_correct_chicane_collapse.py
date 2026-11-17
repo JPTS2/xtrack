@@ -100,9 +100,9 @@ for time_s in sample_times:
         corrections[name].append(line[name])
     tw = line.twiss()
     corrected.append([tw.qx, tw.qy, tw['bety', 'collapse.match']])
-    print(f't = {time_s * 1e3:.3f} ms: '
+    print(f't [ms] = {time_s * 1e3:.3f}: '
           f'Qx = {tw.qx:.7f}, Qy = {tw.qy:.7f}, '
-          f'bety = {tw["bety", "collapse.match"]:.6f} m')
+          f'bety [m] = {tw["bety", "collapse.match"]:.6f}')
 
 ################################################################################
 # Bind the quadrupole corrections and inspect interpolation between knots

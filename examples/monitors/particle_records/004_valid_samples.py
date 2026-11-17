@@ -68,6 +68,8 @@ record = line.record_last_track
 ########################################
 # Live particles can be moved to the front of the container. Follow particle_id,
 # not the array row. Lost particles retain their loss turn and element index.
+print('Interpret missing samples and particle IDs\n'
+      '------------------------------------------')
 particles.get_table().cols[
     'particle_id x at_turn at_element state'].show(maxwidth = 'full')
 lost = particles.state <= 0

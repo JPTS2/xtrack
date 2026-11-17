@@ -45,6 +45,8 @@ source      = env['demo']
 # Default line.copy() deep-copies elements and variables into a NEW environment.
 # A shallow copy shares its environment and is unsuitable for this operation.
 optimized = source.copy()
+print('Prepare an independent optimized snapshot\n'
+      '-----------------------------------------')
 print('Independent environments:', source.env is not optimized.env)
 # The model supplies a 1500 m electron ring at reference p0*c = 1 GeV.
 # RF voltage and radiation are off. Both copies start with the same strengths.
@@ -114,6 +116,8 @@ optimized.track(optimized_particles, num_turns = N_TURNS)
 ########################################
 # Compare coordinates at the same ring entrance
 ########################################
+print('\nInspect physical agreement and expression ownership\n'
+      '---------------------------------------------------')
 print('Final particle states (source/optimized):')
 print(source_particles.state, optimized_particles.state)
 print('Coordinate    Maximum absolute difference    Unit')

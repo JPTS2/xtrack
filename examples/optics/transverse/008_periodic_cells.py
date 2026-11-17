@@ -9,6 +9,7 @@
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import xtrack as xt
 
 ################################################################################
@@ -29,6 +30,8 @@ env                 = xt.load(repo_root / LATTICE_FILE)
 line                = env[LINE_NAME]
 cell                = env[CELL_NAME]
 cell.particle_ref   = line.particle_ref.copy()
+print('Load the reusable cell and the assembled ring\n'
+      '---------------------------------------------')
 cell.get_table().cols['name s'].show(maxwidth = 'full')
 
 ################################################################################
@@ -41,6 +44,8 @@ cell.get_table().cols['name s'].show(maxwidth = 'full')
 # The cell bends through 15 degrees and need not close on the floor plan.
 # Its transverse phase advances are 90 degrees, or 0.25 turns, in both planes.
 tw_cell = cell.twiss4d()
+print('\nSolve periodic optics for one cell\n'
+      '----------------------------------')
 tw_cell.rows[[cell.element_names[0], '_end_point']].cols[
     'name s betx alfx bety alfy dx dpx'].show(maxwidth = 'full')
 
@@ -65,9 +70,16 @@ tw_range = line.twiss4d(
     end     = NEXT_CELL_START,
     init    = 'periodic',
 )
-print('Selected-range/cell periodic entrance betx,bety,dx:')
-print(tw_range.betx[0], tw_cell.betx[0], tw_range.bety[0], tw_cell.bety[0],
-      tw_range.dx[0], tw_cell.dx[0])
+print('\nImpose periodicity only on a selected range of the assembled line\n'
+      '-----------------------------------------------------------------')
+print('Periodic entrance conditions [m]:')
+xt.Table(
+    data    = {
+        'solution': np.array(['Selected range', 'Reusable cell']),
+        'betx':     np.array([tw_range.betx[0], tw_cell.betx[0]]),
+        'bety':     np.array([tw_range.bety[0], tw_cell.bety[0]]),
+        'dx':       np.array([tw_range.dx[0], tw_cell.dx[0]])},
+    index   = 'solution').show(maxwidth = 'full')
 
 ################################################################################
 # Compare the first cell with its use in the ring
@@ -78,6 +90,8 @@ print(tw_range.betx[0], tw_cell.betx[0], tw_range.bety[0], tw_cell.bety[0],
 ########################################
 # Table slicing includes the next cell's entrance as this cell's final plane.
 ring_cell = tw_ring.rows[CELL_START:NEXT_CELL_START]
+print('\nCompare the first cell with its use in the ring\n'
+      '-----------------------------------------------')
 print('Ring beta and dispersion at the first cell entrance:')
 tw_ring.rows[[CELL_START]].cols[
     'name betx alfx bety alfy dx dpx'].show(maxwidth = 'full')

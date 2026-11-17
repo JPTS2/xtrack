@@ -68,6 +68,8 @@ for model in ['mean', 'quantum', 'quantum-kick']:
 models      = np.array(list(losses))
 means       = np.array([np.mean(losses[model]) for model in models])
 spreads     = np.array([np.std(losses[model]) for model in models])
+print('Compare the finite-sample loss distributions\n'
+      '--------------------------------------------')
 xt.Table(
     data    = {
         'model':            models,

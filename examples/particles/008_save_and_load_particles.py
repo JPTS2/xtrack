@@ -58,6 +58,8 @@ print('Saved particles to:', json_path)
 ################################################################################
 # Inspect identifiers, coordinates, weights and reference momentum
 ################################################################################
+print('\nInspect identifiers, coordinates, weights and reference momentum\n'
+      '----------------------------------------------------------------')
 for label, batch in [
     ('Original', particles), ('Dictionary', from_dict), ('JSON', restored),
 ]:

@@ -60,6 +60,8 @@ velocity_table  = xt.Table(
     },
     index   = 'species',
 )
+print('Compare species at the same velocity\n'
+      '------------------------------------')
 print('Same velocity; different physical momenta:')
 velocity_table.show(maxwidth = 'full')
 
@@ -96,6 +98,8 @@ momentum_table  = xt.Table(
     },
     index   = 'species',
 )
+print('\nCompare species at the same physical momentum\n'
+      '---------------------------------------------')
 print('Same physical momentum; different velocities:')
 momentum_table.show(maxwidth = 'full')
 

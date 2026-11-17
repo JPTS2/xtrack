@@ -28,7 +28,8 @@ LINE_NAME       = 'demo'
 ########################################
 X               = np.array([0.1, 0.2, 0.3]) * 1e-3  # [m]
 N_TURNS         = 16
-OBS_PATTERN     = r'bpm\.ip\..*'
+OBS_PATTERN     = r'bpm\.s1\.[fd]'
+SELECTED_POINT  = 'bpm.s1.d'
 PARTICLE_ID     = 1
 SELECTED_TURN   = 3
 
@@ -44,7 +45,10 @@ line        = env[LINE_NAME]
 ################################################################################
 table           = line.get_table()
 observations    = table.rows.match(name = OBS_PATTERN).name
-print('Selected observation points:', observations)
+print('Observation points\n------------------')
+print('s and betx [m]; mux [turns].')
+tw = line.twiss4d()
+tw.rows[observations].cols['name s betx mux'].show(maxwidth = 'full')
 
 ################################################################################
 # Record named locations without inserting elements
@@ -92,6 +96,8 @@ line.track(replayed, num_turns = N_TURNS)
 # Reconcile the two array layouts
 ########################################
 # ParticlesMonitor axes are (particle-ID slot, sample), so transpose its x.
+print('\nCompare observations at each physical point\n'
+      '-------------------------------------------')
 for name in observations:
     installed   = line[f'monitor.{name}']
     difference  = installed.x.T - record.get('x', obs_name = name)
@@ -108,12 +114,13 @@ for name in observations:
 locations   = record.get('x', particle_id = PARTICLE_ID, turn = SELECTED_TURN)
 value       = record.get(
     'x',
-    obs_name    = 'bpm.ip.r',
+    obs_name    = SELECTED_POINT,
     particle_id = PARTICLE_ID,
     turn        = SELECTED_TURN,
 )
 print('x at both locations for the selected turn [m]:', locations)
-print('One selected sample x [m]:', value)
+print(SELECTED_POINT, 'selected sample x [m]:', value)
+print('The read planes change amplitude and phase, not the turn frequency.')
 
 ################################################################################
 # Plot the selected particle at both observation points

@@ -81,6 +81,8 @@ target.aperture.build_model()
 ########################################
 # Show names and installed geometry after both reload routes
 ########################################
+print('Inspect the restored definitions and physical cross-sections\n'
+      '------------------------------------------------------------')
 print('Complete-line file:', line_file)
 print('Aperture-only file:', aperture_file)
 print('Restored profiles:', restored.env.aperture.profiles.keys())

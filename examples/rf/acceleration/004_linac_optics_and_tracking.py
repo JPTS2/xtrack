@@ -73,6 +73,8 @@ tw          = line.twiss(
 
 # method='4d' suppresses cavity energy kicks and would describe another map.
 # These are propagated entrance conditions, not a periodic RF equilibrium.
+print('Calculate open optics with the RF energy kick active\n'
+      '----------------------------------------------------')
 tw.cols['name s delta betx bety alfx alfy'].show(maxwidth = 'full')
 covariance  = tw.get_beam_covariance(nemitt_x = NEMITT_X, nemitt_y = NEMITT_Y)
 
@@ -108,10 +110,13 @@ line.track(particles, num_turns = 1, turn_by_turn_monitor = 'ONE_TURN_EBE')
 record      = line.record_last_track
 sigma_x     = np.std(record.x, axis = 0)
 sigma_y     = np.std(record.y, axis = 0)
+print('\n'
+      'Track one physical passage and compare population moments with optics\n'
+      '---------------------------------------------------------------------')
 print('Physical RF energy gain, min/max [eV]:',
       np.min(particles.energy - initial.energy),
       np.max(particles.energy - initial.energy))
-print('Fixed reference p0*c [eV]:', particles.p0c[0])
+print('Fixed reference momentum [eV/c]:', particles.p0c[0])
 
 ########################################
 # Distinguish normalized momentum from geometric slope at the gap

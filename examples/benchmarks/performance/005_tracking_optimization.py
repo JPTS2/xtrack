@@ -53,6 +53,8 @@ else:
 ########################################
 # Record the software and workload
 ########################################
+print('Select and report the execution context\n'
+      '---------------------------------------')
 print('Host:', platform.platform(), platform.machine())
 print('Xtrack / Xobjects:', xt.__version__, xo.__version__)
 print('Context:', context)
@@ -78,10 +80,12 @@ optimized.optimize_for_tracking()
 # Optimization removes markers and inactive elements, replaces passive Devices
 # with drifts and disables expressions in its owning environment. This copy is
 # independent. The nominal aligned model has RF and radiation off.
+print('\nPrepare equivalent source and optimized configurations\n'
+      '------------------------------------------------------')
 print('Element counts (source / optimized):',
       len(source.element_names), len(optimized.element_names))
 print('Circumferences [m]:', source.get_length(), optimized.get_length())
-print('Electron reference p0*c [GeV]:', source.particle_ref.p0c[0] * 1e-9)
+print('Electron reference momentum [GeV/c]:', source.particle_ref.p0c[0] * 1e-9)
 print('Particles:', N_PARTICLES)
 
 ########################################
@@ -139,6 +143,8 @@ labels      = np.array(['source', 'optimized'])
 medians     = np.array(medians)
 lower       = np.array(lower)
 upper       = np.array(upper)
+print('\nCompare measured cost and physical output\n'
+      '-----------------------------------------')
 xt.Table(
     data    = {
         'configuration':    labels,

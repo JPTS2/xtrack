@@ -52,6 +52,8 @@ particles   = xt.Particles(
 # Change one of the two elements
 ########################################
 quad_a.k1   = CHANGED_K1
+print('Sharing a buffer does not share field values\n'
+      '--------------------------------------------')
 print('Elements in the same buffer:')
 print(f'  Changed quad_a k1: {quad_a.k1:g} m^-2')
 print(f'  Unchanged quad_b k1: {quad_b.k1:g} m^-2')
@@ -62,8 +64,8 @@ print(f'  Unchanged quad_b k1: {quad_b.k1:g} m^-2')
 particles_copy      = particles.copy(_buffer = buffer)
 particles_copy.x[0] = X_CHANGED
 print('Particle batches in the same buffer:')
-print(f'  Original x: {particles.x[0] * 1e3:g} mm')
-print(f'  Changed copy x: {particles_copy.x[0] * 1e3:g} mm')
+print(f'  Original x [mm]: {particles.x[0] * 1e3:g}')
+print(f'  Changed copy x [mm]: {particles_copy.x[0] * 1e3:g}')
 
 ################################################################################
 # Choose whether a copied line shares its elements
@@ -80,6 +82,8 @@ deep    = line.copy(_context = context)
 # A shallow copy uses the original elements
 ########################################
 shallow['qb'].k1    = CHANGED_K1
+print('\nChoose whether a copied line shares its elements\n'
+      '------------------------------------------------')
 print('After changing qb through the shallow copy:')
 print(f"  Original line qb k1: {line['qb'].k1:g} m^-2")
 print(f"  Shallow copy qb k1: {shallow['qb'].k1:g} m^-2")

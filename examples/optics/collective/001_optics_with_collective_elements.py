@@ -90,6 +90,8 @@ for label, intensity, updating in [
 # Xfields. Their prescribed force therefore remains active in default Twiss.
 # The genuinely updating field is collective and is replaced by a drift here.
 optics = {}
+print('Calculate open optics with the default collective handling\n'
+      '----------------------------------------------------------')
 for label, line in lines.items():
     optics[label] = line.twiss4d(
         betx    = BETX_START,
@@ -100,8 +102,8 @@ for label, line in lines.items():
         delta   = 0.0,
     )
     print(f'{label}: iscollective = {line.iscollective}, '
-          f'exit betx = {optics[label].betx[-1]:.9f} m, '
-          f'exit bety = {optics[label].bety[-1]:.9f} m')
+          f'exit betx [m] = {optics[label].betx[-1]:.9f}, '
+          f'exit bety [m] = {optics[label].bety[-1]:.9f}')
 
 ########################################
 # Check the skipped force against the zero-charge control

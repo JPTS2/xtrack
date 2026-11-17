@@ -72,6 +72,8 @@ opt.generate_knob()
 
 # generate_knob() makes the auxiliary corrections linear in the new knob and
 # resets it to its starting value. It does not rerun a match per use.
+print('Match the endpoint correction and generate its expression dependencies\n'
+      '----------------------------------------------------------------------')
 print('Generated knob starting value:', env[KNOB_NAME])
 print('Original/generated-start family strengths [m^-2]:')
 for name, strength in k1_start.items():
@@ -105,6 +107,8 @@ vertical_opt.generate_knob()
 ########################################
 # Both knobs have physical, nonzero origins. Each correction vanishes at its
 # own origin, so the two generated corrections add to the saved strengths.
+print('\nCompose a second knob on the same quadrupole families\n'
+      '-----------------------------------------------------')
 for name in k1_start:
     print(name, env.vars.get_expr(name))
     for knob_name in [KNOB_NAME, VERTICAL_KNOB]:
@@ -121,6 +125,8 @@ print('Horizontal/vertical origins:', env[KNOB_NAME], env[VERTICAL_KNOB])
 settings    = np.linspace(0, QX_INCREMENT, N_SAMPLES)
 qx_values   = []
 qy_values   = []
+print('\nRecompute the physical optics at endpoints and intermediate settings\n'
+      '--------------------------------------------------------------------')
 print(f'{"Qx increment":>14} {"Qx offset":>14}'
       f' {"Qx error":>14} {"Qy leakage":>14}')
 for value in settings:
@@ -145,6 +151,8 @@ qy_leakage  = qy_values - reference.qy
 ########################################
 # The two endpoints were matched separately. Their simultaneous use need not
 # give exact tune addition because optics is nonlinear in quadrupole strengths.
+print('\nCheck separate endpoints, a mixed setting, and the common origin\n'
+      '----------------------------------------------------------------')
 for dx, dy in [(QX_INCREMENT, 0), (0, QY_INCREMENT),
                (QX_INCREMENT, QY_INCREMENT), (0, 0)]:
     env[KNOB_NAME]      = reference.qx + dx

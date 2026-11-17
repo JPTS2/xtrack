@@ -36,6 +36,8 @@ tw          = line.twiss4d()
 ########################################
 # Global optics and chromaticities
 ########################################
+print('Distinguish global results from row quantities\n'
+      '----------------------------------------------')
 print('Twiss method:', tw.method)
 print(f'Tunes: Qx = {tw.qx:.6f}, Qy = {tw.qy:.6f}')
 print(f'Chromaticities: dQx/d(delta) = {tw.dqx:.6f}, '
@@ -44,9 +46,9 @@ print(f'Chromaticities: dQx/d(delta) = {tw.dqx:.6f}, '
 ########################################
 # A scalar at a named entrance and full column arrays
 ########################################
-print(f'beta_x at {OBSERVATION}: {tw["betx", OBSERVATION]:.6f} m')
-print(f'Maximum sampled beta_x: {np.max(tw.betx):.6f} m')
-print('Available quantities:', list(tw.keys()))
+print(f'beta_x at {OBSERVATION} [m]: {tw["betx", OBSERVATION]:.6f}')
+print(f'Maximum sampled beta_x [m]: {np.max(tw.betx):.6f}')
+print('First 12 available quantities:', list(tw.keys())[:12])
 
 ################################################################################
 # Select rows and columns for the task
@@ -56,6 +58,8 @@ print('Available quantities:', list(tw.keys()))
 # Select ideal BPM read planes by name pattern
 ########################################
 # Regular expressions select table rows, not a new optics calculation.
+print('\nSelect rows and columns for the task\n'
+      '------------------------------------')
 tw.rows[r'bpm\..*'].cols[
     'name s x px y py betx bety dx dy'].show(maxwidth = 'full')
 
@@ -89,8 +93,8 @@ phase_plot  = tw.plot(
 ########################################
 # Keep both native legends inside the figure
 ########################################
-beta_plot.move_legend(1.02, 1.0)
-phase_plot.move_legend(1.02, 1.0)
+beta_plot.move_legend(0.98, 1.0)
+phase_plot.move_legend(0.98, 1.0)
 axes[0].set_title('Beta functions and accumulated phase advances')
-fig.tight_layout(rect = (0, 0, 0.85, 1))
+fig.tight_layout()
 plt.show()

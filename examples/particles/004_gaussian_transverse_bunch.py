@@ -115,6 +115,7 @@ moments = xt.Table(
     },
     index   = 'quantity',
 )
+print('\nCheck the prepared beam sizes\n-----------------------------')
 moments.show(maxwidth = 'full')
 
 ################################################################################

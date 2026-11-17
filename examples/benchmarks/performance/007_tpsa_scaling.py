@@ -55,10 +55,12 @@ reference_args  = dict(
     mass0   = reference.mass0,
     q0      = reference.q0,
 )
+print('Prepare one shared-model cell with the same scalar and map physics\n'
+      '------------------------------------------------------------------')
 print('Xtrack version:', xt.__version__)
 print('CPU serial; radiation off; no observation monitor')
 print('Cell length [m] / elements:', line.get_length(), len(line.element_names))
-print('Reference p0*c [GeV] / q0 [e]:', reference.p0c[0] * 1e-9,
+print('Reference momentum [GeV/c] / q0 [e]:', reference.p0c[0] * 1e-9,
       reference.q0)
 print('Focusing sextupole k2*L [m^-2]:', K2LF)
 print('Untimed warmups per case:', WARMUPS)
@@ -119,6 +121,7 @@ for order in [0] + ORDERS:
 # construction. Warmups and kernel compilation are excluded from both timings.
 # Transport is one scalar trajectory versus one six-variable Taylor map;
 # these perform different amounts of work. No speedup ratio is implied.
+print('\nReport cost and repeat spread\n-----------------------------')
 print('Times are median [min, max] over', REPEATS, 'fresh inputs [ms]')
 for order, setup, tracking, error in rows:
     label   = 'scalar' if order == 0 else f'order {order}'

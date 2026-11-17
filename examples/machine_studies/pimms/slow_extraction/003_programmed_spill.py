@@ -106,6 +106,8 @@ at_septum       = lost & (particles.at_element == septum_index)
 other_losses    = lost & ~at_septum
 loss_turns      = particles.at_turn[at_septum]
 loss_weights    = particles.weight[at_septum]
+print('Ramp the extraction sextupoles and track the resulting spill\n'
+      '------------------------------------------------------------')
 print('Tracked protons:', N_PARTICLES)
 print('Surviving / septum-boundary / other:',
       np.count_nonzero(~lost), np.count_nonzero(at_septum),

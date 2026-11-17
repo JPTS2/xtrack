@@ -57,6 +57,7 @@ json_path = Path(__file__).resolve().parent / JSON_FILE
 json_path.parent.mkdir(parents = True, exist_ok = True)
 tw.to_json(json_path)
 restored = xt.load(json_path)
+print('Save and reload the Twiss result\n--------------------------------')
 print('Saved optics to:', json_path)
 print('Loaded type:', type(restored).__name__)
 
@@ -79,6 +80,8 @@ from_hdf5   = xt.load(hdf5_path)
 ########################################
 # Compare values and phase information
 ########################################
+print('\nInspect preserved optics and reference data\n'
+      '-------------------------------------------')
 for label, optics in [
     ('Original', tw), ('Dictionary', from_dict), ('JSON', restored),
     ('CSV', from_csv), ('HDF5', from_hdf5),
@@ -86,7 +89,7 @@ for label, optics in [
     print(label, 'tunes:', optics.qx, optics.qy)
     optics.rows[['ip.1', 'bpm.s4.d']].cols[
         'name s betx bety dx mux muy'].show(maxwidth = 'full')
-    print('Reference p0*c [eV]:', optics.particle_on_co.p0c[0])
+    print('Reference momentum [eV/c]:', optics.particle_on_co.p0c[0])
     print('W-matrix shape:', optics.W_matrix.shape)
 
 ########################################
@@ -146,6 +149,8 @@ exit_optics.to_tfs(conventions_path, format_spec = spec)
 # Strengths keep Xtrack's definitions, including implicit design bend fields.
 # Neither text layout includes particle_on_co or W_matrix for later analysis.
 text_table = xt.Table.from_tfs(conventions_path)
+print('\nSeparate a text layout from a change of optics conventions\n'
+      '----------------------------------------------------------')
 text_table.rows[:8].cols['name s betx dx'].show()
 print('Entrance/exit rows:', len(tw.name), len(text_table.name))
 print('Native / exported dQx:', tw.dqx, text_table.dq1)

@@ -56,6 +56,8 @@ transport['route_a']    = transport.new_line(
 transport['route_b']    = transport.new_line(
     components = ['q.common', 'drift.3', 'q.b', 'drift.4'],
 )
+print('Match two transport routes through one physical quadrupole\n'
+      '----------------------------------------------------------')
 print('Both routes contain the same quadrupole object:',
       transport['route_a'].get('q.common')
       is transport['route_b'].get('q.common'))

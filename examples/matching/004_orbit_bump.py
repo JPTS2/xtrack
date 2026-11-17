@@ -134,6 +134,8 @@ solutions['Table']  = [env[knob] for knob in knobs]
 # Compare fresh-start solutions and expose orbit leakage outside the bump
 ########################################
 fig, axes = plt.subplots(2, 1, figsize = (9, 7))
+print('Independently recompute the full periodic orbit\n'
+      '-----------------------------------------------')
 for label, values in solutions.items():
     for knob, value in zip(knobs, values):
         env[knob] = value

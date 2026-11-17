@@ -88,7 +88,7 @@ axis.plot(
 )
 axis.plot(samples[:, 0] / 1e9, samples[:, 4], 'o', label = 'Native spin tune')
 axis.set_ylabel('Fractional spin tune')
-axis.set_xlabel('Reference p0*c [GeV]')
+axis.set_xlabel('Reference momentum [GeV/c]')
 axis.grid()
 axis.legend()
 fig.tight_layout()

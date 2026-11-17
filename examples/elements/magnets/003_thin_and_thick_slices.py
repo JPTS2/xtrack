@@ -19,8 +19,9 @@ import xtrack as xt
 ########################################
 QUAD_LENGTH     = 1.0                    # [m]
 K1              = 0.7                    # [m^-2]
-P0C             = 1.0e9                  # Proton reference p0*c [eV]
+P0C             = 1.0e9                  # Proton reference momentum [eV/c]
 N_SLICES        = 3
+SLICE_COUNTS    = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536]
 
 ########################################
 # Common entrance coordinates
@@ -60,12 +61,15 @@ for mode in ['thin', 'thick']:
     sliced = parent.copy()
     sliced.slice_thick_elements(
         slicing_strategies  = [xt.Strategy(xt.Teapot(N_SLICES, mode = mode))],
+        with_progress       = False,
     )
     representations[mode] = sliced
 
 # Thick slices retain the adaptive parent model; thin slices use kicks/drifts.
 # Fringe fields, RF and radiation are disabled.
+print('Thin and thick representations\n------------------------------')
 print('Parent model/integrator:', env['q'].model, env['q'].integrator)
+print('Thin kicks have zero geometric length; drift slices advance s.')
 
 ################################################################################
 # Inspect parent ownership, geometric lengths and integrated strength
@@ -76,10 +80,11 @@ print('Parent model/integrator:', env['q'].model, env['q'].integrator)
 for label, line in representations.items():
     table = line.get_table(attr = True)
     table['L_geom'] = table.s_end - table.s_start
-    print(label, 'representation; s and L_geom [m], k1l [m^-1]:')
-    table.cols['name s parent_name weight L_geom k1l'].show()
-    print('Length [m]:', line.get_length(),
-          'integrated k1l [m^-1]:', sum(table.k1l))
+    print(f'\n{label.capitalize()} representation:')
+    print('s and L_geom [m]; k1l [m^-1].')
+    table.cols['name s parent_name weight L_geom k1l'].show(maxwidth = 'full')
+    print(f'Length [m]: {line.get_length():.6f}; '
+          f'integrated k1l [m^-1]: {sum(table.k1l):.6f}')
 
 ################################################################################
 # Select slicing rules and inspect inherited attributes
@@ -111,8 +116,9 @@ selection_env.new(
     shift_y     = 2e-3,
 )
 selected = selection_env.new_line(components = ['q', 'q', 'keep', 's'])
-print('Before applying the slicing rules:')
-selected.get_table(attr = True).cols['name element_type k1l k1sl k2l'].show()
+print('\nSelect slicing rules\n--------------------')
+print('The last matching rule wins: q::0 is thin, q::1 is thick,')
+print('keep stays unsliced, and s is thin.')
 selected.slice_thick_elements(
     slicing_strategies  = [
         xt.Strategy(slicing = None),
@@ -121,37 +127,41 @@ selected.slice_thick_elements(
         xt.Strategy(xt.Teapot(3, mode = 'thick'), name = 'q::1'),
         xt.Strategy(slicing = None, name = 'keep'),
     ],
+    with_progress       = False,
 )
 
 ########################################
 # Inspect strengths and misalignments inherited from parents
 ########################################
 selection_table = selected.get_table(attr = True)
-selection_table.cols[
-    'name element_type parent_name weight k1l k1sl k2l k2sl'].show()
-selection_table.cols['name shift_x shift_y rot_s_rad'].show()
-print('Sliced sequence length [m]:', selected.get_length())
-print('Normal/skew quadrupole integrals [m^-1]:',
-      sum(selection_table.k1l), sum(selection_table.k1sl))
-print('Normal/skew sextupole integrals [m^-2]:',
-      sum(selection_table.k2l), sum(selection_table.k2sl))
+magnetic = selection_table.rows[
+    (selection_table.k1l != 0) | (selection_table.k2l != 0)]
+print('Magnetic bodies and kicks (markers and drifts omitted):')
+print('k1l/k1sl [m^-1]; k2l/k2sl [m^-2].')
+magnetic.cols['name parent_name weight k1l k1sl k2l k2sl'].show(
+    maxwidth = 'full')
+print('\nInherited alignment: shift_x/shift_y [m]; rot_s_rad [rad].')
+magnetic.cols['name shift_x shift_y rot_s_rad'].show()
+print(f'Sliced sequence length [m]: {selected.get_length():.6f}')
 
 ########################################
 # Compare parent settings with both sliced occurrences
 ########################################
 parent_knl, parent_ksl = selection_env['q'].get_total_knl_ksl()
 q_slices = selection_table.rows[selection_table.parent_name == 'q']
-print('Two q parents: expected normal/skew quadrupole integrals [m^-1]:',
-      2 * parent_knl[1], 2 * parent_ksl[1])
-print('Two q parents: summed slice integrals [m^-1]:',
-      sum(q_slices.k1l), sum(q_slices.k1sl))
-print('Two q parents: expected normal/skew sextupole errors [m^-2]:',
-      2 * parent_knl[2], 2 * parent_ksl[2])
-print('Two q parents: summed slice error integrals [m^-2]:',
-      sum(q_slices.k2l), sum(q_slices.k2sl))
+print('\nPreserve both occurrences of q\n------------------------------')
+print('Distributed fields and absolute errors are weighted by each slice.')
+print('Integral                     Two parents   Sum of slices')
+for label, expected, actual in [
+    ('Normal quadrupole [m^-1]', 2 * parent_knl[1], sum(q_slices.k1l)),
+    ('Skew quadrupole [m^-1]', 2 * parent_ksl[1], sum(q_slices.k1sl)),
+    ('Normal sextupole [m^-2]', 2 * parent_knl[2], sum(q_slices.k2l)),
+    ('Skew sextupole [m^-2]', 2 * parent_ksl[2], sum(q_slices.k2sl)),
+]:
+    print(f'{label:<28} {expected:11.6f} {actual:15.6f}')
 
 ################################################################################
-# Track identical entrance particles once through each representation
+# Prepare identical entrance probes and track the unsliced reference
 ################################################################################
 
 ########################################
@@ -166,35 +176,71 @@ initial = parent.build_particles(
 )
 
 ########################################
-# Track each representation
+# Track the unsliced reference
 ########################################
-outputs = {}
-for label, line in representations.items():
-    particles = initial.copy()
-    line.track(particles)
-    outputs[label] = particles
+reference = initial.copy()
+parent.track(reference)
 
 ################################################################################
-# Compare transverse exit coordinates with the unsliced parent
+# Refine the slice count at fixed fields and entrance coordinates
 ################################################################################
-# Compare maps at this slice count, using the unsliced adaptive map as the
-# reference. A convergence study requires varying the numerical settings.
-fig, axes = plt.subplots(2, 2, sharex = True, figsize = (10, 6))
-for axis, coordinate, unit in zip(
-    axes.flat, ['x', 'px', 'y', 'py'], ['um', '1e-6', 'um', '1e-6']
-):
-    for label in ['thin', 'thick']:
-        residual = getattr(outputs[label], coordinate) - getattr(
-            outputs['parent'], coordinate)
-        print(label, coordinate, 'maximum absolute exit residual:',
-              np.max(np.abs(residual)),
-              'm' if coordinate in ['x', 'y'] else 'normalized momentum')
-        axis.plot(1e3 * X_START, 1e6 * residual, '.-', label = label)
-    axis.set_ylabel(coordinate + ' residual [' + unit + ']')
-    axis.grid()
+
+########################################
+# Measure maximum exit errors against the unsliced parent
+########################################
+# Position and normalized-momentum errors are kept separate, with no division
+# by an exit coordinate that could vanish. Maxima include all entrance probes.
+errors = {}
+for mode in ['thin', 'thick']:
+    errors[mode] = []
+    for count in SLICE_COUNTS:
+        sliced = parent.copy()
+        sliced.slice_thick_elements(
+            slicing_strategies  = [xt.Strategy(xt.Teapot(count, mode = mode))],
+            with_progress       = False,
+        )
+        particles = initial.copy()
+        sliced.track(particles)
+        position_error = max(
+            np.max(np.abs(particles.x - reference.x)),
+            np.max(np.abs(particles.y - reference.y)),
+        )
+        momentum_error = max(
+            np.max(np.abs(particles.px - reference.px)),
+            np.max(np.abs(particles.py - reference.py)),
+        )
+        errors[mode].append((position_error, momentum_error))
+    errors[mode] = np.array(errors[mode])
+
+print('\nRefine the slice count\n----------------------')
+print('Maximum errors over both transverse planes and all entrance probes.')
+print('Reference: the same unsliced, fringe-free quadrupole.')
+print('Slices      Thin position [m]  Thick position [m]'
+      '    Thin momentum [1]  Thick momentum [1]')
+for index, count in enumerate(SLICE_COUNTS):
+    print(f'{count:6d} {errors["thin"][index, 0]:22.3e}'
+          f'{errors["thick"][index, 0]:20.3e}'
+          f'{errors["thin"][index, 1]:21.3e}'
+          f'{errors["thick"][index, 1]:20.3e}')
+print('Thin slicing approximates the body map; refinement reduces that error.')
+print('Thick slices retain the uniform quadrupole map: splitting adds no')
+print('accuracy here, and extra operations accumulate floating-point error.')
+print('The one-slice thick errors are zero and cannot appear on a log axis.')
+
+########################################
+# Plot convergence and the round-off floor
+########################################
+fig, axes = plt.subplots(1, 2, figsize = (10, 4), sharex = True)
+for index, (axis, label) in enumerate(zip(
+    axes, ['Maximum position error [m]', 'Maximum momentum error [1]']
+)):
+    for mode in ['thin', 'thick']:
+        axis.loglog(SLICE_COUNTS, errors[mode][:, index], '.-', label = mode)
+    axis.set_xlabel('Number of slices')
+    axis.set_ylabel(label)
+    axis.set_xticks([1, 16, 256, 4096], labels = [1, 16, 256, 4096])
+    axis.grid(which = 'both', alpha = 0.3)
     axis.legend()
-for axis in axes[-1]:
-    axis.set_xlabel('Entrance x [mm]')
-fig.suptitle(f'{N_SLICES} slices: exit coordinates minus unsliced parent')
+fig.suptitle('Quadrupole slicing: convergence to the unsliced map')
 fig.tight_layout()
 plt.show()

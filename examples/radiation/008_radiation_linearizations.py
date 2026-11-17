@@ -57,6 +57,8 @@ twiss = line.twiss6d(
 # full differentiates the actual mean-radiation map. kick_as_co applies the
 # closed-orbit kicks to its test particles; scale_as_co uses the closed-orbit
 # momentum scaling. These approximations need not give identical optics.
+print('Compare radiation linearization methods on the same compensated fields\n'
+      '----------------------------------------------------------------------')
 print('Radiation method / Qx / Qy / Qs / maximum relative betx change:')
 for method in ['full', 'kick_as_co', 'scale_as_co']:
     optics = line.twiss6d(chrom = False, radiation_method = method)

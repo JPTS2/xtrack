@@ -117,6 +117,8 @@ checks  = np.array([
     line.element_names[int(index)] if state == 0 else 'survived'
     for index, state in zip(coarse.at_element, coarse.state)
 ])
+print('Refine only losses with a known upstream and downstream aperture\n'
+      '----------------------------------------------------------------')
 xt.Table(
     data    = {
         'particle_id':  refined.particle_id,

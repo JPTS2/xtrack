@@ -60,6 +60,8 @@ tw              = line.twiss4d()
 ########################################
 # Mode labels continue from the weakly coupled horizontal/vertical branches.
 # With coupling, qx and qy label modes rather than independent plane motion.
+print('Inspect the two normal modes in both physical planes\n'
+      '----------------------------------------------------')
 for label, optics in [('Uncoupled', uncoupled), ('Coupled', tw)]:
     print(f'{label}: mode tunes {optics.qx:.9f}, {optics.qy:.9f}')
     optics.rows[['ip.1', 'bpm.s4.d']].cols[
@@ -108,5 +110,7 @@ sizes       = xt.Table(
         'sigma_y_modes':   sigma_y,
         'sigma_y_api':     covariance.sigma_y},
     index   = 'name')
+print('\nCombine mode emittances into projected beam sizes\n'
+      '-------------------------------------------------')
 print('Projected rms beam sizes [m]:')
 sizes.rows[['ip.1', 'bpm.s4.d']].show(maxwidth = 'full')

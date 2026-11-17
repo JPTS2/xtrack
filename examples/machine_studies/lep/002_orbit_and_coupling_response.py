@@ -49,6 +49,8 @@ tw0 = line.twiss4d(polarization_analysis = True)
 # Preserve all other insertion settings during the comparison
 ########################################
 results = {}
+print('Vary one spin bump with and without its paired coupling correction\n'
+      '------------------------------------------------------------------')
 for label, paired in CORRECTIONS:
     samples = []
     for scale in BUMP_SCALES:

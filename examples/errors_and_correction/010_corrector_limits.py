@@ -72,6 +72,8 @@ bounded     = line.correct_trajectory(
 ########################################
 # A second call retains the same accumulated bounds
 ########################################
+print('Apply native bounds to the correction knobs\n'
+      '-------------------------------------------')
 for iteration in range(2):
     bounded.correct(n_iter = 1)
     for plane in ['x', 'y']:

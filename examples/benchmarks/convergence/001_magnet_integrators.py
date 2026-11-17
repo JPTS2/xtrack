@@ -62,6 +62,8 @@ exact_bend  = launch.copy()
 bend.track(exact_bend)
 on_axis = xt.Particles('electron', p0c = P0C)
 bend.track(on_axis)
+print('Establish an exact bend control and refine the nontrivial reference\n'
+      '-------------------------------------------------------------------')
 print('Analytic on-axis bend control (x,px,y,py,zeta):',
       [getattr(on_axis, name)[0] for name in COORDINATES])
 
@@ -141,6 +143,8 @@ fig, axes       = plt.subplots(1, 2, figsize = (11, 4), layout = 'constrained')
 tiny_launch     = xt.Particles('electron', p0c = P0C, x = launch_sizes)
 tiny_reference  = tiny_launch.copy()
 bend.track(tiny_reference)
+print('\nScan tiny launches at fixed integration to expose roundoff\n'
+      '----------------------------------------------------------')
 for count in [16, 256]:
     candidate                       = bend.copy()
     candidate.model                 = 'rot-kick-rot-low-order'

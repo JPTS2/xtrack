@@ -28,6 +28,7 @@ FIELD_SAMPLES       = 10                    # Interior samples per segment
 ################################################################################
 # Retain the full smooth field as a separate physical reference
 ################################################################################
+
 ########################################
 # Construct the complete polynomial and physical entrance state
 ########################################

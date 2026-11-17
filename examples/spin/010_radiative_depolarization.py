@@ -84,7 +84,9 @@ initial = line.build_particles(
 initial.spin_x  = n0[0]
 initial.spin_y  = n0[1]
 initial.spin_z  = n0[2]
-print('Reference p0*c [eV], a*gamma, native fractional spin tune:',
+print('Prepare a sensitive mean-orbit spin reference through native analysis\n'
+      '---------------------------------------------------------------------')
+print('Reference momentum [eV/c], a*gamma, native fractional spin tune:',
       line.particle_ref.p0c[0], A_GAMMA, tw.spin_tune_fractional)
 print('Native max |partial n / partial delta|:', np.max(np.sqrt(
     tw.spin_dn_ddelta_x**2 + tw.spin_dn_ddelta_y**2 + tw.spin_dn_ddelta_z**2)))

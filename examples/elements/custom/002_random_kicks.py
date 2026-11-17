@@ -94,6 +94,7 @@ for _ in range(NUM_PASSAGES):
 # Independent zero-mean kicks add variances. This is a stochastic kick model,
 # without damping or an associated longitudinal energy exchange.
 expected_rms = SIGMA_PX * np.sqrt(NUM_PASSAGES)
+print('\nInspect diffusion and replay\n----------------------------')
 print('Expected RMS px:', expected_rms)
 print('Measured RMS px:', np.std(particles.px))
 print('Mean px:', np.mean(particles.px))
@@ -113,6 +114,8 @@ uniform_element = RandomKick(
     use_uniform = True)
 uniform_particles = initial.copy()
 uniform_element.track(uniform_particles)
+print('\nChange the single-passage distribution\n'
+      '--------------------------------------')
 print('Uniform single-passage expected RMS:', SIGMA_PX)
 print('Uniform single-passage measured RMS:', np.std(uniform_particles.px))
 print('Uniform kick bounds:', -np.sqrt(3) * SIGMA_PX,

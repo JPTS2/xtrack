@@ -46,7 +46,7 @@ env.call(model_dir / 'strengths.py')
 line.configure_radiation(model = None)
 tw0         = line.twiss4d(delta_chrom = 1e-6)
 # Stored reference: 45.6 GeV/c positrons. No beam-beam elements are installed.
-print('Reference p0c [GeV]:', line.particle_ref.p0c[0] * 1e-9)
+print('Reference momentum [GeV/c]:', line.particle_ref.p0c[0] * 1e-9)
 
 ################################################################################
 # Generate a periodic IP beta-control knob
@@ -104,6 +104,8 @@ opt_chroma.generate_knob()
 ########################################
 knob_values = np.linspace(1, BETA_FACTOR, KNOB_SAMPLES)
 results     = []
+print('\nCheck the origin, interior and matched endpoint\n'
+      '-----------------------------------------------')
 for value in knob_values:
     env['ip_beta_scale']    = value
     tw                      = line.twiss4d(delta_chrom = 1e-6)

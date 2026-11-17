@@ -64,6 +64,8 @@ monitor = xt.BeamStatsMonitor(
     stats               = ['num_particles', 'mean_x', 'sigma_x', 'mean_zeta'],
 )
 monitor.track(particles)
+print('Prepare and acquire one snapshot, without an RF-equilibrium assumption\n'
+      '----------------------------------------------------------------------')
 print('Levels/default/shape:', monitor.available_levels,
       monitor.default_level, monitor.mean_x.shape)
 print('Slice-center shape:', monitor.zeta_centers.shape)
@@ -75,6 +77,8 @@ print('Slice-center shape:', monitor.zeta_centers.shape)
 ########################################
 # Select one physical slot and one slice through the public API
 ########################################
+print('\nCompare recorded-window reductions with the accepted population\n'
+      '---------------------------------------------------------------')
 print('Slot 2 slice centroids [m]:', monitor.get('mean_x', turn = 0, slot = 2))
 print('First slice of slot 2:',
       monitor.get('mean_x', turn = 0, slot = 2, slice_index = 0))

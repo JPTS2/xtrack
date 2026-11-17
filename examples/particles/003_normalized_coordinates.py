@@ -59,6 +59,7 @@ particles = line.build_particles(
     nemitt_x    = NEMITT_X,
     nemitt_y    = NEMITT_Y,
 )
+print('Build a normalized launch\n-------------------------')
 particles.get_table().cols[
     'particle_id x px y py delta'].show(maxwidth = 'full')
 
@@ -87,7 +88,9 @@ normalized.cols[
 beta_gamma  = line.particle_ref.beta0[0] * line.particle_ref.gamma0[0]
 gemitt_x    = NEMITT_X / beta_gamma
 gemitt_y    = NEMITT_Y / beta_gamma
-print(f'Geometric emittances: {gemitt_x:.9e}, {gemitt_y:.9e} m rad')
+print('\nUse equivalent geometric emittances\n'
+      '-----------------------------------')
+print(f'Geometric emittances [m rad]: {gemitt_x:.9e}, {gemitt_y:.9e}')
 
 ########################################
 # Build the same launch with geometric emittances
@@ -139,6 +142,8 @@ cs_table = xt.Table(
     },
     index   = 'particle_id',
 )
+print('\nUse Courant-Snyder coordinates without emittance scaling\n'
+      '--------------------------------------------------------')
 print('Unscaled Courant-Snyder coordinates [sqrt(m)]:')
 cs_table.show(maxwidth = 'full')
 

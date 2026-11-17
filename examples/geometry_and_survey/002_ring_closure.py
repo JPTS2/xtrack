@@ -48,6 +48,8 @@ survey      = line.survey()
 # s_start is accumulated reference-path length [m]; angle is each element's
 # geometric bend angle [rad], rather than its global orientation.
 table = line.get_table(attr = True)
+print('Compare longitudinal positions and global coordinates\n'
+      '-----------------------------------------------------')
 print('First cell bends: longitudinal positions [m] and bend angles [rad]:')
 table.rows[['arc.s1.c1.b1', 'arc.s1.c1.b2']].cols[
     'name s_start s_end angle'].show()
@@ -73,8 +75,10 @@ survey.rows[['bpm.s1.f', 'bpm.s4.f', '_end_point']].cols[
 position_error  = np.linalg.norm(survey.XYZ[-1] - survey.XYZ[0])
 # Rotation matrices avoid identifying orientation by unwrapped angles alone.
 frame_error = np.max(np.abs(survey.E_matrix[-1] - survey.E_matrix[0]))
-print(f'Reference-path length: {survey.s[-1]:.6f} m')
-print(f'Position closure error: {position_error:.3e} m')
+print('\nCheck closure of position and orientation\n'
+      '-----------------------------------------')
+print(f'Reference-path length [m]: {survey.s[-1]:.6f}')
+print(f'Position closure error [m]: {position_error:.3e}')
 print(f'Maximum rotation-matrix difference: {frame_error:.3e}')
 
 ########################################
@@ -84,9 +88,9 @@ print(f'Maximum rotation-matrix difference: {frame_error:.3e}')
 # The final theta differs by -2*pi, which describes the same orientation.
 theta_change    = survey.theta[-1] - survey.theta[0]
 theta_wrapped   = np.arctan2(np.sin(theta_change), np.cos(theta_change))
-print(f'Sum of geometric bend angles: {np.sum(table.angle):+.9f} rad')
-print(f'Unwrapped theta change: {theta_change:+.9f} rad')
-print(f'Theta change modulo 2*pi: {theta_wrapped:+.3e} rad')
+print(f'Sum of geometric bend angles [rad]: {np.sum(table.angle):+.9f}')
+print(f'Unwrapped theta change [rad]: {theta_change:+.9f}')
+print(f'Theta change modulo 2*pi [rad]: {theta_wrapped:+.3e}')
 
 ################################################################################
 # Plot the element-boundary polyline in the horizontal plane

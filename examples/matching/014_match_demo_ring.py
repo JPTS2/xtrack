@@ -210,6 +210,8 @@ strengths       = {name: float(env[name]) for name in strength_names}
 output_path     = Path(__file__).resolve().parent / OUTPUT_FILE
 output_path.parent.mkdir(parents = True, exist_ok = True)
 xt.json.dump(strengths, output_path)
+print('\nExport strengths without overwriting the canonical operating point\n'
+      '------------------------------------------------------------------')
 print('Exported matched strengths:', output_path)
 print(strengths)
 
@@ -240,6 +242,9 @@ replayed['frequency_rf']    = (
 # Inspect the resulting periodic optics
 ########################################
 full = ring.twiss4d(chrom = False)
+print('\n'
+      'Independently reload fresh geometry and the exported strength mapping\n'
+      '---------------------------------------------------------------------')
 print('Reloaded circumference [m], full-ring tunes:',
       ring.get_length(), full.qx, full.qy)
 ip_table = full.rows[['ip.1']].cols['name betx bety alfx alfy dx dpx']

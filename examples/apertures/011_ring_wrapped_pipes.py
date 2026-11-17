@@ -52,6 +52,8 @@ line.aperture.place_pipe(
 )
 line.aperture.num_profile_points = PROFILE_POINTS
 line.aperture.build_model()
+print('Place one chamber across the boundary of a closed survey\n'
+      '--------------------------------------------------------')
 print('Closed survey recognized as a ring:', line.aperture.is_ring)
 line.aperture.get_bounds_table().cols[
     'name s s_start s_end'].show(maxwidth = 'full')
@@ -78,6 +80,8 @@ sections    = line.aperture.get_cross_sections_at_s(
     s_positions = query_s[order],
     extents     = True,
 )
+print('\nQuery equivalent coordinates on either side of s=0\n'
+      '--------------------------------------------------')
 xt.Table(
     data    = {
         'station':      labels[order],

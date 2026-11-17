@@ -131,7 +131,7 @@ matched = line.twiss(
 )
 print('Requested/matched entrance delta:', DELTA_TARGET, matched.delta[0])
 print('Requested/matched entrance zeta [m]:', ZETA_TARGET, matched.zeta[0])
-print('Reference p0*c remains [eV]:', line.particle_ref.p0c[0])
+print('Reference momentum remains [eV/c]:', line.particle_ref.p0c[0])
 print('RF frequency [Hz], phase trim [rad]:',
       line['rf.1'].frequency, env['rf_phase_trim'])
 print('RF cycles per synchronous turn; harmonic:',
@@ -157,6 +157,8 @@ particle    = line.build_particles(
 initial     = particle.copy()
 line.track(particle)
 expected_zeta_slip = beta0 * c * (period0 - harmonic / line['rf.1'].frequency)
+print('\nTrack one revolution and check energy and all six coordinate changes\n'
+      '--------------------------------------------------------------------')
 print('One-turn coordinate changes; zeta includes reference-clock slip:')
 for coordinate in ['x', 'px', 'y', 'py', 'zeta', 'delta']:
     actual      = float(

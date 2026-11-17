@@ -124,6 +124,8 @@ opt.target_status()
 after       = line.twiss4d()
 matrix_mid  = after.get_R_matrix(START, MIDDLE)
 matrix_end  = after.get_R_matrix(START, END)
+print('Verify the full periodic solution and the external decoupling\n'
+      '-------------------------------------------------------------')
 print('Interior R13, dimensionless:', matrix_mid[0, 2])
 print('Exit upper-right block [[R13,R14],[R23,R24]]:')
 print(matrix_end[:2, 2:4])

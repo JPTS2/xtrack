@@ -37,7 +37,9 @@ line.configure_spin('auto')
 # This 45.585 GeV/c positron model has simplified bend fields/edges for Bmad
 # comparisons. It is an illustrative LEP setting, not operational optics.
 # 4D optics excludes synchrotron motion and radiation energy-loss transport.
-print('Reference p0c [GeV/c]:', reference.p0c[0] * 1e-9)
+print('Establish the positron operating point\n'
+      '--------------------------------------')
+print('Reference momentum [GeV/c]:', reference.p0c[0] * 1e-9)
 print('Charge [e], mass [eV/c^2]:', reference.q0, reference.mass0)
 print('Anomalous magnetic moment:', reference.anomalous_magnetic_moment[0])
 
@@ -57,6 +59,8 @@ for ip in IPS:
 # Solve orbital optics and the closed-orbit spin at each setting
 ########################################
 results = []
+print('\nCompare the planar and detector-solenoid invariant spin fields\n'
+      '--------------------------------------------------------------')
 for label, solenoid_scale in SETTINGS:
     for ip in IPS:
         line[f'on_sol.{ip}'] = solenoid_scale

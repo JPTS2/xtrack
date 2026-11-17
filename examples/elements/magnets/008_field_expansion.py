@@ -70,6 +70,8 @@ s_local = np.linspace(0, LENGTH, N_FIELD_POINTS)
 field   = element.get_field(x = 0.0, y = 0.0, s_local = s_local)
 # get_field returns normalized fields; multiply by B_rho to obtain tesla.
 by      = rigidity * field['By']
+print('Inspect field reconstruction and integrated strength\n'
+      '----------------------------------------------------')
 print('Resolved vertical expansion order:', element.num_phi)
 print('RK4 integration steps:', element.num_integration_steps)
 
@@ -104,6 +106,8 @@ expected_px = -MEAN_BY * LENGTH / rigidity
 ########################################
 line = xt.Line(elements = [element])
 line.track(particles)
+print('\nTrack with an explicit boundary-momentum convention\n'
+      '---------------------------------------------------')
 print('Expected P_x/p0:', expected_px)
 print('Tracked kinetic P_x/p0:', particles.kin_px[0])
 print('Momentum difference:', particles.kin_px[0] - expected_px)
@@ -139,6 +143,8 @@ env.new(
     pkin_const              = True,
 )
 combined = env.get('combined')
+print('\nCombine profiles, additional strengths and a common scale\n'
+      '---------------------------------------------------------')
 print('Normal, skew and solenoid coefficient shapes:',
       combined.knc.shape, combined.ksc.shape, combined.ksolc.shape)
 print('Allocated vertical order:', combined.num_phi)
@@ -173,6 +179,8 @@ sliced.slice_thick_elements([
 ])
 slice_names = [name for name in sliced.element_names
                if isinstance(sliced.get(name), xt.ThickSliceBFieldExpansion)]
+print('\nRetain one parent field across thick slices\n'
+      '-------------------------------------------')
 for name in slice_names:
     piece = sliced.get(name)
     print(name, 'profile start [m]:', piece.s_start,

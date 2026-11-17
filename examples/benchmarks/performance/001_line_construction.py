@@ -37,6 +37,8 @@ N_REPEATS       = 5
 ################################################################################
 # Report the construction environment
 ################################################################################
+print('Report the construction environment\n'
+      '-----------------------------------')
 print('Python / Xtrack:', platform.python_version(), xt.__version__)
 print('Platform:', platform.platform())
 print('Fresh models; imports and component preparation excluded from assembly')
@@ -50,6 +52,8 @@ repo_root   = Path(__file__).resolve().parents[3]
 # Resolve anchored placements and assemble a line
 ########################################
 assembly_times  = []
+print('\nMeasure construction operations on independent environments\n'
+      '-----------------------------------------------------------')
 for n_cells in CELL_COUNTS:
     samples = []
     for repeat in range(N_REPEATS + 1):
@@ -137,6 +141,8 @@ fig, axes   = plt.subplots(1, 2, figsize = (10, 4))
 timings = np.array(assembly_times)
 median  = np.median(timings, axis = 1)
 bounds  = np.percentile(timings, [25, 75], axis = 1)
+print('\nShow timing variation and workload scaling\n'
+      '------------------------------------------')
 print('Cells assembled: median [q25, q75] seconds')
 for size, centre, low, high in zip(CELL_COUNTS, median, *bounds):
     print(f'{size:6d}: {centre:.6f} [{low:.6f}, {high:.6f}]')

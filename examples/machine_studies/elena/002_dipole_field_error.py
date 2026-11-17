@@ -49,6 +49,8 @@ env.set(names, kscale = 'elena_dipole_scale')
 # Recompute the orbit and linear optics for each field scale
 ########################################
 results = []
+print('Compare periodic orbit and optics at the same reference geometry\n'
+      '----------------------------------------------------------------')
 for error in FIELD_ERRORS:
     env['elena_dipole_scale']   = 1 + error
     tw                          = line.twiss4d()

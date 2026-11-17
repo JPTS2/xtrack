@@ -70,6 +70,8 @@ for count in [REFERENCE_N, 2 * REFERENCE_N]:
                                 for name in COORDINATES]))
 reference_change    = np.max(
     np.abs(references[1] - references[0]) / SCALES[:, None])
+print('Qualify the reference on the same finite-amplitude, off-momentum batch\n'
+      '----------------------------------------------------------------------')
 print('CPU:', platform.processor(), 'Xtrack:', xt.__version__)
 print('Reference refinement, max scaled error:', reference_change)
 print('Particles:', N_PARTICLES, 'repeats:', N_REPEATS)
@@ -108,6 +110,9 @@ for model in ['mat-kick-mat', 'mat-kick-mat-exact', 'drift-kick-drift-exact']:
 ########################################
 # Select the cheapest measured configuration that reaches the requested accuracy
 ########################################
+print('\n'
+      'Compare cost at a common error bound, not at a common number of slices\n'
+      '----------------------------------------------------------------------')
 for model in ['mat-kick-mat', 'mat-kick-mat-exact', 'drift-kick-drift-exact']:
     eligible    = [row for row in records if row[0] == model
                 and row[3] <= TARGET_ERROR]

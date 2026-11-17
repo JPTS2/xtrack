@@ -42,6 +42,8 @@ first_draw = normal_sampler.generate(
     n_samples   = N_PARTICLES,
     particles   = noisy_particles,
 )
+print('Prescribe damping and excitation independently of a physical lattice\n'
+      '--------------------------------------------------------------------')
 print('Native standard-normal sample mean and RMS:',
       np.mean(first_draw), np.std(first_draw))
 noisy_line.track(

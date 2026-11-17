@@ -75,6 +75,8 @@ tw_after    = line.twiss4d(init = init)
 ########################################
 # Inspect the actual exit and target values
 ########################################
+print('Compare the exit values and the full transport optics\n'
+      '-----------------------------------------------------')
 print('Actual exit s [m]:', tw_after.s[-1])
 print(f'{"Exit quantity":<16} {"Before [m]":>14} {"After [m]":>14}'
       f' {"Target [m]":>14}')

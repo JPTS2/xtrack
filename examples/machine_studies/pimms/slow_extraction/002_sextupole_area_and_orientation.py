@@ -39,6 +39,8 @@ env         = xt.load(repo_root / LATTICE_FILE)
 line        = env['pimms']
 tw          = line.twiss4d()
 fig, axes   = plt.subplots(1, 2, figsize = (10, 4))
+print('Locate and inspect the extraction boundary for each setting\n'
+      '-----------------------------------------------------------')
 for label, kse1, kse2 in SETTINGS:
     ########################################
     # Bracket the launch that first reaches the proposed septum
@@ -95,8 +97,8 @@ for label, kse1, kse2 in SETTINGS:
     # Every third turn returns to the same resonance branch.
     slope, intercept = np.polyfit(record.x[1, neighbours],
                                  record.px[1, neighbours], 1)
-    print(f'{label}: launch bracket [{lower:.7f}, {upper:.7f}] m')
-    print(f'  Sampled bounded area: {area:.6g} m')
+    print(f'{label}: launch bracket [m]: [{lower:.7f}, {upper:.7f}]')
+    print(f'  Sampled bounded area [m]: {area:.6g}')
     print(f'  Branch dpx/dx near x={SEPTUM_X:g} m: {slope:.6g} m^-1')
 
     ########################################

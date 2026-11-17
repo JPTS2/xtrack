@@ -84,8 +84,11 @@ monitor = xt.BeamStatsMonitor(
         'dx', 'dpx'])
 line.insert('beam.statistics', monitor, at = 0)
 line.track(particles, num_turns = N_TURNS)
-print('Levels/default/shape:', monitor.available_levels,
-      monitor.default_level, monitor.mean_x.shape)
+print('Acquire weighted statistics and covariance-derived optics\n'
+      '---------------------------------------------------------')
+print('Available acquisition levels:', monitor.available_levels)
+print('Default acquisition level:', monitor.default_level)
+print('Mean-x array shape (turn samples):', monitor.mean_x.shape)
 print('Recorded turns:', monitor.turns)
 
 ################################################################################

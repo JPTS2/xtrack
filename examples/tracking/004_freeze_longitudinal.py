@@ -89,6 +89,8 @@ frozen_end = frozen.copy()
 ########################################
 # Compare longitudinal coordinates
 ########################################
+print('Inspect the coordinates and resume longitudinal motion\n'
+      '------------------------------------------------------')
 print('Initial coordinates:')
 initial.get_table().cols[
     'particle_id zeta delta at_turn state'].show(maxwidth = 'full')
@@ -102,7 +104,7 @@ for label, particles in [('Ordinary', ordinary), ('Frozen', frozen_end)]:
     delta_change    = np.max(np.abs(particles.delta - initial.delta))
     zeta_change     = np.max(np.abs(particles.zeta - initial.zeta))
     print(f'{label}: max |delta change| = {delta_change:.3e}; '
-          f'max |zeta change| = {zeta_change:.3e} m')
+          f'max |zeta change| [m] = {zeta_change:.3e}')
 
 ########################################
 # Compare transverse endpoints
@@ -142,6 +144,8 @@ persistent_end  = persistent.copy()
 frozen_optics   = line.twiss4d()
 line.freeze_longitudinal(False)
 line.track(persistent, num_turns = N_RESUME)
+print('\nChoose persistent or temporary freezing\n'
+      '---------------------------------------')
 print('Explicit freezing: maximum |zeta change| [m]:',
       np.max(np.abs(persistent_end.zeta - initial.zeta)))
 print('After explicit unfreezing: zeta changes [m]:',
@@ -175,6 +179,8 @@ print('After leaving the context: zeta changes [m]:',
 env['voltage_rf'] = RF_VOLTAGE
 twiss_4d = line.twiss4d()
 twiss_6d = line.twiss6d()
+print('\nSeparate longitudinal freezing from the choice of optics method\n'
+      '---------------------------------------------------------------')
 print('RF-on 4D transverse tunes:', twiss_4d.qx, twiss_4d.qy)
 print('RF-on 6D transverse / synchrotron tunes:',
       twiss_6d.qx, twiss_6d.qy, twiss_6d.qs)

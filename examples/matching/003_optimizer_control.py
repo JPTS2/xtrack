@@ -77,6 +77,8 @@ opt = line.match(
 # Inspect the initial state
 ########################################
 # solve = False creates the optimizer without changing the family strengths.
+print('Control and inspect the optimization\n'
+      '------------------------------------')
 print('Strengths before/after optimizer construction [m^-2]:')
 for name, strength in k1_before.items():
     print(f'{name}: {strength:+.9f} -> {env[name]:+.9f}')
@@ -120,6 +122,8 @@ opt.disable(vary = 'qd')
 opt.targets[0].value = QX_TARGET + QX_RETARGET
 opt.solve()
 temporary   = line.twiss4d()
+print('\nRetarget with one active control, then restore a tagged solution\n'
+      '----------------------------------------------------------------')
 print('One-control result Qx/Qy:', temporary.qx, temporary.qy)
 print('Requested Qx:', QX_TARGET + QX_RETARGET)
 print('Qy is temporarily unconstrained.')
@@ -145,6 +149,8 @@ opt.log().show(maxwidth = 'full')
 # Check the resulting tunes and family strengths
 ################################################################################
 tw = line.twiss(method = '4d')
+print('\nCheck the resulting tunes and family strengths\n'
+      '----------------------------------------------')
 print(f'Final Qx = {tw.qx:.10f}; residual = {tw.qx - QX_TARGET:+.3e}')
 print(f'Final Qy = {tw.qy:.10f}; residual = {tw.qy - QY_TARGET:+.3e}')
 print(f'Allowed family strengths: [{K1_MIN}, {K1_MAX}] m^-2')
@@ -175,6 +181,8 @@ phase_opt   = opt.clone(add_targets = xt.TargetRelPhaseAdvance(
 phase_opt.disable(target = 'horizontal')
 phase_opt.solve()
 phase_twiss = line.twiss4d()
+print('\nClone the optimizer and add a local phase constraint\n'
+      '----------------------------------------------------')
 print('Lower bound / achieved phase advance [turns]:', phase_goal,
       phase_twiss['mux', PHASE_END] - phase_twiss['mux', PHASE_START])
 print('Retained Qy:', phase_twiss.qy)

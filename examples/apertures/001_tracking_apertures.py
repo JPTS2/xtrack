@@ -102,6 +102,8 @@ initial     = xt.Particles(
     y   = y_initial,
 )
 alive_masks = {}
+print('Define native tracking elements that cut transverse phase space\n'
+      '---------------------------------------------------------------')
 for name, aperture in apertures.items():
     particles   = initial.copy()
     aperture.track(particles)

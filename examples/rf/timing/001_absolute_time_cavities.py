@@ -88,6 +88,8 @@ kicks       = np.array(kicks)
 ########################################
 # Read the clock, position, arrival time and actual energy kicks together
 ########################################
+print('\nCompare location and clock changes with native cavity tracking\n'
+      '--------------------------------------------------------------')
 xt.Table(
     data    = {
         'sample':               samples,

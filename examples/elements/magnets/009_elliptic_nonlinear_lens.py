@@ -41,6 +41,7 @@ u = LENS_AMPLITUDES
 lens_expected_px = -LENS_STRENGTH / LENS_SCALE * (
     np.arcsin(u) / (1 - u**2)**1.5 + u / (1 - u**2))
 linear_px = -2 * LENS_STRENGTH / LENS_SCALE * u
+print('Track an elliptic nonlinear lens\n--------------------------------')
 print('Elliptic lens x/cnll:', u)
 print('Exact elliptic kick P_x/p0:', lens_expected_px)
 print('Tracked elliptic kick P_x/p0:', lens_particles.px)

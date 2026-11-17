@@ -73,6 +73,8 @@ if n_recorded >= RECORD_CAPACITY:
     raise RuntimeError('Photon buffer filled; increase RECORD_CAPACITY.')
 photon_energy   = np.asarray(record.photon_energy[:n_recorded])
 photon_ids      = np.asarray(record.particle_id[:n_recorded])
+print('Inspect recorded events and account for the emitted energy\n'
+      '----------------------------------------------------------')
 print('Recorded photons / capacity:', n_recorded, RECORD_CAPACITY)
 n_preview       = min(5, n_recorded)
 xt.Table(
@@ -109,6 +111,8 @@ print('Maximum per-particle energy-balance residual [eV]:',
 rho             = BEND_LENGTH / abs(BEND_ANGLE)
 gamma0          = initial.gamma0[0]
 critical_energy = 1.5 * hbar * c / elementary_charge * gamma0**3 / rho
+print('\nCompare the recorded photon spectrum with its analytical reference\n'
+      '------------------------------------------------------------------')
 print('Entrance critical photon energy [keV]:', critical_energy / 1e3)
 # Radiation slightly changes the energy during the kick. This entrance scale
 # is an ultrarelativistic reference, not a fitted spectrum or an exact cutoff.

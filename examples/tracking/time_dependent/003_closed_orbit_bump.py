@@ -95,6 +95,8 @@ waveforms                           = {
 sample_times                        = np.linspace(0.0, BUMP_TURNS * period, 33)
 profiles                            = {}
 closure                             = {}
+print('Drive a spatially closed bump with one common envelope\n'
+      '------------------------------------------------------')
 for label, expression in waveforms.items():
     bump_env['bump_scale']  = expression
     profiles[label]         = []

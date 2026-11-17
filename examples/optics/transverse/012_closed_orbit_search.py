@@ -65,6 +65,8 @@ line.track(tracked, num_turns = 1)
 coordinates = ['x', 'px', 'y', 'py']
 before      = np.array([getattr(closed, c)[0] for c in coordinates])
 after       = np.array([getattr(tracked, c)[0] for c in coordinates])
+print('Find a transverse fixed point at fixed momentum\n'
+      '-----------------------------------------------')
 xt.Table(
     data    = {
         'coordinate':  np.array(coordinates),
@@ -90,6 +92,8 @@ tw = line.twiss4d(particle_on_co = closed, delta0 = DELTA0)
 # co_search_at moves the fixed-point search; the output table retains the
 # original line order. Both calculations describe the same closed orbit.
 alternative = line.twiss4d(co_search_at = SEARCH_AT, delta0 = DELTA0)
+print('\nCalculate optics about the orbit and choose another search location\n'
+      '-------------------------------------------------------------------')
 print('Search-location maximum orbit differences [m]:',
       np.max(np.abs(alternative.x - tw.x)),
       np.max(np.abs(alternative.y - tw.y)))

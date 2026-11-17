@@ -48,6 +48,8 @@ tw = line.twiss4d(coupling_edw_teng = True)
 ########################################
 # betx1/bety2 are principal Mais-Ripken projections into physical x/y.
 # beta_edw_teng describes the decoupled coordinate pair for each mode.
+print('Distinguish mode projections from decoupled Twiss parameters\n'
+      '------------------------------------------------------------')
 tw.rows[['ip.1', 'bpm.s4.d']].cols[
     'name betx1 betx_edw_teng bety2 bety_edw_teng g_edw_teng'].show(
         maxwidth = 'full')
@@ -72,6 +74,8 @@ print('g^2 times beta_x_ET [m]:',
 r_et = np.array([
     [tw.r11_edw_teng[0], tw.r12_edw_teng[0]],
     [tw.r21_edw_teng[0], tw.r22_edw_teng[0]]])
+print('\nBuild the physical-to-decoupled coordinate transformation\n'
+      '---------------------------------------------------------')
 print('Edwards-Teng coupling matrix at', tw.name[0], ':')
 print(r_et)
 
@@ -97,6 +101,8 @@ transform   = g * np.block([
 # At fixed delta, its leading transverse block is a closed 4D map.
 one_turn    = tw.R_matrix[:4, :4]
 modal_turn  = np.linalg.solve(transform, one_turn @ transform)
+print('\nExpress one turn in the decoupled coordinates\n'
+      '---------------------------------------------')
 print('One-turn map in (x, px, y, py):')
 print(one_turn)
 
@@ -134,6 +140,8 @@ transform_end   = g_end * np.block([
 ])
 physical_map    = tw.get_R_matrix(tw.name[0], end)[:4, :4]
 modal_map       = np.linalg.solve(transform_end, physical_map @ transform)
+print('\nFollow the changing Edwards-Teng basis along the ring\n'
+      '-----------------------------------------------------')
 print('Between the two local decoupling bases, maximum cross blocks:',
       np.max(np.abs(modal_map[:2, 2:])),
       np.max(np.abs(modal_map[2:, :2])))

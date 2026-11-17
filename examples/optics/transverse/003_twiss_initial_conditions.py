@@ -95,6 +95,8 @@ tw_from_downstream  = line.twiss(
     start   = START_ELEMENT,
     end     = END_ELEMENT,
     init    = init_downstream)
+print('Reuse the boundary conditions for a subrange\n'
+      '--------------------------------------------')
 print('Subrange optics: s, beta and dx [m]; alpha dimensionless:')
 tw_part.cols['name s betx bety alfx alfy dx'].show(maxwidth = 'full')
 
@@ -131,6 +133,8 @@ tw_from_matrix  = line.twiss(
     start   = START_ELEMENT,
     end     = END_ELEMENT,
     init    = explicit_init)
+print('\nSupply the optics at an interior element\n'
+      '----------------------------------------')
 print('Interior entrance and both range boundaries:')
 tw_from_matrix.rows[[START_ELEMENT, INTERIOR_ELEMENT, END_ELEMENT]].cols[
     'name s betx bety alfx alfy dx'].show(maxwidth = 'full')
@@ -146,6 +150,8 @@ tw_from_matrix.rows[[START_ELEMENT, INTERIOR_ELEMENT, END_ELEMENT]].cols[
 # entrance rows, including the boundary marker. The two _end_point rows
 # describe different exits.
 tw_reference    = tw_full.rows[tw_part.name[:-1]]
+print('\nCompare with the original solution\n'
+      '----------------------------------')
 for column, unit in [
     ('betx', 'm'), ('bety', 'm'), ('alfx', '1'), ('alfy', '1'),
     ('dx', 'm'), ('dpx', '1'), ('mux', 'turns'), ('muy', 'turns'),
@@ -154,15 +160,15 @@ for column, unit in [
         tw_part[column][:-1] - tw_reference[column]))
     difference_downstream   = np.max(np.abs(
         tw_from_downstream[column][:-1] - tw_reference[column]))
-    print(f'{column}: max differences from upstream/downstream init '
-          f'{difference:.3e}, {difference_downstream:.3e} {unit}')
+    print(f'{column} max differences from upstream/downstream init [{unit}]: '
+          f'{difference:.3e}, {difference_downstream:.3e}')
     for label, optics in [
         ('Interior table', tw_from_interior),
         ('Explicit matrix', tw_from_matrix),
     ]:
         residual = np.max(np.abs(
             optics[column][:-1] - tw_reference[column]))
-        print(f'  {label}: {residual:.3e} {unit}')
+        print(f'  {label} [{unit}]: {residual:.3e}')
 
 ########################################
 # Overlay the full and propagated optics

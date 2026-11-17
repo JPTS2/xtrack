@@ -267,8 +267,10 @@ line.build_tracker(_context = context)
 
 reference_turns = line.energy_program.get_turn_at_t_s(duration + periods[0])
 num_frames      = int(np.ceil(reference_turns / FRAME_FRACTION)) + 1
+print('Record species-selected pickups on a common synchronized frame clock\n'
+      '--------------------------------------------------------------------')
 print('Tracking on one serial CPU thread')
-print(f'Ring length: {circumference:.2f} m')
+print(f'Ring length [m]: {circumference:.2f}')
 print(f'Horizontal aperture: +/-{APERTURE_HALF_WIDTH*100:g} cm at '
       f's={aperture_s:.4f} m, Dx={aperture_dx:.3f} m '
       f'(about +/-{APERTURE_HALF_WIDTH/abs(aperture_dx):.2%} '
@@ -286,7 +288,7 @@ print(f'Carbon ramp: {CARBON_EKIN_PER_NUCLEON/1e6:g} -> '
       f'{FINAL_ENERGY_PER_NUCLEON/1e6:g} MeV/u '
       f'in {duration*1e6:.1f} us; '
       f'smooth turn-on over {turn_on_duration*1e6:.1f} us')
-print(f'Peak accelerating voltage per charge: {voltage_acc.max():.1f} V')
+print(f'Peak accelerating voltage per charge [V]: {voltage_acc.max():.1f}')
 
 ################################################################################
 # Track complete frames through the finite acquisition

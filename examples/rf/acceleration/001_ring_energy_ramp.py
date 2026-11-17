@@ -64,6 +64,8 @@ energy_per_turn = (program.get_kinetic_energy0_at_t_s(first_turn_time)
 env['phase_rf'] = np.pi - np.arcsin(
     energy_per_turn / (abs(line.particle_ref.q0) * RF_VOLTAGE))
 env['t_turn_s'] = 0.0
+print('Configure native reference evolution and harmonic RF synchronization\n'
+      '--------------------------------------------------------------------')
 print('Required reference energy gain per turn [eV]:', energy_per_turn)
 print('RF phase [rad], stored frequency [Hz], harmonic:',
       env['phase_rf'], line['rf.1'].frequency, line['rf.1'].harmonic)
@@ -135,6 +137,8 @@ powered         = histories['RF on']
 program_gain    = (program.get_kinetic_energy0_at_t_s(powered.time_s)
                    - program.get_kinetic_energy0_at_t_s(0.0))
 following_error = powered.energy_eV - powered.energy_eV[0] - program_gain
+print('\nInspect energy following and the effective RF frequency\n'
+      '-------------------------------------------------------')
 print('Final program gain at the particle clock [keV]:',
       1e-3 * program_gain[-1])
 print('Maximum / final energy-following error [eV]:',

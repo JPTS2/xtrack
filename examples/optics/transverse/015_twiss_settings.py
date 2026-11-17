@@ -50,6 +50,8 @@ line.twiss_default['chrom']     = False
 # Compute optics using the line defaults
 ########################################
 baseline = line.twiss()
+print('Request the results needed for the calculation\n'
+      '----------------------------------------------')
 print('Method:', baseline.method)
 print('Chromatic derivatives included:', 'dqx' in baseline.keys())
 print('Tunes:', baseline.qx, baseline.qy)
@@ -81,6 +83,8 @@ with_strengths.rows[['arc.s1.c1.qf.in', 'arc.s1.c1.qd', 'arc.s1.c1.b1']].cols[
 # replaces intermediate row values by NaN; it does not delete table rows.
 hidden  = line.twiss(hide_thin_groups = True)
 masked  = np.isnan(hidden.betx)
+print('\nMask internal rows of thin-element groups\n'
+      '-----------------------------------------')
 print('Rows before and after hiding thin groups:',
       len(baseline.name), len(hidden.name))
 print('Masked beta rows:', np.count_nonzero(masked))
@@ -103,6 +107,7 @@ print('Tune differences:', hidden.qx - baseline.qx, hidden.qy - baseline.qy)
 ########################################
 # Steps control the probes used to construct R; they are not beam emittances.
 alternative = line.twiss(steps_R_matrix = STEPS_R)
+print('\nCompare numerical step choices\n------------------------------')
 print('Baseline steps:', baseline.steps_R_matrix)
 print('Steps used after override:', alternative.steps_R_matrix)
 
@@ -122,6 +127,7 @@ print('Largest relative beta changes (x, y):',
 # Clear the defaults on this line
 ################################################################################
 line.twiss_default.clear()
+print('\nClear the defaults on this line\n-------------------------------')
 print('Cleared defaults:', line.twiss_default)
 # RF is off, so keep requesting 4D optics explicitly. Chromatic derivatives
 # are now included by default, after removing the earlier chrom=False setting.

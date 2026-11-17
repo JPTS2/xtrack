@@ -71,6 +71,8 @@ initial = line.build_particles(
 ########################################
 histories   = {}
 endpoints   = {}
+print('Follow the probes at three RK4 resolutions\n'
+      '------------------------------------------')
 for steps in STEPS:
     for name in field_names:
         line[name].num_integration_steps = steps

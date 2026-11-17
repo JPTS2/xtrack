@@ -71,6 +71,8 @@ print('Reference refinement: maximum scaled exit change:', reference_change)
 ################################################################################
 errors      = []
 scan_start  = perf_counter()
+print('\nSeparate RK4 integration error from transverse-expansion error\n'
+      '--------------------------------------------------------------')
 for order in EXPANSION_ORDERS:
     element = xt.BFieldExpansion(
         length                  = LENGTH,

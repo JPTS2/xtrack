@@ -95,6 +95,8 @@ opt = line.match(
     solve   = False,
     vary    = xt.VaryList(KNOB_NAMES, step = K1_STEP),
     targets = twiss_targets + [variable_target, field_target])
+print('Combine Twiss, variable and element-field targets\n'
+      '-------------------------------------------------')
 for target in opt.targets:
     print('Target action:', type(target.action).__name__)
 print('Before matching:')
@@ -111,6 +113,8 @@ restored    = line.twiss4d()
 ########################################
 # Compare the selected beta and alpha at the same marker
 ########################################
+print('\nInspect the reference, perturbed and rematched values\n'
+      '-----------------------------------------------------')
 print('Observation:', OBSERVATION, 'at s [m]:', reference['s', OBSERVATION])
 print(f'{"Quantity":<10} {"Reference":>14} {"Perturbed":>14} {"Restored":>14}')
 for quantity in ['betx', 'alfx']:

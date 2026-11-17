@@ -52,6 +52,8 @@ delay       = xt.TimeDelay(shift_zeta = SHIFT_ZETA)
 delay.track(probes)
 arrival_change  = ((probes.s - probes.zeta) - (initial.s - initial.zeta)) / (
     beta0 * c)
+print('Inspect the native coordinate shift before changing the ring\n'
+      '------------------------------------------------------------')
 xt.Table(
     data    = {
         'particle_id':          probes.particle_id,

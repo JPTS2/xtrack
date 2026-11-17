@@ -78,6 +78,7 @@ initial = xt.Particles(
     delta   = DELTA,
 )
 outputs = {}
+print('Track the common entrance scan\n------------------------------')
 for label, line in lines.items():
     particles = initial.copy()
     line.track(particles)
@@ -153,6 +154,8 @@ for steps in [N_FRINGE_STEPS, 2 * N_FRINGE_STEPS]:
     particles = initial.copy()
     smooth.track(particles)
     smooth_outputs[steps] = particles
+print('\nResolve a finite longitudinal quadrupole profile\n'
+      '------------------------------------------------')
 print('Hard-edge and smooth lengths [m]:',
       lines['fringes off, exact drifts'].get_length(), smooth.get_length())
 print('Hard-edge and smooth integrated k1 [m^-1]:',

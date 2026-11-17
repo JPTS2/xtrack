@@ -90,6 +90,8 @@ tapered = xt.Line(
 ########################################
 # The ramped profile has a longer magnetic integral and geometric length.
 # Its exit is a different plane from the uniform case's exit.
+print('\nJoin longitudinal-field ramps to a uniform body\n'
+      '-----------------------------------------------')
 print('Uniform length [m] and integral(ks ds):',
       uniform.get_length(), ks * BODY_LENGTH)
 print('Ramped length [m] and integral(ks ds):',
@@ -121,6 +123,7 @@ lines = {
     'ramped':           tapered,
     'matched sharp':    sharp_equivalent}
 outputs = {}
+print('\nInspect transverse coupling\n---------------------------')
 for label, line in lines.items():
     particles = initial.copy()
     line.track(particles)
@@ -170,6 +173,7 @@ axis_particles = initial.copy()
 shift_particles = initial.copy()
 axis_offset.track(axis_particles)
 element_shift.track(shift_particles)
+print('\nMove the solenoid field axis\n----------------------------')
 print('Field-axis and whole-element shifts: exit x differences [m]:',
       axis_particles.x - shift_particles.x)
 print('Field-axis and whole-element shifts: exit y differences [m]:',

@@ -100,6 +100,8 @@ line.track(extended, num_turns = N_TURNS)
 # comparing it with the launch grid. at_turn of lost particles is a loss turn,
 # whereas surviving particles carry the completed-turn count.
 survival = {}
+print('Restore launch identity and report loss classifications\n'
+      '-------------------------------------------------------')
 for label, tracked in [('Field off', control), ('Short', particles),
                        ('Doubled', extended)]:
     order           = np.argsort(tracked.particle_id)

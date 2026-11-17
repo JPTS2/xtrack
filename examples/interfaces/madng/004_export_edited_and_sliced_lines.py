@@ -58,6 +58,8 @@ split_s     = (
     + SPLIT_FRACTION * sliced_line[DRIFT_NAME].length
 )
 sliced_line.insert('export.marker', xt.Marker(), at = split_s)
+print('Preserve the baseline and prepare two independent edited versions\n'
+      '-----------------------------------------------------------------')
 sliced_line.get_table().rows[DRIFT_NAME + '.*|export[.]marker'].cols[
     'name s element_type parent_name'].show(maxwidth = 'full')
 # Insertion creates native DriftSlice elements with the original drift as
@@ -82,6 +84,8 @@ cases       = {
 models      = []
 results     = {}
 bpms        = line.steering_monitors_x
+print('\nBuild a fresh MAD-NG model for each configured line\n'
+      '---------------------------------------------------')
 for label, case in cases.items():
     models.append(case.build_madng_model())
     optics          = case.madng_twiss(

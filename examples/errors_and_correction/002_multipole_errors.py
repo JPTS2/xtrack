@@ -71,6 +71,8 @@ for name in quad_names:
 # knl[n] and ksl[n] are integrated normalized strengths, without a 1/n!.
 # The factorial enters the field polynomial, not the stored coefficient.
 # These are field integrals; activation of fringe maps is a separate setting.
+print('Add random relative errors and a fixed absolute sextupole component\n'
+      '-------------------------------------------------------------------')
 line.get_table(attr = True).rows[quad_names].cols[
     'name k1l k1sl k2l'].show(maxwidth = 'full')
 
@@ -92,6 +94,8 @@ knl_after, ksl_after        = magnet.get_total_knl_ksl()
 ########################################
 # No expression wiring is needed: relative errors follow main_strength at
 # tracking time. Absolute knl[2] stays fixed when the main current changes.
+print('\nChange the powered family and inspect what follows its strength\n'
+      '---------------------------------------------------------------')
 print('Selected magnet:', quad_names[0])
 print('Main integral before/after [m^-1]:',
       main_before, magnet.main_strength)
@@ -120,6 +124,8 @@ env.set(
                env.ref['systematic_scale'] * SEXT_RMS],
     ksl_rel = [0.0, env.ref['systematic_scale'] * SKEW_RMS, 0.0],
 )
+print('\nReplace random arrays with a common expression-based error pattern\n'
+      '------------------------------------------------------------------')
 print('Shared relative sextupole coefficient expression:',
       env.ref[quad_names[0]].knl_rel[2].xdeps.expr)
 # Only the coefficient graph is wired here. Native main_strength supplies the
@@ -150,6 +156,9 @@ env['reference_k1s']    = SKEW_K1S
 env.new('reference.quad', quad_names[0], k1s = 'reference_k1s')
 reference_magnet    = env['reference.quad']
 reference_totals    = {}
+print('\n'
+      'Choose the signed normal or skew main component as the error reference\n'
+      '----------------------------------------------------------------------')
 for label, use_skew in [('Normal main', False), ('Skew main', True)]:
     env.set('reference.quad', main_is_skew = use_skew)
     normal, skew    = reference_magnet.get_total_knl_ksl()

@@ -68,6 +68,8 @@ dx_dzeta    = (
     plus['x', OBSERVATION] - minus['x', OBSERVATION]) / (2 * ZETA_STEP)
 dpx_dzeta   = (
     plus['px', OBSERVATION] - minus['px', OBSERVATION]) / (2 * ZETA_STEP)
+print('Measure the response to longitudinal displacement\n'
+      '-------------------------------------------------')
 print('Crab optics at:', OBSERVATION)
 print('6D dx_zeta [1], dpx_zeta [m^-1]:',
       crab_6d['dx_zeta', OBSERVATION], crab_6d['dpx_zeta', OBSERVATION])
@@ -85,6 +87,8 @@ print('Centred 4D orbit differences [1, m^-1]:', dx_dzeta, dpx_dzeta)
 # RF-free optics use 4D; no stable longitudinal mode is requested.
 line['voltage_rf']  = 0.0
 rf_off              = line.twiss4d()
+print('\nSeparate RF settings and open-boundary transport\n'
+      '------------------------------------------------')
 print('RF-off 4D response [1, m^-1]:',
       rf_off['dx_zeta', OBSERVATION], rf_off['dpx_zeta', OBSERVATION])
 line['voltage_rf']              = RF_VOLTAGE

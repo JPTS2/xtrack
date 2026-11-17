@@ -62,6 +62,7 @@ element = xt.SplineBoris(
 # s_local runs from this element's entrance, not from the line's origin.
 s_local     = np.linspace(0, LENGTH, N_FIELD_POINTS)
 bx, by, bs  = element.get_field(x = 0.0, y = 0.0, s_local = s_local)
+print('Inspect the midplane field profile\n----------------------------------')
 print('Entrance and exit B_y [T]:', by[0], by[-1])
 print('Specified integral(B_y ds) [T m]:', MEAN_BY * LENGTH)
 fig, ax = plt.subplots(figsize = (8, 4))
@@ -90,6 +91,8 @@ expected_px = -MEAN_BY * LENGTH / reference.rigidity0[0]
 line        = xt.Line(elements = [element])
 particles   = reference.copy()
 line.track(particles)
+print('\nTrack the on-axis, on-momentum proton\n'
+      '-------------------------------------')
 print('Expected P_x/p0:', expected_px)
 print('Tracked kinetic P_x/p0:', particles.kin_px[0])
 print('Momentum difference:', particles.kin_px[0] - expected_px)
@@ -137,6 +140,8 @@ combined_line = xt.Line(
     particle_ref    = reference.copy(),
 )
 tw = combined_line.twiss(method = '4d', betx = 1.0, bety = 1.0)
+print('\nAdd a transverse derivative and compute open optics\n'
+      '---------------------------------------------------')
 tw.cols['name s x betx bety'].show()
 
 ################################################################################
@@ -149,6 +154,8 @@ tw.cols['name s x betx bety'].show()
 # angle=0 fixes a straight reference, while k0 sets a nonzero physical field.
 # Suppress bend edges: this is a homogeneous-field transport comparison.
 comparison_errors = []
+print('\nCross-check a uniform rotated field against RBend\n'
+      '-------------------------------------------------')
 for roll in FIELD_ROLLS:
     constant_bx = -MEAN_BY * np.sin(roll)
     constant_by = MEAN_BY * np.cos(roll)

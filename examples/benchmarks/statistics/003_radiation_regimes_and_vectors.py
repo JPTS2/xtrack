@@ -24,6 +24,8 @@ N_BINS      = 70
 # Compare native stochastic models in two bending regimes
 ################################################################################
 fig, axes = plt.subplots(2, 2, figsize = (11, 8), layout = 'constrained')
+print('Compare native stochastic models in two bending regimes\n'
+      '-------------------------------------------------------')
 for row, angle in enumerate(BEND_ANGLES):
     line = xt.Line(elements = {'bend': xt.Bend(
         length = BEND_LENGTH, angle = angle, model = 'bend-kick-bend',

@@ -51,8 +51,9 @@ reference       = line.twiss(method = '4d')
 ########################################
 # Check the reference and interaction points
 ########################################
-print(f'Beam-1 proton reference p0*c: '
-      f'{line.particle_ref.p0c[0] * 1e-12:.3f} TeV')
+print('Inspect the collision optics\n----------------------------')
+print(f'Beam-1 proton reference momentum [TeV/c]: '
+      f'{line.particle_ref.p0c[0] * 1e-12:.3f}')
 print(f'Full tunes: Qx = {reference.qx:.6f}, Qy = {reference.qy:.6f}')
 reference.rows[['ip1', 'ip2', 'ip5', 'ip8']].cols[
     's betx bety x px y py'].show(maxwidth = 'full')
@@ -89,6 +90,8 @@ separated       = line.twiss(method = '4d')
 # Recompute the closed orbit: the knob setting is a requested calibration.
 settings    = [reference, crossing, separated]
 labels      = np.array(['reference', 'crossing', 'crossing_and_separation'])
+print('\nMeasure the response rather than assuming exact knob calibration\n'
+      '----------------------------------------------------------------')
 xt.Table(
     data    = {
         'setting':  labels,

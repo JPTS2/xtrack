@@ -42,6 +42,8 @@ repo_root   = Path(__file__).resolve().parents[4]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env['pimms']
 tw          = line.twiss4d()
+print('Inspect the extraction operating point\n'
+      '--------------------------------------')
 print('Tunes Qx/Qy:', tw.qx, tw.qy)
 print('Horizontal distance below the third integer:', 5 / 3 - tw.qx)
 print('Chromaticities:', tw.dqx, tw.dqy)

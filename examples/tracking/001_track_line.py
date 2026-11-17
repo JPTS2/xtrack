@@ -39,6 +39,8 @@ line        = env[LINE_NAME]
 # Build particles at the ring entrance
 ################################################################################
 particles = line.build_particles(x = X, delta = 0.0)
+print('Build particles at the ring entrance\n'
+      '------------------------------------')
 print('Initial particles:')
 particles.get_table().cols[
     'particle_id x px s at_turn at_element'].show(maxwidth = 'full')
@@ -55,6 +57,7 @@ line.track(particles, num_turns = N_TURNS)
 ################################################################################
 # Full turns return to element 0 and reset s to zero. at_turn counts the turns.
 # These are final coordinates, not a history of the intervening motion.
+print('\nInspect the propagated particles\n--------------------------------')
 particles.get_table().cols[
     'particle_id x px s at_turn at_element state'].show(maxwidth = 'full')
 print('Final delta:', particles.delta)

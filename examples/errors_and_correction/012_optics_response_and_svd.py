@@ -70,6 +70,8 @@ before = line.twiss4d()
 ########################################
 # Remeasure the response after each correction
 ########################################
+print('Measure the response, inspect its rank and apply a truncated-SVD step\n'
+      '---------------------------------------------------------------------')
 for iteration in range(N_ITERATIONS):
     measured    = optics_vector(line.twiss4d())
     response    = np.zeros((len(measured), len(trim_names)))

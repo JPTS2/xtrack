@@ -103,6 +103,9 @@ element_anchor      = frames['elem_start'].copy().arc(
     length  = ANCHOR_S,
     angle   = BEND_ANGLE * ANCHOR_S / BEND_LENGTH,
 )
+print('\n'
+      'Locate the translated anchor using native reference and element frames\n'
+      '----------------------------------------------------------------------')
 print('Reference / actual element frame origins in global XYZ [m]:')
 for name, frame in frames.items():
     print(name, frame.XYZ)
@@ -121,6 +124,7 @@ print('Reference survey endpoint change XYZ [m]:',
 ################################################################################
 returned    = misaligned.copy()
 line.track(returned, num_turns = 1, backtrack = True)
+print('\nBacktrack the same finite 6D map\n--------------------------------')
 print('Maximum forward/backward residual for each coordinate:')
 for coordinate in ['x', 'px', 'y', 'py', 'zeta', 'delta', 's']:
     print(coordinate, np.max(np.abs(

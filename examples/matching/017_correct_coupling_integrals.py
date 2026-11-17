@@ -92,6 +92,8 @@ correction = xt.IntegralOptimization(
 # absolute sums, also for the signed real/imaginary callable integrands.
 # They are dimensionless and omit a periodic RDT denominator. The supplied
 # optics stay fixed while live strengths vary.
+print('Correct a separate fixed skew source with first-order integrals\n'
+      '---------------------------------------------------------------')
 print('Initial difference/sum integrals [1]:',
       correction.run()['difference'], correction.run()['sum'])
 integral_opt = correction.get_optimizer()

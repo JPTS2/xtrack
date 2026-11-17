@@ -73,6 +73,8 @@ line.insert('statistics', monitor, at = 'arc.s1.c1.qf.in@start')
 ########################################
 # Retarget the same monitor and append each new interval
 ########################################
+print('Save each frame before clearing it for reuse\n'
+      '--------------------------------------------')
 for frame in range(N_FRAMES):
     start = frame * FRAME_TURNS
     if frame > 0:
@@ -114,6 +116,8 @@ xt.Table(
 with h5py.File(output_path, 'r') as saved:
     all_turns = saved['turns'][...]
     shape     = saved['stats/beam/mean_x'].shape
+print('\nRead the accumulated history from disk\n'
+      '--------------------------------------')
 print('Saved turn labels:', all_turns)
 print('Expected turn labels:', np.arange(N_FRAMES * FRAME_TURNS))
 print('Saved mean_x shape / in-memory shape:', shape, monitor.mean_x.shape)

@@ -101,6 +101,8 @@ opt = line.match(
 ########################################
 opt.target_status()
 after = line.twiss4d(chrom = True, delta_chrom = DELTA_STEP)
+print('\nIndependently recompute the matched momentum dependence\n'
+      '-------------------------------------------------------')
 print('Matched dQ/d(delta):', after.dqx, after.dqy)
 for name in ['k2lf', 'k2ld']:
     print(name, 'integrated k2 [m^-2]:', env[name])
@@ -210,6 +212,8 @@ local_table = xt.Table(
     },
     index   = 'quantity',
 )
+print('\nCheck the local correction with a smaller momentum step\n'
+      '-------------------------------------------------------')
 local_table.show()
 
 ########################################

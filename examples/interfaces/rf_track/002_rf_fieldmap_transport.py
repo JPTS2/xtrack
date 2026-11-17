@@ -79,9 +79,10 @@ line.track(particles)
 energy_out  = particles.energy
 gain_mev    = (energy_out - energy_in) * 1e-6
 
-print(f'Field-map length: {line.get_length():.6f} m')
+print('Scan the entrance arrival time\n------------------------------')
+print(f'Field-map length [m]: {line.get_length():.6f}')
 print(f'Chosen peak |complex Ez|: {PEAK_EZ * 1e-6:.3f} MV/m')
-print(f'Fixed reference p0*c: {particles.p0c[0] * 1e-6:.3f} MeV')
+print(f'Fixed reference momentum [MeV/c]: {particles.p0c[0] * 1e-6:.3f}')
 xt.Table(
     data    = {
         'phase_deg': phase_deg,

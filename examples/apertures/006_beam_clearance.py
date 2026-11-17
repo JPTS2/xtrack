@@ -106,6 +106,8 @@ clearance                   = line.aperture.get_aperture_sigmas_for_twiss(
     output_contact_points   = True,
 )
 # x and y below are limiting wall-contact coordinates, not the closed orbit.
+print('Compare monoenergetic and dispersive beam envelopes\n'
+      '---------------------------------------------------')
 clearance.cols['s n1 x y'].show(maxwidth = 'full')
 # n1 is the largest betatron envelope scale that fits the selected halo model.
 # The native envelope includes orbit and +/-D*DELTA_RMS excursions. It is not

@@ -89,6 +89,8 @@ expected    = np.histogram(
     weights = weights[in_range],
 )[0]
 recorded    = monitor.profiles['x'][monitor.record_index(0)]
+print('\nCompare weighted bin counts and identify profile truncation\n'
+      '-----------------------------------------------------------')
 print('Maximum profile/NumPy bin difference:',
       np.max(np.abs(recorded - expected)))
 print('Full population / in-range x profile weight:',
@@ -153,6 +155,8 @@ history_line.track(history_particles, num_turns = N_ACQUISITIONS)
 ########################################
 # Select profile rows using absolute turn labels
 ########################################
+print('\nAcquire consecutive profiles during transport\n'
+      '---------------------------------------------')
 print('Recorded absolute turns:', history.turns)
 print('Turn / row / scalar weight / x profile weight / delta profile weight:')
 for turn in history.turns:

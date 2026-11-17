@@ -79,6 +79,8 @@ misaligned  = line.twiss4d()
 ########################################
 # Inspect attributes in the line frame and the coupled mode projections
 ########################################
+print('Inspect the installed errors and their optical consequences\n'
+      '-----------------------------------------------------------')
 line.get_table(attr = True).rows[quad_names].cols[
     'name s shift_x shift_y rot_s_rad'].show(maxwidth = 'full')
 for label, tw in [('Nominal', nominal), ('Shifted', shifted),
@@ -119,6 +121,8 @@ actual      = frames['elem_start']
 relative    = reference.inverse() @ actual
 offset_um   = 1e6 * relative.XYZ
 frame_roll  = np.arctan2(relative.ex[1], relative.ex[0])
+print('\nLocate a displaced magnet and inspect its surveyed frames\n'
+      '---------------------------------------------------------')
 print('Surveyed element:', FRAME_ELEMENT)
 print('Entrance offset in reference (x, y, s) [µm]:', offset_um)
 print('Entrance-frame roll [mrad]:', 1e3 * frame_roll)

@@ -71,6 +71,8 @@ line = xt.Line(elements = [xt.LineSegmentMap(
     momentum_compaction_factor  = ALPHA_C)])
 line.particle_ref = reference
 tw = line.twiss()
+print('Define a stable linear longitudinal model\n'
+      '-----------------------------------------')
 print('Slip factor:', tw.slip_factor)
 print('Synchrotron tune:', tw.qs)
 print('Longitudinal beta bets0 [m]:', tw.bets0)
@@ -107,6 +109,8 @@ line.track(particles, num_turns = NUM_TURNS)
 # delta, while this map rotates pzeta, equal to delta only to first order.
 # Finite-sample moments also fluctuate as individual particles oscillate.
 sigma_delta = SIGMA_ZETA / abs(tw.bets0)
+print('\nCompare input sizes with the prepared and tracked bunch\n'
+      '-------------------------------------------------------')
 xt.Table(
     data    = {
         'quantity': np.array(['sigma_zeta [m]', 'sigma_delta']),

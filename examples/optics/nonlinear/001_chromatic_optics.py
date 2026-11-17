@@ -47,6 +47,8 @@ nominal     = line.twiss4d(chrom = True, delta_chrom = CHROM_STEP)
 ########################################
 # Tune derivatives with respect to delta
 ########################################
+print('Inspect global and local chromatic quantities\n'
+      '---------------------------------------------')
 print('Linear chromaticities dQ/d(delta):', nominal.dqx, nominal.dqy)
 
 ########################################
@@ -70,6 +72,8 @@ plus    = line.twiss4d(delta0 = CHROM_STEP, chrom = False)
 minus   = line.twiss4d(delta0 = -CHROM_STEP, chrom = False)
 dqx_fd  = (plus.qx - minus.qx) / (2 * CHROM_STEP)
 dqy_fd  = (plus.qy - minus.qy) / (2 * CHROM_STEP)
+print('\nCompare with separately calculated off-momentum solutions\n'
+      '---------------------------------------------------------')
 print('Centered tune derivatives:', dqx_fd, dqy_fd)
 
 ########################################
@@ -161,6 +165,8 @@ zero_at_end         = line.twiss4d(
     init        = end_init,
     chrom       = True,
     delta_chrom = CHROM_STEP)
+print('\nPropagate chromatic conditions through an open section\n'
+      '------------------------------------------------------')
 for label, optics in [('Periodic boundary', inherited),
                        ('Zero entrance', zero_boundary),
                        ('Zero exit', zero_at_end)]:

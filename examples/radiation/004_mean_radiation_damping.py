@@ -67,6 +67,8 @@ tw      = line.twiss(
     radiation_method    = 'full',
 )
 rate    = tw.damping_constants_turns[0]
+print('Find a compensated periodic mean-radiation solution\n'
+      '---------------------------------------------------')
 print('Mean radiation loss per turn [eV]:', tw.energy_loss)
 print('Amplitude damping constants [1/turn]:', tw.damping_constants_turns)
 print('Horizontal amplitude / action e-folding turns:',

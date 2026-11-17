@@ -59,6 +59,8 @@ tw_after    = line.twiss4d(delta0 = DELTA0)
 # Keep the same kicks and inspect their on-momentum effect
 ########################################
 tw_on_after = line.twiss4d(delta0 = 0)
+print('Correct the horizontal orbit of the off-momentum beam\n'
+      '-----------------------------------------------------')
 for label, tw in [('Off-momentum before', tw_before),
                   ('Off-momentum after', tw_after),
                   ('On-momentum before', tw_ref),

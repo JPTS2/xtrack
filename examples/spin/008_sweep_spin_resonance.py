@@ -60,6 +60,8 @@ line.insert(
 twiss       = line.twiss4d(polarization_analysis = True)
 spin_tune   = twiss.spin_tune_fractional
 period      = twiss.t_rev0
+print('Prepare a spin-capable magnetic drive and a common initial sample\n'
+      '-----------------------------------------------------------------')
 print('Reference fractional spin tune / revolution period [s]:',
       spin_tune, period)
 print('Orbital tunes Qx / Qy:', twiss.qx, twiss.qy)
@@ -99,6 +101,8 @@ final_populations   = {}
 ########################################
 # Integrate each frequency sweep and track its magnetic response
 ########################################
+print('\nCompare a resonance crossing with an otherwise matched detuned sweep\n'
+      '--------------------------------------------------------------------')
 for label, offset in [('Crossing sweep', 0.0),
                        ('Detuned sweep', CONTROL_OFFSET)]:
     frequency_start = spin_tune - SWEEP_HALF_SPAN + offset

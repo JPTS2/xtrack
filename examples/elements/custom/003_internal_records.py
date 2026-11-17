@@ -128,6 +128,8 @@ line.track(particles, num_turns = NUM_TURNS)
 ########################################
 # The index is part of the table schema above. Event order need not follow
 # particle IDs on other contexts; compare events by their stored identifiers.
+print('Share one nested record between two line elements\n'
+      '-------------------------------------------------')
 print('Requested events per table:', 2 * NUM_PARTICLES * NUM_TURNS)
 for label in ['before', 'after']:
     events       = getattr(record, label)
@@ -175,6 +177,8 @@ standalone_particles = xt.Particles(
     x           = np.zeros(NUM_PARTICLES))
 standalone_a.track(standalone_particles)
 standalone_b.track(standalone_particles)
+print('\nAttach a record to selected standalone elements\n'
+      '-----------------------------------------------')
 print('Both elements use the same record:',
       standalone_a.record is standalone_b.record)
 

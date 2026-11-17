@@ -40,6 +40,8 @@ env['voltage_rf']   = RF_VOLTAGE
 # Unlike the RF-free 4D examples, delta and zeta are solved as part of the
 # periodic orbit. The model has one thin sinusoidal cavity and no radiation.
 tw = line.twiss6d()
+print('Solve periodic 6D optics and inspect the synchronous orbit\n'
+      '----------------------------------------------------------')
 print('Tunes (mode 1, mode 2, synchrotron):', tw.qx, tw.qy, tw.qs)
 print('Slip factor:', tw.slip_factor)
 print('Longitudinal beta at the entrance [m]:', tw.bets0)
@@ -71,6 +73,8 @@ line.track(tracked, num_turns = 1)
 coordinates = ['x', 'px', 'y', 'py', 'zeta', 'pzeta']
 before      = np.array([getattr(initial, name)[0] for name in coordinates])
 after       = np.array([getattr(tracked, name)[0] for name in coordinates])
+print('\nTrack one turn from the synchronous particle\n'
+      '--------------------------------------------')
 xt.Table(
     data    = {
         'coordinate': np.array(coordinates),

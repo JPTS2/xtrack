@@ -57,6 +57,8 @@ for label, model in [('Radiation off', None), ('Mean radiation', 'mean')]:
 ########################################
 # Compare native physical particle energies
 ########################################
+print('Inspect energy loss along the passage and at the exit\n'
+      '-----------------------------------------------------')
 xt.Table(
     data    = {
         'model':            np.array([row[0] for row in summary]),
@@ -64,7 +66,7 @@ xt.Table(
         'exit_delta':       np.array([row[2] for row in summary]),
         'exit_state':       np.array([row[3] for row in summary])},
     index   = 'model').show(maxwidth = 'full')
-print('Fixed reference p0*c [GeV]:', particles.p0c[0] / 1e9)
+print('Fixed reference momentum [GeV/c]:', particles.p0c[0] / 1e9)
 
 ########################################
 # Resolve the distributed loss using the native element-by-element record

@@ -92,6 +92,8 @@ opt = line.match(
     ),
 )
 corrected = line.twiss4d(chrom = True, delta_chrom = DELTA_STEP)
+print('Correct global chromaticities using the existing sextupole circuits\n'
+      '-------------------------------------------------------------------')
 print('Bare/corrected dQx/d(delta), dQy/d(delta):',
       (nominal.dqx, nominal.dqy), (corrected.dqx, corrected.dqy))
 print('Corrected integrated sextupole strengths [m^-2]:',
@@ -111,6 +113,8 @@ for label, model in [('Bare', bare), ('Corrected', line)]:
                      tw['bety', IP], tw['x', IP], tw['dx', IP]))
 columns = ['setting', 'delta', 'qx', 'qy',
            'betx_ip', 'bety_ip', 'x_ip', 'dx_ip']
+print('\nCompare off-momentum tunes and insertion optics at the same settings\n'
+      '--------------------------------------------------------------------')
 print('IP beta, orbit and dispersion in metres; full tunes dimensionless:')
 xt.Table(
     data    = {name: np.array(values)
@@ -127,6 +131,9 @@ xt.Table(
 ################################################################################
 tracked = {}
 records = {}
+print('\n'
+      'Track the common launch sample without further operating-point changes\n'
+      '----------------------------------------------------------------------')
 for label, model in [('Bare', bare), ('Corrected', line)]:
     particles       = initial.copy()
     model.track(particles, num_turns = N_TURNS, turn_by_turn_monitor = True)

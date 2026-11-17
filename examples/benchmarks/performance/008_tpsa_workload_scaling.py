@@ -64,12 +64,14 @@ reference_args  = dict(
     mass0   = reference.mass0,
     q0      = reference.q0,
 )
+print('Load the shared model and report the execution configuration\n'
+      '------------------------------------------------------------')
 print('Python / NumPy / Xtrack / madng_tpsa:', platform.python_version(),
       np.__version__, xt.__version__, version('madng-tpsa'))
 print('Platform:', platform.platform(), platform.machine())
 print('Experimental native TPSA tracking; serial CPU; radiation off')
 print('Map / parameter orders:', MAP_ORDER, PARAMETER_ORDER)
-print('Reference p0*c [GeV] / q0 [e]:', reference.p0c[0] * 1e-9,
+print('Reference momentum [GeV/c] / q0 [e]:', reference.p0c[0] * 1e-9,
       reference.q0)
 print('Entrance coordinates:', INITIAL)
 print('Sextupole k2*L [m^-2]:', K2LF)
@@ -170,6 +172,8 @@ def measure_case(cells, parameters):
 ########################################
 # Increase length at fixed map order and parameter count
 ########################################
+print('\nScan segment length and active-parameter count independently\n'
+      '------------------------------------------------------------')
 print('\nCell-count scan: fixed active parameters =', FIXED_PARAMETERS)
 length_rows = [measure_case(cells, FIXED_PARAMETERS) for cells in CELL_COUNTS]
 
@@ -187,6 +191,8 @@ parameter_rows  = [measure_case(FIXED_CELLS, count)
 # Setup below includes descriptor creation, field binding and fresh-map input.
 # Transport includes the Python call and native map tracking, not just algebra.
 # Each repeat is fresh; warmups use the same descriptor dimensions as its case.
+print('\nReport the measured operations and their repeat spread\n'
+      '------------------------------------------------------')
 print('\nSetup and transport: median [min, max] over', REPEATS, 'repeats [ms]')
 print('Untimed warmups per case:', WARMUPS)
 for rows in [length_rows, parameter_rows]:

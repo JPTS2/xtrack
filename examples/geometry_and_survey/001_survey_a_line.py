@@ -46,6 +46,7 @@ survey      = line.survey()
 # Read the geometric bend angles
 ########################################
 table = line.get_table(attr = True)
+print('Inspect positions and orientation\n---------------------------------')
 table.rows[['b1.1', 'b2.1']].cols['name s_start s_end angle'].show()
 
 ########################################

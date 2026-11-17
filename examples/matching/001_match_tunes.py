@@ -60,6 +60,8 @@ tw_after    = line.twiss4d()
 ########################################
 # Inspect tune targets and residuals
 ########################################
+print('Compare the independently recomputed result with the requested tunes\n'
+      '--------------------------------------------------------------------')
 print(f'{"Tune":<8} {"Before":>14} {"After":>14}'
       f' {"Target":>14} {"Residual":>12}')
 for name, target in [('qx', QX_TARGET), ('qy', QY_TARGET)]:

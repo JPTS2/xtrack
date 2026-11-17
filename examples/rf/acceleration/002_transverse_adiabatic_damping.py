@@ -68,6 +68,8 @@ proton_gain                     = (
 proton_env['phase_rf']          = np.arcsin(proton_gain / PROTON_VOLTAGE)
 proton_env['t_turn_s']          = 0.0
 proton_initial_optics           = proton_line.twiss6d(chrom = False)
+print('Follow transverse action and beam size during proton acceleration\n'
+      '-----------------------------------------------------------------')
 print('Proton reference gain per turn [eV], RF phase [rad], slip factor:',
       proton_gain, proton_env['phase_rf'], proton_initial_optics.slip_factor)
 # For positive protons below transition, asin(DeltaE/(q0*V)) is focusing.
@@ -148,7 +150,7 @@ for axis in axes:
     axis.grid()
     axis.legend()
 fig.tight_layout()
-print('Proton final state set / reference p0*c [GeV]:',
+print('Proton final state set / reference momentum [GeV/c]:',
       np.unique(bunch.state), bunch.p0c[0] * 1e-9)
 print('Expected phase-averaged betatron size ratio:', size_ratio[-1])
 # Phase-averaged size uses the measured centered action and local beta.

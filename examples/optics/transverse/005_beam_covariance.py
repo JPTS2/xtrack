@@ -49,6 +49,8 @@ tw          = line.twiss4d()
 # Sigma uses canonical (x, px, y, py, zeta, pzeta) coordinates; px and py are
 # normalized momenta, not slopes. Its moments are about the beam centroid.
 betatron = tw.get_beam_covariance(nemitt_x = NEMITT_X, nemitt_y = NEMITT_Y)
+print('Obtain betatron covariance from the emittances\n'
+      '----------------------------------------------')
 betatron.rows[[OBSERVATION]].cols[
     'name sigma_x sigma_px Sigma11 Sigma12 Sigma22'].show(maxwidth = 'full')
 
@@ -97,6 +99,10 @@ sizes = xt.Table(
         'sigma_y_beta': betatron.sigma_y,
         'sigma_y_full': sigma_y},
     index   = 'name')
+print('\nAdd dispersion from an independent momentum distribution\n'
+      '--------------------------------------------------------')
+print('The independent momentum spread adds the dispersive contribution.')
+print('Vertical dispersion is zero here, so the two vertical sizes coincide.')
 print('Beam sizes [m]:')
 sizes.rows[['ip.1', OBSERVATION]].show(maxwidth = 'full')
 

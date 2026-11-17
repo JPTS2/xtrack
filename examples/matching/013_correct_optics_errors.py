@@ -105,6 +105,8 @@ corrected   = line.twiss4d()
 ########################################
 # Report beta-beating RMS at quadrupole entrances and tune errors
 ########################################
+print('Inspect sampled residuals and the full-ring beta beating\n'
+      '--------------------------------------------------------')
 for label, tw in [('Perturbed', perturbed), ('Corrected', corrected)]:
     print(label, 'Qx/Qy residuals:', tw.qx - reference.qx, tw.qy - reference.qy)
     for quantity in ['betx', 'bety']:

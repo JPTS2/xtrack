@@ -93,6 +93,8 @@ signal                          = line.twiss(
 known_trim                      = KNOWN_TRIM
 measured_x                      = signal['x', BPM_OBSERVATION]
 env['rf_relative_frequency']    = 0.0
+print('Infer a frequency trim from a horizontal orbit measurement\n'
+      '----------------------------------------------------------')
 print('Synthetic BPM x [m]:', BPM_OBSERVATION, measured_x)
 print('Reference horizontal dispersion at the BPM [m]:',
       reference['dx', BPM_OBSERVATION])

@@ -67,6 +67,8 @@ print('Reference frames:', proper.reference_frame, reverse.reference_frame)
 # Alpha_x/y change sign; dx changes sign while dpx stays unchanged.
 columns = ['s', 'x', 'px', 'y', 'py', 'alfx', 'alfy', 'dx', 'dpx']
 signs   = np.array([-1, -1, 1, 1, -1, -1, -1, -1, 1])
+print('\nCompare coordinates at zero-length observation markers\n'
+      '------------------------------------------------------')
 for name in MARKERS:
     values      = np.array([proper[column, name] for column in columns])
     expected    = signs * values

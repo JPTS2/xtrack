@@ -33,6 +33,8 @@ line                = env['demo']
 env['voltage_rf']   = RF_VOLTAGE
 reference           = line.twiss4d(chrom = False)
 initial             = reference.get_twiss_init(OPEN_START)
+print('Set a common RF-on operating point and retain entrance optics\n'
+      '-------------------------------------------------------------')
 print('Python / Xtrack:', platform.python_version(), xt.__version__)
 print('Platform:', platform.platform())
 print('Ring elements / length [m]:',
@@ -107,6 +109,8 @@ for label, analyze in [('mean_radiation_6d', False),
 # Report the complete calculation cost
 ################################################################################
 columns = ['operation', 'rows', 'length_m', 'median_s', 'q25_s', 'q75_s']
+print('\nReport the complete calculation cost\n'
+      '------------------------------------')
 xt.Table(
     data    = {name: np.array(values)
                for name, values in zip(columns, zip(*rows))},

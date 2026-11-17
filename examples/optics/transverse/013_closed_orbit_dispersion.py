@@ -62,13 +62,15 @@ minus   = line.twiss4d(delta0 = -DELTA)
 # Dispersion differentiates the closed orbit with respect to delta at delta=0.
 # px, py are canonical transverse momenta normalized to the reference p0;
 # dpx, dpy therefore differentiate those coordinates, not geometrical slopes.
+print('Compare the finite difference with the periodic dispersion\n'
+      '----------------------------------------------------------')
 for coordinate, dispersion in [('x', 'dx'), ('px', 'dpx'),
                                ('y', 'dy'), ('py', 'dpy')]:
     finite_difference   = (plus[coordinate] - minus[coordinate]) / (2 * DELTA)
     error               = finite_difference - nominal[dispersion]
-    units               = 'm' if coordinate in ['x', 'y'] else 'dimensionless'
-    print(dispersion, 'maximum centered-difference error:',
-          np.max(np.abs(error)), units)
+    units               = 'm' if coordinate in ['x', 'y'] else '1'
+    print(f'{dispersion} maximum centered-difference error [{units}]:',
+          np.max(np.abs(error)))
 
 ########################################
 # Inspect the displacement at one observation point
