@@ -469,12 +469,14 @@ int CavityModel_averaged_interval(
             );
             position += sub;
         }
-        // The static fields radiate once per cell, going forward.
+        // The static and RF fields radiate once per cell, going forward.
         if (status == CAVITY_MODEL_OK && !reverse)
             status = CavityEffects_radiate_state(
                 spin, q, start_xy, xt_float_or_tpsa_const_part(source->k),
                 xt_float_or_tpsa_const_part(field.solenoid),
-                xt_float_or_tpsa_const_part(step / source->k)
+                xt_float_or_tpsa_const_part(step / source->k), source,
+                xt_float_or_tpsa_const_part(Q), xt_float_or_tpsa_const_part(q[2]),
+                xt_float_or_tpsa_const_part(position)
             );
         previous = gradient;
     }

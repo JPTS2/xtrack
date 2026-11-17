@@ -61,7 +61,7 @@ def calibrated_waves(voltage, frequency, length, phase, ratio, envelope,
 
 
 def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=None, tolerance=1e-12,
-                magnet=None, ramp=None, radial_order=2):
+                magnet=None, ramp=None, radial_order=2, lienard=False):
     """Coordinates at the exit plane, from those at the entry plane, for a field-free
     outside: Xtrack's x, px, y, py, zeta, delta relative to p0c. With `anomaly`, the
     launch's spin_x, spin_y, spin_z follow the Thomas-BMT equation in the same fields.
@@ -71,7 +71,10 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
     envelope's end ramps, each ramp is integrated as its own segment in steps that
     resolve it. `radial_order` n keeps E_z to r^n and E_r, c B_phi to r^(n-1); both waves
     share kappa^2 = k^2 - k_z^2, so each series is one in kappa^2 r^2, and beyond the
-    leading terms the envelope enters only through h, as in the maps."""
+    leading terms the envelope enters only through h, as in the maps. With `lienard`, the end
+    also carries the energy the body radiates, (2/3) r_e gamma^2 [(E + v x B)^2 - (beta.E)^2]
+    / (m c^2) per unit path, without its reaction and without the ramps, whose radiation
+    grows without limit as they shrink: a hard edge does not radiate."""
     k, kz, phase = waves['k'], waves['wave_number'], waves['phase']
     F, B, chi = waves['forward'], waves['backward'], waves['counter_phase']
     beta0 = p0c / np.hypot(p0c, mass0)
@@ -111,26 +114,33 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
             cB_y = -y / 2 * dcB_z + multipole.real
             rates[3] += charge * (py / pz * cB_z - cB_y)
             rates[4] += charge * (cB_x - px / pz * cB_z)
-        if anomaly is None:
-            return rates
-        # Thomas-BMT in eV units, per unit z: dS/dz = Omega x S * energy / (pz c)
         field_E = np.array([E_r_over_r * x, E_r_over_r * y, E_z])
         field_cB = np.array([-cB_over_r * y, cB_over_r * x, 0.])
         if magnet is not None:
             field_cB = field_cB + np.array([cB_x, cB_y, cB_z])
-        p = np.array([px, py, pz])
+        beta = np.array([px, py, pz]) / energy
+        if lienard:
+            inside = ramp is None or abs(z) < length / 2 - ramp
+            force = field_E + np.cross(beta, field_cB)
+            term = charge**2 * (force @ force - (beta @ field_E)**2)
+            radiated = (2 / 3 * 2.8179403262e-15 * 510998.95069 / mass0 * (energy / mass0)**2 * term / mass0
+                        * energy / pz * inside)
+        if anomaly is None:
+            return rates + ([radiated] if lienard else [])
+        # Thomas-BMT in eV units, per unit z: dS/dz = Omega x S * energy / (pz c)
         gamma = energy / mass0
-        beta = p / energy
         Omega = -charge / mass0 * ((anomaly + 1 / gamma) * field_cB
             - anomaly * gamma / (gamma + 1) * np.dot(beta, field_cB) * beta
             - (anomaly + 1 / (gamma + 1)) * np.cross(beta, field_E))
         spin = np.cross(Omega, state[6:9]) * energy / pz
-        return rates + list(spin)
+        return rates + list(spin) + ([radiated] if lienard else [])
 
     start = [launch['x'], launch['y'], -length / 2 - launch['zeta'] / beta0,
              launch['px'] * p0c, launch['py'] * p0c, np.hypot(momentum, mass0)]
     if anomaly is not None:
         start += [launch['spin_x'], launch['spin_y'], launch['spin_z']]
+    if lienard:
+        start += [0.]
     wave_step = 2 * np.pi / max(k, kz) / 64
     planes = [-length / 2, length / 2]
     if ramp is not None:
@@ -145,4 +155,6 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
                delta=np.sqrt(energy**2 - mass0**2) / p0c - 1)
     if anomaly is not None:
         end.update(spin_x=solution.y[6, -1], spin_y=solution.y[7, -1], spin_z=solution.y[8, -1])
+    if lienard:
+        end.update(radiated=solution.y[-1, -1])
     return end

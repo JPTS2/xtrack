@@ -717,7 +717,11 @@ int CavityModel_frozen_prefix(
         && xt_float_or_tpsa_const_part(position) > radiate_from)                   \
         status = CavityEffects_radiate_state(                                      \
             spin, state, state, 1., xt_float_or_tpsa_const_part(solenoid),         \
-            xt_float_or_tpsa_const_part((weight) * L))
+            xt_float_or_tpsa_const_part((weight) * L), source,                     \
+            xt_float_or_tpsa_const_part(Q),                                        \
+            xt_float_or_tpsa_const_part(source->clock_origin                       \
+                + k * (state[2] + (position) * L / beta0)),                        \
+            xt_float_or_tpsa_const_part(k * L * ((position) - .5)))
 #define FROZEN_NODE(position, weight)                                              \
     CavityModel_frozen_node(state, (position), (weight), reverse, h0, nominal_gain, \
                             beta0, voltage, radial, k, phase, Q, source,           \

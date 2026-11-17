@@ -207,7 +207,11 @@ class Cavity(_CavityControls, BeamElement):
     fields and their faces. The static fields radiate as the magnets do, in
     every model, when the line is configured for radiation (mean, quantum or
     quantum-kick): their field across the motion over each cell, with a
-    collinear recoil. The RF fields do not radiate yet. Settings a physical model cannot track are refused at
+    collinear recoil. The RF field radiates each wave's Lienard power, gamma^2
+    [(E + v x B)^2 - (beta.E)^2], into the weak-dipole line at the wave's seen
+    frequency (photon numbers 3(1 - 2x + 2x^2)/2 up to hbar nu / (1 - beta)),
+    with the photon energies raised by the quiver strength; hard edges do not
+    radiate. Settings a physical model cannot track are refused at
     construction and when changed later. A particle the field stops is lost
     with state XT_LOST_STOPPED_IN_CAVITY; settings found invalid only while
     tracking (a knob's value) lose it with XT_INVALID_CAVITY_SETTINGS.
@@ -387,10 +391,6 @@ class Cavity(_CavityControls, BeamElement):
             return
         if self.num_kicks < 0:
             raise ValueError('num_kicks must be non-negative')
-        if (self._resolved_model == 13 and _constant_part(self.voltage) != 0.
-                and _constant_part(self.harmonic) == 0.
-                and not _constant_part(self.frequency) > 0.):
-            raise ValueError('_phase-resolved-frozen needs a positive frequency')
         if self.integrator == 'teapot':
             raise ValueError(f'{self.model} has symmetric steps: "teapot" '
                              'does not apply')

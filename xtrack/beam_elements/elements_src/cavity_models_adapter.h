@@ -696,7 +696,8 @@ void track_cavity_single_particle(
                 double u[6] = {q[0], q[1], q[2], q[3] - Q * a[0], q[4] - Q * a[1],
                                q[5] - Q * a[3]};
                 status = CavityEffects_radiate_state(
-                    &effects, u, start_xy, source.k, 0., cell_h / source.k
+                    &effects, u, start_xy, source.k, 0., cell_h / source.k, &source, Q,
+                    q[2], z
                 );
                 q[3] = u[3] + Q * a[0];
                 q[4] = u[4] + Q * a[1];

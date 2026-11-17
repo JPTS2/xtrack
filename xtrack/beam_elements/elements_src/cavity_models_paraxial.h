@@ -940,11 +940,12 @@ int CavityModel_paraxial_interval(
             if (status == CAVITY_MODEL_OK)
                 status = CavityModel_averaged_body(q, half, source, &field, spin);
         }
-        // The static fields radiate once per cell, going forward.
+        // The static and RF fields radiate once per cell, going forward.
         if (status == CAVITY_MODEL_OK && !reverse)
             status = CavityEffects_radiate_state(
                 spin, q, start_xy, xt_float_or_tpsa_const_part(source->k), solenoid,
-                xt_float_or_tpsa_const_part((end - start) / source->k)
+                xt_float_or_tpsa_const_part((end - start) / source->k), source, Q_spin,
+                xt_float_or_tpsa_const_part(q[2]), xt_float_or_tpsa_const_part(end)
             );
     }
     if (status == CAVITY_MODEL_OK && rf_last) {
