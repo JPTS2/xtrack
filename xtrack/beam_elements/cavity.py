@@ -191,7 +191,10 @@ class Cavity(_CavityControls, BeamElement):
     use FieldExpansionCavity. Spin is transported as by the magnets: when the line
     is configured for spin or radiation, for particles whose spin is not zero, and
     not in TPSA tracking, in every model, slice and context, with the static
-    fields and their faces. Settings a physical model cannot track are refused at
+    fields and their faces. The static fields radiate as the magnets do, in
+    every model, when the line is configured for radiation (mean, quantum or
+    quantum-kick): their field across the motion over each cell, with a
+    collinear recoil. The RF fields do not radiate yet. Settings a physical model cannot track are refused at
     construction; set later, they lose the particle (state -99744).
 
     counter_wave_amplitude : float
@@ -296,6 +299,7 @@ class Cavity(_CavityControls, BeamElement):
         'num_kicks': xo.Int64,
         'model': xo.Int64,
         'integrator': xo.Int64,
+        'radiation_flag': xo.Int64,
     }
 
     _extra_c_sources = [

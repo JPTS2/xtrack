@@ -80,7 +80,7 @@ typedef struct RFModelFields_s {
     double inv_factorial_order;
     GPUGLMEM const double *knl, *ksl;
     GPUGLMEM const uint64_t *knl_tpsa, *ksl_tpsa;
-    int64_t absolute_time, num_kicks, model, integrator, tpsa_enabled;
+    int64_t absolute_time, num_kicks, model, integrator, tpsa_enabled, radiation_flag;
     double shift_x, shift_y, shift_s, rot_x_rad, rot_y_rad, rot_s_rad;
     double rot_s_rad_no_frame, rot_shift_anchor;
 } RFModelFields;
@@ -95,6 +95,7 @@ typedef struct RFModelFields_s {
     (f)->absolute_time=DATA##_get_absolute_time(el); (f)->num_kicks=DATA##_get_num_kicks(el); \
     (f)->model=DATA##_get_model(el); (f)->integrator=DATA##_get_integrator(el); \
     (f)->tpsa_enabled=DATA##_get__tpsa_enabled(el); \
+    (f)->radiation_flag=DATA##_get_radiation_flag(el); \
     (f)->shift_x=DATA##_get_shift_x(el); (f)->shift_y=DATA##_get_shift_y(el); \
     (f)->shift_s=DATA##_get_shift_s(el); \
     (f)->rot_x_rad=DATA##_get_rot_x_rad(el); (f)->rot_y_rad=DATA##_get_rot_y_rad(el); \

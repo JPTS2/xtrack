@@ -20,7 +20,9 @@ enum CavityModelStatus {
     CAVITY_MODEL_DOMAIN = -1,
     CAVITY_MODEL_ITERATIONS = -2,
     CAVITY_MODEL_NONFINITE = -3,
-    CAVITY_MODEL_ARGUMENT = -4
+    CAVITY_MODEL_ARGUMENT = -4,
+    // The particle's state is already set, as by the magnets' radiation.
+    CAVITY_MODEL_LOST = -5
 };
 
 // The phase-resolved map keeps E_z to r^radial_order, M = radial_order/2

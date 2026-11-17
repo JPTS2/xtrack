@@ -49,7 +49,7 @@ int CavityModel_averaged_body(
     xt_float_or_tpsa_arg length,
     const CavityModelSource* source,
     const CavityAveragedStatic* field,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     if (xt_float_or_tpsa_is_zero(field->solenoid)
         && xt_float_or_tpsa_is_zero(field->gradient))
@@ -108,7 +108,7 @@ int CavityModel_averaged_ponderomotive(
     xt_float_or_tpsa q[6],
     xt_float_or_tpsa_arg coefficient,
     int freeze_zeta,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     const double px0 = xt_float_or_tpsa_const_part(q[3]);
     const double py0 = xt_float_or_tpsa_const_part(q[4]);
@@ -200,7 +200,7 @@ int CavityModel_averaged_edge(
     xt_float_or_tpsa_arg jump,
     xt_float_or_tpsa_arg z,
     const CavityModelSource* source,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     if (xt_float_or_tpsa_is_zero(jump)) return CAVITY_MODEL_OK;
     const double px0 = xt_float_or_tpsa_const_part(q[3]);
@@ -282,7 +282,7 @@ int CavityModel_averaged_step(
     xt_float_or_tpsa_arg Q,
     const CavityModelSource* source,
     const CavityAveragedStatic* field,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     const int freeze_energy = source->freeze_energy, freeze_zeta = source->freeze_zeta;
     const xt_float_or_tpsa coefficient = h * counter_gradient * counter_gradient / 32.;
@@ -385,7 +385,7 @@ int CavityModel_averaged_interval(
     xt_float_or_tpsa_arg reference_momentum,
     int integrator,
     xt_float_or_tpsa_arg grading,
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     xt_float_or_tpsa q[6]
 ) {
     if (cells <= 0 || !(right > left)) return CAVITY_MODEL_ARGUMENT;
@@ -456,6 +456,8 @@ int CavityModel_averaged_interval(
         if (n > 0 || rf_first)
             status =
                 CavityModel_averaged_edge(q, gradient - previous, boundary, source, spin);
+        const double start_xy[2] = {xt_float_or_tpsa_const_part(q[0]),
+                                    xt_float_or_tpsa_const_part(q[1])};
         // Compositions of the symmetric step; a negative weight is its inverse.
         double weights[CAVITY_MODEL_COMPOSITION_MAX];
         const int substeps = CavityModel_composition(source->composition, weights);
@@ -467,6 +469,13 @@ int CavityModel_averaged_interval(
             );
             position += sub;
         }
+        // The static fields radiate once per cell, going forward.
+        if (status == CAVITY_MODEL_OK && !reverse)
+            status = CavityEffects_radiate_state(
+                spin, q, start_xy, xt_float_or_tpsa_const_part(source->k),
+                xt_float_or_tpsa_const_part(field.solenoid),
+                xt_float_or_tpsa_const_part(step / source->k)
+            );
         previous = gradient;
     }
     if (status == CAVITY_MODEL_OK && rf_last) {

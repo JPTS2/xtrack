@@ -568,7 +568,7 @@ int CavityMagnus_edge(
     xt_float_or_tpsa_arg z,
     xt_float_or_tpsa_arg jump,
     double sign,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     if (xt_float_or_tpsa_is_zero(jump)) return CAVITY_MODEL_OK;
     CavityComplex term[CAVITY_MAGNUS_TERMS];
@@ -616,7 +616,7 @@ int CavityMagnus_edge(
 //     1/2 int int_{tau2<tau1} [grad w(1) J grad H(2) - grad w(2) J grad H(1)].
 GPUFUN
 void CavityMagnus_spin_step(
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     const CavityMagnusStep* step,
     double Q,
     double sign,
@@ -788,7 +788,7 @@ int CavityModel_paraxial_interval(
     xt_float_or_tpsa_arg reference_momentum,
     int integrator,
     xt_float_or_tpsa_arg grading,
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     CavityMagnusCache* cache,
     xt_float_or_tpsa q[6]
 ) {
@@ -890,6 +890,8 @@ int CavityModel_paraxial_interval(
                   + (z_right - z_left) * CavityModel_expm1((j + 1.) * grading_log / cells)
                         / grading;
         }
+        const double start_xy[2] = {xt_float_or_tpsa_const_part(q[0]),
+                                    xt_float_or_tpsa_const_part(q[1])};
         // Compositions of the symmetric step: a negative weight is the inverse
         // step over the same interval, its generators negated.
         double weights[CAVITY_MODEL_COMPOSITION_MAX];
@@ -938,6 +940,12 @@ int CavityModel_paraxial_interval(
             if (status == CAVITY_MODEL_OK)
                 status = CavityModel_averaged_body(q, half, source, &field, spin);
         }
+        // The static fields radiate once per cell, going forward.
+        if (status == CAVITY_MODEL_OK && !reverse)
+            status = CavityEffects_radiate_state(
+                spin, q, start_xy, xt_float_or_tpsa_const_part(source->k), solenoid,
+                xt_float_or_tpsa_const_part((end - start) / source->k)
+            );
     }
     if (status == CAVITY_MODEL_OK && rf_last) {
         if (reverse)

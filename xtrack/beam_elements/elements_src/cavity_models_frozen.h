@@ -7,6 +7,7 @@
 
 #include "xtrack/beam_elements/elements_src/cavity_models.h"
 #include "xtrack/beam_elements/elements_src/cavity_models_spin_rules.h"
+#include "xtrack/beam_elements/elements_src/cavity_models_radiation.h"
 
 // Frozen model: SAD's cavity map, RF voltage kicks with coefficients frozen at
 // the nominal momentum between exact drifts on a graded mesh, with canonical
@@ -302,7 +303,7 @@ void CavityModel_static_multipole_kick(
     xt_float_or_tpsa_arg Q,
     xt_float_or_tpsa_arg length,
     int quadrupole_body,
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     double energy
 ) {
     xt_float_or_tpsa real = 1., imag = 0., dx = 0., dy = 0.;
@@ -388,7 +389,7 @@ int CavityModel_frozen_face(
     xt_float_or_tpsa_arg phase,
     int inverse,
     int freeze_energy,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     xt_float_or_tpsa p, ps;
     const double px0 = xt_float_or_tpsa_const_part(state[3]);
@@ -435,7 +436,7 @@ int CavityModel_frozen_kick(
     int inverse,
     int freeze_energy,
     xt_float_or_tpsa_arg solenoid,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     xt_float_or_tpsa psi = wave_number * state[2] - phase;
     xt_float_or_tpsa signed_weight = weight;
@@ -502,7 +503,7 @@ int CavityModel_static_body(
     xt_float_or_tpsa_arg gradient,
     xt_float_or_tpsa_arg reference_momentum,
     int freeze_zeta,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     const double S = xt_float_or_tpsa_const_part(solenoid);
     const double px0 = xt_float_or_tpsa_const_part(state[3] + .5 * solenoid * state[1]);
@@ -555,7 +556,7 @@ int CavityModel_frozen_node(
     const CavityModelSource* source,
     int quadrupole_body,
     xt_float_or_tpsa_arg solenoid,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     const xt_float_or_tpsa nominal = h0 + nominal_gain * position;
     const xt_float_or_tpsa beta = sqrt((nominal - 1.) * (nominal + 1.)) / nominal;
@@ -588,7 +589,8 @@ int CavityModel_frozen_node(
 // The map from the parent's entrance to `fraction` of its length. The nominal
 // momentum and gain are the reference's, in the units of q, so a slice keeps
 // the parent's coefficients. Inside, d is timed from the parent's entrance; the
-// returned T adds the nominal path once.
+// returned T adds the nominal path once. Going forward, the static fields
+// radiate at the nodes, or composed cells, beyond `radiate_from`.
 GPUFUN
 int CavityModel_frozen_prefix(
     const xt_float_or_tpsa q[6],
@@ -603,7 +605,8 @@ int CavityModel_frozen_prefix(
     int rf_exit_face,
     double fraction,
     int reverse,
-    const CavitySpin* spin,
+    double radiate_from,
+    const CavityEffects* spin,
     xt_float_or_tpsa output[6]
 ) {
     if (!isfinite(fraction) || fraction < 0. || fraction > 1.)
@@ -709,6 +712,12 @@ int CavityModel_frozen_prefix(
 #define FROZEN_BODY(distance)                                                      \
     CavityModel_static_body(state, (distance), beta0, solenoid, gradient,         \
                             nominal_momentum, source->freeze_zeta, spin)
+#define FROZEN_RADIATE(position, weight)                                            \
+    if (status == CAVITY_MODEL_OK && !reverse                                      \
+        && xt_float_or_tpsa_const_part(position) > radiate_from)                   \
+        status = CavityEffects_radiate_state(                                      \
+            spin, state, state, 1., xt_float_or_tpsa_const_part(solenoid),         \
+            xt_float_or_tpsa_const_part((weight) * L))
 #define FROZEN_NODE(position, weight)                                              \
     CavityModel_frozen_node(state, (position), (weight), reverse, h0, nominal_gain, \
                             beta0, voltage, radial, k, phase, Q, source,           \
@@ -732,6 +741,7 @@ int CavityModel_frozen_prefix(
                 if (status == CAVITY_MODEL_OK) status = FROZEN_BODY(sign * .5 * w * L);
                 position += sign * w;
             }
+            FROZEN_RADIATE((i + 1.) / count, 1. / count);
         }
         if (!reverse && status == CAVITY_MODEL_OK) status = FROZEN_BODY(target - boundary);
     }
@@ -753,6 +763,7 @@ int CavityModel_frozen_prefix(
             // target is not the composition of its parts.
             status = FROZEN_BODY(L * (previous_weight + weight) * .5);
             if (status == CAVITY_MODEL_OK) status = FROZEN_NODE(clock_at, weight);
+            FROZEN_RADIATE(prefix - .5 * weight, weight);
             if (status != CAVITY_MODEL_OK) return status;
             previous_node = node;
             previous_weight = weight;
@@ -792,6 +803,7 @@ int CavityModel_frozen_prefix(
     }
 #undef FROZEN_BODY
 #undef FROZEN_NODE
+#undef FROZEN_RADIATE
     if (status != CAVITY_MODEL_OK) return status;
     if ((!reverse && exit_face) || (reverse && entry_face)) {
         if (quadrupole_body) {
@@ -845,7 +857,7 @@ int CavityModel_frozen_interval(
     double entrance,
     double exit,
     int reverse,
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     xt_float_or_tpsa output[6]
 ) {
     if (!isfinite(entrance) || !isfinite(exit) || entrance < 0. || exit > 1.
@@ -874,6 +886,7 @@ int CavityModel_frozen_interval(
         rf_exit_face,
         first,
         1,
+        0.,
         spin,
         temporary
     );
@@ -891,6 +904,7 @@ int CavityModel_frozen_interval(
         rf_exit_face,
         second,
         0,
+        first,
         spin,
         output
     );

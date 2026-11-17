@@ -90,6 +90,7 @@ class FieldExpansionCavity(_CavityControls, BeamElement):
         'num_kicks': xo.Int64,
         'model': xo.Int64,
         'integrator': xo.Int64,
+        'radiation_flag': xo.Int64,
     }
 
     _extra_c_sources = [

@@ -6,14 +6,24 @@
 #define XTRACK_CAVITY_MODELS_SPIN_RULES_H
 
 // Thomas-BMT rotations of the compact cavity factors and of the static
-// magnetic fields, shared by the phase-averaged, paraxial and frozen models. Momenta and energies are in units
-// of m c and m c^2. CPU scalar only; spin is NULL when not tracked.
+// magnetic fields, shared by the phase-averaged, paraxial and frozen models.
+// Momenta and energies are in units of m c and m c^2.
 #include <math.h>
+#include "xtrack/headers/track.h"
 
+// What a particle carries through the models besides its orbit: its spin (NULL
+// when not tracked) and its radiation, with the static fields that cause it
+// (cavity_models_radiation.h): strengths normalised to the reference rigidity
+// [T m], radiation_flag 0 when the particle does not radiate.
 typedef struct {
     double* spin;
     double anomaly;
-} CavitySpin;
+    LocalParticle* part;
+    int64_t radiation_flag;
+    double rigidity, length, ks;
+    int64_t order;
+    GPUGLMEM const double *knl, *ksl;
+} CavityEffects;
 
 GPUFUN
 void CavitySpin_rotate(double spin[3], double ax, double ay, double az) {
@@ -36,7 +46,7 @@ void CavitySpin_rotate(double spin[3], double ax, double ay, double az) {
 // magnetic field across the motion.
 GPUFUN
 void CavitySpin_kick(
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     double dpx,
     double dpy,
     double energy,
@@ -66,7 +76,7 @@ void CavitySpin_kick(
 // (x, y) in the same length unit and nu = k_z / k; it vanishes on crest.
 GPUFUN
 void CavitySpin_carrier(
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     double strength,
     double nu,
     double energy,
@@ -85,7 +95,7 @@ void CavitySpin_carrier(
 // mean energy so that a step and its inverse cancel.
 GPUFUN
 void CavitySpin_energy(
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     double px,
     double py,
     double energy,
@@ -103,7 +113,7 @@ void CavitySpin_energy(
 // and (1 + a) along it, at the mean velocity.
 GPUFUN
 void CavitySpin_solenoid(
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     double strength,
     double ell,
     double px0,
@@ -131,7 +141,7 @@ void CavitySpin_solenoid(
 // field integrates to -sign S r / 2, sign +1 entering and -1 leaving.
 GPUFUN
 void CavitySpin_solenoid_face(
-    const CavitySpin* spin,
+    const CavityEffects* spin,
     double strength,
     double momentum,
     double x,

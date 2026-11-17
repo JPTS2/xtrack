@@ -228,7 +228,7 @@ void CavityModels_rf_gauge(
     xt_float_or_tpsa_arg Q,
     xt_float_or_tpsa_arg z,
     int to_temporal,
-    const CavitySpin* spin
+    const CavityEffects* spin
 ) {
     const int M = (int)(source->radial_order / 2), jets = 2 * M;
     xt_float_or_tpsa real[CAVITY_MODEL_JETS], imag[CAVITY_MODEL_JETS];
@@ -304,6 +304,16 @@ void track_cavity_single_particle(
 
     int status = controls;
     double anomaly = 0., spin[3] = {0., 0., 0.};
+    // Spin is set below once tracked; the static fields radiate going forward.
+    CavityEffects effects = {NULL, 0., part, 0, 0., el->length, 0., -1, el->knl, el->ksl};
+#if !defined(XTRACK_TPSA_TRACK) && !defined(XTRACK_MULTIPOLE_NO_SYNRAD)
+    if (!reverse && LocalParticle_get_q0(part) != 0.) {
+        effects.radiation_flag = el->radiation_flag;
+        effects.rigidity = LocalParticle_get_p0c(part) / (C_LIGHT * LocalParticle_get_q0(part));
+        effects.ks = xt_float_or_tpsa_const_part(el->ks);
+        effects.order = el->knl_len > 0 ? el->order : -1;
+    }
+#endif
     const double mass0 = LocalParticle_get_mass0(part);
     const double q0 = LocalParticle_get_q0(part);
     const double kappa0 = LocalParticle_get_p0c(part) / mass0;
@@ -466,10 +476,11 @@ void track_cavity_single_particle(
                     if (!isfinite(spin[j])) status = CAVITY_MODEL_NONFINITE;
                 const int static_start = reverse ? right_fraction == 1. : left_fraction == 0.;
                 const int start_face = reverse ? el->edge_exit_active : el->edge_entry_active;
+                effects.spin = spin;
+                effects.anomaly = anomaly;
                 if (status == CAVITY_MODEL_OK && static_start && start_face) {
-                    CavitySpin face_spin = {spin, anomaly};
                     CavitySpin_solenoid_face(
-                        &face_spin,
+                        &effects,
                         xt_float_or_tpsa_const_part(Q * source.magnetic_scale * el->ks),
                         kappa0 * (1. + LocalParticle_get_delta(part)),
                         LocalParticle_get_x(part),
@@ -514,7 +525,6 @@ void track_cavity_single_particle(
         if (source.freeze_x || source.freeze_px || source.freeze_y || source.freeze_py)
             status = CAVITY_MODEL_ARGUMENT;
         else {
-            CavitySpin step_spin = {spin_tracking ? spin : NULL, anomaly};
             const xt_float_or_tpsa gain =
                 fabs(q0 * xt_float_or_tpsa_const_part(el->voltage)) * weight / mass0;
             const xt_float_or_tpsa entry = sqrt(1. + kappa0 * kappa0);
@@ -535,7 +545,7 @@ void track_cavity_single_particle(
                     kappa0,
                     integrator,
                     grading,
-                    &step_spin,
+                    &effects,
                     next
                 );
             else
@@ -554,7 +564,7 @@ void track_cavity_single_particle(
                     kappa0,
                     integrator,
                     grading,
-                    &step_spin,
+                    &effects,
                     magnus_cache,
                     next
                 );
@@ -576,7 +586,6 @@ void track_cavity_single_particle(
                 : el->nominal_energy_gain / mass0;
         // Explicit eV/reference-particle programme already includes the
         // reference charge. Actual-species chi never retunes this input.
-        CavitySpin frozen_spin = {spin_tracking ? spin : NULL, anomaly};
         if (!CavityModel_scalar_finite(nominal_gain))
             status = CAVITY_MODEL_NONFINITE;
         else
@@ -594,7 +603,7 @@ void track_cavity_single_particle(
                 left_fraction,
                 right_fraction,
                 reverse,
-                &frozen_spin,
+                &effects,
                 next
             );
         if (status == CAVITY_MODEL_OK) {
@@ -610,13 +619,12 @@ void track_cavity_single_particle(
     if (status == CAVITY_MODEL_OK && model == CAVITY_MODEL_FULL && physical_start) {
         xt_float_or_tpsa envelope[5];
         CavityModel_source_envelope(z, &source, envelope);
-        CavitySpin edge_spin = {spin_tracking ? spin : NULL, anomaly};
         if (rf_start)
             status = CavityMagnus_edge(
-                q, &source, Q, z, direction * envelope[0], direction, &edge_spin
+                q, &source, Q, z, direction * envelope[0], direction, &effects
             );
         if (status == CAVITY_MODEL_OK)
-            CavityModels_rf_gauge(q, &source, Q, z, 1, &edge_spin);
+            CavityModels_rf_gauge(q, &source, Q, z, 1, &effects);
     }
     // Composition of the fourth-order Gauss cell: yoshida-6 is one
     // triple jump, yoshida-8 two; geometric grades the cell lengths.
@@ -661,6 +669,8 @@ void track_cavity_single_particle(
                      * CavityModel_frozen_weight(
                          reverse ? cells - 1 - cell : cell, cells, grading, grading_log
                      );
+        const double start_xy[2] = {xt_float_or_tpsa_const_part(q[0]),
+                                    xt_float_or_tpsa_const_part(q[1])};
         for (int sub = 0; status == CAVITY_MODEL_OK && sub < num_substeps; ++sub) {
             const xt_float_or_tpsa step = cell_h * substeps[sub];
             xt_float_or_tpsa next[6];
@@ -683,6 +693,24 @@ void track_cavity_single_particle(
                 z += step;
             }
         }
+#ifndef XTRACK_TPSA_TRACK
+        // The static fields radiate once per cell, at its end, from the kinetic
+        // momenta and the energy outside the RF potential.
+        if (status == CAVITY_MODEL_OK && effects.radiation_flag > 0) {
+            double a[4];
+            status = CavityModel_potential(q, z, &source, model, a);
+            if (status == CAVITY_MODEL_OK) {
+                double u[6] = {q[0], q[1], q[2], q[3] - Q * a[0], q[4] - Q * a[1],
+                               q[5] - Q * a[3]};
+                status = CavityEffects_radiate_state(
+                    &effects, u, start_xy, source.k, 0., cell_h / source.k
+                );
+                q[3] = u[3] + Q * a[0];
+                q[4] = u[4] + Q * a[1];
+                q[5] = u[5] + Q * a[3];
+            }
+        }
+#endif
     }
     xt_float_or_tpsa result[6], potential[4];
     CavityModelSource field_source = source;
@@ -696,11 +724,10 @@ void track_cavity_single_particle(
         if (model == CAVITY_MODEL_FULL && physical_outer) {
             xt_float_or_tpsa envelope[5];
             CavityModel_source_envelope(z, &source, envelope);
-            CavitySpin edge_spin = {spin_tracking ? spin : NULL, anomaly};
-            CavityModels_rf_gauge(q, &source, Q, z, 0, &edge_spin);
+                CavityModels_rf_gauge(q, &source, Q, z, 0, &effects);
             if (rf_end)
                 status = CavityMagnus_edge(
-                    q, &source, Q, z, -direction * envelope[0], direction, &edge_spin
+                    q, &source, Q, z, -direction * envelope[0], direction, &effects
                 );
             field_source.forward = 0.;
             field_source.backward = 0.;
@@ -764,9 +791,8 @@ void track_cavity_single_particle(
         if (spin_tracking) {
             const int end_face = reverse ? el->edge_entry_active : el->edge_exit_active;
             if (physical_outer && end_face) {
-                CavitySpin face_spin = {spin, anomaly};
                 CavitySpin_solenoid_face(
-                    &face_spin,
+                    &effects,
                     xt_float_or_tpsa_const_part(Q * source.magnetic_scale * el->ks),
                     kappa0 * (1. + xt_float_or_tpsa_const_part(result[5])),
                     xt_float_or_tpsa_const_part(result[0]),
@@ -826,6 +852,7 @@ void CavityModels_track_longitudinal_magnet(
     const int64_t num_kicks = fields->num_kicks > 0 ? fields->num_kicks : 1;
     magnet.num_multipole_kicks = with_kicks ? num_kicks : 0;
     magnet.integrator = with_kicks ? rf->integrator : INTEGRATOR_UNIFORM;
+    magnet.radiation_flag = cavity->reverse ? 0 : fields->radiation_flag;
     if (part_of_body == CAVITY_MAGNET_KICK)
         magnet.model = MODEL_KICK_ONLY;
     else if (xt_float_or_tpsa_const_part(fields->ks) != 0.)
