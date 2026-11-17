@@ -112,23 +112,6 @@ class MagnetOverlappedCavity(_HasKnlKsl, Cavity):
                              'longitudinal-kick model tracks their constant parts')
         Cavity.model.fset(self, value)
 
-    def _present(self, name):
-        """Entries of knl or ksl that are set: a nonzero value or a knob's series."""
-        array = self._context.nparray_from_context_array
-        return ((array(getattr(self, '_' + name)) != 0.)
-                | (array(getattr(self, '_' + name + '_tpsa')) != 0))
-
-    def _check_physical_model(self):
-        super()._check_physical_model()
-        if self._resolved_model in (11, 12):
-            normal, skew = self._present('knl'), self._present('ksl')
-            solenoid = _constant_part(self.ks) != 0.
-            others = np.any(normal[np.arange(len(normal)) != 1]) or np.any(skew)
-            if others or (solenoid and (np.any(normal) or self.edge_entry_active
-                                        or self.edge_exit_active)):
-                raise ValueError(f'{self.model} supports a uniform solenoid with '
-                                 'faces off or a normal quadrupole as static field')
-
     @property
     def knl(self):
         from ..tpsa._cavity_array import CavityArrayView

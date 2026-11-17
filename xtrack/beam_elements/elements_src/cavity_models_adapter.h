@@ -44,34 +44,6 @@ int64_t CavityModels_freeze_mask(const CavityModelSource* source) {
     return mask;
 }
 
-// Inspect every represented hardware entry, including entries above order.
-// First effects admit a uniform solenoid and normal/skew quadrupole only.
-GPUFUN
-int CavityModels_effects_static_present(const RFModelFields* el) {
-    if (!xt_float_or_tpsa_is_zero(el->ks)) return 1;
-    for (int64_t i = 0; i < el->knl_len; ++i)
-        if (el->knl[i] != 0.) return 1;
-    for (int64_t i = 0; i < el->ksl_len; ++i)
-        if (el->ksl[i] != 0.) return 1;
-    return 0;
-}
-
-GPUFUN
-int CavityModels_effects_static_unsupported(const RFModelFields* el) {
-    for (int64_t i = 0; i < el->knl_len; ++i)
-        if ((i != 1 || el->order < 1) && el->knl[i] != 0.) return 1;
-    for (int64_t i = 0; i < el->ksl_len; ++i)
-        if ((i != 1 || el->order < 1) && el->ksl[i] != 0.) return 1;
-    return 0;
-}
-
-GPUFUN
-int CavityModels_transformations_active(const RFModelFields* el) {
-    return el->shift_x != 0. || el->shift_y != 0. || el->shift_s != 0.
-           || el->rot_x_rad != 0. || el->rot_y_rad != 0. || el->rot_s_rad != 0.
-           || el->rot_s_rad_no_frame != 0.;
-}
-
 // Triple-jump compositions of a symmetric fourth-order step: w1 = 1/(2-2^(1/5))
 // and w0 = 1-2*w1 give order 6; nesting with 2^(1/7) gives order 8.
 #define CAVITY_W6_OUTER 1.1746717580893635
@@ -148,19 +120,10 @@ int CavityPlan_controls(
         || (el->knl_len > 0
             && (el->order < 0 || el->knl_len <= el->order || el->ksl_len <= el->order)))
         controls = CAVITY_MODEL_ARGUMENT;
-    if (model == CAVITY_MODEL_FROZEN) {
-        if ((integrator != INTEGRATOR_ADAPTIVE
-             && integrator != CAVITY_INTEGRATOR_GEOMETRIC
-             && integrator != INTEGRATOR_UNIFORM)
-            || !xt_float_or_tpsa_is_zero(el->counter_wave_amplitude) || el->n_cells != 0)
-            controls = CAVITY_MODEL_ARGUMENT;
-    }
-    else if (model == CAVITY_MODEL_AVERAGED || model == CAVITY_MODEL_PARAXIAL) {
-        if (integrator != INTEGRATOR_ADAPTIVE && integrator != INTEGRATOR_UNIFORM
-            && integrator != CAVITY_INTEGRATOR_GEOMETRIC)
-            controls = CAVITY_MODEL_ARGUMENT;
-    }
-    else if (
+    if (model == CAVITY_MODEL_FROZEN
+        && (!xt_float_or_tpsa_is_zero(el->counter_wave_amplitude) || el->n_cells != 0))
+        controls = CAVITY_MODEL_ARGUMENT;
+    if (
         integrator != INTEGRATOR_ADAPTIVE && integrator != INTEGRATOR_UNIFORM
         && integrator != INTEGRATOR_YOSHIDA4 && integrator != INTEGRATOR_YOSHIDA6
         && integrator != INTEGRATOR_YOSHIDA8 && integrator != CAVITY_INTEGRATOR_GEOMETRIC
@@ -175,28 +138,10 @@ int CavityPlan_controls(
 }
 
 // Spin follows the magnets: it is transported when spin or radiation is compiled in,
-// for particles whose spin is not zero. Where this cavity cannot carry it, such a
-// particle is lost rather than passed through unturned.
+// for particles whose spin is not zero, in every model and slice.
 GPUFUN
-int CavityPlan_spin_supported(
-    const RFModelFields* el,
-    LocalParticle* part0,
-    int model,
-    double weight,
-    double slice_start
-) {
-#if !defined(XO_CONTEXT_CPU_SERIAL) && !defined(XO_CONTEXT_CPU_OPENMP)
-    return 0;
-#else
-    if (el->tpsa_enabled || weight != 1. || slice_start != 0.
-        || LocalParticle_check_track_flag(part0, XS_FLAG_SR_KICK_SAME_AS_FIRST)
-        || LocalParticle_check_track_flag(part0, XS_FLAG_KILL_CAVITY_KICK))
-        return 0;
-    if (!CavityModels_effects_static_present(el)) return 1;
-    return model == CAVITY_MODEL_FULL && !CavityModels_effects_static_unsupported(el)
-           && !el->edge_entry_active && !el->edge_exit_active
-           && !CavityModels_transformations_active(el);
-#endif
+int CavityPlan_spin_supported(const RFModelFields* el) {
+    return !el->tpsa_enabled;
 }
 
 // The half wavelengths of the field's fastest spatial variation along the element.
@@ -240,7 +185,7 @@ void CavityPlan_prepare(
     plan->counter_wave_amplitude = counter_wave_amplitude;
     plan->profile = el->rf_profile;
     plan->spin_supported =
-        CavityPlan_spin_supported(el, part0, model, weight, slice_start);
+        CavityPlan_spin_supported(el);
     const int controls =
         CavityPlan_controls(el, part0, model, integrator, requested, weight, slice_start);
     plan->choice.controls = controls;
@@ -480,7 +425,13 @@ void track_cavity_single_particle(
         source.knl_tpsa = el->knl_tpsa;
         source.ksl_tpsa = el->ksl_tpsa;
         source.reference_beta = beta0;
-        source.uniform_mesh = integrator == INTEGRATOR_UNIFORM;
+        // The reduced models compose their symmetric step; the frozen model's
+        // compositions are of the uniform mesh.
+        source.composition = model == CAVITY_MODEL_FULL ? 0
+                             : integrator == INTEGRATOR_YOSHIDA4 ? 1
+                             : integrator == INTEGRATOR_YOSHIDA6 ? 2
+                             : integrator == INTEGRATOR_YOSHIDA8 ? 3 : 0;
+        source.uniform_mesh = integrator == INTEGRATOR_UNIFORM || source.composition > 0;
         source.freeze_energy =
             LocalParticle_check_track_flag(part, XS_FLAG_KILL_CAVITY_KICK)
             || XT_LP_IS_FROZEN(delta) || XT_LP_IS_FROZEN(pzeta);
@@ -499,7 +450,7 @@ void track_cavity_single_particle(
         }
 #endif
         if (spin_tracking) {
-            if (CavityModels_freeze_mask(&source) || XT_LP_IS_FROZEN(s)
+            if (XT_LP_IS_FROZEN(s)
                 || XT_LP_IS_FROZEN(rpp) || XT_LP_IS_FROZEN(rvv) || XT_LP_IS_FROZEN(ax)
                 || XT_LP_IS_FROZEN(ay) || XT_LP_IS_FROZEN(spin_x)
                 || XT_LP_IS_FROZEN(spin_y) || XT_LP_IS_FROZEN(spin_z))
@@ -513,6 +464,19 @@ void track_cavity_single_particle(
                 if (!isfinite(anomaly)) status = CAVITY_MODEL_ARGUMENT;
                 for (int j = 0; j < 3; ++j)
                     if (!isfinite(spin[j])) status = CAVITY_MODEL_NONFINITE;
+                const int static_start = reverse ? right_fraction == 1. : left_fraction == 0.;
+                const int start_face = reverse ? el->edge_exit_active : el->edge_entry_active;
+                if (status == CAVITY_MODEL_OK && static_start && start_face) {
+                    CavitySpin face_spin = {spin, anomaly};
+                    CavitySpin_solenoid_face(
+                        &face_spin,
+                        xt_float_or_tpsa_const_part(Q * source.magnetic_scale * el->ks),
+                        kappa0 * (1. + LocalParticle_get_delta(part)),
+                        LocalParticle_get_x(part),
+                        LocalParticle_get_y(part),
+                        1.
+                    );
+                }
             }
 #endif
         }
@@ -711,16 +675,8 @@ void track_cavity_single_particle(
             }
             else
 #endif
-                status = CavityModel_gauss(
-                    q,
-                    z,
-                    step,
-                    Q,
-                    &source,
-                    model,
-                    CAVITY_MODEL_GAUSS_MAX_ITERATIONS,
-                    CAVITY_MODEL_GAUSS_TOLERANCE,
-                    next
+                status = CavityModel_gauss_halving(
+                    q, z, step, Q, &source, model, CAVITY_MODEL_HALVING_DEPTH, next
                 );
             if (status == CAVITY_MODEL_OK) {
                 for (int j = 0; j < 6; ++j) q[j] = next[j];
@@ -806,6 +762,18 @@ void track_cavity_single_particle(
         LocalParticle_set_ay(part, Q * readback[1] / kappa0);
 #ifndef XTRACK_TPSA_TRACK
         if (spin_tracking) {
+            const int end_face = reverse ? el->edge_entry_active : el->edge_exit_active;
+            if (physical_outer && end_face) {
+                CavitySpin face_spin = {spin, anomaly};
+                CavitySpin_solenoid_face(
+                    &face_spin,
+                    xt_float_or_tpsa_const_part(Q * source.magnetic_scale * el->ks),
+                    kappa0 * (1. + xt_float_or_tpsa_const_part(result[5])),
+                    xt_float_or_tpsa_const_part(result[0]),
+                    xt_float_or_tpsa_const_part(result[2]),
+                    -1.
+                );
+            }
             LocalParticle_set_spin_x(part, spin[0]);
             LocalParticle_set_spin_y(part, spin[1]);
             LocalParticle_set_spin_z(part, spin[2]);
@@ -900,16 +868,42 @@ void CavityModels_track_longitudinal_magnet(
                 rf->kill_energy_kick                                                 \
             );                                                                       \
     } while (0)
+#if defined(XTRACK_TPSA_TRACK) || defined(XTRACK_MULTIPOLE_NO_SYNRAD)
 #define LONGITUDINAL_MAGNET_STEP(ll, code) \
     {                                      \
         code;                              \
     }
+#else
+    // The magnet body's spin and radiation after each step, as in track_magnet.h.
+    const double length = body->length;
+    double dp_record_exit = 0., dpx_record_exit = 0., dpy_record_exit = 0.;
+#define LONGITUDINAL_MAGNET_STEP(ll, code)                                                \
+    {                                                                                     \
+        double const old_x = LocalParticle_get_x(part);                                   \
+        double const old_y = LocalParticle_get_y(part);                                   \
+        double const old_zeta = LocalParticle_get_zeta(part);                             \
+        double const old_kin_px = LocalParticle_get_px(part) - LocalParticle_get_ax(part); \
+        double const old_kin_py = LocalParticle_get_py(part) - LocalParticle_get_ay(part); \
+        code;                                                                             \
+        if (length > 0)                                                                   \
+            magnet_body_spin_radiation(                                                   \
+                part, body->field, length, body->inv_factorial_order,                     \
+                body->factor_knl_ksl, body->drift.ks, body->dks_ds,                       \
+                body->drift.x0_solenoid, body->drift.y0_solenoid, body->h_radiation,      \
+                body->radiation_flag, body->radiation_record, (ll), old_x, old_y,         \
+                old_zeta, old_kin_px, old_kin_py, &dp_record_exit, &dpx_record_exit,      \
+                &dpy_record_exit                                                          \
+            );                                                                            \
+    }
+#endif
 
     START_PER_PARTICLE_BLOCK(part0, part)
         ;
         if (first_active) MagnetFace_enter_single_particle(part, &plan.first_face);
-        if (body->drift_only)
-            LONGITUDINAL_MAGNET_DRIFT(part, body->length);
+        if (body->drift_only) {
+            LONGITUDINAL_MAGNET_STEP(body->length,
+                                     LONGITUDINAL_MAGNET_DRIFT(part, body->length));
+        }
         else
             RUN_INTEGRATOR(
                 body->integrator,

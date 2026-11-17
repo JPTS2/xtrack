@@ -500,28 +500,20 @@ def test_radial_order_is_phase_resolved_only(kind):
                 xt.Cavity(model=model, length=.1, counter_wave_amplitude=0., radial_order=4)
 
 
-@pytest.mark.parametrize('model', ['_phase-averaged', '_phase-resolved-paraxial'])
-def test_phase_averaged_refuses_unsupported_static_fields_and_integrators(model):
-    with pytest.raises(ValueError, match='static'):
-        xt.MagnetOverlappedCavity(**L_BAND, model=model, ks=.1)  # solenoid with active faces
-    with pytest.raises(ValueError, match='static'):
-        xt.MagnetOverlappedCavity(**L_BAND, model=model, knl=[0., 0., .1], order=2)  # sextupole
-    for integrator in ('teapot', 'yoshida-6'):
-        with pytest.raises(ValueError, match='_geometric'):
-            xt.MagnetOverlappedCavity(**L_BAND, model=model, integrator=integrator)
-
-
-def test_phase_averaged_with_static_fields_loses_a_spinning_particle():
-    rf = xt.MagnetOverlappedCavity(**L_BAND, model='_phase-averaged', knl=[0., .05])
-    line = xt.Line(elements={'rf': rf})
-    line.particle_ref = xt.Particles(p0c=xt.ELECTRON_MASS_EV * np.sqrt(200.**2 - 1),
-                                     mass0=xt.ELECTRON_MASS_EV)
-    line.build_tracker()
-    line.configure_spin(True)
-    particles = line.build_particles(x=1e-3, px=2e-4, y=-1e-3, py=1e-4, zeta=1e-3,
-                                     delta=1e-3, spin_z=1.)
-    line.track(particles)
-    assert particles.state[0] == -99744
+@pytest.mark.parametrize('model', ['_phase-averaged', '_phase-resolved-paraxial',
+                                   '_phase-resolved-frozen'])
+def test_reduced_models_take_every_static_field_and_composition(model):
+    for integrator in ('uniform', 'yoshida-4', 'yoshida-6', 'yoshida-8'):
+        rf = xt.MagnetOverlappedCavity(**L_BAND, model=model, integrator=integrator,
+                                       counter_wave_amplitude=0., ks=.1, order=3,
+                                       knl=[1e-5, .05, .1, 1.], ksl=[1e-5, .05, .1, 1.])
+        line = xt.Line(elements={'rf': rf})
+        line.particle_ref = xt.Particles(p0c=1e9)
+        particles = line.build_particles(x=1e-3, y=-1e-3)
+        line.track(particles)
+        assert particles.state[0] == 1
+    with pytest.raises(ValueError, match='teapot'):
+        xt.MagnetOverlappedCavity(**L_BAND, model=model, integrator='teapot')
 
 
 @for_all_test_contexts
@@ -543,9 +535,8 @@ def test_plan_follows_element_changes_between_track_calls(test_context):
 
 
 
-def test_magnet_overlapped_cavity_checks_knob_driven_strengths():
-    """A knob reaches the element without its setters: the kernel refuses what the
-    model cannot track, and loses the particle (-99744)."""
+def test_magnet_overlapped_cavity_tracks_knob_driven_strengths():
+    """A knob on any multipole reaches the reduced models' static kicks."""
     import madng_tpsa
     desc = madng_tpsa.Descriptor(6, 2, num_params=1, param_order=1)
     states = {}
@@ -565,7 +556,7 @@ def test_magnet_overlapped_cavity_checks_knob_driven_strengths():
 
         states[case] = particles.state[0]
         cavity.disable_tpsa()
-    assert states == {'quadrupole': 1, 'sextupole': -99744}
+    assert states == {'quadrupole': 1, 'sextupole': 1}
 
 
 def test_sliced_cavity_line_saves_after_reload():

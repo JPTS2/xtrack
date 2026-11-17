@@ -190,10 +190,8 @@ class Cavity(_CavityControls, BeamElement):
     edges: the particle leaves field-free. For a measured field, or a single cell,
     use FieldExpansionCavity. Spin is transported as by the magnets: when the line
     is configured for spin or radiation, for particles whose spin is not zero, and
-    not in TPSA tracking. A particle with spin is lost (state -99744) where the
-    cavity cannot carry it: through slices, on a context other than CPU, or with
-    static fields that have active faces, a misalignment or a model other than
-    "_phase-resolved". Settings a physical model cannot track are refused at
+    not in TPSA tracking, in every model, slice and context, with the static
+    fields and their faces. Settings a physical model cannot track are refused at
     construction; set later, they lose the particle (state -99744).
 
     counter_wave_amplitude : float
@@ -249,8 +247,11 @@ class Cavity(_CavityControls, BeamElement):
         "uniform", "yoshida-4/6/8". "_phase-resolved": "uniform" (Gauss cells),
         "yoshida-6/8" (higher-order compositions), "_geometric" (cells graded
         by the energy ratio). "_phase-averaged" and "_phase-resolved-paraxial":
-        "uniform", "_geometric". Frozen model: "_geometric" (default, SAD's
-        mesh), "uniform".
+        "uniform", "_geometric", "yoshida-4/6/8" (compositions of the symmetric
+        step). Frozen model: "_geometric" (default, SAD's mesh and clock),
+        "uniform" (equal cells, clock at the nodes: second order),
+        "yoshida-4/6/8" (compositions of the uniform cell). A step that does
+        not converge is retried as two half steps, recursively.
     num_kicks : int
         Number of integration cells when nonzero. With zero, "_phase-resolved"
         uses 16 per half RF wavelength and at least 64, "_phase-averaged" two
@@ -366,23 +367,14 @@ class Cavity(_CavityControls, BeamElement):
             return
         if self.num_kicks < 0:
             raise ValueError('num_kicks must be non-negative')
-        if self._resolved_model == 13:
-            if self.integrator not in ('adaptive', '_geometric', 'uniform'):
-                raise ValueError('_phase-resolved-frozen supports the "_geometric" '
-                                 'and "uniform" integrators')
-            if (_constant_part(self.counter_wave_amplitude) != 0.
-                    or self.n_cells != 0):
-                raise ValueError('_phase-resolved-frozen requires a travelling '
-                                 'wave: set counter_wave_amplitude=0 and n_cells=0')
-        elif self._resolved_model in (11, 12):
-            if self.integrator not in ('adaptive', 'uniform', '_geometric'):
-                raise ValueError(f'{self.model} supports the "uniform" and '
-                                 '"_geometric" integrators: its cell-tied steps '
-                                 'admit no teapot placement or higher-order '
-                                 'composition')
-        elif self.integrator == 'teapot':
-            raise ValueError('_phase-resolved has no kicks to place: "teapot" '
+        if self.integrator == 'teapot':
+            raise ValueError(f'{self.model} has symmetric steps: "teapot" '
                              'does not apply')
+        if self._resolved_model == 13 and (
+                _constant_part(self.counter_wave_amplitude) != 0.
+                or self.n_cells != 0):
+            raise ValueError('_phase-resolved-frozen requires a travelling '
+                             'wave: set counter_wave_amplitude=0 and n_cells=0')
 
     @property
     def n_cells(self):

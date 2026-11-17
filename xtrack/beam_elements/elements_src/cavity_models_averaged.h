@@ -35,9 +35,10 @@ int CavityModel_averaged_drift(
 }
 
 
-// The static field of the step body: a uniform solenoid or a normal
+// The static field of the step body: a uniform solenoid or else a normal
 // quadrupole replaces the free drift by the exact canonical bodies of the
-// frozen model, in metres and a clock relative to the reference.
+// frozen model, in metres and a clock relative to the reference. The other
+// multipoles are thin kicks at the step's centre.
 typedef struct {
     xt_float_or_tpsa solenoid, gradient, reference_momentum;
 } CavityAveragedStatic;
@@ -47,21 +48,23 @@ int CavityModel_averaged_body(
     xt_float_or_tpsa q[6],
     xt_float_or_tpsa_arg length,
     const CavityModelSource* source,
-    const CavityAveragedStatic* field
+    const CavityAveragedStatic* field,
+    const CavitySpin* spin
 ) {
     if (xt_float_or_tpsa_is_zero(field->solenoid)
         && xt_float_or_tpsa_is_zero(field->gradient))
         return CavityModel_averaged_drift(q, length, source->freeze_zeta);
     const xt_float_or_tpsa k = source->k;
     xt_float_or_tpsa state[6] = {q[0] / k, q[1] / k, 0., q[3], q[4], q[5]};
-    const int status = CavityModel_frozen_body(
+    const int status = CavityModel_static_body(
         state,
         length / k,
         source->reference_beta,
         field->solenoid,
         field->gradient,
         field->reference_momentum,
-        source->freeze_zeta
+        source->freeze_zeta,
+        spin
     );
     if (status != CAVITY_MODEL_OK) return status;
     q[0] = k * state[0];
@@ -249,8 +252,15 @@ void CavityModel_averaged_wave_gain(
     xt_float_or_tpsa envelope[5];
     for (int i = 0; i < 4; ++i) {
         for (int side = -1; side <= 1; side += 2) {
-            const xt_float_or_tpsa z = z_mid + side * nodes[i] * h * .5;
-            CavityModel_source_envelope(z, source, envelope);
+            xt_float_or_tpsa z = z_mid + side * nodes[i] * h * .5;
+            // A composed substep past the element's ends sees the field
+            // continued from them.
+            const double end =
+                xt_float_or_tpsa_const_part(.5 * source->k * source->length) * (1. - 1e-15);
+            xt_float_or_tpsa inside = z;
+            if (xt_float_or_tpsa_const_part(z) > end) inside = end;
+            if (xt_float_or_tpsa_const_part(z) < -end) inside = -end;
+            CavityModel_source_envelope(inside, source, envelope);
             const xt_float_or_tpsa w = weights[i] * h * .5 * envelope[0];
             out[0] += w * cos(detuning * z);
             out[1] += w * sin(detuning * z);
@@ -277,7 +287,7 @@ int CavityModel_averaged_step(
     const int freeze_energy = source->freeze_energy, freeze_zeta = source->freeze_zeta;
     const xt_float_or_tpsa coefficient = h * counter_gradient * counter_gradient / 32.;
     const xt_float_or_tpsa phase = source->carrier * z_mid;
-    int status = CavityModel_averaged_body(q, .5 * h, source, field);
+    int status = CavityModel_averaged_body(q, .5 * h, source, field, spin);
     if (status == CAVITY_MODEL_OK)
         status = CavityModel_averaged_ponderomotive(q, coefficient, freeze_zeta, spin);
     // The radial kick straddles the energy kick: all of it on one side would be
@@ -294,51 +304,65 @@ int CavityModel_averaged_step(
             freeze_energy,
             freeze_zeta
         );
-        if (side == 0 && status == CAVITY_MODEL_OK && !freeze_energy) {
-            // Carrier precession in the forward wave's radial fields, then
-            // the longitudinal-field rotation of the energy kick.
+        // The energy kick, then, at its mean energy, the carrier precession in
+        // the forward wave's radial fields (with or without the kick) and the
+        // kick's longitudinal-field rotation from the kinetic momenta; the
+        // static multipoles commute with it.
+        if (side == 0 && status == CAVITY_MODEL_OK) {
+            const double px = xt_float_or_tpsa_const_part(
+                q[3] + .5 * field->solenoid * q[1] / source->k);
+            const double py = xt_float_or_tpsa_const_part(
+                q[4] - .5 * field->solenoid * q[0] / source->k);
+            const double E0 = xt_float_or_tpsa_const_part(q[5]);
+            const xt_float_or_tpsa carrier_phase = q[2] - phase;
+            if (!freeze_energy) {
+                // Both waves integrated exactly over the step along the
+                // reference trajectory T(Z) = T_mid + (Z - z_mid)/beta0.
+                const xt_float_or_tpsa slip = q[2] - z_mid / source->reference_beta;
+                xt_float_or_tpsa co_gain[2], counter_gain[2];
+                CavityModel_averaged_wave_gain(
+                    h,
+                    z_mid,
+                    1. / source->reference_beta - source->carrier,
+                    Q * source->forward,
+                    source,
+                    co_gain
+                );
+                CavityModel_averaged_wave_gain(
+                    h,
+                    z_mid,
+                    1. / source->reference_beta + source->carrier,
+                    Q * source->backward,
+                    source,
+                    counter_gain
+                );
+                const xt_float_or_tpsa counter_phase = slip + source->counter_phase;
+                q[5] += co_gain[0] * cos(slip) - co_gain[1] * sin(slip)
+                        + counter_gain[0] * cos(counter_phase)
+                        - counter_gain[1] * sin(counter_phase);
+            }
+            const double d_energy = xt_float_or_tpsa_const_part(q[5]) - E0;
             CavitySpin_carrier(
                 spin,
-                xt_float_or_tpsa_const_part(gradient * h * sin(q[2] - phase)),
+                xt_float_or_tpsa_const_part(gradient * h * sin(carrier_phase)),
                 xt_float_or_tpsa_const_part(source->carrier),
-                xt_float_or_tpsa_const_part(q[5]),
+                E0 + .5 * d_energy,
                 xt_float_or_tpsa_const_part(q[0]),
                 xt_float_or_tpsa_const_part(q[1])
             );
-            const double px = xt_float_or_tpsa_const_part(q[3]);
-            const double py = xt_float_or_tpsa_const_part(q[4]);
-            const double E0 = xt_float_or_tpsa_const_part(q[5]);
-            // Both waves integrated exactly over the step along the
-            // reference trajectory T(Z) = T_mid + (Z - z_mid)/beta0.
-            const xt_float_or_tpsa slip = q[2] - z_mid / source->reference_beta;
-            xt_float_or_tpsa co_gain[2], counter_gain[2];
-            CavityModel_averaged_wave_gain(
-                h,
-                z_mid,
-                1. / source->reference_beta - source->carrier,
-                Q * source->forward,
-                source,
-                co_gain
-            );
-            CavityModel_averaged_wave_gain(
-                h,
-                z_mid,
-                1. / source->reference_beta + source->carrier,
-                Q * source->backward,
-                source,
-                counter_gain
-            );
-            const xt_float_or_tpsa counter_phase = slip + source->counter_phase;
-            q[5] += co_gain[0] * cos(slip) - co_gain[1] * sin(slip)
-                    + counter_gain[0] * cos(counter_phase)
-                    - counter_gain[1] * sin(counter_phase);
-            CavitySpin_energy(spin, px, py, E0, xt_float_or_tpsa_const_part(q[5]) - E0);
+            CavitySpin_energy(spin, px, py, E0, d_energy);
         }
+        if (side == 0 && status == CAVITY_MODEL_OK)
+            CavityModel_static_multipole_kick(
+                q[0] / source->k, q[1] / source->k, &q[3], &q[4], source, Q,
+                h / source->k, !xt_float_or_tpsa_is_zero(field->gradient), spin,
+                xt_float_or_tpsa_const_part(q[5])
+            );
     }
     if (status == CAVITY_MODEL_OK)
         status = CavityModel_averaged_ponderomotive(q, coefficient, freeze_zeta, spin);
     if (status == CAVITY_MODEL_OK)
-        status = CavityModel_averaged_body(q, .5 * h, source, field);
+        status = CavityModel_averaged_body(q, .5 * h, source, field, spin);
     return status;
 }
 
@@ -366,26 +390,15 @@ int CavityModel_averaged_interval(
 ) {
     if (cells <= 0 || !(right > left)) return CAVITY_MODEL_ARGUMENT;
     if (!xt_float_or_tpsa_is_zero(source->dc_gradient)) return CAVITY_MODEL_ARGUMENT;
-    // Supported static fields, as for the frozen model: a uniform solenoid
-    // with its faces off, or a normal quadrupole with its own faces.
-    for (int64_t i = 0; i <= source->order; ++i)
-        if ((i != 1
-             && !xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source, i, 0)))
-            || !xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source, i, 1)))
-            return CAVITY_MODEL_ARGUMENT;
+    // Static fields as in the frozen model: the solenoid, or else the normal
+    // quadrupole with its faces, is an exact body; other multipoles are thin.
     CavityAveragedStatic field;
     field.solenoid = Q * source->magnetic_scale * source->ks;
     field.gradient = 0.;
-    if (source->order >= 1)
+    if (source->order >= 1 && xt_float_or_tpsa_is_zero(field.solenoid))
         field.gradient = Q * source->magnetic_scale
                          * CavityModel_static_coefficient(source, 1, 0) / source->length;
     field.reference_momentum = reference_momentum;
-    const int static_present = !xt_float_or_tpsa_is_zero(field.solenoid)
-                               || !xt_float_or_tpsa_is_zero(field.gradient);
-    if (!xt_float_or_tpsa_is_zero(field.solenoid)
-        && (!xt_float_or_tpsa_is_zero(field.gradient) || entry_face || exit_face))
-        return CAVITY_MODEL_ARGUMENT;
-    if (static_present && spin && spin->spin) return CAVITY_MODEL_ARGUMENT;
     entry_face = entry_face && left == 0.;
     exit_face = exit_face && right == 1.;
     // An RF face that is off leaves the field continuing past the parent's end.
@@ -411,9 +424,8 @@ int CavityModel_averaged_interval(
     if ((!reverse && entry_face) || (reverse && exit_face))
         status = CavityModel_averaged_static_face(q, source, &field, reverse, reverse);
     // Signed cells cross the interval (backwards when reversed), uniform or
-    // graded; an edge sits at every gradient change. Compositions are not
-    // offered: the energy kicks integrate the waves along the reference
-    // trajectory, which keeps one step second order but caps compositions.
+    // graded, each a composition of symmetric steps; an edge sits at every
+    // gradient change.
     const xt_float_or_tpsa grading_log = CavityModel_log1p(grading);
     const int graded = integrator == CAVITY_INTEGRATOR_GEOMETRIC
                        && xt_float_or_tpsa_const_part(grading) > 1.e-6;
@@ -444,10 +456,17 @@ int CavityModel_averaged_interval(
         if (n > 0 || rf_first)
             status =
                 CavityModel_averaged_edge(q, gradient - previous, boundary, source, spin);
-        if (status == CAVITY_MODEL_OK)
+        // Compositions of the symmetric step; a negative weight is its inverse.
+        double weights[CAVITY_MODEL_COMPOSITION_MAX];
+        const int substeps = CavityModel_composition(source->composition, weights);
+        xt_float_or_tpsa position = boundary;
+        for (int m = 0; m < substeps && status == CAVITY_MODEL_OK; ++m) {
+            const xt_float_or_tpsa sub = weights[m] * step;
             status = CavityModel_averaged_step(
-                q, step, z_mid, gradient, counter, Q, source, &field, spin
+                q, sub, position + .5 * sub, gradient, counter, Q, source, &field, spin
             );
+            position += sub;
+        }
         previous = gradient;
     }
     if (status == CAVITY_MODEL_OK && rf_last) {

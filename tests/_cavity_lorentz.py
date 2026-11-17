@@ -65,8 +65,9 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
     """Coordinates at the exit plane, from those at the entry plane, for a field-free
     outside: Xtrack's x, px, y, py, zeta, delta relative to p0c. With `anomaly`, the
     launch's spin_x, spin_y, spin_z follow the Thomas-BMT equation in the same fields.
-    `magnet(z)` adds static fields: c B_z, its derivative, and the quadrupole gradient
-    c dB_y/dx, in eV/m and eV/m^2 per unit charge. With `ramp`, the length of the
+    `magnet(z)` adds static fields: c B_z, its derivative, and the multipoles, either the
+    quadrupole gradient c dB_y/dx or a list of c_n with c (B_y + i B_x) = sum c_n (x + i y)^n,
+    in eV/m^(n+1) per unit charge; they act on the orbit and on the spin. With `ramp`, the length of the
     envelope's end ramps, each ramp is integrated as its own segment in steps that
     resolve it. `radial_order` n keeps E_z to r^n and E_r, c B_phi to r^(n-1); both waves
     share kappa^2 = k^2 - k_z^2, so each series is one in kappa^2 r^2, and beyond the
@@ -102,8 +103,12 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
         work = charge * (E_r_over_r * (x * px + y * py) + E_z * pz)
         rates = [px / pz, py / pz, energy / pz, fx * energy / pz, fy * energy / pz, work / pz]
         if magnet is not None:
-            cB_z, dcB_z, gradient = magnet(z)
-            cB_x, cB_y = -x / 2 * dcB_z + gradient * y, -y / 2 * dcB_z + gradient * x
+            cB_z, dcB_z, series = magnet(z)
+            if np.isscalar(series):
+                series = [0., series]
+            multipole = sum(c_n * (x + 1j * y)**n for n, c_n in enumerate(series))
+            cB_x = -x / 2 * dcB_z + multipole.imag
+            cB_y = -y / 2 * dcB_z + multipole.real
             rates[3] += charge * (py / pz * cB_z - cB_y)
             rates[4] += charge * (cB_x - px / pz * cB_z)
         if anomaly is None:
@@ -111,6 +116,8 @@ def lorentz_end(launch, waves, length, envelope, p0c, mass0, charge=1., anomaly=
         # Thomas-BMT in eV units, per unit z: dS/dz = Omega x S * energy / (pz c)
         field_E = np.array([E_r_over_r * x, E_r_over_r * y, E_z])
         field_cB = np.array([-cB_over_r * y, cB_over_r * x, 0.])
+        if magnet is not None:
+            field_cB = field_cB + np.array([cB_x, cB_y, cB_z])
         p = np.array([px, py, pz])
         gamma = energy / mass0
         beta = p / energy

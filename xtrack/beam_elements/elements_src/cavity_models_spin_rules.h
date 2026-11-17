@@ -5,8 +5,8 @@
 #ifndef XTRACK_CAVITY_MODELS_SPIN_RULES_H
 #define XTRACK_CAVITY_MODELS_SPIN_RULES_H
 
-// Thomas-BMT rotations of the compact cavity factors, shared
-// by the phase-averaged and frozen models. Momenta and energies are in units
+// Thomas-BMT rotations of the compact cavity factors and of the static
+// magnetic fields, shared by the phase-averaged, paraxial and frozen models. Momenta and energies are in units
 // of m c and m c^2. CPU scalar only; spin is NULL when not tracked.
 #include <math.h>
 
@@ -32,7 +32,8 @@ void CavitySpin_rotate(double spin[3], double ax, double ay, double az) {
 }
 
 // Rotation with a transverse kick (dpx, dpy) at energy E; kind 0 is an edge
-// (radial electric field), kind 1 the ponderomotive kick.
+// (radial electric field), kind 1 the ponderomotive kick, kind 2 a static
+// magnetic field across the motion.
 GPUFUN
 void CavitySpin_kick(
     const CavitySpin* spin,
@@ -46,7 +47,10 @@ void CavitySpin_kick(
                  beta = sqrt(1. - 1. / (gamma * gamma));
     const double p = beta * gamma;
     double factor;
-    if (kind == 1) {
+    if (kind == 2) {
+        factor = 1. + a * gamma;
+    }
+    else if (kind == 1) {
         const double radial =
             ((a + 1. / gamma) + beta * (a + 1. / (gamma + 1.))) / (1. + beta);
         factor = beta * gamma * (radial - 2. * (a + 1. / (gamma + 1.))) + 2.;
@@ -76,8 +80,9 @@ void CavitySpin_carrier(
     CavitySpin_rotate(spin->spin, -factor * y, factor * x, 0.);
 }
 
-// Rotation from the longitudinal field of an energy kick d_energy, taken at
-// the state (px, py, E) before the kick.
+// Rotation from the longitudinal field of an energy kick d_energy, from the
+// energy before it and the transverse momenta during it, taken at the kick's
+// mean energy so that a step and its inverse cancel.
 GPUFUN
 void CavitySpin_energy(
     const CavitySpin* spin,
@@ -87,9 +92,56 @@ void CavitySpin_energy(
     double d_energy
 ) {
     if (!spin || !spin->spin) return;
-    const double pz = sqrt(energy * energy - 1. - px * px - py * py);
-    const double factor = (spin->anomaly + 1. / (energy + 1.)) * d_energy / (pz / energy);
-    CavitySpin_rotate(spin->spin, factor * py / energy, -factor * px / energy, 0.);
+    const double E = energy + .5 * d_energy;
+    const double pz = sqrt(E * E - 1. - px * px - py * py);
+    const double factor = (spin->anomaly + 1. / (E + 1.)) * d_energy / (pz / E);
+    CavitySpin_rotate(spin->spin, factor * py / E, -factor * px / E, 0.);
+}
+
+// A uniform solenoid body of strength S = Q B_z / (m c) over a length ell,
+// from the kinetic momenta before and after: (1 + a gamma) across the field
+// and (1 + a) along it, at the mean velocity.
+GPUFUN
+void CavitySpin_solenoid(
+    const CavitySpin* spin,
+    double strength,
+    double ell,
+    double px0,
+    double py0,
+    double px1,
+    double py1,
+    double energy
+) {
+    if (!spin || !spin->spin) return;
+    const double a = spin->anomaly, gamma = energy;
+    const double p = sqrt(gamma * gamma - 1.);
+    const double vx = .5 * (px0 + px1) / p, vy = .5 * (py0 + py1) / p;
+    const double vz = sqrt(fmax(1. - vx * vx - vy * vy, 0.));
+    const double angle = strength * ell / (p * vz);
+    const double across = 1. + a * gamma, along = 1. + a;
+    CavitySpin_rotate(
+        spin->spin,
+        -angle * (along - across) * vz * vx,
+        -angle * (along - across) * vz * vy,
+        -angle * (across * (1. - vz * vz) + along * vz * vz)
+    );
+}
+
+// A solenoid's hard face, the zero-length limit of its fringe: the radial
+// field integrates to -sign S r / 2, sign +1 entering and -1 leaving.
+GPUFUN
+void CavitySpin_solenoid_face(
+    const CavitySpin* spin,
+    double strength,
+    double momentum,
+    double x,
+    double y,
+    double sign
+) {
+    if (!spin || !spin->spin || strength == 0.) return;
+    const double gamma = sqrt(1. + momentum * momentum);
+    const double f = sign * (1. + spin->anomaly * gamma) * strength / (2. * momentum);
+    CavitySpin_rotate(spin->spin, f * x, f * y, 0.);
 }
 
 #endif

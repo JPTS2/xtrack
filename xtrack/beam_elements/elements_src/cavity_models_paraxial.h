@@ -794,26 +794,18 @@ int CavityModel_paraxial_interval(
 ) {
     if (cells <= 0 || !(right > left)) return CAVITY_MODEL_ARGUMENT;
     if (!xt_float_or_tpsa_is_zero(source->dc_gradient)) return CAVITY_MODEL_ARGUMENT;
-    // Supported static fields, as for the frozen model: a uniform solenoid
-    // with its faces off, or a normal quadrupole with its own faces.
-    for (int64_t i = 0; i <= source->order; ++i)
-        if ((i != 1
-             && !xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source, i, 0)))
-            || !xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source, i, 1)))
-            return CAVITY_MODEL_ARGUMENT;
+    // Static fields as in the frozen model: the solenoid, or else the normal
+    // quadrupole with its faces, is an exact body; other multipoles are thin
+    // kicks straddling the RF flow.
     CavityAveragedStatic field;
     field.solenoid = Q * source->magnetic_scale * source->ks;
     field.gradient = 0.;
-    if (source->order >= 1)
+    if (source->order >= 1 && xt_float_or_tpsa_is_zero(field.solenoid))
         field.gradient = Q * source->magnetic_scale
                          * CavityModel_static_coefficient(source, 1, 0) / source->length;
     field.reference_momentum = reference_momentum;
-    const int static_present = !xt_float_or_tpsa_is_zero(field.solenoid)
-                               || !xt_float_or_tpsa_is_zero(field.gradient);
-    if (!xt_float_or_tpsa_is_zero(field.solenoid)
-        && (!xt_float_or_tpsa_is_zero(field.gradient) || entry_face || exit_face))
-        return CAVITY_MODEL_ARGUMENT;
-    if (static_present && spin && spin->spin) return CAVITY_MODEL_ARGUMENT;
+    const int quadrupole_body = !xt_float_or_tpsa_is_zero(field.gradient);
+    const double solenoid = xt_float_or_tpsa_const_part(field.solenoid);
     entry_face = entry_face && left == 0.;
     exit_face = exit_face && right == 1.;
     // An RF face that is off leaves the field continuing past the parent's end.
@@ -898,27 +890,54 @@ int CavityModel_paraxial_interval(
                   + (z_right - z_left) * CavityModel_expm1((j + 1.) * grading_log / cells)
                         / grading;
         }
-        const xt_float_or_tpsa width = end - start;
-        CavityMagnusStep local;
-        const CavityMagnusStep* step = &local;
+        // Compositions of the symmetric step: a negative weight is the inverse
+        // step over the same interval, its generators negated.
+        double weights[CAVITY_MODEL_COMPOSITION_MAX];
+        const int substeps = CavityModel_composition(source->composition, weights);
+        xt_float_or_tpsa position = reverse ? end : start;
+        for (int m = 0; m < substeps && status == CAVITY_MODEL_OK; ++m) {
+            const double w = weights[m];
+            const xt_float_or_tpsa sub_start = position;
+            position += w * sign * (end - start);
+            const xt_float_or_tpsa width = fabs(w) * (end - start);
+            const double sub_sign = w > 0 ? sign : -sign;
+            const xt_float_or_tpsa half = .5 * sub_sign * width;
+            CavityMagnusStep local;
+            const CavityMagnusStep* step = &local;
 #ifdef CAVITY_MAGNUS_CACHE
-        if (cached) step = &cache->step[j];
+            if (cached && substeps == 1) step = &cache->step[j];
 #endif
-        if (!cached) CavityMagnus_prepare_step(source, (start + end) * .5, width, &local);
-        status = CavityModel_averaged_body(q, .5 * sign * width, source, &field);
-        double before[6], mid[6];
-        for (int i = 0; i < 6; ++i) before[i] = xt_float_or_tpsa_const_part(q[i]);
-        if (status == CAVITY_MODEL_OK)
-            status = CavityMagnus_flow(
-                q, step->term, Q, sign, source->freeze_energy, source->freeze_zeta
-            );
-        if (status == CAVITY_MODEL_OK && spin && spin->spin) {
-            for (int i = 0; i < 6; ++i)
-                mid[i] = (before[i] + xt_float_or_tpsa_const_part(q[i])) * .5;
-            CavityMagnus_spin_step(spin, step, Q_spin, sign, mid);
+            if (!(cached && substeps == 1))
+                CavityMagnus_prepare_step(source, (sub_start + position) * .5, width, &local);
+            status = CavityModel_averaged_body(q, half, source, &field, spin);
+            if (status == CAVITY_MODEL_OK)
+                CavityModel_static_multipole_kick(
+                    q[0] / source->k, q[1] / source->k, &q[3], &q[4], source, Q,
+                    half / source->k, quadrupole_body, spin, xt_float_or_tpsa_const_part(q[5])
+                );
+            double before[6], mid[6];
+            for (int i = 0; i < 6; ++i) before[i] = xt_float_or_tpsa_const_part(q[i]);
+            if (status == CAVITY_MODEL_OK)
+                status = CavityMagnus_flow(
+                    q, step->term, Q, sub_sign, source->freeze_energy, source->freeze_zeta
+                );
+            if (status == CAVITY_MODEL_OK && spin && spin->spin) {
+                // The spin rules take kinetic momenta, in the solenoid's gauge.
+                const double k = xt_float_or_tpsa_const_part(source->k);
+                for (int i = 0; i < 6; ++i)
+                    mid[i] = (before[i] + xt_float_or_tpsa_const_part(q[i])) * .5;
+                mid[3] += .5 * solenoid * mid[1] / k;
+                mid[4] -= .5 * solenoid * mid[0] / k;
+                CavityMagnus_spin_step(spin, step, Q_spin, sub_sign, mid);
+            }
+            if (status == CAVITY_MODEL_OK)
+                CavityModel_static_multipole_kick(
+                    q[0] / source->k, q[1] / source->k, &q[3], &q[4], source, Q,
+                    half / source->k, quadrupole_body, spin, xt_float_or_tpsa_const_part(q[5])
+                );
+            if (status == CAVITY_MODEL_OK)
+                status = CavityModel_averaged_body(q, half, source, &field, spin);
         }
-        if (status == CAVITY_MODEL_OK)
-            status = CavityModel_averaged_body(q, .5 * sign * width, source, &field);
     }
     if (status == CAVITY_MODEL_OK && rf_last) {
         if (reverse)

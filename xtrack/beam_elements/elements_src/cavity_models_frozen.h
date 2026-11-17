@@ -288,6 +288,49 @@ xt_float_or_tpsa CavityModel_log1p(xt_float_or_tpsa_arg x) {
            + log1p(xt_float_or_tpsa_const_part(x));
 }
 
+
+// Thin kick of the static multipoles over `length` metres at (x, y) in metres,
+// with its spin turn. The normal quadrupole is left out when it is an exact
+// body (`quadrupole_body`).
+GPUFUN
+void CavityModel_static_multipole_kick(
+    xt_float_or_tpsa_arg x,
+    xt_float_or_tpsa_arg y,
+    xt_float_or_tpsa* px,
+    xt_float_or_tpsa* py,
+    const CavityModelSource* source,
+    xt_float_or_tpsa_arg Q,
+    xt_float_or_tpsa_arg length,
+    int quadrupole_body,
+    const CavitySpin* spin,
+    double energy
+) {
+    xt_float_or_tpsa real = 1., imag = 0., dx = 0., dy = 0.;
+    const xt_float_or_tpsa factor = source->magnetic_scale / source->length;
+    int present = 0;
+    for (int64_t n = 0; n <= source->order; ++n) {
+        xt_float_or_tpsa normal = 0.;
+        if (n != 1 || !quadrupole_body) normal = CavityModel_static_coefficient(source, n, 0);
+        const xt_float_or_tpsa skew = CavityModel_static_coefficient(source, n, 1);
+        present |= !xt_float_or_tpsa_is_zero(normal) || !xt_float_or_tpsa_is_zero(skew);
+        dx -= factor * (normal * real - skew * imag);
+        dy += factor * (normal * imag + skew * real);
+        const xt_float_or_tpsa next_real = (real * x - imag * y) / (n + 1.);
+        imag = (real * y + imag * x) / (n + 1.);
+        real = next_real;
+    }
+    if (!present) return;
+    *px += Q * length * dx;
+    *py += Q * length * dy;
+    CavitySpin_kick(
+        spin,
+        xt_float_or_tpsa_const_part(Q * length * dx),
+        xt_float_or_tpsa_const_part(Q * length * dy),
+        energy,
+        2
+    );
+}
+
 GPUFUN
 int CavityModel_frozen_shell(
     const xt_float_or_tpsa state[6],
@@ -397,28 +440,34 @@ int CavityModel_frozen_kick(
     xt_float_or_tpsa psi = wave_number * state[2] - phase;
     xt_float_or_tpsa signed_weight = weight;
     if (inverse) signed_weight = -weight;
-    // The energy kick -w V sin(psi) is the compact g l cos(theta) with
-    // theta = psi + pi/2: the carrier precession takes sin(theta) = cos(psi).
     const double px0 = xt_float_or_tpsa_const_part(state[3]);
     const double py0 = xt_float_or_tpsa_const_part(state[4]);
     const double energy0 = xt_float_or_tpsa_const_part(state[5]);
-    CavitySpin_carrier(
-        spin,
-        xt_float_or_tpsa_const_part(signed_weight * voltage * wave_number * cos(psi)),
-        1.,
-        energy0,
-        xt_float_or_tpsa_const_part(state[0]),
-        xt_float_or_tpsa_const_part(state[1])
-    );
     if (!freeze_energy)
         state[5] -= signed_weight
                     * (voltage + radial * (state[0] * state[0] + state[1] * state[1]))
                     * sin(psi);
-    CavitySpin_energy(
-        spin, px0, py0, energy0, xt_float_or_tpsa_const_part(state[5]) - energy0
-    );
     state[3] -= signed_weight * 2. * radial * state[0] * cos(psi) / wave_number;
     state[4] -= signed_weight * 2. * radial * state[1] * cos(psi) / wave_number;
+    // The rotations at the kick's mean state, so that a step and its inverse
+    // cancel. The energy kick -w V sin(psi) is the compact g l cos(theta) with
+    // theta = psi + pi/2: the carrier precession takes sin(theta) = cos(psi).
+    const double d_energy = xt_float_or_tpsa_const_part(state[5]) - energy0;
+    CavitySpin_carrier(
+        spin,
+        xt_float_or_tpsa_const_part(signed_weight * voltage * wave_number * cos(psi)),
+        1.,
+        energy0 + .5 * d_energy,
+        xt_float_or_tpsa_const_part(state[0]),
+        xt_float_or_tpsa_const_part(state[1])
+    );
+    CavitySpin_energy(
+        spin,
+        .5 * (px0 + xt_float_or_tpsa_const_part(state[3])),
+        .5 * (py0 + xt_float_or_tpsa_const_part(state[4])),
+        energy0,
+        d_energy
+    );
     xt_float_or_tpsa p, ps;
     return CavityModel_static_shell(state, solenoid, &p, &ps);
 }
@@ -442,6 +491,39 @@ int CavityModel_frozen_body(
     return CavityModel_frozen_drift(state, distance, beta0, freeze_zeta);
 }
 
+// A static body with its spin: the solenoid's from the kinetic momenta
+// p + S (y, -x) / 2 before and after, the quadrupole's from the momentum's turn.
+GPUFUN
+int CavityModel_static_body(
+    xt_float_or_tpsa state[6],
+    xt_float_or_tpsa_arg distance,
+    xt_float_or_tpsa_arg beta0,
+    xt_float_or_tpsa_arg solenoid,
+    xt_float_or_tpsa_arg gradient,
+    xt_float_or_tpsa_arg reference_momentum,
+    int freeze_zeta,
+    const CavitySpin* spin
+) {
+    const double S = xt_float_or_tpsa_const_part(solenoid);
+    const double px0 = xt_float_or_tpsa_const_part(state[3] + .5 * solenoid * state[1]);
+    const double py0 = xt_float_or_tpsa_const_part(state[4] - .5 * solenoid * state[0]);
+    const int status = CavityModel_frozen_body(
+        state, distance, beta0, solenoid, gradient, reference_momentum, freeze_zeta
+    );
+    if (status != CAVITY_MODEL_OK || !spin || !spin->spin) return status;
+    if (S == 0. && xt_float_or_tpsa_is_zero(gradient)) return status;
+    const double px1 = xt_float_or_tpsa_const_part(state[3] + .5 * solenoid * state[1]);
+    const double py1 = xt_float_or_tpsa_const_part(state[4] - .5 * solenoid * state[0]);
+    const double energy = xt_float_or_tpsa_const_part(state[5]);
+    if (S != 0.)
+        CavitySpin_solenoid(
+            spin, S, xt_float_or_tpsa_const_part(distance), px0, py0, px1, py1, energy
+        );
+    else
+        CavitySpin_kick(spin, px1 - px0, py1 - py0, energy, 2);
+    return status;
+}
+
 GPUFUN
 xt_float_or_tpsa CavityModel_frozen_weight(
     int64_t index,
@@ -453,11 +535,60 @@ xt_float_or_tpsa CavityModel_frozen_weight(
     return CavityModel_expm1(logarithm / count) * exp(index * logarithm / count) / ratio;
 }
 
+// One mesh node at `position` (a fraction of the length) with weight w: the
+// clock with the nominal velocity at the node, the RF and static kicks, and
+// the clock again; `inverse` applies the inverse.
+GPUFUN
+int CavityModel_frozen_node(
+    xt_float_or_tpsa state[6],
+    xt_float_or_tpsa_arg position,
+    xt_float_or_tpsa_arg weight,
+    int inverse,
+    xt_float_or_tpsa_arg h0,
+    xt_float_or_tpsa_arg nominal_gain,
+    xt_float_or_tpsa_arg beta0,
+    xt_float_or_tpsa_arg voltage,
+    xt_float_or_tpsa_arg radial,
+    xt_float_or_tpsa_arg k,
+    xt_float_or_tpsa_arg phase,
+    xt_float_or_tpsa_arg Q,
+    const CavityModelSource* source,
+    int quadrupole_body,
+    xt_float_or_tpsa_arg solenoid,
+    const CavitySpin* spin
+) {
+    const xt_float_or_tpsa nominal = h0 + nominal_gain * position;
+    const xt_float_or_tpsa beta = sqrt((nominal - 1.) * (nominal + 1.)) / nominal;
+    xt_float_or_tpsa clock = (beta / beta0 - 1.) * source->length * weight * .5;
+    xt_float_or_tpsa length = source->length * weight;
+    if (inverse) {
+        clock = -clock;
+        length = -length;
+    }
+    int status = CavityModel_frozen_clock(state, clock, source->freeze_zeta, solenoid);
+    if (status != CAVITY_MODEL_OK) return status;
+    if (inverse)
+        CavityModel_static_multipole_kick(
+            state[0], state[1], &state[3], &state[4], source, Q, length, quadrupole_body,
+            spin, xt_float_or_tpsa_const_part(state[5])
+        );
+    status = CavityModel_frozen_kick(
+        state, weight, voltage, radial, k, phase, inverse, source->freeze_energy, solenoid,
+        spin
+    );
+    if (status != CAVITY_MODEL_OK) return status;
+    if (!inverse)
+        CavityModel_static_multipole_kick(
+            state[0], state[1], &state[3], &state[4], source, Q, length, quadrupole_body,
+            spin, xt_float_or_tpsa_const_part(state[5])
+        );
+    return CavityModel_frozen_clock(state, clock, source->freeze_zeta, solenoid);
+}
+
 // The map from the parent's entrance to `fraction` of its length. The nominal
 // momentum and gain are the reference's, in the units of q, so a slice keeps
 // the parent's coefficients. Inside, d is timed from the parent's entrance; the
-// returned T adds the nominal path once. Static fields: a uniform solenoid with
-// all faces off, or a normal quadrupole with its faces.
+// returned T adds the nominal path once.
 GPUFUN
 int CavityModel_frozen_prefix(
     const xt_float_or_tpsa q[6],
@@ -489,23 +620,17 @@ int CavityModel_frozen_prefix(
     // Freezing a transverse coordinate would need constrained static bodies.
     if (source->freeze_x || source->freeze_px || source->freeze_y || source->freeze_py)
         return CAVITY_MODEL_ARGUMENT;
-    for (int64_t i = 0; i <= source->order; ++i)
-        if ((i != 1
-             && !xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source, i, 0)))
-            || !xt_float_or_tpsa_is_zero(CavityModel_static_coefficient(source, i, 1)))
-            return CAVITY_MODEL_ARGUMENT;
+    // The solenoid, or else the normal quadrupole with its faces, is an exact
+    // body; the other multipoles are thin kicks at the nodes, which commute
+    // with the RF kick.
     xt_float_or_tpsa solenoid = Q * source->magnetic_scale * source->ks;
     xt_float_or_tpsa gradient = 0.;
     if (source->order >= 1)
         gradient = Q * source->magnetic_scale
                    * CavityModel_static_coefficient(source, 1, 0) / source->length;
-    const int solenoid_present = !xt_float_or_tpsa_is_zero(solenoid);
     const int quad_present = !xt_float_or_tpsa_is_zero(gradient);
-    if (solenoid_present
-        && (quad_present || entry_face || exit_face || rf_entry_face || rf_exit_face))
-        return CAVITY_MODEL_ARGUMENT;
-    if ((solenoid_present || quad_present) && spin && spin->spin)
-        return CAVITY_MODEL_ARGUMENT;
+    const int quadrupole_body = quad_present && xt_float_or_tpsa_is_zero(solenoid);
+    if (!quadrupole_body) gradient = 0.;
     if (xt_float_or_tpsa_const_part(nominal_momentum) <= 0. || requested_cells < 0)
         return CAVITY_MODEL_ARGUMENT;
     xt_float_or_tpsa h0 = sqrt(1. + nominal_momentum * nominal_momentum);
@@ -566,7 +691,7 @@ int CavityModel_frozen_prefix(
         if (status != CAVITY_MODEL_OK) return status;
     }
     if ((!reverse && entry_face) || (reverse && exit_face)) {
-        if (quad_present) {
+        if (quadrupole_body) {
             xt_float_or_tpsa face_gradient = gradient;
             if (reverse) face_gradient = -gradient;
             status = CavityModel_static_quad_face(
@@ -576,9 +701,41 @@ int CavityModel_frozen_prefix(
         }
     }
     // A prefix keeps the parent's mesh, voltage and nominal programme and stops
-    // at the target plane; a kick belongs to the prefix that contains it.
-    xt_float_or_tpsa target = fraction * source->length;
-    if (!reverse) {
+    // at the target plane; a kick belongs to the prefix that contains it, and a
+    // composed cell to the prefix that contains its end.
+    const xt_float_or_tpsa target = fraction * source->length;
+    const xt_float_or_tpsa L = source->length;
+    const double sign = reverse ? -1. : 1.;
+#define FROZEN_BODY(distance)                                                      \
+    CavityModel_static_body(state, (distance), beta0, solenoid, gradient,         \
+                            nominal_momentum, source->freeze_zeta, spin)
+#define FROZEN_NODE(position, weight)                                              \
+    CavityModel_frozen_node(state, (position), (weight), reverse, h0, nominal_gain, \
+                            beta0, voltage, radial, k, phase, Q, source,           \
+                            quadrupole_body, solenoid, spin)
+    if (source->composition > 0) {
+        double weights[CAVITY_MODEL_COMPOSITION_MAX];
+        const int substeps = CavityModel_composition(source->composition, weights);
+        int64_t cells = 0;
+        while (cells < count && (double)(cells + 1) <= fraction * count * (1. + 1e-14))
+            ++cells;
+        const xt_float_or_tpsa boundary = L * ((double)cells / count);
+        if (reverse) status = FROZEN_BODY(boundary - target);
+        for (int64_t n = 0; n < cells && status == CAVITY_MODEL_OK; ++n) {
+            const int64_t i = reverse ? cells - 1 - n : n;
+            double position = reverse ? (i + 1.) / count : (double)i / count;
+            for (int m = 0; m < substeps && status == CAVITY_MODEL_OK; ++m) {
+                const double w = weights[reverse ? substeps - 1 - m : m] / count;
+                status = FROZEN_BODY(sign * .5 * w * L);
+                if (status == CAVITY_MODEL_OK)
+                    status = FROZEN_NODE(position + sign * .5 * w, w);
+                if (status == CAVITY_MODEL_OK) status = FROZEN_BODY(sign * .5 * w * L);
+                position += sign * w;
+            }
+        }
+        if (!reverse && status == CAVITY_MODEL_OK) status = FROZEN_BODY(target - boundary);
+    }
+    else if (!reverse) {
         xt_float_or_tpsa previous_node = 0., previous_weight = 0.;
         for (int64_t i = 0; i < count; ++i) {
             xt_float_or_tpsa weight =
@@ -586,56 +743,23 @@ int CavityModel_frozen_prefix(
             xt_float_or_tpsa prefix = (i + 1.) / count;
             if (mesh_r > 1.e-6)
                 prefix = CavityModel_expm1((i + 1) * logarithm / count) / ratio;
-            xt_float_or_tpsa node = source->length * (prefix - .5 * weight);
+            xt_float_or_tpsa node = L * (prefix - .5 * weight);
             if (fraction < 1. && xt_float_or_tpsa_const_part(node - target) > 0.) break;
+            // SAD's mesh times the clock with the cell end's energy, as SAD does
+            // (first order); the uniform mesh at the node (second order).
+            xt_float_or_tpsa clock_at = prefix;
+            if (source->uniform_mesh) clock_at = prefix - .5 * weight;
             // One body call per mesh interval: a quadrupole body split at the
             // target is not the composition of its parts.
-            status = CavityModel_frozen_body(
-                state,
-                source->length * (previous_weight + weight) * .5,
-                beta0,
-                solenoid,
-                gradient,
-                nominal_momentum,
-                source->freeze_zeta
-            );
-            if (status != CAVITY_MODEL_OK) return status;
-            xt_float_or_tpsa nominal = h0 + nominal_gain * prefix;
-            xt_float_or_tpsa beta = sqrt((nominal - 1.) * (nominal + 1.)) / nominal;
-            xt_float_or_tpsa clock = (beta / beta0 - 1.) * source->length * weight * .5;
-            status =
-                CavityModel_frozen_clock(state, clock, source->freeze_zeta, solenoid);
-            if (status != CAVITY_MODEL_OK) return status;
-            status = CavityModel_frozen_kick(
-                state,
-                weight,
-                voltage,
-                radial,
-                k,
-                phase,
-                0,
-                source->freeze_energy,
-                solenoid,
-                spin
-            );
-            if (status != CAVITY_MODEL_OK) return status;
-            status =
-                CavityModel_frozen_clock(state, clock, source->freeze_zeta, solenoid);
+            status = FROZEN_BODY(L * (previous_weight + weight) * .5);
+            if (status == CAVITY_MODEL_OK) status = FROZEN_NODE(clock_at, weight);
             if (status != CAVITY_MODEL_OK) return status;
             previous_node = node;
             previous_weight = weight;
         }
         xt_float_or_tpsa final_distance = target - previous_node;
-        if (fraction == 1.) final_distance = source->length * previous_weight * .5;
-        status = CavityModel_frozen_body(
-            state,
-            final_distance,
-            beta0,
-            solenoid,
-            gradient,
-            nominal_momentum,
-            source->freeze_zeta
-        );
+        if (fraction == 1.) final_distance = L * previous_weight * .5;
+        status = FROZEN_BODY(final_distance);
     }
     else {
         xt_float_or_tpsa previous_node = target, previous_weight = 0.;
@@ -647,63 +771,30 @@ int CavityModel_frozen_prefix(
             xt_float_or_tpsa prefix = (i + 1.) / count;
             if (mesh_r > 1.e-6)
                 prefix = CavityModel_expm1((i + 1) * logarithm / count) / ratio;
-            xt_float_or_tpsa node = source->length * (prefix - .5 * weight);
+            xt_float_or_tpsa node = L * (prefix - .5 * weight);
             if (fraction < 1. && xt_float_or_tpsa_const_part(node - target) > 0.)
                 continue;
+            xt_float_or_tpsa clock_at = prefix;
+            if (source->uniform_mesh) clock_at = prefix - .5 * weight;
             xt_float_or_tpsa distance = node - previous_node;
-            if (first_node && fraction == 1.) distance = -source->length * weight * .5;
-            if (!first_node) distance = -source->length * (previous_weight + weight) * .5;
-            status = CavityModel_frozen_body(
-                state,
-                distance,
-                beta0,
-                solenoid,
-                gradient,
-                nominal_momentum,
-                source->freeze_zeta
-            );
-            if (status != CAVITY_MODEL_OK) return status;
-            xt_float_or_tpsa nominal = h0 + nominal_gain * prefix;
-            xt_float_or_tpsa beta = sqrt((nominal - 1.) * (nominal + 1.)) / nominal;
-            xt_float_or_tpsa clock = (beta / beta0 - 1.) * source->length * weight * .5;
-            status =
-                CavityModel_frozen_clock(state, -clock, source->freeze_zeta, solenoid);
-            if (status != CAVITY_MODEL_OK) return status;
-            status = CavityModel_frozen_kick(
-                state,
-                weight,
-                voltage,
-                radial,
-                k,
-                phase,
-                1,
-                source->freeze_energy,
-                solenoid,
-                spin
-            );
-            if (status != CAVITY_MODEL_OK) return status;
-            status =
-                CavityModel_frozen_clock(state, -clock, source->freeze_zeta, solenoid);
+            if (first_node && fraction == 1.) distance = -L * weight * .5;
+            if (!first_node) distance = -L * (previous_weight + weight) * .5;
+            status = FROZEN_BODY(distance);
+            if (status == CAVITY_MODEL_OK) status = FROZEN_NODE(clock_at, weight);
             if (status != CAVITY_MODEL_OK) return status;
             previous_node = node;
             previous_weight = weight;
             first_node = 0;
         }
         xt_float_or_tpsa final_distance = -previous_node;
-        if (!first_node) final_distance = -source->length * previous_weight * .5;
-        status = CavityModel_frozen_body(
-            state,
-            final_distance,
-            beta0,
-            solenoid,
-            gradient,
-            nominal_momentum,
-            source->freeze_zeta
-        );
+        if (!first_node) final_distance = -L * previous_weight * .5;
+        status = FROZEN_BODY(final_distance);
     }
+#undef FROZEN_BODY
+#undef FROZEN_NODE
     if (status != CAVITY_MODEL_OK) return status;
     if ((!reverse && exit_face) || (reverse && entry_face)) {
-        if (quad_present) {
+        if (quadrupole_body) {
             xt_float_or_tpsa face_gradient = -gradient;
             if (reverse) face_gradient = gradient;
             status = CavityModel_static_quad_face(

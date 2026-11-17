@@ -37,6 +37,8 @@ enum CavityModelStatus {
 // Collocation solve of one Gauss cell: fixed-point sweeps and primal tolerance.
 #define CAVITY_MODEL_GAUSS_MAX_ITERATIONS 80
 #define CAVITY_MODEL_GAUSS_TOLERANCE 2e-13
+// Unconverged steps are halved down to 2^-10 of themselves.
+#define CAVITY_MODEL_HALVING_DEPTH 10
 
 enum CavityPhysicalModel {
     CAVITY_MODEL_FULL = 10,
@@ -67,6 +69,8 @@ typedef struct {
     int freeze_x, freeze_px, freeze_y, freeze_py;
     // Frozen model: equal cells instead of the geometric (SAD) grading.
     int uniform_mesh;
+    // Reduced models: triple-jump levels of the symmetric step (0 to 3).
+    int composition;
     // q_ref A/(p_ref) conventions: magnetic_scale=p_ref/(q_ref*m_source*c).
     // knl/ksl are the ordinary integrated normal/skew magnetic strengths.
     xt_float_or_tpsa magnetic_scale, ks;
@@ -699,6 +703,55 @@ int CavityModel_prepare_harmonics(
                : CAVITY_MODEL_NONFINITE;
 }
 
+// A step whose stages do not converge is retried as two half steps, down to
+// 2^-depth of it; a composition of symplectic steps is symplectic.
+GPUFUN
+int CavityModel_gauss_halving(
+    const xt_float_or_tpsa q[6],
+    xt_float_or_tpsa_arg z,
+    xt_float_or_tpsa_arg h,
+    xt_float_or_tpsa_arg Q,
+    const CavityModelSource* source,
+    int model,
+    int depth,
+    xt_float_or_tpsa output[6]
+) {
+    int status = CavityModel_gauss(q, z, h, Q, source, model,
+                                   CAVITY_MODEL_GAUSS_MAX_ITERATIONS,
+                                   CAVITY_MODEL_GAUSS_TOLERANCE, output);
+    if ((status == CAVITY_MODEL_ITERATIONS || status == CAVITY_MODEL_DOMAIN) && depth > 0) {
+        xt_float_or_tpsa middle[6];
+        status =
+            CavityModel_gauss_halving(q, z, .5 * h, Q, source, model, depth - 1, middle);
+        if (status == CAVITY_MODEL_OK)
+            status = CavityModel_gauss_halving(
+                middle, z + .5 * h, .5 * h, Q, source, model, depth - 1, output
+            );
+    }
+    return status;
+}
+
+// Triple-jump compositions of a symmetric second-order step: `levels` 1, 2
+// and 3 give orders 4, 6 and 8 with 3^levels substeps, w = 1/(2 - 2^(1/(2l+1)))
+// outside and 1 - 2w inside. A negative weight is the inverse step.
+#define CAVITY_MODEL_COMPOSITION_MAX 27
+GPUFUN
+int CavityModel_composition(int levels, double weights[CAVITY_MODEL_COMPOSITION_MAX]) {
+    int count = 1;
+    weights[0] = 1.;
+    for (int level = 1; level <= levels && level <= 3; ++level) {
+        const double outer = 1. / (2. - pow(2., 1. / (2. * level + 1.)));
+        const double inner = 1. - 2. * outer;
+        for (int i = 0; i < count; ++i) {
+            weights[count + i] = inner * weights[i];
+            weights[2 * count + i] = outer * weights[i];
+            weights[i] *= outer;
+        }
+        count *= 3;
+    }
+    return count;
+}
+
 #ifndef XTRACK_TPSA_TRACK
 // Fields acting on spin and radiation inside the element: the RF to radial
 // order, a uniform solenoid and a normal or skew quadrupole. The faces are
@@ -816,45 +869,32 @@ int CavityModel_effects_profile(
     return CAVITY_MODEL_OK;
 }
 
-// Solenoid and quadrupole strengths of the static fields, per unit charge.
+// Solenoid strength of the static fields, per unit charge, after checking the
+// multipoles: spin and radiation are tracked without TPSA.
 GPUFUN
 int CavityModel_effects_static_components(
     const CavityModelSource* source,
-    double* b,
-    double* gn,
-    double* gs
+    double* b
 ) {
     const double ks = source->ks;
     if (!isfinite(ks)) return CAVITY_MODEL_NONFINITE;
-    double normal = 0., skew = 0.;
     int present = ks != 0.;
     for (int64_t n = 0; n <= source->order; ++n) {
-        // Spin and radiation are tracked without TPSA.
         if ((source->knl_tpsa && source->knl_tpsa[n])
             || (source->ksl_tpsa && source->ksl_tpsa[n]))
             return CAVITY_MODEL_ARGUMENT;
         const double kn = CavityModel_static_coefficient(source, n, 0);
         const double sn = CavityModel_static_coefficient(source, n, 1);
         if (!isfinite(kn) || !isfinite(sn)) return CAVITY_MODEL_NONFINITE;
-        if (n != 1 && (kn != 0. || sn != 0.)) return CAVITY_MODEL_ARGUMENT;
-        if (n == 1) {
-            normal = kn;
-            skew = sn;
-            present |= kn != 0. || sn != 0.;
-        }
+        present |= kn != 0. || sn != 0.;
     }
     *b = 0.;
-    *gn = 0.;
-    *gs = 0.;
     if (!present) return CAVITY_MODEL_OK;
     const double k = source->k, length = source->length, scale = source->magnetic_scale;
     if (!isfinite(k) || k <= 0. || !isfinite(length) || length <= 0. || !isfinite(scale))
         return CAVITY_MODEL_ARGUMENT;
     *b = scale * ks / k;
-    *gn = scale * normal / (length * k * k);
-    *gs = scale * skew / (length * k * k);
-    return isfinite(*b) && isfinite(*gn) && isfinite(*gs) ? CAVITY_MODEL_OK
-                                                          : CAVITY_MODEL_NONFINITE;
+    return isfinite(*b) ? CAVITY_MODEL_OK : CAVITY_MODEL_NONFINITE;
 }
 
 // The radial sums of the effect fields from jets 0..2M of a phase profile F,
@@ -931,18 +971,39 @@ int CavityModel_effects_fields(
         field->dB[axis][1] = -dx * L - x * dL;
         field->dB[axis][2] = 0.;
     }
-    // Curl of the static potential the orbit uses,
-    // A = (-bY/2, bX/2, -gn(X^2 - Y^2)/2 + gs XY); it has no electric field.
-    double b, gn, gs;
-    status = CavityModel_effects_static_components(source, &b, &gn, &gs);
+    // Curl of the static potential the orbit uses: the solenoid, and
+    // B_y + i B_x = F(w) = c sum (kn + i sn) w^n / n! with w = (X + iY) / k,
+    // whose X and Y derivatives are F'/k and i F'/k. It has no electric field.
+    double b;
+    status = CavityModel_effects_static_components(source, &b);
     if (status != CAVITY_MODEL_OK) return status;
-    field->B[0] += gs * x + gn * y;
-    field->B[1] += gn * x - gs * y;
+    {
+        const double k = source->k, c = source->magnetic_scale / (source->length * k);
+        const double wx = x / k, wy = y / k;
+        double re = 1., im = 0., by = 0., bx = 0., dby = 0., dbx = 0.;
+        for (int64_t n = 0; n <= source->order; ++n) {
+            const double kn = CavityModel_static_coefficient(source, n, 0);
+            const double sn = CavityModel_static_coefficient(source, n, 1);
+            by += c * (kn * re - sn * im);
+            bx += c * (kn * im + sn * re);
+            if (n < source->order) {
+                const double kn1 = CavityModel_static_coefficient(source, n + 1, 0);
+                const double sn1 = CavityModel_static_coefficient(source, n + 1, 1);
+                dby += c * (kn1 * re - sn1 * im) / k;
+                dbx += c * (kn1 * im + sn1 * re) / k;
+            }
+            const double next = (re * wx - im * wy) / (n + 1.);
+            im = (re * wy + im * wx) / (n + 1.);
+            re = next;
+        }
+        field->B[0] += bx;
+        field->B[1] += by;
+        field->dB[1][0] += dbx;
+        field->dB[1][1] += dby;
+        field->dB[2][0] += dby;
+        field->dB[2][1] -= dbx;
+    }
     field->B[2] += b;
-    field->dB[1][0] += gs;
-    field->dB[1][1] += gn;
-    field->dB[2][0] += gn;
-    field->dB[2][1] -= gs;
     for (int j = 0; j < 3; ++j) {
         if (!isfinite(field->E[j]) || !isfinite(field->B[j]))
             return CAVITY_MODEL_NONFINITE;
@@ -1058,15 +1119,12 @@ int CavityModel_effects(
     CavityModelEffectsField field;
     int status = CavityModel_effects_fields(q, z, source, &field);
     if (status != CAVITY_MODEL_OK) return status;
-    double b, gn, gs;
-    status = CavityModel_effects_static_components(source, &b, &gn, &gs);
+    double b;
+    status = CavityModel_effects_static_components(source, &b);
     if (status != CAVITY_MODEL_OK) return status;
     CavityModelPotential potential;
     CavityModel_rf_potential(q, z, source, CAVITY_MODEL_FULL, &potential);
-    if (b != 0. || gn != 0. || gs != 0.)
-        CavityModel_add_static(q, z, source, &potential);
-    else
-        potential.a[2] -= source->dc_gradient * q[2];
+    CavityModel_add_static(q, z, source, &potential);
     // Kinetic momentum subtracts the whole transverse potential, the solenoid's
     // included; A_z enters the Hamiltonian, not the momentum.
     const double gamma = q[5] - Q * potential.a[3];
