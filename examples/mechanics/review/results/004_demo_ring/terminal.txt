@@ -1,0 +1,12 @@
+Surveyed ring and prescribed input
+----------------------------------
+Ring length [m]: 1500.0; supports: 168; source: wave
+Largest entrance position / orientation discrepancy: 1.14e-13 m / 2.82e-16 rad
+Input payload [MiB]: 15.750
+Only quadrupoles move here. Feet and mechanical responses follow in 005 and 006.
+
+Reference CPU costs
+-------------------
+setup_s                     2.4530 s
+sample_motion_s             0.0163 s
+apply_and_survey_s          0.0507 s

@@ -1,0 +1,13 @@
+Reference backend execution costs
+----------------------------------
+Context: ContextCpu; particles: 128; turns: 128
+Supports   Load [s]   Attach [s]   Build [s]   Warm [s]   Pose [ms]   Apply [ms]   Frozen [s]   Dynamic [s]
+       1     0.0518       0.0631      0.1180     0.0140       0.034        1.312       1.6750        1.8363
+      24     0.0433       0.3324      0.0159     0.0138       0.352        2.700       1.6647        2.0114
+     168     0.0438       2.3272      0.0155     0.0140       2.430       11.088       1.6774        3.1088
+Turn time [µs]: 5.003462; 2π f T_rev [rad]: 0.628754
+Passage preparation [ms]: 1: 2.199, 24: 11.863, 168: 412.309
+Largest held/passage alignment difference [nm]: 30.714730
+Unallocated full matrix history for 1,000,000 turns [GiB]: 20.027
+The reference writes fields from Python. These measurements do not establish a fast GPU backend.
+Frozen/dynamic timings use the same particle workload, with different motion semantics.

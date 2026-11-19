@@ -1,0 +1,22 @@
+Combined prescribed mechanics on the demo ring
+----------------------------------------------
+Girders / magnets / pickups: 168 / 168 / 14
+Feet: 672; installation seed: 956; dynamic seeds: 1956, 1957
+Causal source prehistory [s]: 1.5; step [s]: 0.000976562
+Linear-replay half-step amplitude error bound at 40 Hz [%]: 0.7520
+Rigid contact mismatch RMS after warm-up [nm]: 0.391750
+Stage         First-channel y RMS after warm-up [nm]
+Support                            15.289053
+Magnet                             20.492847
+Pickup                             18.675393
+Tracked turns / physical duration [s]: 32 / 0.000160110787
+Installation y RMS unchanged [µm]: 5.262845
+Sources use nominal reference geometry. The example does not infer force propagation or support loading.
+
+Reference CPU costs
+-------------------
+layout_and_installation_s           2.7533 s
+floor_and_rigid_fit_s               0.6499 s
+response_paths_s                    0.8870 s
+initial_frozen_twiss_s              0.0742 s
+dynamic_tracking_s                  0.7170 s

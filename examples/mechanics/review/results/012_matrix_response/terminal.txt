@@ -1,0 +1,18 @@
+Six-coordinate response and rigid port transport
+-------------------------------------------------
+Coordinate         Drive RMS       Support RMS       Magnet RMS
+x [nm]               7.071068          8.676981        10.249366
+y [nm]              35.355339         46.742155        56.271639
+s [nm]               3.535534          3.587121         3.595772
+pitch [nrad]         1.414214          9.533414         9.533414
+yaw [nrad]           2.121320          2.492814         2.492814
+roll [nrad]          2.828427          3.739372         3.739372
+Yaw → x response coupling [m/rad]: 1.5
+y → pitch response coupling [rad/m]: 0.2
+Mount lever arm x/y/s [m]: (0.1, 0.0, 1.0)
+Matrix coupling is a supplied small-signal response. Port transport is exact rigid geometry.
+
+Reference CPU costs
+-------------------
+setup_s                                     0.2450 s
+matrix_response_and_transport_s             0.0025 s

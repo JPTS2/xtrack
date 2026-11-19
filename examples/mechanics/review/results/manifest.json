@@ -1,0 +1,415 @@
+[
+  {
+    "example": "001_rigid_girder.py",
+    "exit_code": 0,
+    "elapsed_s": 0.2925870001781732,
+    "timings": {
+      "setup_s": 0.13392937486059964,
+      "apply_and_survey_s": 0.0017541670240461826,
+      "tracker_build_s": 0.0011105420999228954,
+      "one_pass_tracking_s": 0.00010708393529057503
+    },
+    "figures": [
+      "figure_01"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 240.734375,
+    "script_sha256": "148acde801c5532c309d2049fcbc6f4fa1b339283480f841452504ad91e02ab6",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "002_sources_and_vibrations.py",
+    "exit_code": 0,
+    "elapsed_s": 0.3940696669742465,
+    "timings": {
+      "setup_s": 0.13995508290827274,
+      "sample_motion_s": 0.006285666022449732,
+      "tracker_build_s": 3.875000402331352e-06,
+      "dynamic_tracking_s": 0.08354045799933374
+    },
+    "figures": [
+      "figure_01"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 245.59375,
+    "script_sha256": "3415c41e27b157dbc4de1e8a59ad16a1e89c8264f7fdd8aa1f773cef03142e6e",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "003_shared_girder.py",
+    "exit_code": 0,
+    "elapsed_s": 0.2760021658614278,
+    "timings": {
+      "setup_and_record_s": 0.1456389999948442,
+      "forward_tracker_build_s": 3.500143066048622e-06,
+      "forward_tracking_s": 0.012684541055932641,
+      "backward_tracker_build_s": 1.8749851733446121e-06,
+      "backward_tracking_s": 0.012770958011969924
+    },
+    "figures": [
+      "figure_01"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 239.96875,
+    "script_sha256": "66bc6f55287faec5bb55b091bc7f4aa96db67e39e4dd5a9416f588fd707e2727",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "004_demo_ring.py",
+    "exit_code": 0,
+    "elapsed_s": 2.963352082995698,
+    "timings": {
+      "setup_s": 2.452999292174354,
+      "sample_motion_s": 0.016341750044375658,
+      "apply_and_survey_s": 0.05065295798704028
+    },
+    "figures": [
+      "figure_01",
+      "figure_02"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 315.96875,
+    "script_sha256": "4c06b1a33098691d01fd14721276535d0ddc2477b17d76ded3208d52f8421061",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "005_ground_and_feet.py",
+    "exit_code": 0,
+    "elapsed_s": 0.5649577081203461,
+    "timings": {
+      "setup_s": 0.25625962507911026,
+      "sample_and_fit_s": 0.018899416783824563,
+      "apply_and_survey_s": 0.0034370841458439827
+    },
+    "figures": [
+      "figure_01",
+      "figure_02"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 263.453125,
+    "script_sha256": "7f5e6b380c9bafdb2790d08b8f7757c1d82985b7d2adebb95bb10aa7f94f9f40",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "006_transfer_chain.py",
+    "exit_code": 0,
+    "elapsed_s": 0.9433256671763957,
+    "timings": {
+      "setup_s": 0.2180052080657333,
+      "sample_and_response_s": 0.02928841602988541,
+      "apply_and_survey_s": 0.0038932079914957285,
+      "causal_filter_s": 0.00043045892380177975
+    },
+    "figures": [
+      "figure_01",
+      "figure_02"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 297.203125,
+    "script_sha256": "e5de16868cd28fef539ab8a52ff4001f78da109fbc46ba010f1edd42a6b18713",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "007_local_sources.py",
+    "exit_code": 0,
+    "elapsed_s": 0.572143292054534,
+    "timings": {
+      "setup_s": 0.2584322080947459,
+      "sample_field_s": 0.00047345785424113274,
+      "apply_and_survey_s": 0.0037043339107185602
+    },
+    "figures": [
+      "figure_01"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 257.796875,
+    "script_sha256": "bf832e8963c9efecdb13a0c56a944782723a9cc0776daa4e281920978f117b81",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "008_regional_ground.py",
+    "exit_code": 0,
+    "elapsed_s": 3.418913458008319,
+    "timings": {
+      "setup_s": 2.428809667006135,
+      "sample_field_s": 0.08103470806963742,
+      "chunk_and_order_check_s": 0.008926708018407226
+    },
+    "figures": [
+      "figure_01",
+      "figure_02"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 425.625,
+    "script_sha256": "7e23db9ce89ddccbdb1312620ab53a7f2c7ebe18ddf95c0820856a48f7cc9c9a",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "009_moving_bpm.py",
+    "exit_code": 0,
+    "elapsed_s": 2.81127474992536,
+    "timings": {
+      "setup_and_calibration_s": 0.3505422498565167,
+      "response_records_s": 0.0008249578531831503,
+      "frozen_states_and_correction_s": 2.3406885000877082
+    },
+    "figures": [
+      "figure_01"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 262.28125,
+    "script_sha256": "dcbe63bbda702ca5ffb1b72cbdddc84dbe3e098fe47dd8a450baad0c7bb928a0",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "010_execution_costs.py",
+    "exit_code": 0,
+    "elapsed_s": 15.75996308401227,
+    "timings": {
+      "1_supports_model_s": 0.05178291699849069,
+      "1_supports_setup_s": 0.06310449982993305,
+      "1_supports_build_s": 0.11798708303831518,
+      "1_supports_warm_s": 0.013993167085573077,
+      "1_supports_pose_s": 3.437497653067112e-05,
+      "1_supports_apply_s": 0.0013116084039211274,
+      "1_supports_frozen_s": 1.6750355828553438,
+      "1_supports_dynamic_s": 1.8363320420030504,
+      "1_supports_passage_prepare_s": 0.0021985420025885105,
+      "24_supports_model_s": 0.04326829197816551,
+      "24_supports_setup_s": 0.3324067499488592,
+      "24_supports_build_s": 0.015885500004515052,
+      "24_supports_warm_s": 0.013840458123013377,
+      "24_supports_pose_s": 0.0003523500170558691,
+      "24_supports_apply_s": 0.002700191829353571,
+      "24_supports_frozen_s": 1.6647494160570204,
+      "24_supports_dynamic_s": 2.0114084579981863,
+      "24_supports_passage_prepare_s": 0.011863041901960969,
+      "168_supports_model_s": 0.043823417043313384,
+      "168_supports_setup_s": 2.3272380421403795,
+      "168_supports_build_s": 0.015497124986723065,
+      "168_supports_warm_s": 0.014002708019688725,
+      "168_supports_pose_s": 0.0024303915910422803,
+      "168_supports_apply_s": 0.01108765839599073,
+      "168_supports_frozen_s": 1.6774329580366611,
+      "168_supports_dynamic_s": 3.1088384999893606,
+      "168_supports_passage_prepare_s": 0.41230920888483524
+    },
+    "figures": [
+      "figure_01"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 267.59375,
+    "script_sha256": "2c57915bf11345f4a6556252de2cd1d269a3a95362d68923ac3743829194a6cd",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "011_installation_and_correction.py",
+    "exit_code": 0,
+    "elapsed_s": 5.470593917183578,
+    "timings": {
+      "setup_and_tracker_s": 2.7274162091780454,
+      "response_calibration_s": 1.5208853329531848,
+      "installation_cases_and_correction_s": 1.028936541872099
+    },
+    "figures": [
+      "figure_01"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 265.59375,
+    "script_sha256": "041e1f9e1210661c248fc699ba45cf72fb21ed82b1261e2b6e0c7193ec01e1cc",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "012_matrix_response.py",
+    "exit_code": 0,
+    "elapsed_s": 0.49673899984918535,
+    "timings": {
+      "setup_s": 0.2450197080615908,
+      "matrix_response_and_transport_s": 0.0025266672018915415
+    },
+    "figures": [
+      "figure_01",
+      "figure_02"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 253.15625,
+    "script_sha256": "6799b5d71d209e82bfa9c0a899b614761a9913e734e4b32b4f5a9115695b3bb2",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  },
+  {
+    "example": "013_combined_mechanics.py",
+    "exit_code": 0,
+    "elapsed_s": 6.187520666047931,
+    "timings": {
+      "layout_and_installation_s": 2.7533325410913676,
+      "floor_and_rigid_fit_s": 0.6499032501596957,
+      "response_paths_s": 0.8869764578994364,
+      "initial_frozen_twiss_s": 0.07416425016708672,
+      "dynamic_tracking_s": 0.7170388749800622
+    },
+    "figures": [
+      "figure_01",
+      "figure_02"
+    ],
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "xtrack": "0.119.2",
+    "numpy": "2.4.1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "peak_rss_mib": 808.40625,
+    "script_sha256": "ff051ed7128458cba0a868ef6516267d702c3a17b2c9249ea2b596a0b4d502ce",
+    "mechanics_source_sha256": {
+      "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    }
+  }
+]

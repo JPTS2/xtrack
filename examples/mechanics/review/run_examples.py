@@ -39,7 +39,9 @@ def worker(script, destination):
             figure = plt.figure(number)
             stem = f'figure_{len(figures)+1:02d}'
             figure.savefig(destination / (stem+'.png'), dpi=140)
-            figure.savefig(destination / (stem+'.svg'))
+            svg = destination / (stem+'.svg')
+            figure.savefig(svg)
+            svg.write_text('\n'.join(line.rstrip() for line in svg.read_text().splitlines())+'\n')
             figures.append(stem)
         plt.close('all')
 

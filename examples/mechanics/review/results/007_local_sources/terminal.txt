@@ -1,0 +1,16 @@
+Mounted pump and supplied propagation
+--------------------------------------
+Support                 Distance [m]    Amplitude gain    Delay [ms]
+g.arc.s1.c1.qf.in            0.9434          0.953925      18.86796
+g.arc.s1.c1.qd              19.7903          0.371758     395.80538
+g.arc.s1.c1.qf.out          39.4630          0.139018     789.25956
+Pump mount local x/y/s [m]: (0.8, -0.5, 0.0)
+Direct mount tone [nm peak]: 25.000
+The floor law and direct coupling are supplied models, not inferred elasticity.
+The pump body fixes nominal mounting; propagation uses that reference geometry.
+
+Reference CPU costs
+-------------------
+setup_s                     0.2584 s
+sample_field_s              0.0005 s
+apply_and_survey_s          0.0037 s

@@ -1,0 +1,18 @@
+The line already has an associated tracker
+Moving pickup and frozen orbit correction
+-----------------------------------------
+Measured signed corrector response [m/rad]: -115.817833
+Quantity                         RMS [nm]
+Beam in nominal coordinates              168.297194
+Pickup motion                             67.834957
+Actual pickup before correction          235.522775
+After nominal-coordinate correction       67.729494
+After moving-pickup correction             0.000000
+Readout uses ray/plane intersection, including pickup orientation and beam slope.
+Each state is frozen Twiss. No causal controller or turn-by-turn feedback is claimed.
+
+Reference CPU costs
+-------------------
+setup_and_calibration_s                 0.3505 s
+response_records_s                      0.0008 s
+frozen_states_and_correction_s          2.3407 s

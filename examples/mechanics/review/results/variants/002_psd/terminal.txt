@@ -1,0 +1,15 @@
+The line already has an associated tracker
+Motion inputs and tracking lifecycle
+------------------------------------
+Source: psd; turns: 256; physical time [s]: 0.000344985333
+Installation y after disabling [µm]: 20.000000
+Input record payload [KiB]: 960.0
+Angular inputs compose as rotations. They do not change the installation settings.
+Frozen closed orbit at q0 [µm]: 44.317752
+
+Reference CPU costs
+-------------------
+setup_s                     0.1759 s
+sample_motion_s             0.0075 s
+tracker_build_s             0.0000 s
+dynamic_tracking_s          0.0858 s

@@ -1,0 +1,30 @@
+{
+  "example": "003_shared_girder.py",
+  "elapsed_s": 0.2760021658614278,
+  "timings": {
+    "setup_and_record_s": 0.1456389999948442,
+    "forward_tracker_build_s": 3.500143066048622e-06,
+    "forward_tracking_s": 0.012684541055932641,
+    "backward_tracker_build_s": 1.8749851733446121e-06,
+    "backward_tracking_s": 0.012770958011969924
+  },
+  "figures": [
+    "figure_01"
+  ],
+  "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+  "xtrack": "0.119.2",
+  "numpy": "2.4.1",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "peak_rss_mib": 239.96875,
+  "script_sha256": "66bc6f55287faec5bb55b091bc7f4aa96db67e39e4dd5a9416f588fd707e2727",
+  "mechanics_source_sha256": {
+    "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+    "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+    "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+    "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+    "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+    "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+    "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+    "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+  }
+}

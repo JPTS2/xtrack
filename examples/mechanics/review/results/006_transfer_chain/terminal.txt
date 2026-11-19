@@ -1,0 +1,20 @@
+Loaded support response
+-----------------------
+Stage             Vertical RMS [nm]
+Floor                  9.103460
+Girder                 7.847146
+Magnet                 8.680893
+BPM                    8.901567
+Unloaded cascade       9.390443
+Loaded cascade/direct mismatch [m]: 1.99e-23
+The pickup response is absolute; rigid inheritance is not added again.
+FFT replay is periodic offline response, not a causal startup simulation.
+Causal whole/split mismatch [m]: 0
+Causal final pickup after 50 nm step [nm]: 50.000000
+
+Reference CPU costs
+-------------------
+setup_s                     0.2180 s
+sample_and_response_s       0.0293 s
+apply_and_survey_s          0.0039 s
+causal_filter_s             0.0004 s

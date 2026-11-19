@@ -1,0 +1,18 @@
+The line already has an associated tracker
+The line already has an associated tracker
+Shared body and separate beam clocks
+------------------------------------
+Beam       Turn spacing [µs]    Last sampled time [µs]
+Forward            0.336900                 21.224684
+Backward           0.603751                 38.036314
+Same-time local x forward / backward [nm]: -50.000000 / +50.000000
+Both lines query one immutable field; running one does not advance the other.
+This does not schedule causal shared filters, beam encounters or controllers.
+
+Reference CPU costs
+-------------------
+setup_and_record_s                0.1456 s
+forward_tracker_build_s           0.0000 s
+forward_tracking_s                0.0127 s
+backward_tracker_build_s          0.0000 s
+backward_tracking_s               0.0128 s

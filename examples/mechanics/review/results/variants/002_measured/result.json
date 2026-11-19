@@ -1,0 +1,23 @@
+{
+  "example": "002_sources_and_vibrations.py",
+  "overrides": {
+    "SOURCE": "measured",
+    "ROTATION_SOURCE": "measured"
+  },
+  "elapsed_s": 0.2465112500358373,
+  "figures": [
+    "figure_01"
+  ],
+  "original_script_sha256": "3415c41e27b157dbc4de1e8a59ad16a1e89c8264f7fdd8aa1f773cef03142e6e",
+  "executed_code_sha256": "6da497b24c0edf204d8c4fa10135f2c149f037ce1aa8ed0fa8d107b37108404b",
+  "mechanics_source_sha256": {
+    "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+    "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+    "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+    "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+    "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+    "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+    "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+    "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+  }
+}
