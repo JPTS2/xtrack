@@ -9,7 +9,7 @@ time. enable_vibrations opts into host reference updates at turn boundaries.
 No hierarchy of xdeps expressions is installed. Occurrence buffers and girder-
 boundary kernels remain alternative accelerated lowerings of this same model.
 """
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from weakref import WeakKeyDictionary, ref
 
@@ -17,7 +17,9 @@ import numpy as np
 
 from ..survey import Frame
 from ..table import Table
-from .sources import SOURCE_CLASSES, DisplacementPSD, PlaneWave
+from .sources import decode_source, encode_source, requires_time_series
+from .motion import RigidMotion, COORDINATES, frozen_array
+from .installation import RigidOffset
 
 
 _FIELDS = ('shift_x', 'shift_y', 'shift_s', 'rot_x_rad', 'rot_y_rad',
@@ -59,6 +61,8 @@ class RigidBody:
 
     Pitch/yaw/roll follow xt.Frame.from_survey_angles(phi,theta,psi), i.e.
     Ry(yaw) Rx(-pitch) Rz(roll). Ancestor rotations compose as matrices.
+    These settings extend the deliberate reference; installation is a separate
+    static layer, and dynamic sources never write either set of inputs.
     Topology and anchors are fixed after creation in this first draft.
     """
     name: str
@@ -70,15 +74,29 @@ class RigidBody:
     rot_x_rad: float = 0.
     rot_y_rad: float = 0.
     rot_s_rad: float = 0.
+    installation: RigidOffset = field(default_factory=RigidOffset)
+    _feet: object = None
 
     def __setattr__(self, name, value):
-        if name in ('name', 'parent', '_nominal') and hasattr(self, name):
+        if name in ('name', 'parent', '_nominal', '_feet') and hasattr(self, name):
             raise AttributeError('Body topology is fixed; create a new binding')
         object.__setattr__(self, name, value)
 
     @property
     def nominal_frame(self):
         return Frame(self._nominal)
+
+    @property
+    def feet_local_m(self):
+        """Read-only nominal support contacts in body coordinates, or None."""
+        return self._feet
+
+    @property
+    def nominal_feet_m(self):
+        """Nominal world coordinates of the contacts; no installation/dynamics."""
+        if self._feet is None:
+            raise ValueError('Define feet_local_m when constructing this body')
+        return self._feet @ self._nominal[:3,:3].T + self._nominal[:3,3]
 
 
 @dataclass(frozen=True)
@@ -87,12 +105,13 @@ class SourceBinding:
     source: object
     targets: tuple
     component: str
+    reference: str = 'relative'
 
 
 class MechanicalTimeSeries:
     """Reusable sampled source displacements, independent of live body settings.
 
-    Values are read-only (time, target, local translation) arrays in metres.
+    Values are read-only (time, target, 6) arrays in metres and survey radians.
     Reuse this object for matched comparisons. Interpolation for apply/get_poses
     is linear, bounded by the supplied record, with no periodic replay.
     """
@@ -101,6 +120,7 @@ class MechanicalTimeSeries:
         self._revision = manager._revision
         self._bodies = tuple(manager.bodies)
         self._targets = MappingProxyType({name: binding.targets for name, binding in manager.sources.items()})
+        self.references = MappingProxyType({name: binding.reference for name, binding in manager.sources.items()})
         self.body_frames = MappingProxyType({name: self._freeze(body._nominal)
                                              for name, body in manager.bodies.items()})
         self.time_s = self._freeze(time_s)
@@ -112,15 +132,27 @@ class MechanicalTimeSeries:
         return np.frombuffer(array.tobytes(), dtype=float).reshape(array.shape)
 
     def get_table(self, body):
-        """Read source-induced local translation for one body; no parent motion."""
+        """Direct source coordinates; no static or inherited motion.
+
+        An absolute binding reports absolute dynamic coordinates about the
+        static body's anchor. Inspect references to distinguish binding modes.
+        Multiple relative input rotations compose in source insertion order.
+        """
         if body not in self._bodies:
             raise KeyError(body)
-        values = np.zeros((len(self.time_s), 3))
+        values = np.zeros((len(self.time_s), 6))
+        rotation = np.broadcast_to(np.eye(3), (len(self.time_s), 3, 3)).copy()
         for name, targets in self._targets.items():
             if body in targets:
-                values += self.values[name][:, targets.index(body)]
-        return Table(dict(time_s=self.time_s.copy(), shift_x=values[:, 0],
-                          shift_y=values[:, 1], shift_s=values[:, 2]), index='time_s')
+                current = self.values[name][:, targets.index(body)]
+                values[:, :3] += current[:, :3]
+                if np.any(current[:, 3:]):
+                    from scipy.spatial.transform import Rotation
+                    rotation = Rotation.from_euler('YXZ', current[:, [4, 3, 5]]*[1, -1, 1]).as_matrix() @ rotation
+        from .motion import angles_from_matrix
+        values[:, 3:] = angles_from_matrix(rotation)
+        return Table(dict(time_s=self.time_s.copy(), **{
+            field: values[:, i] for i, field in enumerate(COORDINATES)}), index='time_s')
 
     def _check(self, manager):
         if self._manager() is not manager or manager is None or manager._revision != self._revision:
@@ -165,6 +197,11 @@ class MechanicsManager:
             self._line_views[line] = LineMechanics(self, line)
         return self._line_views[line]
 
+    def generate_installation_errors(self, **kwargs):
+        """Generate an independent reproducible static case; no automatic writes."""
+        from .installation import generate_installation_errors
+        return generate_installation_errors(self, **kwargs)
+
     def _line(self, line):
         if line is None:
             if len(self.env.lines) != 1:
@@ -172,7 +209,23 @@ class MechanicsManager:
             line = next(iter(self.env.lines.values()))
         return self.for_line(line)
 
-    def new_girder(self, name, *, elements=None, line=None, anchor='center', parent=None):
+    def new_body(self, name, *, elements=None, line=None, anchor='center', parent=None, mount=None, feet_local_m=None):
+        """Create a named rigid magnet, pickup, equipment or support body.
+
+        mount is a parent-local Frame. anchor is a nominal world Frame/XYZ;
+        specify one placement convention. Attachments retain their surveyed
+        positions relative to the body. No force law is inferred from mounting.
+        """
+        if mount is not None:
+            if parent is None or not isinstance(anchor, str) or anchor != 'center':
+                raise ValueError('A mount requires a parent and no explicit world anchor')
+            owner = self[parent] if isinstance(parent, str) else parent
+            if self.bodies.get(owner.name) is not owner:
+                raise ValueError('Parent must belong to this environment')
+            anchor = owner.nominal_frame @ _frame(mount)
+        return self.new_girder(name, elements=elements, line=line, anchor=anchor, parent=parent, feet_local_m=feet_local_m)
+
+    def new_girder(self, name, *, elements=None, line=None, anchor='center', parent=None, feet_local_m=None):
         """Retrofit elements, or create an explicitly anchored shared body.
 
         'center' is the chord midpoint of the selected entrance/exit span, with
@@ -201,41 +254,54 @@ class MechanicsManager:
         else:
             nominal = _frame(anchor)
         frozen = np.frombuffer(nominal.matrix.tobytes(), dtype=float).reshape(4, 4)
-        body = RigidBody(name, parent, frozen)
+        feet = None if feet_local_m is None else frozen_array(feet_local_m)
+        if feet is not None and (feet.ndim != 2 or feet.shape[1] != 3 or not len(feet)):
+            raise ValueError('feet_local_m must be nonempty local XYZ coordinates')
+        body = RigidBody(name, parent, frozen, _feet=feet)
         self._bodies[name] = body
         if view is not None:
             view._attach(name, candidates)
         self._revision += 1
         return body
 
-    def add_source(self, name, source, *, targets, component='y'):
+    def add_source(self, name, source, *, targets, component='y', reference='relative'):
         """Bind a named source model, independently of girder construction.
 
-        Scalar displacement models use nominal body-local x/y/s. PlaneWave is
-        a world vector field sampled at root anchors and projected into their
-        nominal axes. The first draft does not infer multi-foot rotations.
+        Scalar inputs use nominal-body x/y/s [m] or pitch/yaw/roll [rad].
+        RigidMotion supplies all six coordinates. Relative motion composes down
+        the mounting tree; absolute motion replaces inherited vibration while
+        retaining the static mounting/alignment. No Euler-angle subtraction.
         """
         if not isinstance(name, str) or not name or name in self._sources:
             raise ValueError('Use a new nonempty source name')
         if not callable(getattr(source, 'evaluate', None)):
             raise TypeError('A source must implement evaluate(time_s=..., positions_m=...)')
         frame = getattr(source, 'frame', 'body_local')
-        if frame not in ('body_local', 'world'):
-            raise ValueError("Source frame must be 'body_local' or 'world'")
+        if frame not in ('body_local', 'world', 'body_local_rigid'):
+            raise ValueError('Unknown source coordinate frame')
+        if reference not in ('relative', 'absolute'):
+            raise ValueError("reference must be 'relative' or 'absolute'")
         targets = (targets,) if isinstance(targets, str) else tuple(targets)
         if not targets or len(set(targets)) != len(targets) or any(n not in self._bodies for n in targets):
             raise ValueError('Select unique existing bodies')
-        if component not in ('x', 'y', 's'):
-            raise ValueError("Displacement component must be 'x', 'y' or 's'")
+        if component not in ('x', 'y', 's', 'pitch', 'yaw', 'roll'):
+            raise ValueError('Use x/y/s or pitch/yaw/roll component')
+        if frame == 'body_local' and getattr(source, 'unit', 'm') != ('rad' if component in ('pitch', 'yaw', 'roll') else 'm'):
+            raise ValueError('Source unit must match translation [m] or angle [rad]')
+        if getattr(source, 'target_names', ()) and tuple(source.target_names) != targets:
+            raise ValueError('Rigid motion target names/order must match binding targets')
+        for binding in self.sources.values():
+            if set(binding.targets).intersection(targets) and ('absolute' in (reference, binding.reference)):
+                raise ValueError('An absolute-driven body needs one explicit combined motion input')
         for target in targets:
             parent = self._bodies[target].parent
             while parent is not None:
-                if parent in targets:
+                if parent in targets and reference == 'relative':
                     raise ValueError('One source cannot drive both a body and its ancestor')
                 parent = self._bodies[parent].parent
-            if frame == 'world' and self._bodies[target].parent is not None:
+            if frame == 'world' and self._bodies[target].parent is not None and reference != 'absolute':
                 raise ValueError('World-field shortcut drives roots; child absolute drives need explicit response handling')
-        binding = SourceBinding(name, source, targets, component)
+        binding = SourceBinding(name, source, targets, component, reference)
         self._sources[name] = binding
         self._revision += 1
         return binding
@@ -245,17 +311,23 @@ class MechanicsManager:
         values = np.asarray(binding.source.evaluate(time_s=time_s, positions_m=positions))
         if np.iscomplexobj(values) or not np.all(np.isfinite(values)):
             raise ValueError(f'{binding.name}: source must return finite real displacement')
-        if getattr(binding.source, 'frame', 'body_local') == 'world':
+        frame = getattr(binding.source, 'frame', 'body_local')
+        if frame == 'body_local_rigid':
+            if values.shape != (len(time_s), len(positions), 6):
+                raise ValueError('Rigid source must return shape (times, targets, 6)')
+            return values
+        output = np.zeros((len(time_s), len(binding.targets), 6))
+        if frame == 'world':
             if values.shape != (len(time_s), len(positions), 3):
                 raise ValueError('World source must return shape (times, targets, 3)')
             rotations = np.array([self._bodies[n]._nominal[:3, :3] for n in binding.targets])
-            return np.einsum('bji,tbj->tbi', rotations, values)
+            output[..., :3] = np.einsum('bji,tbj->tbi', rotations, values)
+            return output
         if values.shape == (len(time_s),):
             values = np.broadcast_to(values[:, None], (len(time_s), len(positions)))
         if values.shape != (len(time_s), len(positions)):
             raise ValueError('Scalar local source must return shape (times, targets) or (times,)')
-        output = np.zeros((len(time_s), len(binding.targets), 3))
-        output[..., ('x', 'y', 's').index(binding.component)] = values
+        output[..., ('x', 'y', 's', 'pitch', 'yaw', 'roll').index(binding.component)] = values
         return output
 
     def compute_time_series(self, *, time_s, max_memory_bytes=128*1024**2):
@@ -269,8 +341,10 @@ class MechanicsManager:
         if times.ndim != 1 or len(times) < 2 or not np.all(np.isfinite(times)) or np.any(np.diff(times) <= 0):
             raise ValueError('Use at least two increasing finite times in seconds')
         counts = [len(b.targets) for b in self.sources.values()]
-        estimate = 24*len(times)*sum(counts) + max(
-            (64*len(times)*n + 80*n*n for n in counts), default=0)
+        estimate = 96*len(times)*sum(counts) + max(
+            (96*len(times)*len(b.targets) + 80*len(b.targets)**2
+             + getattr(b.source, 'workspace_bytes', lambda nt, nr: 0)(len(times), len(b.targets))
+             for b in self.sources.values()), default=0)
         if not isinstance(max_memory_bytes, int) or max_memory_bytes <= 0:
             raise ValueError('max_memory_bytes must be a positive integer')
         if estimate > max_memory_bytes:
@@ -279,7 +353,7 @@ class MechanicsManager:
                   for name, binding in self.sources.items()}
         return MechanicalTimeSeries(self, times, values)
 
-    def get_body_poses(self, *, time_s=0., time_series=None, disabled_sources=()):
+    def get_body_poses(self, *, time_s=0., time_series=None, disabled_sources=(), include_installation=True):
         """Inspect independent xt.Frame world poses, without changing the line."""
         if not np.isscalar(time_s) or not np.isfinite(time_s):
             raise ValueError('time_s must be a finite scalar in seconds')
@@ -290,6 +364,8 @@ class MechanicsManager:
             if time_s < time_series.time_s[0] or time_s > time_series.time_s[-1]:
                 raise ValueError('Requested time lies outside the computed time series')
         shifts = {name: np.zeros(3) for name in self.bodies}
+        rotations = {name: np.eye(3) for name in self.bodies}
+        absolute = {}
         for name, binding in self.sources.items():
             if name in disabled_sources:
                 continue
@@ -298,25 +374,69 @@ class MechanicsManager:
             else:
                 record = time_series.values[name]
                 values = np.array([[np.interp(time_s, time_series.time_s, record[:, i, j])
-                                    for j in range(3)] for i in range(len(binding.targets))])
+                                    for j in range(6)] for i in range(len(binding.targets))])
             for target, value in zip(binding.targets, values):
-                shifts[target] += value
-        world = {}
+                if binding.reference == 'absolute':
+                    absolute[target] = value
+                else:
+                    shifts[target] += value[:3]
+                    if np.any(value[3:]):
+                        rotations[target] = Frame.from_survey_angles(
+                            phi=value[3], theta=value[4], psi=value[5]).matrix[:3, :3] @ rotations[target]
+        world, static = {}, {}
         for name, body in self.bodies.items():
             local = np.array([body.shift_x, body.shift_y, body.shift_s,
                               body.rot_x_rad, body.rot_y_rad, body.rot_s_rad], dtype=float)
             if not np.all(np.isfinite(local)):
                 raise ValueError(f'{name}: local alignment must be finite')
-            local[:3] += shifts[name]
             delta = Frame.from_survey_angles(X=local[0], Y=local[1], Z=local[2],
                                              phi=local[3], theta=local[4], psi=local[5])
+            install = body.installation.values() if include_installation else np.zeros(6)
+            delta = delta @ Frame.from_survey_angles(X=install[0], Y=install[1], Z=install[2],
+                phi=install[3], theta=install[4], psi=install[5])
             nominal = Frame(body._nominal)
+            if body.parent is None:
+                static[name] = nominal @ delta
+            else:
+                parent = self.bodies[body.parent]
+                static[name] = static[parent.name] @ parent.nominal_frame.inverse() @ nominal @ delta
+            if name in absolute:
+                value = absolute[name]
+                dynamic_rotation = Frame.from_survey_angles(phi=value[3], theta=value[4], psi=value[5]).matrix[:3, :3]
+                target = static[name].matrix.copy()
+                axes = nominal.matrix[:3, :3]
+                target[:3, 3] += axes @ value[:3]
+                target[:3, :3] = axes @ dynamic_rotation @ axes.T @ target[:3, :3]
+                world[name] = Frame(target)
+                continue
+            delta.matrix[:3, 3] += shifts[name]
+            delta.matrix[:3, :3] = rotations[name] @ delta.matrix[:3, :3]
             if body.parent is None:
                 world[name] = nominal @ delta
             else:
                 parent = self.bodies[body.parent]
                 world[name] = world[parent.name] @ Frame(parent._nominal).inverse() @ nominal @ delta
         return world
+
+    def survey(self, *, time_s=0., time_series=None, bodies=None):
+        """Read nominal, static and total world poses without writing elements."""
+        from .plotting import motion_survey
+        return motion_survey(self, time_s=time_s, time_series=time_series, bodies=bodies)
+
+    def plot(self, *, time_s=0., time_series=None, bodies=None, line=None,
+             displacement_scale=1., rotation_scale=1., view='line', baseline='reference'):
+        """Plot magnified rigid geometry; gains affect display only."""
+        from .plotting import plot_motion
+        return plot_motion(self, time_s=time_s, time_series=time_series, bodies=bodies,
+                           line=line, displacement_scale=displacement_scale, rotation_scale=rotation_scale,view=view,baseline=baseline)
+
+    def animate(self, *, time_s, time_series=None, bodies=None, line=None,
+                displacement_scale=1., rotation_scale=1., interval_ms=80, view='line', baseline='reference'):
+        """Animate selected poses with bounded history; retain the returned animation."""
+        from .plotting import animate_motion
+        return animate_motion(self, time_s=time_s, time_series=time_series, bodies=bodies,
+                              line=line, displacement_scale=displacement_scale,
+                              rotation_scale=rotation_scale, interval_ms=interval_ms,view=view,baseline=baseline)
 
     def apply(self, *, time_s=0., time_series=None, disabled_sources=()):
         """Apply one physical time to ALL attached lines in this environment.
@@ -391,13 +511,17 @@ class MechanicsManager:
                     parent=np.array([b.parent or '' for b in bodies]))
         for field in ('shift_x', 'shift_y', 'shift_s', 'rot_x_rad', 'rot_y_rad', 'rot_s_rad'):
             data[field] = np.array([getattr(b, field) for b in bodies], dtype=float)
+            data['installation_'+field] = np.array([getattr(b.installation, field) for b in bodies], dtype=float)
         return Table(data)
 
     def to_dict(self):
-        """Save physical definitions and line bindings, not sampled source history."""
+        """Save definitions/bindings, including explicitly supplied RigidMotion.
+
+        Computed manager records, automatic enable flags and causal filter
+        state are not serialized. Supplied sampled sources retain their data.
+        """
         for binding in self.sources.values():
-            if SOURCE_CLASSES.get(type(binding.source).__name__) is not type(binding.source):
-                raise TypeError(f'{binding.name}: custom source serialization is not defined yet')
+            encode_source(binding.source)
         lines = []
         for line, view in self._line_views.items():
             if not view._attachments:
@@ -410,34 +534,43 @@ class MechanicsManager:
                 attachments.append({key: value.tolist() if isinstance(value, np.ndarray) else value
                                     for key, value in a.items() if key not in ('last_written', 'object_id')})
             lines.append(dict(line=names[0], reference_frame=view._reference.matrix.tolist(),
+                              adopted_reference={name: values.tolist() for name, values in view._reference_inputs.items()},
                               attachments=attachments))
         return dict(bodies=[dict(name=b.name, parent=b.parent, anchor=b._nominal.tolist(),
-                                 alignment=[b.shift_x, b.shift_y, b.shift_s, b.rot_x_rad, b.rot_y_rad, b.rot_s_rad])
+                                 alignment=[b.shift_x, b.shift_y, b.shift_s, b.rot_x_rad, b.rot_y_rad, b.rot_s_rad],
+                                 installation=b.installation.values().tolist(),
+                                 feet_local_m=None if b.feet_local_m is None else b.feet_local_m.tolist())
                             for b in self.bodies.values()],
                     sources=[dict(name=b.name, targets=list(b.targets), component=b.component,
-                                  source=dict(type=type(b.source).__name__, parameters=asdict(b.source)))
+                                  reference=b.reference, source=encode_source(b.source))
                              for b in self.sources.values()], lines=lines)
 
     def from_dict(self, data):
         if self.bodies or self.sources or self._line_views:
             raise ValueError('Load mechanics into an empty manager')
         for item in data['bodies']:
-            b = self.new_girder(item['name'], parent=item['parent'], anchor=Frame(item['anchor']))
+            b = self.new_girder(item['name'], parent=item['parent'], anchor=Frame(item['anchor']),
+                                feet_local_m=item.get('feet_local_m'))
             b.shift_x, b.shift_y, b.shift_s, b.rot_x_rad, b.rot_y_rad, b.rot_s_rad = item['alignment']
+            b.installation = RigidOffset(*item.get('installation', [0.]*6))
         for item in data['lines']:
             view = self.for_line(item['line'])
             view.set_reference_frame(Frame(item['reference_frame']))
             for stored in item['attachments']:
                 candidates = view._candidates([stored['element']])
                 candidate = candidates[0]
-                for key in ('ref_start', 'ref_end', 'base_element', 'baseline'):
+                for key in ('ref_start', 'ref_end', 'base_element', 'base_element_end', 'baseline'):
+                    if key not in stored:
+                        continue
                     candidate[key] = np.array(stored[key], dtype=float)
                 candidate['geometry'] = tuple(stored['geometry'])
                 view._attach(stored['body'], [candidate])
+            view._reference_inputs = {name: np.array(values, dtype=float)
+                                      for name, values in item.get('adopted_reference', {}).items()}
         for item in data['sources']:
             source = item['source']
-            self.add_source(item['name'], SOURCE_CLASSES[source['type']](**source['parameters']),
-                            targets=item['targets'], component=item['component'])
+            self.add_source(item['name'], decode_source(source), targets=item['targets'],
+                            component=item['component'], reference=item.get('reference', 'relative'))
         return self
 
 
@@ -453,30 +586,66 @@ class LineMechanics:
         self._line_geometry = None
         self._vibrations_enabled = False
         self._time_series = None
+        self._reference_inputs = {}
+        self._time_origin_s = 0.
+        self._sampling = 'turn'
+
+    def adopt_reference(self, *, elements=None):
+        """Adopt existing element alignments as deliberate reference inputs.
+
+        Call before attaching bodies. The line fields are retained verbatim;
+        nothing is zeroed or rewritten. Attachments adopt current inputs even
+        without this call; explicit adoption freezes/checks that classification.
+        Installation draws and dynamic sources remain separate body layers.
+        """
+        if self._attachments:
+            raise ValueError('Adopt the reference before creating mechanics attachments')
+        names = self.line.element_names if elements is None else ((elements,) if isinstance(elements,str) else elements)
+        pending = {}
+        for name in names:
+            element = self.line.element_dict[name]
+            if getattr(element, 'allow_rot_and_shift', False):
+                pending[name] = _values(element)
+        self._reference_inputs.update(pending)
+        return self
+
+    def get_reference_table(self):
+        """Adopted deliberate numeric input offsets; no installation or dynamics."""
+        return Table(dict(name=np.array(list(self._reference_inputs)), **{
+            name: np.array([v[i] for v in self._reference_inputs.values()])
+            for i, name in enumerate(_FIELDS)}))
 
     @property
     def vibrations_enabled(self):
         return self._vibrations_enabled
 
-    def enable_vibrations(self, *, time_series=None):
+    def enable_vibrations(self, *, time_series=None, time_origin_s=None, sampling='turn'):
         """Enable turn-boundary motion updates using Particles.time_s [s].
 
         Current exploration backend: one host-side pose update per complete
         turn, including on GPU contexts. No xdeps chain or per-particle source
         evaluation. This is a correctness reference, not the final fast GPU
-        scheduler. Multi-line, SyncTime and partial-turn scheduling are not yet
-        defined; shared geometry remains usable with explicit manager.apply().
+        scheduler. Shared prescribed fields require an explicit common physical
+        time origin per line; there is no shared mutable filter/controller here.
+        sampling='passage' prepares each occurrence at t0+s/(beta0*c), assuming
+        the reference speed. SyncTime and partial-turn integration stay guarded.
         """
         attached = [v for v in self.manager._line_views.values() if v._attachments]
-        if len(attached) != 1 or not self._attachments:
-            raise NotImplementedError('Automatic multi-line vibration clocks are not defined yet; use env.mechanics.apply(time_s=...)')
+        if not self._attachments or (len(attached) != 1 and time_origin_s is None):
+            raise NotImplementedError('Automatic multi-line sampling needs an explicit common time_origin_s per line')
+        if time_origin_s is not None and not np.isfinite(time_origin_s):
+            raise ValueError('time_origin_s must be finite physical seconds')
+        if sampling not in ('turn', 'passage'):
+            raise ValueError('Use turn or passage sampling')
         if time_series is not None:
             time_series._check(self.manager)
-        elif any(isinstance(b.source, DisplacementPSD) for b in self.manager.sources.values()):
+        elif any(requires_time_series(b.source) for b in self.manager.sources.values()):
             raise ValueError('Call compute_time_series first and supply time_series for PSD tracking')
         self.manager._check_aliases()
         self._check()
         self._time_series = time_series
+        self._time_origin_s = 0. if time_origin_s is None else float(time_origin_s)
+        self._sampling = sampling
         self._vibrations_enabled = True
 
     def disable_vibrations(self):
@@ -485,14 +654,43 @@ class LineMechanics:
         Source phases/records are not reset. A later enable resumes at the
         particles' physical time, rather than restarting a random waveform.
         """
-        self.manager.apply(disabled_sources=tuple(self.manager.sources))
+        self.apply(disabled_sources=tuple(self.manager.sources))
         self._vibrations_enabled = False
         self._time_series = None
 
     def _apply_for_tracking(self, time_s):
-        if sum(bool(v._attachments) for v in self.manager._line_views.values()) != 1:
-            raise NotImplementedError('Automatic multi-line vibration clocks are not defined yet')
-        self.manager.apply(time_s=time_s, time_series=self._time_series)
+        self.apply(time_s=time_s+self._time_origin_s, time_series=self._time_series, sampling=self._sampling)
+
+    def apply(self, *, time_s=0., time_series=None, disabled_sources=(), sampling='turn'):
+        """Update this line only at a physical time; other beam buffers stay put.
+
+        Passage mode uses reference-speed arrival times, not particle-specific
+        zeta/delta arrival. It prepares frozen per-occurrence maps for one turn.
+        This Python reference is intentionally measured separately from kernels.
+        """
+        self.manager._check_aliases()
+        self._check()
+        if sampling == 'turn':
+            poses = self.manager.get_body_poses(time_s=time_s, time_series=time_series,
+                                                disabled_sources=disabled_sources)
+            updates = self._updates(poses, check=False)
+        elif sampling == 'passage':
+            from scipy.constants import c
+            if self.line.particle_ref is None:
+                raise ValueError('Set a reference particle for passage-time sampling')
+            speed = float(self.line.particle_ref.beta0[0])*c
+            table = self.line.get_table()
+            updates = []
+            for name in self._attachments:
+                poses = self.manager.get_body_poses(time_s=time_s+float(table['s', name])/speed,
+                    time_series=time_series, disabled_sources=disabled_sources)
+                updates.extend(self._updates(poses, names=[name], check=False))
+        else:
+            raise ValueError('Use turn or passage sampling')
+        for attachment, element, values in updates:
+            for field, value in zip(_FIELDS, values):
+                setattr(element, field, value)
+            attachment['last_written'] = values.copy()
 
     @property
     def line(self):
@@ -510,9 +708,9 @@ class LineMechanics:
         self._reference_is_explicit = True
         self.manager._revision += 1
 
-    def new_girder(self, name, *, elements, anchor='center', parent=None):
+    def new_girder(self, name, *, elements, anchor='center', parent=None, feet_local_m=None):
         return self.manager.new_girder(name, line=self.line, elements=elements,
-                                       anchor=anchor, parent=parent)
+                                       anchor=anchor, parent=parent, feet_local_m=feet_local_m)
 
     def attach(self, body, *, elements):
         """Attach this line's elements to an existing physical body, possibly shared."""
@@ -561,6 +759,7 @@ class LineMechanics:
         self._time_series = None
         self._reference = Frame()
         self._reference_is_explicit = False
+        self._reference_inputs.clear()
 
     def _candidates(self, elements):
         if self._attachments:
@@ -582,6 +781,8 @@ class LineMechanics:
             if order.count(name) != 1 or name in self._attachments:
                 raise ValueError(f'{name}: unknown, repeated or already attached occurrence')
             element = line.element_dict[name]
+            if name in self._reference_inputs and not np.array_equal(_values(element), self._reference_inputs[name]):
+                raise ValueError(f'{name}: adopted reference input changed; adopt again before attaching')
             if (not getattr(element, 'allow_rot_and_shift', False)
                     or type(element).__name__ == 'Replica'
                     or (hasattr(element, 'weight') and hasattr(element, '_parent'))):
@@ -599,6 +800,7 @@ class LineMechanics:
                 ref_start=(self._reference @ survey.get_frame(name, which='ref_start')).matrix,
                 ref_end=(self._reference @ survey.get_frame(name, which='ref_end')).matrix,
                 base_element=(self._reference @ survey.get_frame(name, which='elem_start')).matrix,
+                base_element_end=(self._reference @ survey.get_frame(name, which='elem_end')).matrix,
                 baseline=_values(element), last_written=_values(element), geometry=_geometry(element),
                 object_id=id(element)))
         return output
@@ -633,10 +835,12 @@ class LineMechanics:
                 if hasattr(element, field) and getattr(getattr(self.line.env.ref[name], field), '_expr', None) is not None:
                     raise ValueError(f'{name}.{field}: expression-driven geometry/alignment is not supported by numeric lowering')
 
-    def _updates(self, poses):
-        self._check()
+    def _updates(self, poses, *, names=None, check=True):
+        if check:
+            self._check()
         updates = []
-        for name, a in self._attachments.items():
+        for name in (self._attachments if names is None else names):
+            a = self._attachments[name]
             element = self.line.element_dict[name]
             body = self.manager[a['body']]
             target = poses[body.name] @ Frame(body._nominal).inverse() @ Frame(a['base_element'])
@@ -650,6 +854,16 @@ class LineMechanics:
                                            disabled_sources=disabled_sources)
         return {name: poses[a['body']] @ self.manager[a['body']].nominal_frame.inverse()
                 @ Frame(a['base_element']) for name, a in self._attachments.items()}
+
+    def read_bpm(self, name, *, time_s=0., time_series=None, beam_frame=None, **coordinates):
+        """Project a nominal-frame beam ray into an attached pickup's moved frame."""
+        from .observation import project_to_bpm
+        if name not in self._attachments:
+            raise ValueError('Attach the pickup Device to mechanics before reading it')
+        target = self.get_element_poses(time_s=time_s, time_series=time_series)[name]
+        if beam_frame is None:
+            beam_frame = Frame(self._attachments[name]['ref_start'])
+        return project_to_bpm(beam_frame=beam_frame, bpm_frame=target, **coordinates)
 
     def get_table(self):
         return Table(dict(name=np.array(list(self._attachments)),

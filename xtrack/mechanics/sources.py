@@ -2,7 +2,7 @@
 # This file is part of the Xtrack Package.  #
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
-"""Prescribed displacement sources for the experimental mechanics interface."""
+"""Prescribed motion sources for the experimental mechanics interface."""
 from dataclasses import dataclass
 
 import numpy as np
@@ -10,13 +10,19 @@ import numpy as np
 
 @dataclass(frozen=True)
 class Harmonic:
-    """Scalar peak displacement [m], using sin(2 pi f t + phase)."""
+    """Scalar peak displacement [m] or angle [rad], sin(2 pi f t + phase).
+
+    unit must match the binding's translation or angular component.
+    """
     amplitude: float
     frequency_hz: float
     phase_rad: float = 0.0
+    unit: str = 'm'
     frame = 'body_local'
 
     def __post_init__(self):
+        if self.unit not in ('m', 'rad'):
+            raise ValueError("Harmonic unit must be 'm' or 'rad'")
         if np.iscomplexobj([self.amplitude, self.frequency_hz, self.phase_rad]):
             raise ValueError('Use real amplitude/frequency and explicit phase_rad')
         if not np.all(np.isfinite([self.amplitude, self.frequency_hz, self.phase_rad])):
@@ -75,7 +81,7 @@ class PlaneWave:
 
 @dataclass(frozen=True)
 class MeasuredMotion:
-    """Scalar displacement samples [m]; explicit linear or previous-sample replay.
+    """Scalar samples [m or rad]; explicit linear or previous-sample replay.
 
     A single channel is shared by all targets; (times, targets) values give
     explicitly ordered channels. No extrapolation or periodic wrap is allowed.
@@ -83,9 +89,12 @@ class MeasuredMotion:
     time_s: tuple
     displacement: tuple
     interpolation: str = 'linear'
+    unit: str = 'm'
     frame = 'body_local'
 
     def __post_init__(self):
+        if self.unit not in ('m', 'rad'):
+            raise ValueError("Measured motion unit must be 'm' or 'rad'")
         if np.iscomplexobj(self.time_s) or np.iscomplexobj(self.displacement):
             raise ValueError('Measured displacement and time must be real')
         times = np.asarray(self.time_s, dtype=float)
@@ -133,6 +142,7 @@ class DisplacementPSD:
     seed: int
     correlation_length_m: float | None = None
     frame = 'body_local'
+    unit = 'm'
 
     def __post_init__(self):
         if np.iscomplexobj(self.frequency_hz) or np.iscomplexobj(self.density):
@@ -162,7 +172,10 @@ class DisplacementPSD:
             raise ValueError('PSD sampling requires uniformly spaced increasing times')
         f = np.fft.rfftfreq(count, dt)
         input_f, input_s = np.asarray(self.frequency_hz), np.asarray(self.density)
-        if np.any(input_s[input_f >= f[-1]] > 0):
+        active_intervals = (input_s[:-1]+input_s[1:]) > 0
+        band_end = np.max(input_f[1:][active_intervals], initial=0.)
+        nyquist = .5/dt
+        if band_end > nyquist or np.interp(nyquist,input_f,input_s,left=0,right=0) > 0:
             raise ValueError('PSD band must lie below Nyquist; reduce the time step')
         s = np.interp(f, input_f, input_s, left=0., right=0.)
         s[0] = 0.
@@ -185,4 +198,253 @@ class DisplacementPSD:
         return np.fft.irfft(coefficients, n=count, axis=0)
 
 
-SOURCE_CLASSES = {cls.__name__: cls for cls in (Harmonic, PlaneWave, MeasuredMotion, DisplacementPSD)}
+@dataclass(frozen=True)
+class AngularPSD(DisplacementPSD):
+    """Same one-sided convention as DisplacementPSD, density in rad²/Hz."""
+    unit = 'rad'
+
+
+@dataclass(frozen=True)
+class SpectralGroundMotion:
+    """Continuous stationary approximate field with bounded random modes.
+
+    One-sided displacement PSD [m²/Hz]; exp(-Euclidean d/length) amplitude
+    coherency in expectation. Frequencies are sampled from the normalized PSD;
+    isotropic Cauchy wavevectors and shared phases define one field everywhere.
+    Time chunks, receiver subsets/order and selected diagnostics do not change
+    this field. Finite modes approximate the spectrum/covariance (not exact
+    measured ground); mode rank and sampling error must be checked explicitly.
+    This random feature model is prescribed displacement, not an elastic medium.
+    """
+    frequency_hz: tuple
+    density: tuple
+    seed: int
+    correlation_length_m: float
+    n_modes: int = 2048
+    frame = 'body_local'
+    unit = 'm'
+
+    def __post_init__(self):
+        specification = DisplacementPSD(self.frequency_hz, self.density, self.seed, self.correlation_length_m)
+        if not isinstance(self.n_modes, int) or isinstance(self.n_modes, bool) or self.n_modes < 16:
+            raise ValueError('Use at least 16 random modes')
+        object.__setattr__(self, 'frequency_hz', specification.frequency_hz)
+        object.__setattr__(self, 'density', specification.density)
+        object.__setattr__(self, 'seed', specification.seed)
+        rng = np.random.default_rng(self.seed)
+        f, s = np.array(self.frequency_hz), np.array(self.density)
+        area = .5*(s[1:]+s[:-1])*np.diff(f)
+        variance = area.sum()
+        if variance <= 0:
+            raise ValueError('Spectral ground motion needs positive integrated PSD')
+        cumulative = np.concatenate(([0.], np.cumsum(area)))
+        draw = rng.random(self.n_modes)*variance
+        index = np.minimum(np.searchsorted(cumulative, draw, side='right')-1, len(area)-1)
+        slope = (s[index+1]-s[index])/(f[index+1]-f[index])
+        local_area = draw-cumulative[index]
+        root = np.sqrt(np.maximum(0., s[index]**2+2*slope*local_area))
+        denominator = s[index]+root
+        offset = np.divide(2*local_area, denominator, out=np.zeros_like(draw), where=denominator > 0)
+        frequencies = f[index]+offset
+        wavevectors = rng.standard_normal((self.n_modes, 3)) / (
+            np.maximum(np.abs(rng.standard_normal(self.n_modes)), np.finfo(float).tiny)[:, None]
+            * self.correlation_length_m)
+        for name, value in (('_frequencies', frequencies), ('_wavevectors', wavevectors),
+                            ('_phases', rng.uniform(0., 2*np.pi, self.n_modes))):
+            value.flags.writeable = False
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, '_amplitude', np.sqrt(2*variance/self.n_modes))
+
+    def workspace_bytes(self, n_times, n_receivers):
+        return 32*self.n_modes*(n_times+n_receivers) + 16*n_times*n_receivers
+
+    def evaluate(self, time_s, positions_m):
+        phase = np.asarray(positions_m) @ self._wavevectors.T + self._phases
+        time_phase = 2*np.pi*np.asarray(time_s)[:, None]*self._frequencies
+        return self._amplitude*(np.sin(time_phase) @ np.cos(phase).T
+                                + np.cos(time_phase) @ np.sin(phase).T)
+
+
+@dataclass(frozen=True)
+class LocatedSource:
+    """One latent displacement source with prescribed gain and travel delay.
+
+    gain = exp(-distance/decay_length_m); speed [m/s] gives distance/speed delay.
+    This is an explicit illustrative coupling law, not inferred pump/floor
+    elasticity. The waveform is a scalar displacement, not an applied force.
+    Measured input must include all required delayed prehistory.
+    """
+    waveform: object
+    position_m: tuple
+    decay_length_m: float
+    speed_m_s: float
+    polarization: tuple = (0., 1., 0.)
+    frame = 'world'
+
+    def __post_init__(self):
+        position, polarization = np.asarray(self.position_m, dtype=float), np.asarray(self.polarization, dtype=float)
+        if (position.shape != (3,) or polarization.shape != (3,) or not np.all(np.isfinite(position))
+                or not np.all(np.isfinite(polarization)) or np.linalg.norm(polarization) == 0
+                or not np.all(np.isfinite([self.decay_length_m, self.speed_m_s]))
+                or min(self.decay_length_m, self.speed_m_s) <= 0
+                or getattr(self.waveform, 'frame', None) != 'body_local'
+                or getattr(self.waveform, 'unit', 'm') != 'm'):
+            raise ValueError('Use finite position, displacement waveform, polarization, positive length/speed')
+        object.__setattr__(self, 'position_m', tuple(position))
+        object.__setattr__(self, 'polarization', tuple(polarization/np.linalg.norm(polarization)))
+
+    def evaluate(self, time_s, positions_m):
+        distance = np.linalg.norm(np.asarray(positions_m)-self.position_m, axis=1)
+        signals = [self.waveform.evaluate(np.asarray(time_s)-d/self.speed_m_s,
+                    np.asarray(self.position_m)[None, :])[:, 0] * np.exp(-d/self.decay_length_m) for d in distance]
+        return np.column_stack(signals)[..., None]*np.asarray(self.polarization)
+
+    def to_dict(self):
+        return dict(waveform=encode_source(self.waveform), position_m=self.position_m,
+                    decay_length_m=self.decay_length_m, speed_m_s=self.speed_m_s,
+                    polarization=self.polarization)
+
+
+@dataclass(frozen=True)
+class GaussianRegion:
+    """An independent excess displacement field with Gaussian amplitude gain."""
+    source: object
+    center_m: tuple
+    sigma_m: float
+
+
+@dataclass(frozen=True)
+class RegionalGroundMotion:
+    """Background plus independent excess spectra with smooth spatial gains.
+
+    Regional gain is exp(-r²/(2 sigma²)); its PSD contribution is gain²*S.
+    Cross terms remain for shared background. Equal seeds are rejected for
+    supposedly independent components. This is not arbitrary PSD interpolation.
+    """
+    background: object
+    regions: tuple
+    frame = 'body_local'
+    unit = 'm'
+
+    def __post_init__(self):
+        sources = [self.background] + [r.source for r in self.regions]
+        if any(getattr(s, 'frame', None) != 'body_local' or getattr(s, 'unit', 'm') != 'm' for s in sources):
+            raise ValueError('Regional components must be scalar displacement fields')
+        seeds = [seed for source in sources for seed in _source_seeds(source)]
+        if len(seeds) != len(set(seeds)):
+            raise ValueError('Independent regional components require distinct seeds')
+        for region in self.regions:
+            if (np.asarray(region.center_m).shape != (3,) or not np.all(np.isfinite(region.center_m))
+                    or not np.isfinite(region.sigma_m) or region.sigma_m <= 0):
+                raise ValueError('Use finite regional centers and positive spatial widths')
+        object.__setattr__(self, 'regions', tuple(self.regions))
+
+    def workspace_bytes(self, n_times, n_receivers):
+        sources = [self.background] + [r.source for r in self.regions]
+        return max((getattr(s, 'workspace_bytes', lambda nt, nr: 0)(n_times, n_receivers)
+                    for s in sources), default=0) + 24*n_times*n_receivers
+
+    def evaluate(self, time_s, positions_m):
+        output = self.background.evaluate(time_s, positions_m)
+        for region in self.regions:
+            radius2 = np.sum((positions_m-region.center_m)**2, axis=1)
+            output += np.exp(-radius2/(2*region.sigma_m**2))[None, :] * region.source.evaluate(time_s, positions_m)
+        return output
+
+    def to_dict(self):
+        return dict(background=encode_source(self.background), regions=[dict(
+            source=encode_source(r.source), center_m=r.center_m, sigma_m=r.sigma_m) for r in self.regions])
+
+
+@dataclass(frozen=True)
+class VectorGroundMotion:
+    """Independent scalar XYZ latent fields, optionally mixed by a real matrix.
+
+    Each component is a displacement field or None. mixing maps latent XYZ to
+    world XYZ and creates specified component cross spectra. PSD amplitudes do
+    not define this mixing automatically. Independent seeded inputs need distinct
+    seeds; components themselves may contain their own background/region model.
+    """
+    components: tuple
+    mixing: tuple = ((1.,0.,0.), (0.,1.,0.), (0.,0.,1.))
+    frame = 'world'
+
+    def __post_init__(self):
+        components = tuple(self.components)
+        mixing = np.asarray(self.mixing, dtype=float)
+        if (len(components) != 3 or all(c is None for c in components) or mixing.shape != (3,3)
+                or not np.all(np.isfinite(mixing))
+                or any(c is not None and (getattr(c, 'frame', None) != 'body_local'
+                       or getattr(c, 'unit', 'm') != 'm') for c in components)):
+            raise ValueError('Use three scalar displacement components and a finite real mixing matrix')
+        seeds = [seed for component in components if component is not None for seed in _source_seeds(component)]
+        if len(seeds) != len(set(seeds)):
+            raise ValueError('Independent vector components require distinct seeds')
+        object.__setattr__(self, 'components', components)
+        object.__setattr__(self, 'mixing', tuple(tuple(row) for row in mixing))
+
+    def workspace_bytes(self, n_times, n_receivers):
+        return 48*n_times*n_receivers + max((getattr(c, 'workspace_bytes', lambda nt,nr: 0)(n_times,n_receivers)
+                for c in self.components if c is not None), default=0)
+
+    def evaluate(self, time_s, positions_m):
+        values = np.zeros((len(time_s), len(positions_m), 3))
+        for axis, component in enumerate(self.components):
+            if component is not None:
+                values[..., axis] = component.evaluate(time_s, positions_m)
+        return values @ np.asarray(self.mixing).T
+
+    def to_dict(self):
+        return dict(components=[encode_source(c) if c is not None else None for c in self.components], mixing=self.mixing)
+
+
+SOURCE_CLASSES = {cls.__name__: cls for cls in (Harmonic, PlaneWave, MeasuredMotion,
+    DisplacementPSD, AngularPSD, SpectralGroundMotion, LocatedSource, RegionalGroundMotion, VectorGroundMotion)}
+
+
+def _source_seeds(source):
+    if hasattr(source,'seed'):
+        return [source.seed]
+    if isinstance(source, RegionalGroundMotion):
+        return _source_seeds(source.background)+[seed for region in source.regions for seed in _source_seeds(region.source)]
+    if isinstance(source, VectorGroundMotion):
+        return [seed for component in source.components if component is not None for seed in _source_seeds(component)]
+    return []
+
+
+def requires_time_series(source):
+    """Whether a source tree needs a uniform joint record before point queries."""
+    if isinstance(source,DisplacementPSD):
+        return True
+    if isinstance(source,LocatedSource):
+        return requires_time_series(source.waveform)
+    if isinstance(source,RegionalGroundMotion):
+        return requires_time_series(source.background) or any(requires_time_series(r.source) for r in source.regions)
+    if isinstance(source,VectorGroundMotion):
+        return any(requires_time_series(c) for c in source.components if c is not None)
+    return False
+
+
+def encode_source(source):
+    from dataclasses import asdict
+    from .motion import RigidMotion
+    if type(source) is RigidMotion:
+        return dict(type='RigidMotion', parameters=source.to_dict())
+    if SOURCE_CLASSES.get(type(source).__name__) is not type(source):
+        raise TypeError('custom source serialization is not defined yet')
+    return dict(type=type(source).__name__, parameters=source.to_dict() if hasattr(source, 'to_dict') else asdict(source))
+
+
+def decode_source(stored):
+    from .motion import RigidMotion
+    cls = RigidMotion if stored['type'] == 'RigidMotion' else SOURCE_CLASSES[stored['type']]
+    parameters = dict(stored['parameters'])
+    if cls is LocatedSource:
+        parameters['waveform'] = decode_source(parameters['waveform'])
+    elif cls is RegionalGroundMotion:
+        parameters['background'] = decode_source(parameters['background'])
+        parameters['regions'] = tuple(GaussianRegion(decode_source(r['source']), r['center_m'], r['sigma_m'])
+                                      for r in parameters['regions'])
+    elif cls is VectorGroundMotion:
+        parameters['components'] = tuple(decode_source(c) if c is not None else None for c in parameters['components'])
+    return cls(**parameters)

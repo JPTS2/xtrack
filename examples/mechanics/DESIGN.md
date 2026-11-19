@@ -1,102 +1,223 @@
-# Ownership and lifecycle review
+# Mechanics implementation and open decisions
 
-The current user preference is A's named manager/factory style, with explicit
-source objects where their physical model has parameters. The main questions
-are ownership, survey geometry and time, rather than which spelling requires
-fewer lines. Only three examples need to lead this review.
+This document describes the native exploration after the thirteen-example set.
+The earlier [workflow review](designs/2026-11-19_workflow_review.md) is retained
+as a dated design record; its capability table predates this implementation.
 
-## Verified Xsuite precedents
+## Ownership and the example contract
 
-| Existing code | Observed pattern | Mechanics consequence |
-| --- | --- | --- |
-| `Environment.new`, `EnvAperture.new_profile/new_pipe` | Named factory methods on an owner | `mech.new_girder` fits existing style |
-| `env.aperture` and `line.aperture` | Shared definitions versus line placements; survey-based models | Physical world on the environment; attachment/reference-frame view per line |
-| `env.xfields` and `line.xfields` | Owner-bound facades, instantiated by accessors | No public installation shim or manager constructor inside an accessor |
-| PIC `spacecharge_install_frozen/spacecharge_replace_with_pic` | Flat line operations with explicit profile/solver objects | Factory-style API and typed physics models coexist |
-| `PICCollection` | Reuses compatible meshes/FFT plans; tracks context/buffer | Cache prepared geometry/work only when useful; not a full time × body history |
-| `line.xcoll.scattering.enable()/disable()` | Explicit lifecycle, separate from construction | `enable_vibrations`/`disable_vibrations`, preserving static alignment |
-| `Particles.time_s`, SyncTime | Physical clock distinct from per-particle revolutions | Do not infer a common multi-line clock from an Environment |
+The interface follows the verified Environment/Line facade pattern in Xtrack
+and Xfields, named factories in Environment/aperture, and the explicit
+Xcoll scattering lifecycle. `env.mechanics` owns one physical model, while
+`line.mechanics` owns attachments and its explicit survey placement in that
+world. An Environment is also a namespace for construction sections and optics
+alternatives; it does not automatically assert common geometry or a common beam
+clock. Several named scenarios remain useful; machine-specific parameterized
+builders and immutable installation/motion records support comparisons now.
 
-Local source inspection: Xtrack `environment.py`, `line.py`, `aperture/`,
-`tracker.py`, `synctime.py`; Xfields `line_tools.py`, `environment_tools.py`,
-`config_tools/spacecharge_config_tools.py`; Xcoll `line_tools.py`. The
-[upstream Xfields line facade](https://github.com/xsuite/xfields/blob/main/xfields/line_tools.py)
-also documents the flat-prefix choice explicitly. These precedents guide the
-interface; their distinct physical ownership is not copied indiscriminately.
+The feedback lessons are the formatting and interaction precedent: required
+packages, editable user parameters, readable setup/physics sections, terminal
+comparisons and figures. Model-specific scripts expose their assumptions.
+Reusable physics lives in `xtrack/mechanics`, not in hidden example helpers.
+The shared demo-ring Python files are included without importing feedback code.
+The review runner only captures outputs and provenance; it does not implement
+motion or tracking physics.
+Example 013 assembles the whole prescribed-motion pipeline: a shared site field,
+local excess spectrum and mounted pump at 672 feet, fitted support poses,
+supplied conditional causal responses, magnet/pickup port transport, independent
+installation errors and slow drift. Its 1.5 s prehistory is explicit. The short
+source histories are on the host; no GPU pose history is allocated. It reports
+the interpolation approximation separately from numerical map correctness.
 
-## Present model
+## Three classes of placement
 
-One Environment owns one mechanics manager. Girders/bodies and source IDs are
-physical definitions. Each Line has a bound view with selected element
-attachments and a nominal survey placement in the shared world. A girder can
-carry elements on several lines with different local axes. A line's optics
-reporting convention must not silently redefine that placement.
+1. **Deliberate reference.** Existing element-local offsets and design rolls are
+   captured from the line, including an intentionally off-axis quadrupole.
+   `adopt_reference()` makes this classification explicit before attachment;
+   it does not rewrite the line. Without it, binding still adopts current inputs.
+   Mechanics body reference settings extend the intentional support geometry.
+2. **Installation.** `body.installation` is a separate static rigid transform.
+   Seeded installation records hold the realized errors independently of dynamic
+   seeds, time sampling and diagnostics. Applying a corrected installation case
+   can preserve the immutable as-installed case. Body-local Gaussian/uniform
+   draws have explicit translation/angle scales, optional Gaussian rejection
+   truncation and named common fixtures. Default root selection avoids silently
+   adding errors at every hierarchy level. Stable hash-based identities make
+   subset/reordering invariant. A shared local draw across differently oriented
+   bodies is not a shared world displacement; grouping states that local rule.
+3. **Dynamic.** Sources describe vibration, measured motion and slow drift.
+   They never mutate deliberate or installation settings. A stationary random
+   process need not vanish at time zero. Zero-start/ramp/transient behavior must
+   be an explicit source/filter initial-condition model, not an unannounced
+   seed-dependent DC subtraction.
 
-The body tree handles exact rigid geometry. Source/response relationships are a
-separate concern. This first exploration binds harmonic, measured, PSD and wave
-inputs; local pumps, regions and transfer paths can reuse the source interface.
-An absolute child response must not be added again to inherited parent motion.
-The earlier numerical reference contains tests and derivations for this.
+For one body, the static local transform is the deliberate transform followed
+by the installation transform. Parent/child static transforms compose exactly.
+Reference tables retain original element inputs and effective-field audit
+columns remain available. `disable_vibrations` preserves installation; `restore`
+restores captured element inputs; `clear` removes owned mechanics definitions
+and effects. Adopted intentional line offsets/rolls survive. Body reference
+settings that belong to a removed mechanics model do not remain implicitly
+baked into the line. Raw edits to effective fields are rejected rather than
+silently adopted or erased. A general rebase/bake interface is not implemented.
 
-An Environment can also hold optics alternatives or disconnected scratch lines;
-it is not inherently one physical machine. Only explicitly attached lines join
-the mechanics model. The aperture precedent is about ownership/accessors, not
-proof of a global survey frame. This exploration currently has one physical
-world per manager. The user likes named alternative scenarios; one active setup
-built by a parameterised machine script is not a blocker initially. Separate
-run/input records should not require duplicating immutable geometry merely to
-try another seed or controller gain.
+## Coordinates and motion records
 
-The native lowering currently composes surveyed SE(3) frames and writes numeric
-effective element alignment once per requested time. It is a correctness path.
-The same model can later lower to cached boundary maps or occurrence buffers.
-Neither choice belongs in an ordinary `new_girder` call.
+Frames map local `(x,y,s,1)` into world `(X,Y,Z,1)`. Positions are metres,
+angles radians. Survey pitch/yaw/roll use
+`Ry(yaw) Rx(-pitch) Rz(roll)`; pitch is not a right-handed positive x rotation.
+RigidMotion stores `[x,y,s,pitch,yaw,roll]` in nominal body axes. These are not
+rotation-vector coordinates. Angular traces interpolate those specified survey
+coordinates; sufficiently resolved sampling remains the user's responsibility.
 
-Original element-local errors, deliberate girder alignment and source-induced
-vibration must remain separate. Design `rot_s_rad` is not a mechanics output;
-captured local errors are restored exactly by removal. The compatibility path
-does temporarily write effective fields, with baseline/effective audit tables
-and conflict checks. This must not become an excuse to overwrite input
-definitions in the eventual fast backend. `clear()` is a first-class lifecycle
-operation: remove all owned effects and bindings, preserve deliberate inputs,
-invalidate replay bindings and discard stale derived aperture models. Stored
-input motion remains readable after cleanup so different scenarios can be
-compared without retaining the old active model.
+Geometry composes SE(3) matrices, including deliberate rolls and lever arms.
+Several relative input translations add in the stated local axes; their finite
+rotations left-compose in source insertion order, before the static orientation.
+A joint six-coordinate record is preferable when a model defines one combined
+orientation. No subtraction of Euler angles is used to remove parent motion.
 
-## Clock decision still open
+An absolute input defines dynamic displacement/orientation about the body's
+static placement, in nominal body axes. Its prescribed output replaces inherited
+dynamic motion, retaining parent/child static placement. An absolute-driven
+body accepts one explicitly combined input. This makes zero and unity absolute
+response limits well-defined. A body/ancestor can share an absolute multi-body
+record; relative sources cannot accidentally drive both in one binding.
 
-Static shared geometry and explicit physical-time application are available.
-For one line, the exploratory automatic lifecycle uses the existing collective
-Python turn loop and `particles.time_s`, without toggling time-dependent xdeps.
-This is CPU/GPU-compatible reference scheduling, not a GPU throughput claim.
+`RigidMotion.transport` computes exact prescribed rigid transport from one
+nominal port to another, including changed axes and reference-point lever arms.
+Response matrices must be supplied at their specified input/output ports.
+Dynamic multiplication by a linear frequency response is still a small-signal
+model even though the resulting geometry is composed exactly.
 
-For several beams, choose a common physical event clock and determine when each
-passage samples each body. Sequentially running both lines for the same number
-of turns is insufficient when revolution times differ. SyncTime and the feedback
-work are relevant shared infrastructure; they need an explicit joint contract.
-Until that exists, automatic multi-line enable fails clearly. No fake global
-clock is attached to the environment.
+Records are immutable bounded host arrays with explicit time limits. No implicit
+periodic replay or extrapolation occurs. Manager-computed records validate the
+binding revision and remain readable after cleanup. Explicit supplied RigidMotion
+sources serialize their data; computed manager records and automatic enable
+flags are not serialized. Causal filter state is separate run state.
 
-That guard is not a claim that every prescribed multi-line study needs a joint
-mutable clock. Pure prescribed sources can be queried at each beam's passage
-times with an explicitly shared time origin, writing only that line's effective
-buffers. Coupled mechanical/filter/controller state or collective encounters
-need additional event ordering. This is a concrete next clock experiment; the
-current single-line reference path should not dictate the final scheduler.
+## Ground fields and contact reconstruction
 
-## Exploration sequence
+A spatially varying floor is a field. Receivers have nominal world positions;
+contact locations are defined once in each support's local geometry. A source
+is sampled jointly before processing support response. A large-machine site
+model must define its vertical directions and world placement; arbitrary local
+beam y axes do not establish site vertical.
 
-1. Keep the native three-example surface small and edit it directly with user
-   feedback. No further requirement to review all 19 reference scripts.
-2. Establish static/shared survey geometry, copy/serialization and physical
-   observation frames. Compare aperture coupling and mounted BPM semantics.
-3. Exercise source records, enable/disable, split runs and explicit clock cases.
-   Extend sources with pumps, regional PSDs and loaded transfer paths.
-4. Compare cached girder boundaries and occurrence buffers under these same
-   semantics. Existing numerical probes support both. Measure update cost,
-   launch cost and memory on actual GPU hardware before selecting a fast path.
-5. Let this local exploration branch become messy as needed. Much later, review
-   slices onto a fresh branch; the user will decide when to open a draft PR.
+The finite FFT PSD reference uses a one-sided density in m²/Hz (or rad²/Hz for
+AngularPSD), zero DC and zero unpaired Nyquist power. Gaussian quadratures have
+expected discrete mean square `df * sum(bin_density)`. A scalar exponential
+Euclidean spatial kernel describes real amplitude coherency, not squared
+coherence or traveling-wave phase. Dense spatial eigendecomposition is a small
+reference method, including singular coincident receivers. Sampling checks the
+whole interpolated PSD support against Nyquist, not only nonzero tabulation
+points. For fixed count/step/receivers/seed, phases have physical origin zero;
+changing record count/step or receivers changes that finite spectral model.
 
-No PR is being prepared or published now, and exploratory implementation chunks
-are not being presented as a clean final commit series.
+SpectralGroundMotion uses independent random temporal frequencies sampled from
+the normalized PSD, isotropic multivariate-Cauchy wavevectors, and shared random
+phases. The ensemble space-time covariance factors into the target temporal
+covariance and exponential Euclidean spatial coherency. A finite number of
+modes approximates this model: spectral lines, finite rank and spatial covariance
+error remain visible. This model is continuous in space/time and does not change
+with receiver subsets/order or time chunks. Its mode parameters are bounded;
+NumPy evaluation uses temporary time-by-mode arrays, with explicit workspace
+checks in field sampling. It is not an elastic-wave or measured site model.
+
+RegionalGroundMotion adds independent excess fields with Gaussian amplitude
+weights: regional PSD contribution is weight squared times its PSD. Background
+cross spectra remain shared, including across a region boundary. Independent
+seeded components must have distinct seeds, also through nested vector/region
+models. VectorGroundMotion provides independent scalar latent components and a
+specified real mixing matrix for world XYZ; mixing creates cross spectra.
+
+A weighted proper Kabsch fit reconstructs one rigid pose from at least three
+noncollinear contacts. It reports residual contact mismatch, never deforms a
+body to match incompatible floor displacement. This is kinematics, not a force,
+contact or loaded-support solver. Exponential ground displacement does not have
+a finite point-slope variance; finite feet baselines or other regularization
+are essential before claiming angular ground spectra.
+
+LocatedSource has one scalar latent displacement waveform, an equipment position,
+world polarization, a supplied exponential amplitude footprint and travel delay.
+Mounting an equipment body positions the source consistently in the chosen
+nominal layout. Neither force coupling nor material propagation follows from
+coordinates alone. Direct support and emitted floor paths are explicitly supplied.
+A measured waveform must include all delayed prehistory. Propagation here uses
+nominal positions: it is a small-motion reference-geometry model, not a moving
+medium or a reacting mounted machine.
+
+## Response and observation
+
+Complex frequency responses use `exp(+i omega t)`. The loaded two-mass example
+solves one consistent girder/magnet assembly; its conditional magnet/girder
+response cascades with the loaded floor/girder response. Replacing the first
+stage with an independently unloaded oscillator changes the model. The BPM stage
+in that lesson assumes negligible pickup loading. Supplied measured/analytic
+conditional paths are also supported, with their physical loading assumptions
+remaining explicit.
+
+A scalar response is dimensionless displacement/displacement or angle/angle.
+A 6x6 matrix has mixed SI units: off-diagonal terms can be m/rad or rad/m.
+Tabulated responses interpolate complex real/imaginary parts within their supplied
+frequency bounds. For multiple inputs, `S_out = H S_in H†`, using
+`S_ij = E[Q_i Q_j*]`; SciPy csd uses the opposite ordered conjugation convention.
+Do not infer independent inputs or their coherence from marginal PSDs alone.
+
+Offline `through` filtering is circular frequency-domain response on the finite
+record. It is not causal startup or implicit zero padding. A nonzero endpoint
+whose requested response is complex is rejected rather than losing that phase.
+CausalResponse instead retains bounded second-order filter state across blocks;
+default zero-order-hold discretization matches the specified continuous LTI
+response at sample times for held input. Optional bilinear discretization has
+its own frequency mapping. Initialization is at rest; an arbitrary stationary
+filter state is not silently inferred. Live coupled filter/controller scheduling
+is not yet part of the tracking hook.
+
+A BPM is geometry plus an electrical reference plane, not simply a nominal y
+sample. `read_bpm` intersects the reference-frame beam ray with the actual plane,
+including transverse/longitudinal offsets and rotations. px/py are normalized
+to reference p0, with forward pz from delta. Electronics/noise are separate.
+The moving-BPM correction lesson uses frozen Twiss states and explicit reads;
+it is not an online feedback integration. Full common-rigid-transform covariance
+of the ray/plane observation is tested.
+
+## Execution, timing and remaining scope
+
+The current lowering writes effective numeric element alignment fields from the
+host. It is a correctness and UI reference. It preserves captured input data but
+is not the final non-overwriting backend. Slices, shared/repeated element objects,
+alignment expressions and post-binding geometry edits remain guarded. Built
+aperture models are guarded against stale geometry; pipe/body ownership and
+mounted tracking monitors still need joint implementation. Whole-environment
+JSON/copy works for builtin sources; standalone line copy/export remains guarded
+after binding. Copy the demo ring before binding to avoid its shared construction
+sublines. Repeating full surveys per attachment is included in measured setup cost.
+
+Pure prescribed sources can be sampled from several beams with explicit common
+physical time origins and distinct line-local buffers. Running one line does
+not advance another's state. Stateful responses/controllers and encounters need
+consistent event ordering; there is no common turn counter inferred from env.
+SyncTime, partial turns and pipeline-hold integration remain guarded.
+
+Turn-held sampling prepares one time per line turn. Passage sampling instead
+prepares each occurrence at `t0 + s/(beta0*c)`; it does not include particle-specific
+zeta/delta arrival. Its current repeated hierarchy evaluation has poor scaling.
+The dimensionless error scale is `2*pi*f*T_rev`, not source amplitude alone.
+
+The timing lesson separates model load, explicit tracker build before survey,
+attachment/setup, first kernel use, pure pose calculation, numeric writes,
+frozen tracking and dynamic tracking. GPU timings require actual GPU hardware;
+none are claimed here. Field generation and response preparation currently use
+NumPy/SciPy on the host, even when static tracking uses a GPU context.
+
+The next implementation decision should follow the captured costs: compile
+geometry/binding indices after edits, compare occurrence-indexed effective
+buffers against cached girder boundaries, and keep only current poses plus
+bounded source/filter state on device. Do not cache a whole time-by-body matrix
+history by default. A boundary scheme must handle starts inside a group and
+observer frames. A buffer scheme must keep definition fields authoritative and
+support ordinary cloned/sliced lattice occurrences. Spatial models require their
+own stated approximation/structure; an arbitrary measured covariance need not
+be low rank. Long-machine streaming, actual CPU/GPU throughput, aperture coupling,
+physical BPM tracking monitors and joint mechanics/feedback scheduling remain
+separate reviewable implementation slices.

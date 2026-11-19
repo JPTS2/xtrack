@@ -1,159 +1,151 @@
-# Mechanics exploration
+<!--
+This file is part of the Xtrack Package.
+Copyright (c) CERN, 2026.
+-->
 
-Active work lives directly in Xtrack on local branch `feature/mechanics-manager`.
-This branch is for exploration and is expected to evolve. There is no PR or
-publish step now. Once the design is useful, changes can be reviewed in slices
-onto a fresh branch before the user opens a draft PR.
+# Mechanics
 
-Only three examples are the main review surface:
+Start with the three classes of placement: deliberate reference, installation
+errors and dynamic motion. Continue through the same closed demo ring used by
+feedback, floor sampling at support feet, mechanical response paths, located
+sources, regional spectra and moving pickups. Each script runs independently.
+The numbered lessons use the feedback examples' section formatting and editable
+**User parameters**, and leave ordinary Xsuite objects available after `%run`.
 
-1. [Rigid girder](001_rigid_girder.py): `env.mechanics`, `line.mechanics`,
-   `new_girder`, a surveyed anchor, existing local errors and actual tracking.
-2. [Sources and vibration lifecycle](002_sources_and_vibrations.py):
-   `add_source`, interchangeable harmonic/measured/PSD models,
-   `compute_time_series`, `enable_vibrations()` and `disable_vibrations()`.
-3. [Shared girder](003_shared_girder.py): one physical body attached to two
-   lines with different survey placements and opposite local directions.
+| Example | Lesson | Approximate CPU time |
+| --- | --- | --- |
+| [001_rigid_girder.py](001_rigid_girder.py) | Adopt deliberate offsets; add installation and vibration; disable and clear | About 1 s |
+| [002_sources_and_vibrations.py](002_sources_and_vibrations.py) | Harmonic, measured or PSD translation/rotation; slow drift and split tracking | About 1 s |
+| [003_shared_girder.py](003_shared_girder.py) | One physical support, opposite beam axes and independent revolution clocks | About 1 s |
+| [004_demo_ring.py](004_demo_ring.py) | Drive 168 surveyed quadrupole supports and inspect magnified motion | About 3 s |
+| [005_ground_and_feet.py](005_ground_and_feet.py) | Sample the ground at four feet per support; fit all rigid coordinates and report contact mismatch | About 1 s |
+| [006_transfer_chain.py](006_transfer_chain.py) | Loaded floor/girder/magnet/BPM responses, phase, spectra and causal startup | About 1 s |
+| [007_local_sources.py](007_local_sources.py) | Mount a pump; supply direct and floor paths with gain and delay | About 1 s |
+| [008_regional_ground.py](008_regional_ground.py) | Shared background plus local excess PSD; vector components and reproducible chunks | About 4 s |
+| [009_moving_bpm.py](009_moving_bpm.py) | Compare nominal beam coordinates with a moving electrical pickup and frozen correction | About 3 s |
+| [010_execution_costs.py](010_execution_costs.py) | Separate load/build/attachment/update/tracking costs and test passage-time sampling | About 16 s |
+| [011_installation_and_correction.py](011_installation_and_correction.py) | Static installation seeds and orbit correction, preserving intended off-axis quadrupoles | About 6 s |
+| [012_matrix_response.py](012_matrix_response.py) | Complex 6x6 response, mixed units, lever arms and all rigid coordinates | About 1 s |
+| [013_combined_mechanics.py](013_combined_mechanics.py) | Whole-ring ground/region/pump, feet, conditional responses, installation, drift and tracking | About 6 s |
 
-Run with the checkout first on `PYTHONPATH`; `%run` leaves the objects available:
+Times are local CPU examples, with available kernel caches, excluding time spent
+interacting with a figure. See the [captured walkthrough](review/README.md) for
+terminal output, figures, detailed timing definitions and measured limitations.
+This is an exploration branch; these are teaching models, not an FCC-ee layout
+or mechanical performance prediction.
+
+Run from this checkout with its source first on `PYTHONPATH`:
 
 ```bash
 PYTHONPATH=. python examples/mechanics/001_rigid_girder.py
-PYTHONPATH=. python examples/mechanics/002_sources_and_vibrations.py
-PYTHONPATH=. python examples/mechanics/003_shared_girder.py
+PYTHONPATH=. ipython
+# Then: %run examples/mechanics/006_transfer_chain.py
 ```
 
-The former `install(env, line)` only attached the scratch prototype to existing
-objects. It is gone from the native interface. The 19 scratch examples remain
-reference material outside this checkout, rather than a review assignment.
+Matplotlib provides the figures. NumPy/SciPy and the normal Xsuite dependencies
+are required. No code from the feedback checkout or the earlier scratch design
+is imported. The shared [demo ring](../../test_data/example_lattices/demo_ring/README.md)
+is included here. Its near-integer vertical tune and large insertion beta make
+it particularly sensitive to installation errors; its correction numbers should
+not be interpreted as FCC-ee predictions.
 
-## What lives where
+## Three placement classes
 
 ```python
-mech = env.mechanics
+# Existing intentional line offsets are authoritative reference inputs.
+line['q1'].shift_x = 1e-3
+line.mechanics.adopt_reference()
 girder = line.mechanics.new_girder('g1', elements=['q1', 'q2'])
-assert line.mechanics.manager is mech
+
+# Installation is static, independent of dynamic source seeds.
+girder.installation.shift_y = 20e-6
+errors = env.mechanics.generate_installation_errors(
+    seed=956, bodies=['g1'], translation_sigma_m=(20e-6, 20e-6, 0.))
+errors.apply(env.mechanics)
+
+# Dynamic input includes vibrations and prescribed slow drift.
+env.mechanics.add_source('floor', xt.mechanics.Harmonic(
+    amplitude=50e-9, frequency_hz=5), targets=['g1'])
+env.mechanics.apply(time_s=.05)
 ```
 
-The environment owns physical bodies and named sources. A line owns attachments
-and its placement in that environment's world. Its accessor is a bound view,
-not a second manager. `mech.new_girder(..., line=line)` is the equivalent form.
-With several lines, the environment form requires `line=`. There is no need for
-`env.mechanics.MechanicsManager(line=...)`; the instance already exists.
+Reference adoption keeps the existing line values; it does not zero or require
+retyping them. Attachments also capture current numeric inputs without an
+explicit adoption call. Explicit adoption freezes/checks the classification
+before binding. Design rolls remain distinct from mechanical output angles.
 
-For a shared body, create it once and call `other_line.mechanics.attach(girder,
-elements=[...])`. Place the second survey explicitly using
-`set_reference_frame(xt.Frame(...))` before attachment. This avoids assuming
-independent line origins coincide. The frames are ordinary Xtrack survey frames.
-The reference-frame convention is local-to-world; translations are metres and
-angles radians. Default centre is the chord midpoint of the selected entrance/
-exit span, with axes from its first nominal entrance.
+Installation generators support Gaussian/uniform draws, Gaussian truncation,
+per-coordinate translation/angle scales and named common fixtures. By default
+only root bodies are selected. Draws have stable body/group identities, so
+receiver selection/order and dynamic seeds do not change them. The returned
+installation case is immutable; applying a corrected case can retain the
+original as-installed record for comparisons. Gaussian sigma describes the
+parent distribution, before truncation.
 
-Opposite traversal changes the line-local representation of the same physical
-motion. It does not create another physical girder. A source is evaluated at
-nominal world anchors; sensor/foot sampling and body transfer paths can extend
-that binding without changing ownership.
+Installation defines the static baseline. A stationary PSD process generally
+has nonzero motion at time zero; it is not silently shifted to start at zero.
+Measured traces, slow drifts or causal startup can supply explicit initial
+conditions when those are needed.
 
-## Source models and verbs
+`disable_vibrations()` removes dynamic input and retains installation placement.
+`restore()` restores captured element inputs while retaining mechanics definitions.
+`clear()` additionally removes bodies, sources, attachments and automatic updates.
+The deliberate line offsets/rolls that were adopted before binding survive.
+Body reference settings defined inside mechanics are removed with that model.
+Beam-corrector settings are separate knobs and remain under user control.
 
-```python
-mech.add_source('floor', xt.mechanics.Harmonic(
-    amplitude=50e-9, frequency_hz=5), targets=['g1'], component='y')
-motion = mech.compute_time_series(time_s=sample_times_s)
-line.mechanics.enable_vibrations(time_series=motion)
-line.track(particles, num_turns=100)
-line.mechanics.disable_vibrations()
-```
+## Geometry, signals and response paths
 
-`add_source` is the shared verb. Explicit source objects retain B's useful part
-without replacing A's named factories. Harmonic amplitude is peak displacement;
-PSD is one-sided displacement density in m²/Hz; measured inputs are metres.
-`PlaneWave` has independent world direction, polarization and propagation speed.
+`env.mechanics` owns bodies/sources; `line.mechanics` binds line occurrences and
+world placement. Use `new_girder` for supports and `new_body` for magnets,
+pickups/equipment. A child may have a parent-local `mount=xt.Frame(...)` or an
+explicit world anchor. Feet live on the support as `feet_local_m`; the same
+geometry is sampled, fitted and drawn. Only explicitly attached lines join.
 
-`compute_time_series` creates reusable **input motion** at explicit seconds,
-with an allocation budget. `motion.get_table(body)` reads direct local source
-translation; it excludes static alignment and inherited parent motion.
-`get_body_poses(time_s=..., time_series=...)` composes world poses without writes.
-`apply(time_s=..., time_series=...)` applies one physical time to all bound lines.
-These distinct operations replace the scratch `realize`/`snapshot` vocabulary.
+A floor is a spatial field, not one rigid parent. `sample_field` samples one
+joint source at world receivers. `fit_rigid_bodies` returns rigid motion and
+contact residuals; `to_rigid_motion` projects anchor translations without
+inventing rotation. `RigidMotion` carries six local coordinates in metres and
+survey radians. `through` applies a complex response; `transport` handles the
+reference-point lever arm and axes separately. `reference='absolute'` replaces
+inherited vibration while preserving static placement, avoiding double counting.
+Named `select` and coframed `superpose` compose these records explicitly; example
+013 connects the full pipeline on 168 supports, 168 magnet bodies and 14 pickups.
 
-The lifecycle follows Xcoll's explicit enable/disable style. Disable removes the
-vibration contribution and preserves static girder alignment and local magnet
-errors. Re-enable uses the particles' current physical time; it does not reset
-source phases or regenerate a PSD record. For a frozen Twiss calculation,
-disable automatic vibrations, explicitly apply the requested time, then Twiss.
+`DisplacementPSD` is a finite periodic Fourier reference with dense exponential
+spatial correlation. `SpectralGroundMotion` is a continuous random-mode
+approximation with bounded source state and stable time chunks/receiver subsets.
+`RegionalGroundMotion` adds independent excess spectra with squared amplitude
+weights; `VectorGroundMotion` supplies world components and explicit mixing.
+The mode approximation needs convergence checks; it cannot represent every
+measured covariance accurately with a small rank.
 
-## Deliberate alignment, vibration and removal
+## Survey, figures and execution
 
-There are three distinct inputs:
+`mech.survey(time_s=...)` reads nominal/reference/static/total body frames without
+writing elements. `mech.plot(...)` uses separate translation and rotation gains;
+element spans and feet remain rigid. `mech.animate(...)` updates translations,
+orientations and geometry, with bounded frame state. Example 012 exposes an
+optional animation. Source records and installation cases have their own tables.
+Use `view='bodies'` for a local view and `baseline='static'` to magnify dynamic
+motion about the installed placement, without magnifying installation errors.
 
-- Original magnet-local alignment and deliberate `rot_s_rad` design rolls.
-- Deliberate girder settings such as `girder.shift_y` and `girder.rot_s_rad`.
-- Source-induced motion. No source writes back into those girder settings.
+After `apply`, actual element poses are available through
+`line.survey(include_element_frames=True)` and `get_frame(..., which='elem_start')`
+/ `which='elem_end'`. The ordinary survey `X/Y/Z` path remains the nominal path.
 
-`line.mechanics.get_alignment_table()` shows captured `local_*` fields beside
-current `effective_*` fields, with `design_rot_s_rad` separate. The reference
-lowering temporarily writes effective fields into the elements for tracking;
-the intended fast backend should keep those transforms separate so user element
-definitions remain authoritative. Finite rotations are composed as matrices;
-subtracting Euler angles is not a valid general contribution decomposition.
+Automatic vibration tracking currently uses host numeric updates. Turn-held
+sampling and reference-speed passage sampling are both demonstrated; shared
+prescribed sources require an explicit common `time_origin_s` for each line.
+No causal shared-response/controller event scheduler is provided. The separate
+causal filter has bounded state and preserves it across consecutive blocks.
 
-`disable_vibrations()` removes source motion but retains static girder alignment.
-`mech.restore()` removes applied girder/motion effects while retaining the model.
-`mech.clear()` restores captured original local alignment and removes all sources,
-bodies, bindings and automatic updates. It never overwrites deliberate design
-rolls. `line.mechanics.clear()` restores/detaches only that line, retaining shared
-definitions for other lines. Old source records remain readable for comparing
-scenarios, with captured target names and nominal body frames; applying them
-to a cleared/reconfigured manager is rejected.
-Conflicting raw edits to effective alignment fields are rejected rather than
-erased; clear mechanics before redefining those inputs in this reference backend.
+The reference lowering temporarily writes effective alignment fields and rejects
+conflicting raw edits. Slices, shared element aliases, alignment expressions and
+built aperture models remain guarded. An independent ring copy is presently
+needed to avoid shared construction sublines. Actual GPU performance has not
+been validated here. The [design notes](DESIGN.md) explain these boundaries and
+the next backend experiments.
 
-Several named scenarios remain desirable. Initially one active configuration is
-sufficient: store its parameters in the environment and use `env.call(...)` to
-run a machine-specific builder that first clears and then rebuilds mechanics.
-That does not require a new Environment or another manager for every line.
-
-## Current execution and boundaries
-
-The current tracking backend is a **host reference update once per turn** using
-`particles.time_s`, before tracking that turn. It writes numeric effective
-element alignments. It does not build xdeps chains or evaluate sources per
-particle. Ordinary static tracking can use CPU/CUDA contexts; automatic updates
-on GPU would still incur host scheduling and field-write costs. This is not the
-final fast GPU implementation.
-
-Built-in sources can be replaced by a user model with
-pure `evaluate(time_s=..., positions_m=...)`. Scalar local sources return
-`(times, targets)` displacements; a `frame='world'` model returns
-`(times, targets, 3)` XYZ displacements. This leaves room for local pump fields
-and regional models without another top-level verb. Custom source serialization
-is not yet defined. Different source names do not decorrelate equal seeds;
-use distinct seeds for independent PSD inputs or one jointly sampled source
-for an explicitly correlated field.
-With fixed record length/step/receivers, a PSD's Fourier phases are anchored at
-physical time zero; changing the requested start time does not restart the
-waveform. Changing record length or step changes that finite spectral model.
-
-Explicit multi-line `apply(time_s=...)` works. Automatic multi-line advancement
-is guarded until a common event/clock policy is chosen; an environment namespace
-does not make different beam turn counters interchangeable. Automatic SyncTime,
-partial turns, pipeline holds and vibration-enabled Twiss are also guarded.
-
-Numeric lowering currently accepts unsliced alignment-capable elements and
-preserves their captured local numeric errors. It handles a bent nominal path
-using surveyed entry/exit frames and keeps `rot_s_rad` design geometry separate.
-Shared/repeated underlying element objects, slices, expression-driven alignment
-and post-binding geometry edits are rejected before writes. Boundary transforms
-and occurrence-indexed effective buffers remain backend alternatives.
-
-Aperture geometry uses the same survey machinery, but pipe-to-body coupling is
-not implemented. Applying mechanics with a built aperture model raises rather
-than silently using its stale survey. Full environment dict/JSON roundtrips and
-`env.copy()` preserve the configuration and numeric baselines. Standalone line
-copy/export and pickle are guarded while their ownership semantics are explored.
-Copied/loaded environments have automatic vibrations disabled; bind a motion
-record explicitly before enabling a new tracking run.
-
-[DESIGN.md](DESIGN.md) records Xsuite precedents, current decisions and the next
-experiments. These are exploration boundaries, not permanent API decisions.
+All work stays on the local exploration branch. Publishing and clean commit
+slicing remain for later review.
