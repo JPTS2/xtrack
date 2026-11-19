@@ -99,6 +99,10 @@ class MechanicalTimeSeries:
     def __init__(self, manager, time_s, values):
         self._manager = ref(manager)
         self._revision = manager._revision
+        self._bodies = tuple(manager.bodies)
+        self._targets = MappingProxyType({name: binding.targets for name, binding in manager.sources.items()})
+        self.body_frames = MappingProxyType({name: self._freeze(body._nominal)
+                                             for name, body in manager.bodies.items()})
         self.time_s = self._freeze(time_s)
         self.values = MappingProxyType({name: self._freeze(v) for name, v in values.items()})
 
@@ -109,14 +113,12 @@ class MechanicalTimeSeries:
 
     def get_table(self, body):
         """Read source-induced local translation for one body; no parent motion."""
-        manager = self._manager()
-        self._check(manager)
-        if body not in manager.bodies:
+        if body not in self._bodies:
             raise KeyError(body)
         values = np.zeros((len(self.time_s), 3))
-        for name, binding in manager.sources.items():
-            if body in binding.targets:
-                values += self.values[name][:, binding.targets.index(body)]
+        for name, targets in self._targets.items():
+            if body in targets:
+                values += self.values[name][:, targets.index(body)]
         return Table(dict(time_s=self.time_s.copy(), shift_x=values[:, 0],
                           shift_y=values[:, 1], shift_s=values[:, 2]), index='time_s')
 

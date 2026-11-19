@@ -103,7 +103,9 @@ subtracting Euler angles is not a valid general contribution decomposition.
 `mech.clear()` restores captured original local alignment and removes all sources,
 bodies, bindings and automatic updates. It never overwrites deliberate design
 rolls. `line.mechanics.clear()` restores/detaches only that line, retaining shared
-definitions for other lines. An applied source record is invalid after clearing.
+definitions for other lines. Old source records remain readable for comparing
+scenarios, with captured target names and nominal body frames; applying them
+to a cleared/reconfigured manager is rejected.
 Conflicting raw edits to effective alignment fields are rejected rather than
 erased; clear mechanics before redefining those inputs in this reference backend.
 

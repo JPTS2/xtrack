@@ -59,7 +59,9 @@ does temporarily write effective fields, with baseline/effective audit tables
 and conflict checks. This must not become an excuse to overwrite input
 definitions in the eventual fast backend. `clear()` is a first-class lifecycle
 operation: remove all owned effects and bindings, preserve deliberate inputs,
-invalidate sampled records and discard stale derived aperture models.
+invalidate replay bindings and discard stale derived aperture models. Stored
+input motion remains readable after cleanup so different scenarios can be
+compared without retaining the old active model.
 
 ## Clock decision still open
 

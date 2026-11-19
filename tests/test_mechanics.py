@@ -317,8 +317,11 @@ def test_clear_removes_all_mechanics_but_preserves_deliberate_rolls_and_offsets(
             expected[-1] = .18
         np.testing.assert_array_equal(actual, expected)
     assert 'mechanics' not in env.to_dict()
+    # Retain the old scenario's input data for comparisons, without allowing it
+    # to be applied silently to a cleared/reconfigured physical model.
+    assert len(record.get_table('g')) == 100
     with pytest.raises(ValueError, match='changed'):
-        record.get_table('g')
+        env.mechanics.get_body_poses(time_s=.01, time_series=record)
 
 
 def test_line_clear_detaches_only_that_line_and_conflicts_do_not_get_erased():
