@@ -126,6 +126,7 @@ class Environment:
         self._particles_container = EnvParticles(self)
         self._xfields = None
         self._xcoll = None
+        self._mechanics = None
         self._enable_name_clash_check = True
         self._last_context = None
         self._drift_cache = {}
@@ -189,7 +190,10 @@ class Environment:
                 f"{n_elements} elements, {n_vars} vars, {n_particles} particles)")
 
     def __getstate__(self):
+        if self.__dict__.get('_mechanics') is not None and self._mechanics.bodies:
+            raise NotImplementedError('Use env.to_dict()/from_dict() to save the experimental mechanics model')
         out = self.__dict__.copy()
+        out.pop('_mechanics', None)
         out.pop('_lines_weakrefs')
         out.pop('_line_composers', None)
         out.pop('_xdeps_eval_obj', None)
@@ -1174,6 +1178,9 @@ class Environment:
         out["_extra_config"] = deepcopy(self.extra_config)
         out["metadata"] = deepcopy(self.metadata)
 
+        if self.__dict__.get('_mechanics') is not None and self._mechanics.bodies:
+            out['mechanics'] = self.mechanics.to_dict()
+
         if include_aperture and (len(self.aperture.profiles) or len(self.aperture.pipes)):
             out['aperture'] = self.aperture.to_dict(include_line_models=False)
 
@@ -1285,6 +1292,9 @@ class Environment:
             out.metadata = dct["metadata"]
         if "_extra_config" in dct:
             out.extra_config = deepcopy(dct["_extra_config"])
+
+        if 'mechanics' in dct:
+            out.mechanics.from_dict(dct['mechanics'])
 
         return out
 
@@ -1556,6 +1566,19 @@ class Environment:
             #   vars['t_turn_s'] = 0.5
         """
         return self._xdeps_fref
+
+    @property_with_doc_group("Editing, Inspection, Variables and Configuration")
+    def mechanics(self):
+        """Environment-owned rigid bodies and prescribed motion sources.
+
+        Lines expose bound attachment views through ``line.mechanics``. Motion
+        uses explicit physical times. ``line.mechanics.enable_vibrations()``
+        opts into experimental host reference updates at turn boundaries.
+        """
+        if self.__dict__.get('_mechanics') is None:
+            from .mechanics import MechanicsManager
+            self._mechanics = MechanicsManager(self)
+        return self._mechanics
 
     @property_with_doc_group("Editing, Inspection, Variables and Configuration")
     def xfields(self):

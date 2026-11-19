@@ -357,7 +357,10 @@ class Tracker:
                 )
 
         assert self.iscollective in (True, False)
+        if self.line._mechanics_vibrations_enabled and self._sync_time_controller is not None:
+            raise NotImplementedError('Mechanics vibration updates with SyncTime need explicit clock scheduling')
         if (self.iscollective or self.line.enable_time_dependent_vars
+            or self.line._mechanics_vibrations_enabled
             or 'log' in kwargs and kwargs['log'] is not None):
             tracking_func = self._track_with_collective
         else:
@@ -471,7 +474,7 @@ class Tracker:
         self._check_invalidated()
         if args := kwargs:
             raise TypeError(f"unsupported TPSA tracking arguments: {sorted(args)}")
-        if self.iscollective or self.line.enable_time_dependent_vars:
+        if self.iscollective or self.line.enable_time_dependent_vars or self.line._mechanics_vibrations_enabled:
             raise NotImplementedError("TPSA tracking is not implemented for collective/time-dependent tracking")
         if not isinstance(self._context, xo.ContextCpu):
             raise NotImplementedError("TPSA tracking is implemented only for ContextCpu")
@@ -1426,6 +1429,13 @@ class Tracker:
         if ele_start is None:
             ele_start = 0
 
+        if self.line._mechanics_vibrations_enabled:
+            if (ele_start != 0 or ele_stop is not None or num_elements is not None
+                    or _session_to_resume is not None or self._enable_pipeline_hold
+                    or self.skip_end_turn_actions or not self.reset_s_at_end_turn
+                    or particles.start_tracking_at_element >= 0):
+                raise NotImplementedError('Mechanics reference vibration tracking requires complete turns')
+
         if self._sync_time_controller is not None:
             if (ele_start != 0 or ele_stop is not None or num_elements is not None
                     or _session_to_resume is not None or self._enable_pipeline_hold
@@ -1504,6 +1514,8 @@ class Tracker:
 
             if particles is not None and not _is_resume_within_turn(tt, tt_resume):
                 self._prepare_particle_time_s_and_reference_turns(particles)
+                if self.line._mechanics_vibrations_enabled:
+                    self.line.mechanics._apply_for_tracking(particles.time_s)
 
             if log is not None and not _is_resume_within_turn(tt, tt_resume):
                 self._handle_log(_session_to_resume=_session_to_resume,

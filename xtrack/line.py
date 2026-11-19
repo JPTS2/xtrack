@@ -832,6 +832,9 @@ class Line:
             If an element to be serialized has no callable ``to_dict`` method.
         '''
 
+        if (include_element_dict and self.env.__dict__.get('_mechanics') is not None
+                and self.mechanics._attachments):
+            raise NotImplementedError('Save the complete environment to preserve shared mechanics')
         out = {}
         out['__class__'] = self.__class__.__name__
 
@@ -1310,6 +1313,9 @@ class Line:
             # 0.2
         '''
 
+        if (self.env.__dict__.get('_mechanics') is not None
+                and self.mechanics._attachments):
+            raise NotImplementedError('Use env.copy() for mechanics; line-copy binding ownership is not defined yet')
         if shallow==True:
             assert _context is None and _buffer is None, (
                 'Shallow copy with _context or _buffer is not supported')
@@ -1943,6 +1949,19 @@ class Line:
             except ImportError as error:
                 raise ImportError("Please install Xfields to use this feature.") from error
         return self._xfields
+
+    @property_with_doc_group("Line Editing")
+    def mechanics(self):
+        """Attachments and survey placement in the environment mechanics world."""
+        return self.env.mechanics.for_line(self)
+
+    @property
+    def _mechanics_vibrations_enabled(self):
+        manager = self.env.__dict__.get('_mechanics')
+        if manager is None:
+            return False
+        view = manager._line_views.get(self)
+        return view is not None and view.vibrations_enabled
 
     @property_with_doc_group("Reference Particle and Particle Generation")
     def xpart(self):
@@ -2709,6 +2728,8 @@ class Line:
         with_progress=True,
         chi=None, charge_ratio=None, mass_ratio=None,
     ):
+        if self._mechanics_vibrations_enabled:
+            raise ValueError('Disable vibrations and apply a fixed mechanics time before computing Twiss')
         if not self._has_valid_tracker():
             self.build_tracker()
 

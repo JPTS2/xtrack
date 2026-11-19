@@ -25,6 +25,7 @@ from .targets import (TargetLuminosity, TargetSeparationOrthogonalToCrossing,
                       TargetSeparation)
 from .twiss import TwissInit, TwissTable
 from .aperture import EnvAperture, LineAperture
+from . import mechanics
 from .rdt import rdt_first_order_perturbation
 from .loss_location_refinement import LossLocationRefinement
 from .internal_record import (RecordIdentifier, RecordIndex, new_io_buffer,
