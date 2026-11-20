@@ -3,8 +3,9 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Measure setup, pose calculation, field writes and tracking separately.
-# Compare turn-boundary and reference-speed passage sampling at high frequency.
+# When is one rigid pose per turn an adequate approximation?
+# Track the same launch through turn-held and reference-passage magnet positions,
+# then separate their computational costs from loading, survey and compilation.
 
 ################################################################################
 # Required packages
@@ -64,6 +65,7 @@ repo_root = Path(__file__).resolve().parents[2]
 rows = []
 timings = {}
 phase_comparison = None
+beam_comparison = None
 
 ################################################################################
 # Measure the same workload at each support count
@@ -119,14 +121,14 @@ for count in SUPPORT_COUNTS:
     ########################################
     # Create the support assignments
     ########################################
-    girders = [line.mechanics.new_girder(f'g.{name}', elements = [name]) for name in quads]
+    girders = line.mechanics.new_girders({f'g.{name}': [name] for name in quads})
 
     ########################################
     # Bind the prescribed high-frequency motion
     ########################################
     mech.add_source('tone', xt.mechanics.Harmonic(
         amplitude = AMPLITUDE_M, frequency_hz = FREQUENCY_HZ,
-    ), targets = [g.name for g in girders])
+    ), targets = list(girders))
 
     ########################################
     # Record mechanics preparation cost
@@ -173,6 +175,11 @@ for count in SUPPORT_COUNTS:
     ########################################
     particles_dynamic = line.build_particles(x = np.full(N_PARTICLES, 1e-7), y = np.full(N_PARTICLES, 1e-8))
     line.mechanics.enable_vibrations()
+    # Prepare the mechanics kernels before measuring the complete warm call.
+    started = perf_counter()
+    line.track(line.build_particles(x = np.full(N_PARTICLES, 1e-7), y = np.full(N_PARTICLES, 1e-8)), num_turns = 1)
+    CONTEXT.synchronize()
+    dynamic_prepare_s = perf_counter() - started
     started = perf_counter()
     line.track(particles_dynamic, num_turns = N_TURNS)
     CONTEXT.synchronize()
@@ -189,6 +196,10 @@ for count in SUPPORT_COUNTS:
     ########################################
     line.mechanics.apply(time_s = INSPECT_TIME_S)
     held = line.mechanics.get_alignment_table().effective_shift_y.copy()
+    if count == max(SUPPORT_COUNTS):
+        probe_held = line.build_particles(x = 1e-7, y = 1e-8)
+        line.track(probe_held, turn_by_turn_monitor = 'ONE_TURN_EBE')
+        held_beam = CONTEXT.nparray_from_context_array(line.record_last_track.y)[0].copy()
 
     ########################################
     # Measure reference-speed passage preparation
@@ -204,10 +215,14 @@ for count in SUPPORT_COUNTS:
     ########################################
     if count == max(SUPPORT_COUNTS):
         phase_comparison = (line.get_table()['s', quads], held, passage)
+        probe_passage = line.build_particles(x = 1e-7, y = 1e-8)
+        line.track(probe_passage, turn_by_turn_monitor = 'ONE_TURN_EBE')
+        passage_beam = CONTEXT.nparray_from_context_array(line.record_last_track.y)[0].copy()
+        beam_comparison = (line.get_table().s, held_beam, passage_beam)
     rows.append(dict(count = count, model_s = model_s, selection_s = selection_s,
         setup_s = setup_s, build_s = build_s, warm_s = warm_s,
         pose_s = pose_s, apply_s = apply_s, frozen_s = frozen_s, dynamic_s = dynamic_s,
-        passage_prepare_s = passage_s))
+        passage_prepare_s = passage_s, dynamic_prepare_s = dynamic_prepare_s))
     for key, value in rows[-1].items():
         if key.endswith('_s'):
             timings[f'{count}_supports_{key}'] = value
@@ -224,7 +239,18 @@ turn_time = line.get_length() / (float(line.particle_ref.beta0[0]) * c)
 ########################################
 # Compare setup, update and tracking costs
 ########################################
-print('Reference backend execution costs\n----------------------------------')
+print('Turn-held approximation and reference-passage comparison\n'
+      '-------------------------------------------------------')
+print(f'Coherent vertical vibration: {AMPLITUDE_M * 1e9:g} nm peak at {FREQUENCY_HZ:g} Hz.')
+print('All magnets move together at a given physical time; the beam reaches them at different times.')
+print('Turn-held uses the entrance-time pose everywhere. Passage sampling uses t0 + s/(beta0*c).')
+print('Both tracked probes below start at x = 100 nm, y = 10 nm, px = py = 0.')
+path_s, held, passage = phase_comparison
+beam_s, held_beam, passage_beam = beam_comparison
+print(f'Observation at line end, held / passage y [nm]: {held_beam[-1] * 1e9:+.6f} / {passage_beam[-1] * 1e9:+.6f}')
+print(f'Change caused by resolving the passage times [nm]: {(passage_beam[-1] - held_beam[-1]) * 1e9:+.6f}')
+print('This is one-turn transport through two sampling approximations, with identical launch and magnetic strengths.')
+print('\nWarm tracking workload and setup costs\n--------------------------------------')
 print(f'Context: {type(CONTEXT).__name__}; particles: {N_PARTICLES}; turns: {N_TURNS}')
 print('Supports   Load [s]   Select [ms]   Attach [s]   Build [s]   Warm [s]   Pose [ms]   Apply [ms]   Frozen [s]   Dynamic [s]')
 for row in rows:
@@ -245,39 +271,52 @@ print(f'Largest held/passage alignment difference [nm]: {np.max(np.abs(held-pass
 ########################################
 history_bytes = PROJECTED_HISTORY_TURNS * max(SUPPORT_COUNTS) * 16 * 8
 print(f'Unallocated full matrix history for {PROJECTED_HISTORY_TURNS:,} turns [GiB]: {history_bytes / 1024**3:.3f}')
-print('The reference writes fields from Python. These measurements do not establish a fast GPU backend.')
+print('Explicit pose/application probes use the host API; automatic tracking uses its selected prepared backend.')
+print('Mechanics first-use preparation [ms]:', ', '.join(f'{r["count"]}: {r["dynamic_prepare_s"] * 1e3:.3f}' for r in rows))
+print('The automatic-motion timing excludes that first-use preparation. Actual GPU execution needs a device run.')
 print('Frozen/dynamic timings use the same particle workload, with different motion semantics.')
 
 ################################################################################
-# Inspect cost scaling and passage-time effects
+# Show what the passage-time approximation changes physically
 ################################################################################
 
 ########################################
-# Prepare runtime and spatial comparison panels
+# Compare the magnet offsets encountered around the ring
 ########################################
-fig, axes = plt.subplots(1, 2, figsize = (10, 4))
+fig, axes = plt.subplots(2, 1, figsize = (9, 6.5))
+axes[0].plot(path_s, held * 1e9, label = 'Pose held at turn entrance')
+axes[0].plot(path_s, passage * 1e9, label = 'Pose at reference-particle passage')
+axes[0].set(xlabel = 'Quadrupole position s [m]', ylabel = 'Applied vertical displacement [nm]',
+            title = f'One coherent {FREQUENCY_HZ:g} Hz vibration sampled by a travelling beam')
+axes[0].legend()
 
 ########################################
-# Plot measured per-turn and per-update costs
+# Compare actual tracked beam trajectories through those two sets of poses
 ########################################
-counts = [r['count'] for r in rows]
-axes[0].plot(counts, [r['frozen_s'] / N_TURNS * 1e3 for r in rows], 'o-', label = 'Frozen tracking')
-axes[0].plot(counts, [r['dynamic_s'] / N_TURNS * 1e3 for r in rows], 'o-', label = 'Host update + tracking')
-axes[0].plot(counts, [r['apply_s'] * 1e3 for r in rows], 'o--', label = 'One explicit apply')
-axes[0].set(xlabel = 'Supports', ylabel = 'Cost per turn/update [ms]', yscale = 'log')
-axes[0].legend(fontsize = 8)
-
-########################################
-# Plot the difference between held and passage-time offsets
-########################################
-path_s, held, passage = phase_comparison
-axes[1].plot(path_s, held * 1e9, '.-', label = 'Held at turn start')
-axes[1].plot(path_s, passage * 1e9, '.-', label = 'Sampled at reference passage')
-
-########################################
-# Label and display the measured comparison
-########################################
-axes[1].set(xlabel = 'Nominal s [m]', ylabel = 'Effective y [nm]', title = f'{FREQUENCY_HZ:g} Hz coherent input')
-axes[1].legend(fontsize = 8)
+axes[1].plot(beam_s, held_beam * 1e9, label = 'Tracking with turn-held poses')
+axes[1].plot(beam_s, passage_beam * 1e9, label = 'Tracking with passage-time poses')
+axes[1].set(xlabel = 'Beam position s [m]', ylabel = 'Tracked vertical coordinate [nm]',
+            title = 'Same one-pass launch, different mechanical sampling')
+axes[1].legend()
+for ax in axes:
+    ax.grid(alpha = .2)
 fig.tight_layout()
+
+################################################################################
+# Review the cost of the two update operations and complete tracking calls
+################################################################################
+
+########################################
+# Keep performance separate from the physical accuracy comparison
+########################################
+cost_fig, cost_ax = plt.subplots(figsize = (8, 4))
+counts = [r['count'] for r in rows]
+cost_ax.plot(counts, [r['frozen_s'] / N_TURNS * 1e3 for r in rows], 'o-', label = 'Frozen tracking, per turn')
+cost_ax.plot(counts, [r['dynamic_s'] / N_TURNS * 1e3 for r in rows], 'o-', label = 'Automatic motion + tracking, per turn')
+cost_ax.plot(counts, [r['apply_s'] * 1e3 for r in rows], 'o--', label = 'One explicit host application')
+cost_ax.set(xlabel = 'Attached supports', ylabel = 'Warm cost [ms]', yscale = 'log',
+            title = 'Same particles and turns; loading and first-use preparation excluded')
+cost_ax.legend(fontsize = 9)
+cost_ax.grid(alpha = .2)
+cost_fig.tight_layout()
 plt.show()

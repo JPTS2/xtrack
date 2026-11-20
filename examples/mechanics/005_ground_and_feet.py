@@ -15,6 +15,7 @@ from time import perf_counter
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.spatial.transform import Rotation
 import xtrack as xt
 
 ################################################################################
@@ -52,11 +53,11 @@ N_SAMPLES     = 4096
 SAMPLE_STEP_S = 1 / 256
 
 ########################################
-# Survey time and display gains
+# Stored inspection time and one rigid-geometry display gain
 ########################################
 INSPECT_TIME_S     = .125
-DISPLACEMENT_SCALE = 1e8
-ROTATION_SCALE     = 1e7
+GEOMETRY_GAIN      = 1e7             # Same gain for local translation and rotation
+PRINT_TIMINGS      = False
 
 ################################################################################
 # Set up the ordinary Xtrack line
@@ -195,88 +196,133 @@ timings['sample_and_fit_s'] = perf_counter() - started
 ########################################
 table = motion.get_table(girders[0].name)
 
-########################################
-# Report displacement, angle and residual scales
-########################################
-print('Floor motion and rigid supports\n-------------------------------')
-print(f'Field: {SOURCE}; supports: {len(girders)}; feet per support: {feet.shape[1]}')
-print(f'Record length / step [s]: {N_SAMPLES * SAMPLE_STEP_S:g} / {SAMPLE_STEP_S:g}')
-print('Coordinate      First-girder RMS')
-for name in ('shift_x', 'shift_y', 'shift_s', 'rot_x_rad', 'rot_y_rad', 'rot_s_rad'):
-    scale, unit = (1e9, 'nm') if name.startswith('shift') else (1e6, 'µrad')
-    print(f'{name:<15} {np.std(table[name]) * scale:12.6f} {unit}')
-print(f'Contact mismatch RMS [nm]: {np.sqrt(np.mean(residual**2)) * 1e9:.6f}')
-print('The contact mismatch is reported; the girder does not deform to remove it.')
-
 ################################################################################
-# Inspect the fitted geometry
+# Compare individual floor contacts with the fitted rigid body
 ################################################################################
 
 ########################################
-# Start timing the frozen state update
+# Select one stored physical instant and reconstruct its fitted contact positions
+########################################
+index = int(np.argmin(np.abs(times - INSPECT_TIME_S)))
+selected_time_s = float(times[index])
+values = motion.values[index, 0]
+local_rotation = Rotation.from_euler('YXZ', values[[4, 3, 5]] * [1., -1., 1.]).as_matrix()
+local_translation = values[:3]
+first_feet = feet[0]
+floor_local = floor.values[index, :len(first_feet)] @ frames[0].matrix[:3, :3]
+fitted_local = first_feet @ local_rotation.T + local_translation
+fit_displacement = fitted_local - first_feet
+contact_difference = floor_local - fit_displacement
+np.testing.assert_allclose(np.sqrt(np.mean(np.sum(contact_difference**2, axis = 1))),
+                           residual[index, 0], rtol = 0, atol = 3e-13)
+
+########################################
+# Apply the fitted motion and check the actual quadrupole frames
 ########################################
 started = perf_counter()
+mech.apply(time_s = selected_time_s)
+actual = line.survey(include_element_frames = True)
+requested = line.mechanics.get_element_poses(time_s = selected_time_s)
+for name in QUADRUPOLES:
+    np.testing.assert_allclose(actual.get_frame(name, which = 'elem_start').matrix,
+                               requested[name].matrix, rtol = 0, atol = 1e-10)
+timings['Apply and verify rigid element poses'] = perf_counter() - started
 
 ########################################
-# Apply the fitted state at the selected time
+# Explain what the rigid fit follows and what remains incompatible
 ########################################
-mech.apply(time_s = INSPECT_TIME_S)
-timings['apply_s'] = perf_counter() - started
-
-########################################
-# Time the read-only pose inspection separately
-########################################
-started = perf_counter()
-survey = mech.survey(time_s = INSPECT_TIME_S)
-
-########################################
-# Record the pose-inspection cost
-########################################
-timings['pose_inspection_s'] = perf_counter() - started
-
-########################################
-# Draw the first support and its stored contact points
-########################################
-layout_fig, layout_axes = mech.plot(
-    time_s = INSPECT_TIME_S, line = line, bodies = [girders[0].name], view = 'bodies',
-    displacement_scale = DISPLACEMENT_SCALE, rotation_scale = ROTATION_SCALE,
-)
+print('Four moving feet, one rigid girder\n---------------------------------')
+print(f'Floor field: {SOURCE}; {len(girders)} supports with four contacts each.')
+print('Contacts span 0.6 m across the support and 2 m along it; the body reference is 0.5 m above them.')
+if SOURCE == 'wave':
+    print(f'Wave wavelength: {SPEED_M_S / FREQUENCY_HZ:g} m; propagation XYZ {DIRECTION}; polarization XYZ {POLARIZATION}.')
+print(f'First support, stored sample at t = {selected_time_s:g} s:')
+print('Contact    Floor vertical [nm]    Rigid-fit vertical [nm]    Full mismatch norm [nm]')
+for name, raw, fitted, difference in zip('ABCD', floor_local, fit_displacement, contact_difference):
+    print(f'{name:<8} {raw[1] * 1e9:+20.4f} {fitted[1] * 1e9:+26.4f} {np.linalg.norm(difference) * 1e9:27.4f}')
+print(f'Full three-dimensional contact mismatch RMS [nm]: {residual[index, 0] * 1e9:.6f}')
+print('The fitted translation and rotation move the entire attached magnet rigidly.')
+print('The residual is the contact motion that this rigid pose cannot reproduce.')
+print('This is a kinematic fit to supplied displacements, without a structural/contact force law.')
 
 ################################################################################
-# Plot motion and contact mismatch
+# Draw the floor contacts and the rigid motion they produce
 ################################################################################
 
 ########################################
-# Prepare translation, angle and residual panels
+# Show where the four contacts sit relative to the magnetic-axis reference
 ########################################
-fig, axes = plt.subplots(3, 1, sharex = True, figsize = (8, 7))
+fig, axes = plt.subplots(2, 2, figsize = (10, 7.5))
+outline_order = [0, 1, 3, 2, 0]
+axes[0, 0].plot(first_feet[outline_order, 2], first_feet[outline_order, 0], color = '0.5')
+for name, point in zip('ABCD', first_feet):
+    axes[0, 0].plot(point[2], point[0], 'o', color = 'tab:orange')
+    axes[0, 0].annotate(name, (point[2], point[0]), xytext = (5, 5), textcoords = 'offset points')
+axes[0, 0].plot(0., 0., 'kD', label = 'Body / magnetic-axis reference')
+axes[0, 0].annotate('Beam direction', xy = (.7, 0.), xytext = (-.7, 0.),
+                   arrowprops = {'arrowstyle': '->', 'color': 'tab:blue'}, fontsize = 9)
+axes[0, 0].set(title = 'Contact footprint: local plan view', xlabel = 'Local s [m]', ylabel = 'Local x [m]',
+               xlim = (-1.3, 1.3), ylim = (-.55, .55))
+axes[0, 0].set_aspect('equal', adjustable = 'box')
+axes[0, 0].legend(loc = 'upper center', fontsize = 8)
 
 ########################################
-# Draw the fitted translations
+# Show the same whole rigid object carried by the fitted pose
 ########################################
-for name, label in [('shift_x', 'x'), ('shift_y', 'y'), ('shift_s', 's')]:
-    axes[0].plot(times, table[name] * 1e9, label = label)
+enlarged_rotation = Rotation.from_rotvec(GEOMETRY_GAIN * Rotation.from_matrix(local_rotation).as_rotvec()).as_matrix()
+enlarged_translation = GEOMETRY_GAIN * local_translation
+shown_feet = first_feet @ enlarged_rotation.T + enlarged_translation
+shown_floor = first_feet + GEOMETRY_GAIN * floor_local
+length = float(line[QUADRUPOLES[0]].length)
+magnet = np.array([[0., -.15, -length / 2], [0., -.15, length / 2],
+                   [0., .15, length / 2], [0., .15, -length / 2], [0., -.15, -length / 2]])
+shown_magnet = magnet @ enlarged_rotation.T + enlarged_translation
+axes[0, 1].plot(magnet[:, 2], magnet[:, 1], '--', color = '0.65')
+axes[0, 1].fill(shown_magnet[:, 2], shown_magnet[:, 1], alpha = .15, color = 'tab:blue')
+axes[0, 1].plot(shown_magnet[:, 2], shown_magnet[:, 1], color = 'tab:blue', label = 'Carried rigid magnet')
+axes[0, 1].plot(shown_feet[outline_order, 2], shown_feet[outline_order, 1], color = 'tab:blue', lw = 1)
+# A rigid upper deck joins the post tops and carries the magnet bottom.
+# This schematic uses the same full rigid map as the contacts and magnet.
+upper_deck = first_feet.copy()
+upper_deck[:, 1] = -.15
+shown_deck = upper_deck @ enlarged_rotation.T + enlarged_translation
+axes[0, 1].fill(shown_deck[outline_order, 2], shown_deck[outline_order, 1], color = 'tab:blue', alpha = .15)
+axes[0, 1].plot(shown_deck[outline_order, 2], shown_deck[outline_order, 1], color = 'tab:blue', lw = 1.2)
+for foot, fitted, raw in zip(first_feet, shown_feet, shown_floor):
+    post = np.array([foot, [foot[0], -.15, foot[2]]]) @ enlarged_rotation.T + enlarged_translation
+    axes[0, 1].plot(post[:, 2], post[:, 1], color = 'tab:blue', lw = .8)
+    axes[0, 1].plot([fitted[2], raw[2]], [fitted[1], raw[1]], color = 'tab:red', lw = 1.5)
+axes[0, 1].plot(shown_floor[:, 2], shown_floor[:, 1], 'o', color = 'tab:orange', label = 'Supplied floor contacts')
+axes[0, 1].plot(shown_feet[:, 2], shown_feet[:, 1], 's', mfc = 'none', color = 'tab:blue', label = 'Contacts of fitted rigid body')
+axes[0, 1].set(title = f'Local elevation; motion ×{GEOMETRY_GAIN:,.0f}', xlabel = 'Local s [m]', ylabel = 'Local y [m]')
+axes[0, 1].set_aspect('equal', adjustable = 'box')
+axes[0, 1].margins(.15)
+handles, labels = axes[0, 1].get_legend_handles_labels()
+fig.legend(handles, labels, loc = 'lower center', ncol = 3, fontsize = 8)
 
 ########################################
-# Draw the fitted rotations
+# Compare each floor height with the closest rigid-body contact height
 ########################################
-for name, label in [('rot_x_rad', 'Pitch'), ('rot_y_rad', 'Yaw'), ('rot_s_rad', 'Roll')]:
-    axes[1].plot(times, table[name] * 1e6, label = label)
+xx = np.arange(4)
+width = .36
+axes[1, 0].bar(xx - width / 2, floor_local[:, 1] * 1e9, width, color = 'tab:orange', label = 'Supplied floor motion')
+axes[1, 0].bar(xx + width / 2, fit_displacement[:, 1] * 1e9, width, color = 'tab:blue', label = 'Fitted rigid contact motion')
+axes[1, 0].set(xticks = xx, xticklabels = list('ABCD'), title = 'Most of the floor motion is followed',
+               xlabel = 'Contact', ylabel = 'Vertical displacement [nm]')
+axes[1, 0].legend(fontsize = 8)
 
 ########################################
-# Show the contact mismatch that rigid motion cannot remove
+# Resolve the smaller residual on its own physical scale
 ########################################
-axes[2].plot(times, residual[:, 0] * 1e9)
-
-########################################
-# Label the physical units and inspection window
-########################################
-axes[0].set(ylabel = 'Translation [nm]', title = 'First support: finite rigid fit to moving feet')
-axes[1].set(ylabel = 'Survey angle [µrad]')
-axes[2].set(xlabel = 'Physical time [s]', ylabel = 'Contact mismatch [nm]', xlim = (0, 1))
-axes[0].legend()
-axes[1].legend()
-fig.tight_layout()
+for component, colour, offset in [(0, 'tab:blue', -.24), (1, 'tab:orange', 0.), (2, 'tab:green', .24)]:
+    axes[1, 1].bar(xx + offset, contact_difference[:, component] * 1e9, .23,
+                   color = colour, label = ['Local x', 'Local y', 'Local s'][component])
+axes[1, 1].set(xticks = xx, xticklabels = list('ABCD'), title = 'Incompatible motion remains as a residual',
+               xlabel = 'Contact', ylabel = 'Floor − rigid fit [nm]')
+axes[1, 1].axhline(0., color = '0.5', lw = .7)
+axes[1, 1].legend(fontsize = 8)
+fig.suptitle(f'One sampled floor field → one rigid pose per support; first support at t = {selected_time_s:g} s', fontsize = 11)
+fig.tight_layout(rect = (0., .055, 1., 1.), h_pad = 2.)
 
 ################################################################################
 # Review execution costs and figures
@@ -285,9 +331,10 @@ fig.tight_layout()
 ########################################
 # Print the measured costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<24} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nCPU operation costs\n-------------------')
+    for name, seconds in timings.items():
+        print(f'{name:<24} {seconds:9.4f} s')
 
 ########################################
 # Display the figures

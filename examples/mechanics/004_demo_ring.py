@@ -55,18 +55,13 @@ PSD_SEED                 = 956
 # Frozen inspection time
 ########################################
 TIME_S = .125
+PRINT_TIMINGS = False
 
 ########################################
 # Motion sampling
 ########################################
 SAMPLE_STEP_S = 1 / 256
 N_SAMPLES     = 2048
-
-########################################
-# Display magnification
-########################################
-DISPLACEMENT_SCALE = 1e8
-ROTATION_SCALE     = 1e5
 
 ################################################################################
 # Set up the ordinary Xtrack line
@@ -144,7 +139,8 @@ timings['geometry_selection_s'] = perf_counter() - started
 ########################################
 started = perf_counter()
 
-girders = [line.mechanics.new_girder(f'g.{name}', elements = [name]) for name in quads]
+assignments = {f'g.{name}': [name] for name in quads}
+girders = list(line.mechanics.new_girders(assignments).values())
 
 ########################################
 # Set the first support's installation placement
@@ -261,54 +257,90 @@ assert survey_error_m < 1e-10 and survey_error_rad < 1e-12
 survey = mech.survey(time_s = TIME_S, time_series = motion)
 timings['survey_verification_s'] = perf_counter() - started
 
-########################################
-# Report numerical agreement and input memory
-########################################
-print('Surveyed ring and prescribed input\n----------------------------------')
-print(f'Ring length [m]: {line.get_length():.1f}; supports: {len(girders)}; source: {SOURCE}')
-print(f'Largest entrance position / orientation discrepancy: {survey_error_m:.3g} m / {survey_error_rad:.3g} rad')
-print(f'Input payload [MiB]: {sum(v.nbytes for v in motion.values.values()) / 1024**2:.3f}')
-print('Only quadrupoles move here. Feet and mechanical responses follow in 005 and 006.')
-
 ################################################################################
-# Inspect the ring motion and input histories
+# Measure the frozen orbit change caused by the same support displacements
 ################################################################################
 
 ########################################
-# Draw magnified body translations and orientations
+# Hold the installation errors fixed and remove only the dynamic input
 ########################################
-layout_fig, layout_axes = mech.plot(
-    time_s = TIME_S, time_series = motion, line = line,
-    displacement_scale = DISPLACEMENT_SCALE, rotation_scale = ROTATION_SCALE,
-)
+started = perf_counter()
+mech.apply(time_s = TIME_S, time_series = motion, disabled_sources = tuple(mech.sources))
+installed_twiss = line.twiss4d()
 
 ########################################
-# Prepare the spatial and temporal diagnostic panels
+# Apply the chosen wave phase and compute the changed closed orbit
 ########################################
-fig, axes = plt.subplots(1, 2, figsize = (10, 4))
+mech.apply(time_s = TIME_S, time_series = motion)
+moving_twiss = line.twiss4d()
+# This compares two fixed maps. It does not assert that a driven beam follows
+# their closed orbits; dynamic tracking appears in the later combined lesson.
+dx = moving_twiss.x - installed_twiss.x
+dy = moving_twiss.y - installed_twiss.y
+timings['Matched frozen optics'] = perf_counter() - started
 
 ########################################
-# Plot dynamic world displacement along the ring
+# State the physical change and the measured beam response
+########################################
+print('A spatial motion field across a surveyed ring\n--------------------------------------------')
+print(f'Ring length: {line.get_length():.1f} m; quadrupoles on individual supports: {len(girders)}.')
+print(f'Source model: {SOURCE}; displayed physical time: {TIME_S:g} s.')
+if SOURCE == 'wave':
+    print(f'Wave: {WAVE_FREQUENCY_HZ:g} Hz, speed {WAVE_SPEED_M_S:g} m/s, wavelength {WAVE_SPEED_M_S / WAVE_FREQUENCY_HZ:g} m.')
+    print(f'Propagation direction XYZ: {WAVE_DIRECTION}; polarization XYZ: {WAVE_POLARIZATION} (normalized independently).')
+print('Both optics cases retain the same first-support installation error.')
+print('Only the prescribed dynamic support motion changes between the cases.')
+print('\nFrozen mechanical and beam changes\n----------------------------------')
+print(f'Largest |world-Y support displacement| [nm]: {np.max(np.abs(survey.dynamic_Y)) * 1e9:.3f}')
+print(f'Largest |horizontal closed-orbit change| [µm]: {np.max(np.abs(dx)) * 1e6:.6f}')
+print(f'Largest |vertical closed-orbit change| [µm]: {np.max(np.abs(dy)) * 1e6:.6f}')
+print(f'Applied-frame check: largest position error {survey_error_m:.3g} m, orientation error {survey_error_rad:.3g} rad.')
+print('These support assignments illustrate the API; they are not an engineering girder layout.')
+
+################################################################################
+# Connect spatial support motion to the resulting frozen orbit change
+################################################################################
+
+########################################
+# Locate the moving quadrupoles on the actual surveyed ring
+########################################
+fig, axes = plt.subplots(2, 2, figsize = (10, 7.5))
+axes[0, 0].plot(nominal.X, nominal.Z, color = '0.75', lw = 1)
+centres = np.array([g.nominal_frame.XYZ for g in girders])
+vertical_nm = survey.dynamic_Y * 1e9
+limit = max(float(np.max(np.abs(vertical_nm))), 1e-12)
+points = axes[0, 0].scatter(centres[:, 0], centres[:, 2], c = vertical_nm,
+                           vmin = -limit, vmax = limit, cmap = 'coolwarm', s = 14)
+fig.colorbar(points, ax = axes[0, 0], label = 'Support world-Y motion [nm]', shrink = .8)
+if SOURCE == 'wave':
+    direction = np.array(WAVE_DIRECTION, dtype = float)
+    direction /= np.linalg.norm(direction)
+    origin = centres[:, [0, 2]].mean(axis = 0)
+    length = .3 * np.ptp(centres[:, [0, 2]], axis = 0).max()
+    axes[0, 0].annotate('Wave travels', xy = origin + length * direction[[0, 2]], xytext = origin,
+                       arrowprops = {'arrowstyle': '->', 'color': '0.2'}, fontsize = 9)
+axes[0, 0].set(title = 'Support locations and wave phase around the ring', xlabel = 'World X [m]', ylabel = 'World Z [m]')
+axes[0, 0].set_aspect('equal', adjustable = 'box')
+
+########################################
+# Show the actual prescribed displacements at the attached supports
 ########################################
 for axis in 'XYZ':
-    axes[0].plot(nominal['s', quads], survey['dynamic_' + axis] * 1e9, '.-', ms = 2, label = axis)
-axes[0].set(xlabel = 'Nominal s [m]', ylabel = 'Dynamic world displacement [nm]')
+    axes[0, 1].plot(nominal['s', quads], survey['dynamic_' + axis] * 1e9, '.-', ms = 2, label = 'World ' + axis)
+axes[0, 1].set(title = 'Different supports sample different spatial phases', xlabel = 'Nominal s [m]', ylabel = 'Dynamic support displacement [nm]')
+axes[0, 1].legend(fontsize = 8)
 
 ########################################
-# Plot the first support's local input history
+# Show both measured orbit-plane changes on equal footing
 ########################################
-table = motion.get_table(first.name)
-for name, label in [('shift_x', 'x'), ('shift_y', 'y'), ('shift_s', 's')]:
-    axes[1].plot(table.time_s, table[name] * 1e9, label = label)
-axes[1].set(xlabel = 'Physical time [s]', ylabel = 'First-girder local input [nm]', xlim = (0, 1))
-axes[1].axvline(TIME_S, color = '0.4', ls = ':')
-
-########################################
-# Finish the diagnostic figure
-########################################
-axes[0].legend()
-axes[1].legend()
-fig.tight_layout()
+axes[1, 0].plot(moving_twiss.s, dx * 1e6, color = 'tab:blue')
+axes[1, 0].set(title = 'Horizontal closed-orbit change', xlabel = 'Nominal s [m]', ylabel = 'With motion − installed baseline [µm]')
+axes[1, 1].plot(moving_twiss.s, dy * 1e6, color = 'tab:orange')
+axes[1, 1].set(title = 'Vertical closed-orbit change', xlabel = 'Nominal s [m]', ylabel = 'With motion − installed baseline [µm]')
+for ax in (axes[0, 1], axes[1, 0], axes[1, 1]):
+    ax.grid(alpha = .2)
+fig.suptitle(f'Same ring and installation errors; dynamic field evaluated at t = {TIME_S:g} s', fontsize = 12)
+fig.tight_layout(h_pad = 2.)
 
 ################################################################################
 # Review execution costs and figures
@@ -317,9 +349,10 @@ fig.tight_layout()
 ########################################
 # Print the measured costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<24} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nCPU operation costs\n-------------------')
+    for name, seconds in timings.items():
+        print(f'{name:<24} {seconds:9.4f} s')
 
 ########################################
 # Display the figures

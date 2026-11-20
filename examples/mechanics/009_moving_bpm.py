@@ -3,7 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Compare nominal beam coordinates with the electrical readout of a moving BPM.
+# Does centring a moving BPM also centre the beam in the design coordinates?
 # Correct frozen states using each readout; this is a quasi-static study, not feedback tracking.
 
 ################################################################################
@@ -65,6 +65,11 @@ SAMPLE_STEP_S = 1 / 256
 N_STATES   = 24
 DURATION_S = .4
 
+########################################
+# Optional performance diagnostics
+########################################
+PRINT_TIMINGS = False
+
 ################################################################################
 # Set up the ordinary Xtrack line
 ################################################################################
@@ -74,9 +79,6 @@ DURATION_S = .4
 ########################################
 timings = {}
 
-########################################
-# Time line load and copy
-########################################
 started = perf_counter()
 
 ########################################
@@ -106,9 +108,6 @@ started = perf_counter()
 line.build_tracker()
 timings['tracker_build_s'] = perf_counter() - started
 
-########################################
-# Time reference adoption
-########################################
 started = perf_counter()
 
 ########################################
@@ -123,9 +122,6 @@ timings['reference_adoption_s'] = perf_counter() - started
 ########################################
 mech = env.mechanics
 
-########################################
-# Time geometry selection
-########################################
 started = perf_counter()
 
 ########################################
@@ -135,9 +131,6 @@ nominal = line.survey(include_element_frames = True)
 
 timings['geometry_selection_s'] = perf_counter() - started
 
-########################################
-# Time mechanics definition
-########################################
 started = perf_counter()
 
 ########################################
@@ -163,9 +156,6 @@ timings['mechanics_definition_s'] = perf_counter() - started
 # Calibrate the actual electrical readout
 ################################################################################
 
-########################################
-# Time readout calibration
-########################################
 started = perf_counter()
 
 ########################################
@@ -181,9 +171,11 @@ reference_y = float(line.mechanics.read_bpm(
 # Probe the signed corrector response in both directions
 ########################################
 readings = []
+nominal_readings = []
 for kick in (-PROBE_RAD, PROBE_RAD):
     env[CORRECTOR] = kick
     probe = line.twiss4d()
+    nominal_readings.append(float(probe['y', BPM]))
     readings.append(float(line.mechanics.read_bpm(
         BPM, x = probe['x', BPM], y = probe['y', BPM],
         px = probe['px', BPM], py = probe['py', BPM],
@@ -193,6 +185,7 @@ for kick in (-PROBE_RAD, PROBE_RAD):
 # Calculate the response and restore the corrector
 ########################################
 response = (readings[1] - readings[0]) / (2 * PROBE_RAD)
+nominal_response = (nominal_readings[1] - nominal_readings[0]) / (2 * PROBE_RAD)
 env[CORRECTOR] = 0.
 
 timings['readout_calibration_s'] = perf_counter() - started
@@ -201,9 +194,6 @@ timings['readout_calibration_s'] = perf_counter() - started
 # Prepare phase-aware mechanical response records
 ################################################################################
 
-########################################
-# Start timing response preparation
-########################################
 started = perf_counter()
 
 ########################################
@@ -245,18 +235,12 @@ pickup_motion = magnet_motion.through(
 for name, record in [('girder_motion', girder_motion), ('magnet_motion', magnet_motion), ('pickup_motion', pickup_motion)]:
     mech.add_source(name, record, targets = record.target_names, reference = 'absolute')
 
-########################################
-# Record response preparation cost
-########################################
 timings['response_records_s'] = perf_counter() - started
 
 ################################################################################
 # Compare the two correction targets
 ################################################################################
 
-########################################
-# Start timing the frozen-state study
-########################################
 started = perf_counter()
 
 ########################################
@@ -264,6 +248,7 @@ started = perf_counter()
 ########################################
 state_times = np.linspace(0., DURATION_S, N_STATES, endpoint = False)
 beam_y, pickup_y, actual_y, nominal_corrected, pickup_corrected = [], [], [], [], []
+nominal_beam_after, pickup_beam_after = [], []
 
 ########################################
 # Repeat the frozen correction comparison
@@ -299,17 +284,18 @@ for time_s in state_times:
     ########################################
     # Correct using each readout and remeasure the actual pickup
     ########################################
-    for error, destination in [(beam_y[-1], nominal_corrected), (observed, pickup_corrected)]:
-        env[CORRECTOR] = -error / response
+    for error, calibration, destination, beam_destination in [
+        (beam_y[-1], nominal_response, nominal_corrected, nominal_beam_after),
+        (observed, response, pickup_corrected, pickup_beam_after),
+    ]:
+        env[CORRECTOR] = -error / calibration
         corrected = line.twiss4d()
+        beam_destination.append(float(corrected['y', BPM] - reference_twiss['y', BPM]))
         destination.append(float(line.mechanics.read_bpm(
             BPM, time_s = time_s, x = corrected['x', BPM], y = corrected['y', BPM],
             px = corrected['px', BPM], py = corrected['py', BPM],
         ).y) - reference_y)
 
-########################################
-# Record the frozen-state and correction cost
-########################################
 timings['frozen_states_and_correction_s'] = perf_counter() - started
 
 ################################################################################
@@ -320,45 +306,89 @@ timings['frozen_states_and_correction_s'] = perf_counter() - started
 # Report the signed response and residual RMS
 ########################################
 print('Moving pickup and frozen orbit correction\n-----------------------------------------')
-print(f'Measured signed corrector response [m/rad]: {response:.6f}')
-print('Quantity                         RMS [nm]')
+print(f'Signed corrector -> design-coordinate response [m/rad]: {nominal_response:.6f}')
+print(f'Signed corrector -> electrical BPM response [m/rad]: {response:.6f}')
+print('Frozen states share the same floor realization and corrector calibration.')
+print('Question: centre the beam on its design orbit, or centre it in the moving pickup?')
+print('Quantity                                             RMS [nm]')
 for label, values in [('Beam in nominal coordinates', beam_y), ('Pickup motion', pickup_y),
                        ('Actual pickup before correction', actual_y),
                        ('After nominal-coordinate correction', nominal_corrected),
-                       ('After moving-pickup correction', pickup_corrected)]:
-    print(f'{label:<38} {np.sqrt(np.mean(np.asarray(values)**2)) * 1e9:12.6f}')
+                       ('After moving-pickup correction', pickup_corrected),
+                       ('True beam after nominal-coordinate correction', nominal_beam_after),
+                       ('True beam after moving-pickup correction', pickup_beam_after)]:
+    print(f'{label:<50} {np.sqrt(np.mean(np.asarray(values)**2)) * 1e9:12.6f}')
 print('Readout uses ray/plane intersection, including pickup orientation and beam slope.')
 print('Each state is frozen Twiss. No causal controller or turn-by-turn feedback is claimed.')
 
 ################################################################################
-# Inspect why the observation frame matters
+# Draw the moving electrical zero and compare the two correction objectives
 ################################################################################
 
 ########################################
-# Prepare motion and correction panels
+# Inspect the state with the largest pickup displacement
 ########################################
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6.5))
+state_index = int(np.argmax(np.abs(pickup_y)))
+chosen_time = state_times[state_index]
+setup_fig, setup_axes = plt.subplots(2, 1, figsize = (9, 5.7), gridspec_kw = {'height_ratios': [1, 2]})
+chain_ax, position_ax = setup_axes
+chain_ax.set_axis_off()
+box_left = (.015, .270, .525, .780)
+box_width = .205
+for left, label in zip(box_left,
+                       ('Prescribed\nfloor', f'Loaded girder\n{GIRDER_HZ:g} Hz',
+                        f'Quad / girder\nresponse\n{MAGNET_HZ:g} Hz',
+                        f'Pickup / quad\nresponse\n{BPM_HZ:g} Hz')):
+    chain_ax.add_patch(plt.Rectangle((left, .25), box_width, .60, transform = chain_ax.transAxes,
+                                     fc = '0.95', ec = '0.4', lw = .8))
+    chain_ax.text(left + box_width / 2, .55, label, ha = 'center', va = 'center',
+                  transform = chain_ax.transAxes, fontsize = 9)
+for left, next_left in zip(box_left[:-1], box_left[1:]):
+    chain_ax.annotate('', xy = (next_left, .55), xytext = (left + box_width, .55),
+                      xycoords = 'axes fraction',
+                      arrowprops = {'arrowstyle': '->', 'color': '0.4', 'shrinkA': 0, 'shrinkB': 0})
+chain_ax.set_title('Supplied response chain (schematic); pickup and beam have different origins')
+positions = np.array([beam_y[state_index], nominal_beam_after[state_index], pickup_beam_after[state_index]]) * 1e9
+pickup_position = float(pickup_y[state_index]) * 1e9
+for index, value in enumerate(positions):
+    position_ax.plot(index, value, 'o', color = 'tab:blue', ms = 7)
+    position_ax.plot(index, pickup_position, 's', mfc = 'none', mec = 'tab:orange', ms = 8)
+    position_ax.plot([index, index], [pickup_position, value], ':', color = '0.4')
+position_ax.axhline(0., color = '0.5', ls = '--', label = 'Design beam coordinate')
+position_ax.plot([], [], 'o', color = 'tab:blue', label = 'True beam position')
+position_ax.plot([], [], 's', mfc = 'none', mec = 'tab:orange', label = 'Moving pickup centre')
+position_ax.set(xticks = range(3), xticklabels = ['No correction', 'Correct design-coordinate error', 'Correct electrical BPM error'],
+                ylabel = 'Vertical displacement from design [nm]', title = f'One frozen state at t = {chosen_time:.4g} s')
+position_ax.legend(fontsize = 8, loc = 'best')
+position_ax.margins(y = .25)
+setup_fig.suptitle(f'Electrical pickup roll is {PICKUP_ROLL_RAD * 1e3:g} mrad; points below show nominal vertical coordinates', fontsize = 10)
+setup_fig.tight_layout()
 
 ########################################
-# Separate nominal beam motion from pickup motion
+# Compare actual electrical residuals and true beam motion over the same states
 ########################################
-for label, values in [('Beam, nominal frame', beam_y), ('Pickup motion', pickup_y), ('Actual BPM', actual_y)]:
-    axes[0].plot(state_times, np.asarray(values) * 1e9, '.-', label = label)
-
-########################################
-# Compare actual pickup residuals after each correction
-########################################
-for label, values in [('Nominal-coordinate correction', nominal_corrected), ('Moving-BPM correction', pickup_corrected)]:
-    axes[1].plot(state_times, np.asarray(values) * 1e9, '.-', label = label)
-
-########################################
-# Label and arrange both comparisons
-########################################
-axes[0].set(ylabel = 'Vertical coordinate [nm]')
-axes[1].set(xlabel = 'Frozen physical time [s]', ylabel = 'Actual BPM residual [nm]')
-axes[0].legend(fontsize = 8)
-axes[1].legend(fontsize = 8)
+fig, axes = plt.subplots(2, 2, sharex = True, figsize = (10, 6.5))
+for label, values in [('Beam in design coordinates', beam_y), ('Pickup-centre displacement', pickup_y)]:
+    axes[0, 0].plot(state_times, np.asarray(values) * 1e9, '.-', label = label)
+axes[0, 0].set(title = 'Before correction: two independently moving objects', ylabel = 'Vertical displacement [nm]')
+axes[0, 1].plot(state_times, np.asarray(actual_y) * 1e9, '.-', label = 'Actual electrical readout')
+axes[0, 1].set(title = 'What the moving BPM measures', ylabel = 'Electrical BPM error [nm]')
+for label, electrical, beam in [
+    ('Correct design coordinates', nominal_corrected, nominal_beam_after),
+    ('Correct electrical readout', pickup_corrected, pickup_beam_after),
+]:
+    axes[1, 0].plot(state_times, np.asarray(electrical) * 1e9, '.-', label = label)
+    axes[1, 1].plot(state_times, np.asarray(beam) * 1e9, '.-', label = label)
+axes[1, 0].set(title = 'Electrical residual after correction', ylabel = 'Electrical BPM error [nm]')
+axes[1, 1].set(title = 'True beam position after correction', ylabel = 'Beam error in design coordinates [nm]')
+for ax in axes.flat:
+    ax.set_xlabel('Frozen physical time [s]')
+    ax.grid(alpha = .2)
+    ax.legend(fontsize = 8)
+fig.suptitle('Centring a moving electrical zero and restoring the design orbit are different objectives', fontsize = 11)
 fig.tight_layout()
+env[CORRECTOR] = 0.
+mech.restore()
 
 ################################################################################
 # Review execution costs and figures
@@ -367,9 +397,10 @@ fig.tight_layout()
 ########################################
 # Print the measured costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<36} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nReference CPU costs\n-------------------')
+    for name, seconds in timings.items():
+        print(f'{name:<36} {seconds:9.4f} s')
 
 ########################################
 # Display the figures

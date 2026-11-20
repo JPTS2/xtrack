@@ -26,6 +26,7 @@ import xtrack as xt
 ########################################
 LATTICE_FILE = 'test_data/example_lattices/demo_ring/lattice.py'
 QUADRUPOLES  = ['arc.s1.c1.qf.in', 'arc.s1.c1.qd', 'arc.s1.c1.qf.out']
+OBSERVATION_BPM = 'bpm.s1.f'
 
 ########################################
 # Current and alternative pump mounts
@@ -58,14 +59,9 @@ INSPECT_TIME_S = .01
 # Set up the ordinary Xtrack line
 ################################################################################
 
-########################################
-# Start performance monitoring
-########################################
 timings = {}
+PRINT_TIMINGS = False                 # Optional diagnostics after the physical comparison
 
-########################################
-# Time line load and copy
-########################################
 started = perf_counter()
 
 ########################################
@@ -95,9 +91,6 @@ timings['tracker_build_s'] = perf_counter() - started
 ########################################
 mech = env.mechanics
 
-########################################
-# Time reference adoption
-########################################
 started = perf_counter()
 
 ########################################
@@ -107,9 +100,6 @@ line.mechanics.adopt_reference()
 
 timings['reference_adoption_s'] = perf_counter() - started
 
-########################################
-# Time mechanics definition
-########################################
 started = perf_counter()
 
 ########################################
@@ -125,9 +115,6 @@ pump = mech.new_body('pump', kind = 'equipment', parent = girders[0], mount = xt
 ))
 timings['mechanics_definition_s'] = perf_counter() - started
 
-########################################
-# Time the comparison and receiver geometry separately
-########################################
 started = perf_counter()
 
 ########################################
@@ -148,9 +135,6 @@ timings['source_geometry_s'] = perf_counter() - started
 # Define the two pump coupling paths
 ################################################################################
 
-########################################
-# Start timing field preparation
-########################################
 started = perf_counter()
 
 ########################################
@@ -191,9 +175,6 @@ mech.add_source('pump_mount_path', xt.mechanics.Harmonic(
     amplitude = DIRECT_MOUNT_PEAK_M, frequency_hz = FREQUENCY_HZ,
 ), targets = [girders[0].name], component = 'y')
 
-########################################
-# Record source preparation cost
-########################################
 timings['sample_field_s'] = perf_counter() - started
 
 ################################################################################
@@ -209,9 +190,9 @@ distance = np.linalg.norm(positions - pump.nominal_frame.XYZ, axis = 1)
 # Report amplitude gains, delays and direct coupling
 ########################################
 print('Mounted pump and supplied propagation\n--------------------------------------')
-print('Support                 Distance [m]    Amplitude gain    Delay [ms]')
-for girder, radius in zip(girders, distance):
-    print(f'{girder.name:<24} {radius:10.4f} {np.exp(-radius / DECAY_LENGTH_M):17.6f}'
+print('Receiver       Distance [m]    Amplitude gain    Delay [ms]')
+for index, radius in enumerate(distance):
+    print(f'{"Support " + str(index + 1):<14} {radius:10.4f} {np.exp(-radius / DECAY_LENGTH_M):17.6f}'
           f' {radius / PROPAGATION_SPEED_M_S * 1e3:13.5f}')
 print(f'Pump mount local x/y/s [m]: {PUMP_LOCAL_M}')
 print(f'Direct mount tone [nm peak]: {DIRECT_MOUNT_PEAK_M * 1e9:.3f}')
@@ -219,55 +200,125 @@ print('The floor law and direct coupling are supplied models, not inferred elast
 print('The pump body fixes nominal mounting; propagation uses that reference geometry.')
 
 ################################################################################
-# Compare the footprint and receiver histories
+# Separate direct coupling, propagation and their combined beam effect
 ################################################################################
 
 ########################################
-# Prepare a spatial grid around the pump
+# Compare matched frozen closed orbits with each path enabled in turn
+########################################
+# Every case uses the same line and pump phase. The floor path includes supplied
+# geometric attenuation/delay; direct coupling acts only on the mounted support.
+mech.apply(time_s = INSPECT_TIME_S, disabled_sources = tuple(mech.sources))
+baseline_twiss = line.twiss4d()
+base_y = baseline_twiss['y', OBSERVATION_BPM]
+path_cases = {
+    'Direct mount path only': ('pump_floor_path',),
+    'Propagation path only': ('pump_mount_path',),
+    'Both paths': (),
+}
+closed_orbit_changes = {}
+first_support_displacements = {}
+for label, disabled in path_cases.items():
+    mech.apply(time_s = INSPECT_TIME_S, disabled_sources = disabled)
+    state = mech.survey(time_s = INSPECT_TIME_S) if not disabled else mech.get_body_poses(
+        time_s = INSPECT_TIME_S, disabled_sources = disabled,
+    )
+    first_support_displacements[label] = float(env[QUADRUPOLES[0]].shift_y)
+    closed_orbit_changes[label] = line.twiss4d()['y', OBSERVATION_BPM] - base_y
+print(f'\nMatched physical states at t = {INSPECT_TIME_S:g} s\n'
+      '------------------------------------------------')
+print(f'{"Enabled coupling":<27} {"First quad y [nm]":>18} {"BPM orbit change [nm]":>24}')
+for label in path_cases:
+    print(f'{label:<27} {first_support_displacements[label] * 1e9:+18.3f}'
+          f' {closed_orbit_changes[label] * 1e9:+24.3f}')
+print(f'The BPM is {OBSERVATION_BPM}; these are fixed-map closed orbits, not a dynamic feedback run.')
+
+########################################
+# Draw where the pump is mounted and where the propagated disturbance arrives
 ########################################
 offset = np.linspace(-50, 50, 101)
 xx, zz = np.meshgrid(offset, offset)
 grid = pump.nominal_frame.XYZ + np.column_stack((xx.ravel(), np.zeros(xx.size), zz.ravel()))
 gain = np.exp(-np.linalg.norm(grid - pump.nominal_frame.XYZ, axis = 1) / DECAY_LENGTH_M)
-
-########################################
-# Prepare footprint and time-history panels
-########################################
-fig, axes = plt.subplots(1, 2, figsize = (11, 4.2))
-
-########################################
-# Draw the supplied amplitude footprint and receiver locations
-########################################
-image = axes[0].pcolormesh(xx, zz, gain.reshape(xx.shape), shading = 'auto', vmin = 0, vmax = 1)
-axes[0].plot(0, 0, 'r*', ms = 12, label = 'Pump')
+fig, axes = plt.subplots(2, 2, figsize = (11, 7))
+image = axes[0, 0].pcolormesh(xx, zz, gain.reshape(xx.shape), shading = 'auto', vmin = 0, vmax = 1)
+axes[0, 0].plot(0, 0, 'r*', ms = 12, label = 'Current pump mount')
+alt = alternative.XYZ - pump.nominal_frame.XYZ
+axes[0, 0].plot(alt[0], alt[2], '*', color = 'lime', mec = 'k', ms = 10, label = 'Alternative mount')
 relative = positions - pump.nominal_frame.XYZ
-axes[0].plot(relative[:, 0], relative[:, 2], 'wo', mec = 'k', label = 'Support anchors')
-axes[0].set(xlabel = 'World X relative to pump [m]', ylabel = 'World Z relative to pump [m]',
-            aspect = 'equal', title = 'Supplied floor amplitude footprint')
-axes[0].legend(fontsize = 8)
-fig.colorbar(image, ax = axes[0], label = 'Displacement gain [m/m]')
+for index, point in enumerate(relative):
+    axes[0, 0].plot(point[0], point[2], 'wo', mec = 'k')
+    axes[0, 0].annotate(f'Support {index + 1}', (point[0], point[2]), xytext = (5, 4),
+                       textcoords = 'offset points', fontsize = 8)
+axes[0, 0].set(xlabel = 'World X relative to pump [m]', ylabel = 'World Z relative to pump [m]',
+               aspect = 'equal', title = 'Pump, supports and propagation gain')
+axes[0, 0].legend(fontsize = 8, loc = 'lower left')
+fig.colorbar(image, ax = axes[0, 0], label = 'Amplitude gain [m/m]')
 
 ########################################
-# Compare receiver signals and the alternative mount
+# Resolve the actual mounts and first receiver inside the larger footprint
 ########################################
-for index, girder in enumerate(girders):
-    axes[1].plot(times, field.values[:, index, 1] * 1e9, label = girder.name)
-axes[1].plot(times, other_field.values[:, 0, 1] * 1e9, '--', color = '0.4', label = 'First support, alternative mount')
+zoom = axes[0, 0].inset_axes([.54, .53, .43, .42])
+mount_points = np.array([[0., 0.], alt[[0, 2]], relative[0, [0, 2]]])
+zoom.plot(mount_points[[0, 2], 0], mount_points[[0, 2], 1], ':', color = '0.6', lw = .8)
+zoom.plot(mount_points[[1, 2], 0], mount_points[[1, 2], 1], ':', color = '0.6', lw = .8)
+for point, marker, colour, text, offset_text in [
+    (mount_points[0], '*', 'tab:red', 'Pump', (4, -10)),
+    (mount_points[1], '*', 'limegreen', 'Alt', (4, 3)),
+    (mount_points[2], 'o', 'white', '1', (-9, 4)),
+]:
+    zoom.plot(*point, marker, color = colour, mec = 'k', ms = 7 if marker == '*' else 5)
+    zoom.annotate(text, point, xytext = offset_text, textcoords = 'offset points', fontsize = 7)
+zoom.set(xlim = (mount_points[:, 0].min() - .7, mount_points[:, 0].max() + .7),
+          ylim = (mount_points[:, 1].min() - .7, mount_points[:, 1].max() + .7), aspect = 'equal')
+zoom.set_title('Mount detail: top view [m]', fontsize = 7, pad = 3)
+zoom.tick_params(labelsize = 7)
 
 ########################################
-# Label and arrange the comparison
+# Show constructive or destructive combination at the mounted support
 ########################################
-axes[1].set(xlabel = 'Physical time [s]', ylabel = 'Floor-path y [nm]', xlim = (0, .12))
-axes[1].legend(fontsize = 8)
+direct_y = DIRECT_MOUNT_PEAK_M * np.sin(2 * np.pi * FREQUENCY_HZ * times)
+floor_y = field.values[:, 0, 1]
+for values, label in [(direct_y, 'Direct mount'), (floor_y, 'Propagation'),
+                       (direct_y + floor_y, 'Combined')]:
+    axes[0, 1].plot(times, values * 1e9, label = label)
+axes[0, 1].set(xlabel = 'Physical time [s]', ylabel = 'First support y [nm]', xlim = (0, .12),
+               title = 'Two paths at the mounted support')
+axes[0, 1].legend(fontsize = 7.5, loc = 'upper center', ncol = 3)
+axes[0, 1].margins(y = .3)
+
+########################################
+# Compare receiver delay and the effect of moving the pump
+########################################
+for index in range(len(girders)):
+    axes[1, 0].plot(times, field.values[:, index, 1] * 1e9, label = f'Support {index + 1}')
+axes[1, 0].plot(times, other_field.values[:, 0, 1] * 1e9, '--', color = '0.35',
+                label = 'Support 1: alternative mount')
+axes[1, 0].set(xlabel = 'Physical time [s]', ylabel = 'Propagated y [nm]', xlim = (0, .12),
+               title = 'Distance changes both gain and arrival phase')
+axes[1, 0].legend(fontsize = 7.5, loc = 'upper center', ncol = 2)
+axes[1, 0].margins(y = .4)
+
+########################################
+# Connect the support disturbance to a measurable beam quantity
+########################################
+labels = list(path_cases)
+bars = axes[1, 1].barh(np.arange(len(labels)),
+                       [closed_orbit_changes[label] * 1e9 for label in labels], color = ['tab:blue', 'tab:orange', 'tab:green'])
+axes[1, 1].bar_label(bars, fmt = '%+.2f', padding = 4, fontsize = 9)
+axes[1, 1].set(yticks = np.arange(len(labels)), yticklabels = ['Direct mount', 'Propagation', 'Both paths'],
+               xlabel = 'Frozen BPM orbit change [nm]', title = 'Matched beam response at the selected phase')
+axes[1, 1].margins(x = .28)
+axes[1, 1].invert_yaxis()
+for ax in (axes[0, 1], axes[1, 0], axes[1, 1]):
+    ax.grid(alpha = .2)
+    ax.set_axisbelow(True)
 fig.tight_layout()
 
 ################################################################################
 # Inspect the combined mechanical state
 ################################################################################
 
-########################################
-# Start timing the frozen state update
-########################################
 started = perf_counter()
 
 ########################################
@@ -276,15 +327,9 @@ started = perf_counter()
 mech.apply(time_s = INSPECT_TIME_S)
 timings['apply_s'] = perf_counter() - started
 
-########################################
-# Time the read-only pose inspection separately
-########################################
 started = perf_counter()
 survey = mech.survey(time_s = INSPECT_TIME_S)
 
-########################################
-# Record the pose-inspection cost
-########################################
 timings['pose_inspection_s'] = perf_counter() - started
 
 ################################################################################
@@ -294,9 +339,10 @@ timings['pose_inspection_s'] = perf_counter() - started
 ########################################
 # Print the measured costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<24} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nCPU operation costs\n-------------------')
+    for name, seconds in timings.items():
+        print(f'{name:<32} {seconds * 1e3:10.3f} ms')
 
 ########################################
 # Display the figures

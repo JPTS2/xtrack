@@ -14,6 +14,7 @@ from pathlib import Path
 from time import perf_counter
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import numpy as np
 from scipy.signal import welch
 import xtrack as xt
@@ -67,14 +68,9 @@ CAUSAL_SAMPLE_STEP_S = 1 / 4096       # ZOH response to a held step, initially a
 # Set up the ordinary Xtrack line
 ################################################################################
 
-########################################
-# Start performance monitoring
-########################################
 timings = {}
+PRINT_TIMINGS = False                 # Optional diagnostics after the physical comparison
 
-########################################
-# Time line load and copy
-########################################
 started = perf_counter()
 
 ########################################
@@ -104,9 +100,6 @@ timings['tracker_build_s'] = perf_counter() - started
 ########################################
 mech = env.mechanics
 
-########################################
-# Time reference adoption
-########################################
 started = perf_counter()
 
 ########################################
@@ -116,9 +109,6 @@ line.mechanics.adopt_reference()
 
 timings['reference_adoption_s'] = perf_counter() - started
 
-########################################
-# Time geometry selection
-########################################
 started = perf_counter()
 
 ########################################
@@ -128,9 +118,6 @@ nominal = line.survey(include_element_frames = True)
 
 timings['geometry_selection_s'] = perf_counter() - started
 
-########################################
-# Time mechanics definition
-########################################
 started = perf_counter()
 
 ########################################
@@ -156,9 +143,6 @@ timings['mechanics_definition_s'] = perf_counter() - started
 # Define consistent loaded response paths
 ################################################################################
 
-########################################
-# Time the response-model definitions
-########################################
 started = perf_counter()
 
 ########################################
@@ -192,9 +176,6 @@ timings['response_definition_s'] = perf_counter() - started
 # Propagate one common floor realization
 ################################################################################
 
-########################################
-# Start timing source and response preparation
-########################################
 started = perf_counter()
 
 ########################################
@@ -245,18 +226,12 @@ np.testing.assert_allclose(magnet_motion.values, direct.values, rtol = 2e-12, at
 for name, motion in [('girder_response', girder_motion), ('magnet_response', magnet_motion), ('bpm_response', bpm_motion)]:
     mech.add_source(name, motion, targets = motion.target_names, reference = 'absolute')
 
-########################################
-# Record the input and response preparation cost
-########################################
 timings['sample_and_response_s'] = perf_counter() - started
 
 ################################################################################
 # Verify absolute response without double counting
 ################################################################################
 
-########################################
-# Start timing pose application
-########################################
 started = perf_counter()
 
 ########################################
@@ -265,9 +240,6 @@ started = perf_counter()
 mech.apply(time_s = INSPECT_TIME_S)
 timings['apply_s'] = perf_counter() - started
 
-########################################
-# Time the read-only pose inspection separately
-########################################
 started = perf_counter()
 survey = mech.survey(time_s = INSPECT_TIME_S)
 
@@ -278,9 +250,6 @@ expected = [np.interp(INSPECT_TIME_S, times, m.values[:, 0, 1])
             for m in (girder_motion, magnet_motion, bpm_motion)]
 np.testing.assert_allclose(survey.dynamic_Y, expected, rtol = 0, atol = 1e-12)
 
-########################################
-# Record the pose-inspection cost
-########################################
 timings['pose_inspection_s'] = perf_counter() - started
 
 ########################################
@@ -296,6 +265,64 @@ for label, record in records.items():
 print(f'Loaded cascade/direct mismatch [m]: {np.max(np.abs(magnet_motion.values-direct.values)):.3g}')
 print('The pickup response is absolute; rigid inheritance is not added again.')
 print('FFT replay is periodic offline response, not a causal startup simulation.')
+print(f'Ignoring magnet reaction loading changes magnet RMS by a factor '
+      f'{np.std(naive.values[:, 0, 1]) / np.std(magnet_motion.values[:, 0, 1]):.3f}.')
+print(f'At t = {INSPECT_TIME_S:g} s, the applied absolute body displacements [nm] are:')
+for name, value in zip(survey.name, survey.dynamic_Y):
+    print(f'  {name:<12} {value * 1e9:+.6f}')
+
+################################################################################
+# See the loaded assembly and distinguish common from relative motion
+################################################################################
+
+########################################
+# Draw the one-dimensional loaded model and its response ports
+########################################
+assembly_fig = plt.figure(figsize = (10, 6))
+assembly_grid = assembly_fig.add_gridspec(2, 2, width_ratios = [1., 1.6])
+model_ax = assembly_fig.add_subplot(assembly_grid[:, 0])
+absolute_ax = assembly_fig.add_subplot(assembly_grid[0, 1])
+relative_ax = assembly_fig.add_subplot(assembly_grid[1, 1], sharex = absolute_ax)
+model_ax.set(xlim = (-1.2, 1.2), ylim = (-.15, 3.7))
+model_ax.axis('off')
+for bottom, height, width, colour, text in [
+    (0., .18, 1.8, '0.7', 'Floor input: $u_0$'),
+    (1., .45, 1.6, 'tab:blue', f'Girder: {GIRDER_MASS_KG:g} kg\nabsolute output $u_g$'),
+    (2.15, .55, 1.2, 'tab:orange', f'Magnet: {MAGNET_MASS_KG:g} kg\nabsolute output $u_m$'),
+    (3.2, .25, .9, 'tab:green', 'Pickup: $u_b$'),
+]:
+    model_ax.add_patch(Rectangle((-width / 2, bottom), width, height,
+                                 fc = colour, ec = '0.2', alpha = .25))
+    model_ax.text(0., bottom + height / 2, text, ha = 'center', va = 'center', fontsize = 9)
+for lower, upper, text in [(.18, 1., '$k_g, c_g$'), (1.45, 2.15, '$k_m, c_m$')]:
+    yy = np.linspace(lower, upper, 13)
+    xx = .1 * np.where(np.arange(len(yy)) % 2, 1., -1.)
+    xx[[0, -1]] = 0.
+    model_ax.plot(xx, yy, color = '0.25')
+    model_ax.text(.2, (lower + upper) / 2, text, va = 'center', fontsize = 10)
+model_ax.annotate('', xy = (0., 3.2), xytext = (0., 2.7), arrowprops = {'arrowstyle': '->'})
+model_ax.text(.13, 2.95, 'Conditional pickup\nresponse; negligible load', fontsize = 8, va = 'center')
+model_ax.set_title('Loaded vertical assembly\nSchematic; heights are not model inputs', fontsize = 10)
+
+########################################
+# Follow the same floor realization through the absolute response chain
+########################################
+for label, record in [('Floor', floor), ('Loaded girder', girder_motion),
+                       ('Magnet', magnet_motion), ('Pickup', bpm_motion)]:
+    absolute_ax.plot(times, record.values[:, 0, 1] * 1e9, label = label)
+absolute_ax.set(ylabel = 'Absolute displacement [nm]', xlim = (0., .5),
+                title = 'One common floor record drives every stage')
+absolute_ax.legend(ncol = 2, fontsize = 8, loc = 'upper right')
+relative_ax.plot(times, (magnet_motion.values[:, 0, 1] - girder_motion.values[:, 0, 1]) * 1e9,
+                 label = 'Magnet minus girder')
+relative_ax.plot(times, (bpm_motion.values[:, 0, 1] - magnet_motion.values[:, 0, 1]) * 1e9,
+                 label = 'Pickup minus magnet')
+relative_ax.set(xlabel = 'Physical time [s]', ylabel = 'Relative displacement [nm]',
+                title = 'Response outputs already include the upstream motion')
+relative_ax.legend(fontsize = 8, loc = 'upper right')
+for ax in (absolute_ax, relative_ax):
+    ax.grid(alpha = .2)
+assembly_fig.tight_layout()
 
 ################################################################################
 # Inspect gain, phase, spectra and relative pickup motion
@@ -325,11 +352,11 @@ for label, record in records.items():
     axes[0, 1].loglog(f[1:], density[1:], label = label)
 
 ########################################
-# Inspect magnet motion and pickup motion relative to the magnet
+# Compare the loaded model with an unloaded approximation
 ########################################
-axes[1, 1].plot(times, magnet_motion.values[:, 0, 1] * 1e9, label = 'Magnet')
-axes[1, 1].plot(times, (bpm_motion.values[:, 0, 1]-magnet_motion.values[:, 0, 1]) * 1e9,
-                 label = 'BPM minus magnet')
+axes[1, 1].plot(times, magnet_motion.values[:, 0, 1] * 1e9, label = 'Loaded assembly: magnet')
+axes[1, 1].plot(times, naive.values[:, 0, 1] * 1e9, '--',
+                 label = 'Ignoring magnet loading')
 
 ########################################
 # Label the spectral and time-domain comparisons
@@ -337,7 +364,7 @@ axes[1, 1].plot(times, (bpm_motion.values[:, 0, 1]-magnet_motion.values[:, 0, 1]
 axes[0, 0].set(ylabel = 'Absolute displacement gain [m/m]')
 axes[1, 0].set(xlabel = 'Frequency [Hz]', ylabel = 'Phase [deg]')
 axes[0, 1].set(xlabel = 'Frequency [Hz]', ylabel = 'PSD [m²/Hz]', xlim = (.5, 120), ylim = (1e-24, 1e-16))
-axes[1, 1].set(xlabel = 'Physical time [s]', ylabel = 'Displacement [nm]', xlim = (0, 1))
+axes[1, 1].set(xlabel = 'Physical time [s]', ylabel = 'Displacement [nm]', xlim = (0, .5), title = 'Changing the loading changes the physical motion')
 axes[0, 0].legend(fontsize = 8)
 axes[0, 1].legend(fontsize = 8)
 axes[1, 1].legend(fontsize = 8)
@@ -347,9 +374,6 @@ fig.tight_layout()
 # Demonstrate causal startup and persistent state
 ################################################################################
 
-########################################
-# Start timing causal replay
-########################################
 started = perf_counter()
 
 ########################################
@@ -398,9 +422,10 @@ startup_fig.tight_layout()
 ########################################
 # Print the measured costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<24} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nCPU operation costs\n-------------------')
+    for name, seconds in timings.items():
+        print(f'{name:<32} {seconds * 1e3:10.3f} ms')
 
 ########################################
 # Display the figures

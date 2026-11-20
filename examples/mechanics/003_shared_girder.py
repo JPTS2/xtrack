@@ -23,23 +23,24 @@ import xtrack as xt
 ########################################
 # Two line lengths
 ########################################
-FORWARD_RETURN_M  = 100.
-BACKWARD_RETURN_M = 180.
+FORWARD_RETURN_M  = 100000.
+BACKWARD_RETURN_M = 180000.
 
 ########################################
 # Common world displacement
 ########################################
 AMPLITUDE_M  = 50e-9
-FREQUENCY_HZ = 1e5                    # High on purpose: turn numbers differ visibly
+FREQUENCY_HZ = 500.                   # Makes the distinct passage sampling visible
 
 ########################################
 # Shared physical origin and independent beam clocks
 ########################################
 TIME_ORIGIN_S  = 0.                   # Shared physical origin, not a shared turn counter
-N_TURNS        = 64
-SAMPLE_STEP_S  = 1e-8
+N_TURNS        = 32
+SAMPLE_STEP_S  = 1e-5
 N_SAMPLES      = 8192
-COMPARE_TIME_S = 1e-5
+COMPARE_TIME_S = .002
+PRINT_TIMINGS  = False
 
 ################################################################################
 # Set up two ordinary line occurrences
@@ -211,49 +212,93 @@ backward.mechanics.apply(time_s = COMPARE_TIME_S, time_series = motion)
 np.testing.assert_allclose(env['q.forward'].shift_x, -env['q.backward'].shift_x, atol = 1e-15, rtol = 0)
 
 ########################################
-# Report the different turn intervals and local coordinates
+# Verify that the two local descriptions put the magnet centre at one world point
 ########################################
-print('Shared body and separate beam clocks\n------------------------------------')
-print('Beam       Turn spacing [µs]    Last sampled time [µs]')
+world_centres = []
+for beam_line, name in [(forward, 'q.forward'), (backward, 'q.backward')]:
+    frame = beam_line.mechanics.get_element_poses(time_s = COMPARE_TIME_S, time_series = motion)[name]
+    world_centres.append(frame.XYZ + frame.matrix[:3, :3] @ [0., 0., .5])
+np.testing.assert_allclose(world_centres[0], world_centres[1], atol = 1e-14, rtol = 0)
+shared_x_nm = world_centres[0][0] * 1e9
+
+########################################
+# Describe one physical displacement in the two beam coordinate systems
+########################################
+print('One girder, two beam coordinate systems\n--------------------------------------')
+print('The two zero-strength test elements occupy the same world segment.')
+print('Forward local s follows +Z; backward local s follows -Z.')
+print('Backward local x therefore points towards -X. Both local y axes point towards +Y.')
+print(f'At the same physical time t = {COMPARE_TIME_S * 1e3:g} ms:')
+print('Beam        World centre X [nm]    Line-local shift x [nm]')
+for label, name in [('Forward', 'q.forward'), ('Backward', 'q.backward')]:
+    print(f'{label:<11} {shared_x_nm:+20.3f} {env[name].shift_x * 1e9:+26.3f}')
+print('Opposite local signs describe the same moved magnet, not opposite physical motion.')
+print('\nIndependent passage sampling\n----------------------------')
+print('Beam       Turn spacing [ms]    Last sampled physical time [ms]')
 for label, (sampled_times, _) in histories.items():
-    print(f'{label:<10} {np.diff(sampled_times).mean() * 1e6:16.6f} {sampled_times[-1] * 1e6:25.6f}')
-print(f'Same-time local x forward / backward [nm]: {env["q.forward"].shift_x * 1e9:+.6f} / '
-      f'{env["q.backward"].shift_x * 1e9:+.6f}')
-print('Both lines query one immutable field; running one does not advance the other.')
-print('This does not schedule causal shared filters, beam encounters or controllers.')
+    print(f'{label:<10} {np.diff(sampled_times).mean() * 1e3:16.6f} {sampled_times[-1] * 1e3:33.6f}')
+print('Each beam reads one immutable physical field at its own passage times.')
+print('This example isolates geometry and clocks; causal shared responses/controllers require scheduling.')
 
 ################################################################################
-# Compare physical time with turn number
+# Draw the shared geometry before comparing its coordinate descriptions
 ################################################################################
 
 ########################################
-# Prepare world-frame and line-local panels
+# Show the common support and the reversed local axes
 ########################################
-fig, axes = plt.subplots(2, 1, figsize = (8, 6.5))
+fig, axes = plt.subplots(2, 2, figsize = (10, 7))
+ax = axes[0, 0]
+nominal_box = np.array([[0., -.08], [1., -.08], [1., .08], [0., .08], [0., -.08]])
+moved_box = nominal_box + [0., shared_x_nm * 1e-3]  # ×1,000,000 geometry gain
+ax.plot(*nominal_box.T, '--', color = '0.65', label = 'Installed shared support')
+ax.fill(*moved_box.T, color = 'tab:blue', alpha = .15)
+ax.plot(*moved_box.T, color = 'tab:blue', label = 'Same support displaced towards +X')
+for z0, z1, height, colour, text in [(0., 1., -.16, 'tab:blue', 'Forward: local +s'),
+                                    (1., 0., -.24, 'tab:orange', 'Backward: local +s')]:
+    ax.annotate('', xy = (z1, height), xytext = (z0, height),
+                arrowprops = {'arrowstyle': '->', 'color': colour, 'lw': 1.5})
+    ax.text(.5, height - .025, text, color = colour, ha = 'center', va = 'top', fontsize = 9)
+ax.annotate('Forward +x', xy = (.35, .23), xytext = (.35, .02), ha = 'center', fontsize = 9,
+            arrowprops = {'arrowstyle': '->', 'color': 'tab:blue'})
+ax.annotate('Backward +x', xy = (.72, -.07), xytext = (.72, .2), ha = 'center', fontsize = 9,
+            arrowprops = {'arrowstyle': '->', 'color': 'tab:orange'})
+ax.set(title = 'One physical support; opposite beam axes', xlabel = 'World Z [m]',
+       ylabel = 'World X [m], motion ×1,000,000', xlim = (-.1, 1.1), ylim = (-.33, .30))
+# Keep the shared-body key outside the opposed-axis schematic.
+handles, labels = ax.get_legend_handles_labels()
+fig.legend(handles, labels, loc = 'lower center', ncol = 2, fontsize = 8)
 
 ########################################
-# Evaluate the continuous shared world motion
+# Put both sampled histories into world coordinates on equal footing
 ########################################
-curve_time = np.linspace(0, max(t[-1] for t, _ in histories.values()), 1000)
+curve_time = np.linspace(0, max(t[-1] for t, _ in histories.values()), 1200)
 curve_x = source.evaluate(curve_time, np.array([girder.nominal_frame.XYZ]))[:, 0, 0]
-axes[0].plot(curve_time * 1e6, curve_x * 1e9, color = '0.6', label = 'Shared world motion')
-
-########################################
-# Overlay both beam histories with their coordinate signs
-########################################
-for label, sign in [('Forward', 1.), ('Backward', -1.)]:
+axes[0, 1].plot(curve_time * 1e3, curve_x * 1e9, color = '0.7', lw = 1, label = 'Prescribed world motion')
+for label, sign, marker in [('Forward', 1., 'o'), ('Backward', -1., 's')]:
     sampled_times, local_x = histories[label]
-    axes[0].plot(sampled_times * 1e6, sign * local_x * 1e9, '.', label = label)
-    axes[1].plot(np.arange(N_TURNS), local_x * 1e9, '.-', label = label)
+    axes[0, 1].plot(sampled_times * 1e3, sign * local_x * 1e9, marker,
+                    ms = 4, mfc = 'none', label = label + ' passages')
+    axes[1, 0].plot(sampled_times * 1e3, local_x * 1e9, '.-', label = label)
+axes[0, 1].set(title = 'Both beams measure the same world displacement', xlabel = 'Physical time [ms]', ylabel = 'World X displacement [nm]')
+axes[1, 0].set(title = 'The line-local horizontal coordinates have opposite signs', xlabel = 'Physical time [ms]', ylabel = 'Local horizontal alignment [nm]')
+for ax in (axes[0, 1], axes[1, 0]):
+    ax.legend(fontsize = 8)
+    ax.grid(alpha = .2)
 
 ########################################
-# Label physical time and independent turn indices
+# Compare both descriptions at exactly the same time
 ########################################
-axes[0].set(xlabel = 'Physical time [µs]', ylabel = 'World X [nm]')
-axes[1].set(xlabel = 'Turn index in each beam', ylabel = 'Line-local x [nm]')
-axes[0].legend()
-axes[1].legend()
-fig.tight_layout()
+labels = ['Forward', 'Backward']
+local_values = [env['q.forward'].shift_x * 1e9, env['q.backward'].shift_x * 1e9]
+xx = np.arange(2)
+axes[1, 1].bar(xx - .18, [shared_x_nm] * 2, width = .34, label = 'World X displacement')
+axes[1, 1].bar(xx + .18, local_values, width = .34, label = 'Local x alignment')
+axes[1, 1].axhline(0., color = '0.5', lw = .7)
+axes[1, 1].set(xticks = xx, xticklabels = labels, ylabel = 'Displacement [nm]',
+                title = f'Same physical time: t = {COMPARE_TIME_S * 1e3:g} ms')
+axes[1, 1].legend(fontsize = 8)
+fig.tight_layout(rect = (0., .045, 1., 1.), h_pad = 2.)
 
 ################################################################################
 # Review execution costs and figures
@@ -262,9 +307,11 @@ fig.tight_layout()
 ########################################
 # Print the measured costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<30} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nCPU operation costs\n-------------------')
+if PRINT_TIMINGS:
+    for name, seconds in timings.items():
+        print(f'{name:<30} {seconds:9.4f} s')
 
 ########################################
 # Display the figures

@@ -5,7 +5,8 @@
 
 # Put the requested FCC-ee development lattice on provisional quad supports.
 # Resolve one common floor realization through girder and magnet responses.
-# This is a runnable mechanics lesson, not an engineering support assignment.
+# Compare actual tracked beam motion with the same installation held static.
+# The support assignments and response classes remain illustrative.
 
 ################################################################################
 # Required packages
@@ -112,7 +113,7 @@ DISPLACEMENT_SCALE = 2e7
 ROTATION_SCALE     = 2e7
 SAVE_GIF = False
 GIF_FILE = Path(gettempdir()) / 'xtrack_fcc_quad_motion.gif'
-PLOT_MAGNIFIED_SURVEY = True
+PLOT_MAGNIFIED_SURVEY = False                    # Optional generic 3D port inspector
 
 ################################################################################
 # Load the existing FCC line and prepare ordinary tracking
@@ -487,6 +488,37 @@ history_times = times[times >= 0.]
 quad_history = quad_row.get_time_series(time_s = history_times)
 
 ########################################
+# Track three matched physical cases outside the performance measurements
+########################################
+# These diagnostic calls include an entrance monitor and are never included
+# in the warm timing medians above. All use the same fresh particle launch.
+beam_diagnostic_started = perf_counter()
+beam_cases = {}
+for label in ('Design lattice', 'Static installation error', 'Installation + moving magnets'):
+    if label == 'Design lattice':
+        mech.restore()
+    elif label == 'Static installation error':
+        mech.apply(disabled_sources = tuple(mech.sources))
+    else:
+        line.mechanics.enable_vibrations(time_origin_s = 0.)
+    probe = line.build_particles(x = 1e-7, y = 1e-8)
+    line.track(probe, num_turns = N_TURNS, turn_by_turn_monitor = True)
+    CONTEXT.synchronize()
+    assert np.all(CONTEXT.nparray_from_context_array(probe.state) > 0)
+    beam_cases[label] = {
+        coordinate: CONTEXT.nparray_from_context_array(getattr(line.record_last_track, coordinate))[0].copy()
+        for coordinate in ('x', 'y')
+    }
+line.mechanics.disable_vibrations()
+mech.apply(time_s = INSPECT_TIME_S)
+beam_difference = {
+    coordinate: beam_cases['Installation + moving magnets'][coordinate] - beam_cases['Static installation error'][coordinate]
+    for coordinate in ('x', 'y')
+}
+timings['optional_matched_beam_tracking_s'] = perf_counter() - beam_diagnostic_started
+
+
+########################################
 # Report the model assumptions, bounded allocations and measured costs
 ########################################
 print('FCC-ee prescribed ground motion\n-------------------------------')
@@ -513,6 +545,14 @@ for count in PARTICLE_COUNTS:
     print(f'{count:9d} {nominal_ms:20.6f} {frozen_ms:19.6f} {dynamic_ms:20.6f} {nominal_slowdowns[count]:17.4f} {slowdowns[count]:16.4f}')
     print(f'  First-particle final x change from frozen case [nm]: {(dynamic_final_x[count][0] - frozen_final_x[count][0]) * 1e9:.6f}')
 source_table.cols['name model reference n_targets'].show()
+print('\nWhat did the moving magnets do to the beam?\n------------------------------------------')
+print('Three diagnostic runs use the same launch and monitor the beam at the ring origin.')
+for coordinate in ('x', 'y'):
+    difference_nm = beam_difference[coordinate] * 1e9
+    print(f'Moving minus static-installation beam {coordinate}: '
+          f'RMS {np.sqrt(np.mean(difference_nm**2)):.6f} nm; '
+          f'largest absolute change {np.max(np.abs(difference_nm)):.6f} nm.')
+print('These monitored calls are separate from the unmonitored performance comparison.')
 
 ################################################################################
 # Plot the floor-to-girder-to-magnet hierarchy
@@ -522,15 +562,17 @@ source_table.cols['name model reference n_targets'].show()
 # Compare records at the selected support and magnet ports
 ########################################
 fig, axes = plt.subplots(2, 1, sharex = True, figsize = (9, 6))
-for label, record in [('Floor fit at support', fitted),
-                       ('Girder at support', girder_motion)]:
-    axes[0].plot(times, record.values[:, selected_index, 1] * 1e9, label = label)
-axes[0].plot(times, magnet_motion.values[:, selected_index, 1] * 1e9,
-             label = 'Magnet at entrance', alpha = .85)
-axes[0].plot(times, pickup_motion.values[:, 0, 1] * 1e9,
-             label = 'Virtual pickup beyond quad', alpha = .85)
+for label, record, origin, index in [
+    ('Fitted floor', fitted, girders[selected_index].nominal_frame, selected_index),
+    ('Girder response', girder_motion, girders[selected_index].nominal_frame, selected_index),
+    ('Magnet response', magnet_motion, magnets[selected_index].nominal_frame, selected_index),
+]:
+    selected_record = record.select([record.target_names[index]], target_names = [pickup.name]).transport(
+        from_frames = [origin], to_frames = [pickup.nominal_frame], target_names = [pickup.name])
+    axes[0].plot(times, selected_record.values[:, 0, 1] * 1e9, label = label)
+axes[0].plot(times, pickup_motion.values[:, 0, 1] * 1e9, label = 'Virtual pickup response')
 axes[0].axvline(0., color = '.6', ls = '--')
-axes[0].set(ylabel = 'Vertical port motion [nm]', title = selected_quad)
+axes[0].set(ylabel = 'Vertical motion at pickup port [nm]', title = selected_quad + ': compare every stage at the same port')
 relative_y = magnet_motion.values[:, selected_index, 1] - magnet_input.values[:, selected_index, 1]
 axes[1].plot(times, relative_y * 1e9, label = 'Magnet minus transported girder')
 axes[1].plot(times, (pickup_motion.values[:, 0, 1] - pickup_input.values[:, 0, 1]) * 1e9,
@@ -543,9 +585,51 @@ for axis in axes:
 fig.tight_layout()
 
 ########################################
-# Plot the selected quad's composed six-coordinate history
+# Show the actual beam effect separately from the larger static orbit errors
 ########################################
-quad_history.plot()
+beam_fig = plt.figure(figsize = (10, 7))
+beam_layout = beam_fig.add_gridspec(2, 2, height_ratios = [1., 1.1])
+beam_axis = beam_fig.add_subplot(beam_layout[0, 0])
+difference_axis = beam_fig.add_subplot(beam_layout[0, 1])
+port_axis = beam_fig.add_subplot(beam_layout[1, :])
+beam_time_ms = np.arange(N_TURNS) * period_s * 1e3
+for label, record in beam_cases.items():
+    beam_axis.plot(beam_time_ms, record['y'] * 1e6, label = label)
+beam_axis.set(xlabel = 'Physical tracking time [ms]', ylabel = 'Beam y at ring origin [µm]',
+              title = 'Design, installed and moving FCC lattice')
+beam_axis.legend(fontsize = 7)
+for coordinate in ('x', 'y'):
+    difference_axis.plot(beam_time_ms, beam_difference[coordinate] * 1e9, label = coordinate)
+difference_axis.set(xlabel = 'Physical tracking time [ms]', ylabel = 'Moving minus installed beam [nm]',
+                    title = 'The additional effect of dynamic mechanics')
+difference_axis.legend(title = 'Beam coordinate', fontsize = 8)
+
+########################################
+# Draw the actual reference offsets used by the selected provisional support
+########################################
+reference = girders[selected_index].nominal_frame
+magnet_port = (reference.inverse() @ magnets[selected_index].nominal_frame).XYZ
+pickup_port = (reference.inverse() @ pickup.nominal_frame).XYZ
+feet = np.asarray(girders[selected_index].feet_local_m)
+quad_length_m = float(line[selected_quad].length)
+port_axis.plot([magnet_port[2], magnet_port[2] + quad_length_m], [magnet_port[1]] * 2,
+               color = 'tab:blue', lw = 7, alpha = .35, label = 'Quadrupole span from lattice')
+port_axis.scatter(feet[:, 2], feet[:, 1], marker = '^', s = 50, color = '.35', label = 'Four floor contacts (side projection)')
+for foot in feet:
+    port_axis.plot([foot[2], 0.], [foot[1], 0.], ':', color = '.65', lw = .8)
+port_axis.plot(0., 0., 'kD', label = 'Girder response reference')
+port_axis.plot(magnet_port[2], magnet_port[1], 'o', color = 'tab:blue', label = 'Magnet response port')
+port_axis.plot(pickup_port[2], pickup_port[1], 'o', color = 'tab:green', label = 'Virtual pickup port')
+port_axis.annotate(f'Contact offset Y = {feet[0, 1]:g} m', xy = (feet[0, 2], feet[0, 1]),
+                   xytext = (.02, .12), textcoords = 'axes fraction', fontsize = 8,
+                   arrowprops = {'arrowstyle': '->', 'color': '.4'})
+port_axis.set(xlabel = 'Selected support local s [m]', ylabel = 'Local y [m]',
+              title = 'Reference ports and fit geometry; dotted lines are lever arms, not engineering supports')
+port_axis.margins(x = .15, y = .35)
+port_axis.legend(fontsize = 7, ncol = 3, loc = 'upper center')
+for axis in (beam_axis, difference_axis):
+    axis.grid(alpha = .2)
+beam_fig.tight_layout()
 
 ########################################
 # Compare the prescribed floor PSD and supplied girder responses

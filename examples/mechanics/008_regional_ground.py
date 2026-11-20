@@ -14,6 +14,7 @@ from pathlib import Path
 from time import perf_counter
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
 import numpy as np
 from scipy.signal import welch
 from scipy.integrate import trapezoid
@@ -59,23 +60,17 @@ N_SAMPLES     = 2048
 SAMPLE_STEP_S = 1 / 128
 
 ########################################
-# Inspection and display
+# Apply one sampled state to the actual quadrupoles
 ########################################
-INSPECT_TIME_S     = .5
-DISPLACEMENT_SCALE = 1e8
+INSPECT_TIME_S = .5
 
 ################################################################################
 # Set up the ordinary Xtrack line
 ################################################################################
 
-########################################
-# Start performance monitoring
-########################################
 timings = {}
+PRINT_TIMINGS = False                 # Optional diagnostics after the physical comparison
 
-########################################
-# Time line load and copy
-########################################
 started = perf_counter()
 
 ########################################
@@ -105,9 +100,6 @@ timings['tracker_build_s'] = perf_counter() - started
 ########################################
 mech = env.mechanics
 
-########################################
-# Time reference adoption
-########################################
 started = perf_counter()
 
 ########################################
@@ -117,9 +109,6 @@ line.mechanics.adopt_reference()
 
 timings['reference_adoption_s'] = perf_counter() - started
 
-########################################
-# Time geometry selection
-########################################
 started = perf_counter()
 
 ########################################
@@ -128,9 +117,6 @@ started = perf_counter()
 quads = list(line.get_table().rows.match(element_type = 'Quadrupole').name)
 
 timings['geometry_selection_s'] = perf_counter() - started
-########################################
-# Time mechanics definition
-########################################
 started = perf_counter()
 
 girders = [line.mechanics.new_girder(f'g.{name}', elements = [name]) for name in quads]
@@ -142,9 +128,6 @@ positions = np.array([g.nominal_frame.XYZ for g in girders])
 center = positions[0]
 
 timings['mechanics_definition_s'] = perf_counter() - started
-########################################
-# Time source geometry preparation
-########################################
 started = perf_counter()
 
 region_gain = np.exp(-np.sum((positions - center)**2, axis = 1) / (2 * REGION_WIDTH_M**2))
@@ -155,9 +138,6 @@ timings['source_geometry_s'] = perf_counter() - started
 # Define the joint regional ground field
 ################################################################################
 
-########################################
-# Time source definition
-########################################
 started = perf_counter()
 
 ########################################
@@ -211,28 +191,21 @@ timings['source_definition_s'] = perf_counter() - started
 ########################################
 times = np.arange(N_SAMPLES) * SAMPLE_STEP_S
 
-########################################
-# Start timing field sampling
-########################################
 started = perf_counter()
 
 ########################################
 # Sample every receiver jointly
 ########################################
 floor = xt.mechanics.sample_field(source, time_s = times, positions_m = positions)
+# Query the very same latent background for the matched region-removed case.
+background_y = background.evaluate(times, positions)
 
-########################################
-# Record field sampling cost
-########################################
 timings['sample_field_s'] = perf_counter() - started
 
 ################################################################################
 # Check reproducibility under chunking and selection
 ################################################################################
 
-########################################
-# Start timing the reproducibility checks
-########################################
 started = perf_counter()
 
 ########################################
@@ -256,9 +229,6 @@ chunk_error = np.max(np.abs(whole - chunks))
 order_error = np.max(np.abs(whole[:, [2, 0]] - reordered))
 assert max(chunk_error, order_error) < 1e-20
 
-########################################
-# Record the check cost
-########################################
 timings['chunk_and_order_check_s'] = perf_counter() - started
 
 ################################################################################
@@ -283,10 +253,11 @@ mech.add_source('regional_site', motion, targets = motion.target_names)
 near, far = 0, int(np.argmin(region_gain))
 print('Background and regional excess PSD\n-----------------------------------')
 print(f'Supports: {len(girders)}; modes per independent field: {N_MODES}')
-print('Receiver       Region amplitude gain    Observed vertical RMS [nm]')
+print('Receiver           Region gain    Background only [nm RMS]    With local excess [nm RMS]')
 
 for label, index in [('Near region', near), ('Far from region', far)]:
-    print(f'{label:<18} {region_gain[index]:16.6f} {np.std(floor.values[:, index, 1]) * 1e9:29.6f}')
+    print(f'{label:<18} {region_gain[index]:11.6f} {np.std(background_y[:, index]) * 1e9:27.6f}'
+          f' {np.std(floor.values[:, index, 1]) * 1e9:29.6f}')
 print(f'Chunk / receiver-order discrepancies [m]: {chunk_error:.3g} / {order_error:.3g}')
 print(f'World field payload [MiB]: {floor.nbytes / 1024**2:.3f}')
 print('The regional contribution is gain² × excess PSD, plus the shared background.')
@@ -313,55 +284,102 @@ correlation_error = np.sqrt(np.mean((observed_correlation - expected_correlation
 print(f'Finite-record amplitude-correlation deviation, RMS: {correlation_error:.6f}')
 
 ################################################################################
+# Locate the noisy region and see what changes when its excess is removed
+################################################################################
+
+########################################
+# Map the actual receiver geometry and the localized PSD envelope
+########################################
+physical_fig = plt.figure(figsize = (11, 7))
+physical_grid = physical_fig.add_gridspec(2, 2)
+map_ax = physical_fig.add_subplot(physical_grid[0, 0])
+rms_ax = physical_fig.add_subplot(physical_grid[0, 1])
+near_ax = physical_fig.add_subplot(physical_grid[1, 0])
+far_ax = physical_fig.add_subplot(physical_grid[1, 1], sharex = near_ax, sharey = near_ax)
+path = line.survey()
+map_ax.plot(path.X, path.Z, color = '0.75', lw = 1, label = 'Surveyed ring')
+rms_total = np.std(floor.values[..., 1], axis = 0) * 1e9
+points = map_ax.scatter(positions[:, 0], positions[:, 2], c = rms_total, s = 15, cmap = 'viridis')
+map_ax.plot(center[0], center[2], '*', color = 'tab:red', ms = 10, label = 'Excess-PSD centre')
+map_ax.add_patch(Circle((center[0], center[2]), REGION_WIDTH_M,
+                        fill = False, ls = '--', ec = 'tab:red', label = 'Gaussian amplitude width'))
+for index, text in [(near, 'Near'), (far, 'Far')]:
+    map_ax.annotate(text, positions[index, [0, 2]], xytext = (7, 7), textcoords = 'offset points', fontsize = 9,
+                    bbox = {'fc': 'white', 'ec': 'none', 'alpha': .8})
+map_ax.set(xlabel = 'World X [m]', ylabel = 'World Z [m]', aspect = 'equal',
+            title = 'Surveyed ring and noisy region')
+map_ax.legend(fontsize = 8, loc = 'lower left')
+physical_fig.colorbar(points, ax = map_ax, label = 'Total vertical RMS [nm]')
+
+########################################
+# Compare the same background realization with and without the excess process
+########################################
+path_s = line.get_table()['s', quads]
+rms_ax.plot(path_s, np.std(background_y, axis = 0) * 1e9, '--', color = '0.4', label = 'Background alone')
+rms_ax.plot(path_s, rms_total, color = 'tab:blue', label = 'Background + local excess')
+rms_ax.plot(path_s, np.sqrt(variance) * 1e9, ':', color = 'tab:orange', label = 'Ensemble RMS target')
+rms_ax.set(xlabel = 'Nominal s [m]', ylabel = 'Vertical RMS [nm]', title = 'Local excess raises motion near its centre')
+rms_ax.legend(fontsize = 8)
+rms_ax.grid(alpha = .2)
+
+########################################
+# Give near and far receivers matching time and displacement scales
+########################################
+for ax, index, title in [(near_ax, near, 'Near the excess-PSD centre'), (far_ax, far, 'Far from the excess-PSD centre')]:
+    ax.plot(times, background_y[:, index] * 1e9, '--', color = '0.4', label = 'Same background alone')
+    ax.plot(times, floor.values[:, index, 1] * 1e9, color = 'tab:blue', label = 'Background + local excess')
+    ax.set(xlabel = 'Physical time [s]', ylabel = 'Vertical displacement [nm]', title = title, xlim = (0., 1.))
+    ax.legend(fontsize = 8, loc = 'upper right')
+    ax.grid(alpha = .2)
+physical_fig.tight_layout()
+
+########################################
+# Apply the world motion and verify that the bound quadrupoles really move
+########################################
+mech.apply(time_s = INSPECT_TIME_S)
+applied = line.survey(include_element_frames = True)
+expected_y = np.array([np.interp(INSPECT_TIME_S, times, column) for column in floor.values[..., 1].T])
+actual_y = np.array([applied.get_frame(name, which = 'elem_start').XYZ[1] for name in quads])
+np.testing.assert_allclose(actual_y, expected_y, rtol = 0, atol = 1e-15)
+print(f'At t = {INSPECT_TIME_S:g} s, largest applied quad vertical shift [nm]: {np.max(np.abs(actual_y)) * 1e9:.3f}')
+print('The field is applied through the surveyed supports; the same background is retained when excess is removed.')
+
+################################################################################
 # Inspect spatial RMS, spectra and correlation
 ################################################################################
 
 ########################################
 # Prepare the three diagnostic panels
 ########################################
-fig, axes = plt.subplots(1, 3, figsize = (13, 4))
-
-########################################
-# Plot motion strength along the ring
-########################################
-path_s = line.get_table()['s', quads]
-axes[0].plot(path_s, np.std(floor.values[..., 1], axis = 0) * 1e9, '.-', label = 'Observed RMS')
-axes[0].set(xlabel = 'Nominal s [m]', ylabel = 'Ground y RMS [nm]', title = 'One continuous site field')
+fig, axes = plt.subplots(1, 2, figsize = (10, 4))
+spectrum_ax, correlation_ax = axes
 
 ########################################
 # Compare measured spectra with the supplied PSDs
 ########################################
 for label, index in [('Near', near), ('Far', far)]:
     frequency, density = welch(floor.values[:, index, 1], fs = 1 / SAMPLE_STEP_S, nperseg = 512)
-    line_plot, = axes[1].loglog(frequency[1:], density[1:], label = f'{label}: finite record')
+    line_plot, = spectrum_ax.loglog(frequency[1:], density[1:], label = f'{label}: finite record')
     expected = np.interp(frequency, background.frequency_hz, background.density)
     expected += region_gain[index]**2 * np.interp(frequency, excess.frequency_hz, excess.density)
-    axes[1].loglog(frequency[1:], expected[1:], '--', color = line_plot.get_color(), label = f'{label}: target PSD')
-axes[1].set(xlabel = 'Frequency [Hz]', ylabel = 'PSD [m²/Hz]', xlim = (.2, 50), ylim = (1e-22, 1e-16))
+    spectrum_ax.loglog(frequency[1:], expected[1:], '--', color = line_plot.get_color(), label = f'{label}: target PSD')
+spectrum_ax.set(xlabel = 'Frequency [Hz]', ylabel = 'PSD [m²/Hz]', xlim = (.2, 50), ylim = (1e-22, 1e-16))
 
 ########################################
 # Compare spatial correlation against Euclidean distance
 ########################################
 order = np.argsort(distance)
-axes[2].plot(distance[order], expected_correlation[order], color = '0.4', label = 'Ensemble target')
-axes[2].plot(distance, observed_correlation, '.', label = 'Finite modes + record')
-axes[2].set(xlabel = 'Euclidean distance from first support [m]',
+correlation_ax.plot(distance[order], expected_correlation[order], color = '0.4', label = 'Ensemble target')
+correlation_ax.plot(distance, observed_correlation, '.', label = 'Finite modes + record')
+correlation_ax.set(xlabel = 'Euclidean distance from first support [m]',
             ylabel = 'Band-integrated amplitude correlation', ylim = (-.3, 1.05))
 
 ########################################
 # Finish the diagnostic figure
 ########################################
-axes[0].legend()
-axes[1].legend(fontsize = 8)
-axes[2].legend(fontsize = 8)
+spectrum_ax.legend(fontsize = 8)
+correlation_ax.legend(fontsize = 8)
 fig.tight_layout()
-
-########################################
-# Draw the magnified whole-ring motion
-########################################
-layout_fig, layout_axes = mech.plot(
-    time_s = INSPECT_TIME_S, line = line, displacement_scale = DISPLACEMENT_SCALE,
-)
 
 ################################################################################
 # Review execution costs and figures
@@ -370,9 +388,10 @@ layout_fig, layout_axes = mech.plot(
 ########################################
 # Print the measured costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<28} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nCPU operation costs\n-------------------')
+    for name, seconds in timings.items():
+        print(f'{name:<32} {seconds * 1e3:10.3f} ms')
 
 ########################################
 # Display the figures

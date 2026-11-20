@@ -3,8 +3,8 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Select a quadrupole through mechanics tables and inspect its composed motion.
-# Plot its full history and save a magnified rigid cuboid animation as a GIF.
+# Select a physical magnet through a table row and follow its actual rigid pose.
+# Compare its motion with its girder and neighbouring magnet, then animate it.
 
 ################################################################################
 # Required packages
@@ -32,7 +32,7 @@ DELIBERATE_ROLL   = .15                 # Existing design roll [rad]
 ########################################
 # Static support installation
 ########################################
-INSTALLATION_Y_M = 20e-6
+INSTALLATION_Y_M = .2e-6
 INSTALLATION_YAW = 2e-6
 
 ########################################
@@ -49,6 +49,7 @@ PHASES_RAD         = (0., .4, .8, .2, .6, 1.)
 DURATION_S     = 2.
 SAMPLE_STEP_S  = 1 / 128
 INSPECT_TIME_S = .125
+PRINT_TIMINGS  = False
 
 ########################################
 # Illustrative envelope and display magnification
@@ -110,7 +111,10 @@ mech = env.mechanics
 # Attach both magnets to one physical girder
 ########################################
 started = perf_counter()
-girder = line.mechanics.new_girder('g.shared', elements = ['q1', 'q2'])
+girder = line.mechanics.new_girder(
+    'g.shared', elements = ['q1', 'q2'],
+    anchor = xt.Frame.from_survey_angles(Y = -.35, Z = line.get_length() / 2),
+)
 timings['mechanics_definition_s'] = perf_counter() - started
 
 ########################################
@@ -178,10 +182,15 @@ timings['table_inspection_s'] = perf_counter() - started
 ########################################
 # Report the definitions and the selected physical state
 ########################################
-print('Mechanics tables and one selected quadrupole\n-------------------------------------------')
-sources.cols['name model component reference target_names'].show()
-girders.cols['name kind parent dynamic_X dynamic_Y dynamic_Z'].show()
-quads.cols['name body element_type reference_X static_Y total_Y'].show()
+print('Follow one magnet from a table row to its rigid motion\n'
+      '------------------------------------------------------')
+print('q1 and q2 share one girder whose reference is 0.35 m below the beam.')
+print('The existing q1 horizontal offset and design roll are adopted unchanged.')
+print(f'Static installation y = {INSTALLATION_Y_M * 1e6:g} µm; inspection time = {INSPECT_TIME_S:g} s.')
+print('Source bindings:')
+sources.cols['name component unit'].show()
+print('Element rows remain distinct even though they share the same girder:')
+quads.cols['name body element_type'].show()
 
 ################################################################################
 # Follow one selected quadrupole through the full record
@@ -208,13 +217,61 @@ support_history = motion.get_table(girder.name)
 lever_arm_y = history.dynamic_Y - support_history.shift_y
 print(f'Element history: {len(history)} samples over {DURATION_S:g} s')
 print(f'Largest magnet/support vertical difference [nm]: {np.max(np.abs(lever_arm_y)) * 1e9:.6f}')
-print('This is composed element motion, including the support rotation lever arm.')
+print('The selected history includes the full rigid lever arm, not just the source displacement.')
+print(f'Deliberate x [µm]: {quad.shift_x * 1e6:g}; deliberate roll [mrad]: {quad.rot_s_rad * 1e3:g}.')
+print('Dynamic translations and rotations are magnified about the installed pose in the animation.')
 
 ########################################
 # Plot the actual motion with physical units and no display gain
 ########################################
 started = perf_counter()
-history_fig, history_axes = history.plot()
+neighbour = quads.rows['q2' if QUADRUPOLE == 'q1' else 'q1']
+neighbour_history = neighbour.get_time_series()
+history_fig, all_axes = plt.subplots(3, 1, figsize = (9, 8),
+                                    gridspec_kw = {'height_ratios': [.8, 1.3, 1.3]})
+layout_ax = all_axes[0]
+history_axes = all_axes[1:]
+history_axes[1].sharex(history_axes[0])
+magnet_colours = {'q1': 'tab:blue', 'q2': 'tab:orange'}
+# The drawing uses installed element frames; the selected element is highlighted.
+for name in ('q1', 'q2'):
+    matrix = elements['static_matrix', name]
+    half_height = CUBOID_SIZE_M[1] / 2
+    corners = np.array([[0., -half_height, 0.], [0., -half_height, MAGNET_LENGTH_M],
+                        [0., half_height, MAGNET_LENGTH_M], [0., half_height, 0.], [0., -half_height, 0.]])
+    world = corners @ matrix[:3, :3].T + matrix[:3, 3]
+    colour = magnet_colours[name]
+    layout_ax.fill(world[:, 2], world[:, 1], color = colour,
+                   alpha = .3 if name == QUADRUPOLE else .1)
+    layout_ax.plot(world[:, 2], world[:, 1], color = colour)
+    centre_s = (world[0, 2] + world[1, 2]) / 2
+    layout_ax.text(centre_s, .02, name + (' selected' if name == QUADRUPOLE else ''),
+                   ha = 'center', fontsize = 9)
+    layout_ax.plot([centre_s, centre_s], [-.35, -half_height], color = '.3', lw = 1)
+layout_ax.plot([0., line.get_length()], [-.35, -.35], color = '.3', lw = 2)
+layout_ax.plot(line.get_length() / 2, -.35, 'kD', ms = 4)
+layout_ax.set(xlabel = 'World Z [m]', ylabel = 'World Y [m]',
+               title = 'Select a magnet row; its history includes the shared support and its lever arm')
+layout_ax.set_ylim(-.45, .25)
+for name, values, colour, style in [
+    ('Girder reference', support_history.shift_y, '.4', '--'),
+    (QUADRUPOLE + ' entrance', history.dynamic_Y, magnet_colours[QUADRUPOLE], '-'),
+    (str(neighbour.name[0]) + ' entrance', neighbour_history.dynamic_Y,
+     magnet_colours[str(neighbour.name[0])], '-'),
+]:
+    history_axes[0].plot(times, values * 1e9, color = colour, ls = style, label = name)
+history_axes[0].set(ylabel = 'Vertical displacement [nm]',
+                    title = 'A shared rigid motion produces different magnet displacements through lever arms')
+history_axes[0].margins(y = .30)
+history_axes[0].legend(loc = 'upper center', ncol = 3, fontsize = 8)
+for coordinate, label in [('phi', 'Pitch'), ('theta', 'Yaw'), ('psi', 'Roll')]:
+    history_axes[1].plot(times, history['dynamic_' + coordinate] * 1e6, label = label)
+history_axes[1].set(xlabel = 'Physical time [s]', ylabel = 'Selected magnet rotation [µrad]')
+history_axes[1].legend(ncol = 3)
+for ax in history_axes:
+    ax.axvline(INSPECT_TIME_S, ls = ':', color = '.4')
+    ax.grid(alpha = .2)
+history_fig.tight_layout()
 timings['history_plot_s'] = perf_counter() - started
 
 ################################################################################
@@ -245,9 +302,10 @@ if SAVE_GIF:
 ########################################
 # Verify that inspection never overwrote the deliberate line inputs
 ########################################
-np.testing.assert_equal(quad.shift_x, DELIBERATE_X_M)
-np.testing.assert_equal(quad.rot_s_rad, DELIBERATE_ROLL)
-np.testing.assert_equal(quad.shift_y, 0.)
+np.testing.assert_equal(env['q1'].shift_x, DELIBERATE_X_M)
+np.testing.assert_equal(env['q1'].rot_s_rad, DELIBERATE_ROLL)
+for name in ('q1', 'q2'):
+    np.testing.assert_equal(env[name].shift_y, 0.)
 print('Tables, histories and animation leave the line inputs untouched.')
 
 ################################################################################
@@ -257,9 +315,10 @@ print('Tables, histories and animation leave the line inputs untouched.')
 ########################################
 # Print the independently measured operation costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<32} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nCPU operation costs\n-------------------')
+    for name, seconds in timings.items():
+        print(f'{name:<32} {seconds:9.4f} s')
 
 ########################################
 # Display the history and the animated envelope

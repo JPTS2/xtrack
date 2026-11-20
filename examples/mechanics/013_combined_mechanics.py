@@ -4,7 +4,8 @@
 # ######################################### #
 
 # Assemble ground, feet, a local pump, response paths and installation on one ring.
-# Track a short prescribed-motion interval after explicit response warm-up.
+# Connect the mounted source and response ports to a matched beam comparison.
+# Compare an initial frozen mechanical map with the same map allowed to move.
 
 ################################################################################
 # Required packages
@@ -90,7 +91,8 @@ DURATION_S    = .5
 # Inspection and tracking interval
 ########################################
 INSPECT_TIME_S = .25
-N_TURNS        = 32
+N_TURNS        = 256
+PRINT_TIMINGS  = False
 
 ########################################
 # Explicit field preparation budget
@@ -101,14 +103,8 @@ MAX_FIELD_WORKSPACE_MIB = 256
 # Set up the ordinary Xtrack line
 ################################################################################
 
-########################################
-# Start performance monitoring
-########################################
 timings = {}
 
-########################################
-# Time line load and copy
-########################################
 started = perf_counter()
 
 ########################################
@@ -133,9 +129,6 @@ timings['tracker_build_s'] = perf_counter() - started
 # Define the nominal mechanical mounting hierarchy
 ################################################################################
 
-########################################
-# Time reference adoption
-########################################
 started = perf_counter()
 
 ########################################
@@ -150,9 +143,6 @@ timings['reference_adoption_s'] = perf_counter() - started
 ########################################
 mech = env.mechanics
 
-########################################
-# Time geometry selection
-########################################
 started = perf_counter()
 
 ########################################
@@ -165,9 +155,6 @@ bpms = list(table.rows['bpm[.].*'].name)
 
 timings['geometry_selection_s'] = perf_counter() - started
 
-########################################
-# Time mechanics definition
-########################################
 started = perf_counter()
 
 ########################################
@@ -199,9 +186,6 @@ timings['mechanics_definition_s'] = perf_counter() - started
 # Define installation placement and mounted equipment
 ################################################################################
 
-########################################
-# Time installation definition
-########################################
 started = perf_counter()
 
 ########################################
@@ -219,9 +203,6 @@ installation.apply(mech)
 
 timings['installation_definition_s'] = perf_counter() - started
 
-########################################
-# Time mechanics definition
-########################################
 started = perf_counter()
 
 ########################################
@@ -237,9 +218,6 @@ timings['mechanics_definition_s'] += perf_counter() - started
 # Define the joint ground excitation
 ################################################################################
 
-########################################
-# Start timing field preparation
-########################################
 started = perf_counter()
 
 ########################################
@@ -307,18 +285,12 @@ fitted, residual = floor.fit_rigid_bodies(
     target_names = tuple(g.name for g in girders),
 )
 
-########################################
-# Record the field sampling and rigid-fit cost
-########################################
 timings['floor_and_rigid_fit_s'] = perf_counter() - started
 
 ################################################################################
 # Resolve the mechanical response paths
 ################################################################################
 
-########################################
-# Start timing response preparation
-########################################
 started = perf_counter()
 
 ########################################
@@ -382,18 +354,12 @@ pickup_motion = xt.mechanics.RigidMotion(times, pickup_filter.process(pickup_inp
 for name, record in [('supports', girder_motion), ('magnets', magnet_motion), ('pickups', pickup_motion)]:
     mech.add_source(name, record, targets = record.target_names, reference = 'absolute')
 
-########################################
-# Record response preparation cost
-########################################
 timings['response_paths_s'] = perf_counter() - started
 
 ################################################################################
 # Track the installed dynamic lattice
 ################################################################################
 
-########################################
-# Start timing the frozen launch calculation
-########################################
 started = perf_counter()
 
 ########################################
@@ -406,25 +372,24 @@ mech.apply(time_s = 0.)
 ########################################
 launch = line.twiss4d().particle_on_co.copy()
 
-########################################
-# Record the frozen-orbit preparation cost
-########################################
 timings['initial_frozen_twiss_s'] = perf_counter() - started
 
 ########################################
 # Enable replay with an explicit physical origin
 ########################################
+# First track the same launch with the initial mechanical pose held fixed.
+frozen_beam = launch.copy()
+line.track(frozen_beam, num_turns = N_TURNS, turn_by_turn_monitor = True)
+frozen_y = CONTEXT.nparray_from_context_array(line.record_last_track.y)[0].copy()
 line.mechanics.enable_vibrations(time_origin_s = 0.)
 
-########################################
-# Start timing the short dynamic tracking interval
-########################################
 started = perf_counter()
 
 ########################################
 # Advance the beam and check survival
 ########################################
-line.track(launch, num_turns = N_TURNS)
+line.track(launch, num_turns = N_TURNS, turn_by_turn_monitor = True)
+moving_y = CONTEXT.nparray_from_context_array(line.record_last_track.y)[0].copy()
 CONTEXT.synchronize()
 assert np.all(CONTEXT.nparray_from_context_array(launch.state) > 0)
 timings['dynamic_tracking_s'] = perf_counter() - started
@@ -458,49 +423,116 @@ print(f'Feet: {len(positions)}; installation seed: {INSTALLATION_SEED}; dynamic 
 print(f'Causal source prehistory [s]: {WARMUP_S:g}; step [s]: {SAMPLE_STEP_S:g}')
 print(f'Linear-replay half-step amplitude error bound at 40 Hz [%]: {(1 - np.cos(np.pi * 40 * SAMPLE_STEP_S)) * 100:.4f}')
 print(f'Rigid contact mismatch RMS after warm-up [nm]: {np.sqrt(np.mean(residual[positive]**2)) * 1e9:.6f}')
-print('Stage         First-channel y RMS after warm-up [nm]')
+selected_pickup_index = 0
+selected_magnet_index = magnets.index(pickup_magnets[selected_pickup_index])
+selected_girder = girders[selected_magnet_index]
+selected_magnet = magnets[selected_magnet_index]
+selected_pickup = pickups[selected_pickup_index]
+print(f'Selected physical path: {selected_girder.name} -> {selected_magnet.name} -> {selected_pickup.name}')
+print('Stage         Selected-port y standard deviation after startup [nm]')
 
 for label, record in [('Support', girder_motion), ('Magnet', magnet_motion), ('Pickup', pickup_motion)]:
-    print(f'{label:<13} {np.std(record.values[positive, 0, 1]) * 1e9:30.6f}')
+    index = selected_pickup_index if label == 'Pickup' else selected_magnet_index
+    print(f'{label:<13} {np.std(record.values[positive, index, 1]) * 1e9:30.6f}')
 print(f'Tracked turns / physical duration [s]: {N_TURNS} / {launch.time_s:.9g}')
 print(f'Installation y RMS unchanged [µm]: {np.std(installation.values[:, 1]) * 1e6:.6f}')
+print(f'Largest moving-minus-initial-frozen beam y at ring origin [nm]: {np.max(np.abs(moving_y - frozen_y)) * 1e9:.6f}')
+print('Both beam runs start from the same initial frozen closed orbit, with identical installation errors.')
+print('The pickup response is a mechanical inspection port; no online feedback is applied.')
 print('Sources use nominal reference geometry. The example does not infer force propagation or support loading.')
 
 ################################################################################
-# Inspect the combined histories and ring geometry
+# Connect the physical source locations and mechanical response path
 ################################################################################
 
 ########################################
-# Prepare the post-warm-up diagnostic panels
+# Show where the common floor, regional excess and pump act on the ring
 ########################################
-fig, axes = plt.subplots(2, 1, sharex = True, figsize = (8, 6))
+setup_fig, setup_axes = plt.subplots(1, 2, figsize = (11, 4.6), gridspec_kw = {'width_ratios': [1.1, 1]})
+ring_xyz = np.column_stack((nominal.X, nominal.Y, nominal.Z))
+setup_axes[0].plot(ring_xyz[:, 0], ring_xyz[:, 2], color = '.65', lw = 1)
+anchors = np.array([g.nominal_frame.XYZ for g in girders])
+floor_rms_nm = np.std(fitted.values[positive, :, 1], axis = 0) * 1e9
+points = setup_axes[0].scatter(anchors[:, 0], anchors[:, 2], c = floor_rms_nm, s = 15, cmap = 'viridis')
+setup_fig.colorbar(points, ax = setup_axes[0], label = 'Fitted floor y standard deviation [nm]', shrink = .75)
+setup_axes[0].scatter(*pump.nominal_frame.XYZ[[0, 2]], marker = '*', s = 100, color = 'tab:red', label = 'Mounted pump')
+setup_axes[0].scatter(*selected_girder.nominal_frame.XYZ[[0, 2]], marker = 'o', s = 100,
+                       facecolors = 'none', edgecolors = 'black', label = 'Selected response path')
+region = plt.Circle(girders[0].nominal_frame.XYZ[[0, 2]], REGION_WIDTH_M, fill = False,
+                    ls = ':', color = 'tab:red', label = 'Regional width scale')
+setup_axes[0].add_patch(region)
+setup_axes[0].set(xlabel = 'World X [m]', ylabel = 'World Z [m]', title = 'One floor field sampled at every support')
+setup_axes[0].set_aspect('equal', adjustable = 'datalim')
+setup_axes[0].legend(fontsize = 8, loc = 'upper right')
 
 ########################################
-# Compare the floor fit, support and magnet histories
+# State which port and supplied loaded response each arrow represents
 ########################################
-for label, record in [('Floor fit', fitted), ('Support', girder_motion), ('Magnet', magnet_motion)]:
+path_ax = setup_axes[1]
+path_ax.set(xlim = (0., 1.), ylim = (0., 1.), title = 'From floor contacts to the selected pickup')
+path_ax.axis('off')
+for y, text in [
+    (.89, 'Common ground + regional excess + pump field'),
+    (.66, 'Four feet per support -> rigid fit\nContact mismatch retained; no girder bending'),
+    (.43, f'Girder {GIRDER_HZ:g} Hz -> magnet {MAGNET_HZ:g} Hz'),
+    (.20, f'Magnet -> pickup {BPM_HZ:g} Hz\nExplicit port transport before each response'),
+]:
+    path_ax.text(.5, y, text, ha = 'center', va = 'center', fontsize = 9,
+                 bbox = {'boxstyle': 'round,pad=.55', 'fc': '#edf3f7', 'ec': '.55'})
+for upper, lower in [(.82, .74), (.58, .50), (.35, .27)]:
+    path_ax.annotate('', xy = (.5, lower), xytext = (.5, upper), arrowprops = {'arrowstyle': '->'})
+path_ax.text(.5, .035, 'Responses are supplied conditional loaded responses.\nMounts alone do not determine the transfer functions.',
+             ha = 'center', va = 'center', fontsize = 8)
+setup_fig.tight_layout()
+
+################################################################################
+# Compare physical motion at a common pickup port and its beam consequence
+################################################################################
+
+########################################
+# Transport the upstream records to the selected pickup reference frame
+########################################
+common_port_records = []
+for label, record, index, origin in [
+    ('Fitted floor', fitted, selected_magnet_index, selected_girder.nominal_frame),
+    ('Girder response', girder_motion, selected_magnet_index, selected_girder.nominal_frame),
+    ('Magnet response', magnet_motion, selected_magnet_index, selected_magnet.nominal_frame),
+]:
+    selected = record.select([record.target_names[index]], target_names = [selected_pickup.name])
+    common_port_records.append((label, selected.transport(
+        from_frames = [origin], to_frames = [selected_pickup.nominal_frame], target_names = [selected_pickup.name],
+    )))
+common_port_records.append(('Pickup response', pickup_motion.select([selected_pickup.name])))
+fig, axes = plt.subplots(3, 1, figsize = (9, 8))
+for label, record in common_port_records:
     axes[0].plot(times[positive], record.values[positive, 0, 1] * 1e9, label = label)
+axes[0].set(ylabel = 'Port displacement [nm]', title = 'Same port and axes: compare the response stages')
+axes[0].margins(y = .25)
+axes[0].legend(fontsize = 8, ncol = 2, loc = 'upper center')
 
 ########################################
-# Inspect the support's pitch and roll
+# Separate real relative motion from transport through a lever arm
 ########################################
-axes[1].plot(times[positive], girder_motion.values[positive, 0, 3] * 1e9, label = 'Support pitch')
-axes[1].plot(times[positive], girder_motion.values[positive, 0, 5] * 1e9, label = 'Support roll')
+axes[1].plot(times[positive], (magnet_motion.values[positive, selected_magnet_index, 1]
+               - magnet_input.values[positive, selected_magnet_index, 1]) * 1e9,
+               label = 'Magnet minus transported girder')
+axes[1].plot(times[positive], (pickup_motion.values[positive, selected_pickup_index, 1]
+               - pickup_input.values[positive, selected_pickup_index, 1]) * 1e9,
+               label = 'Pickup minus transported magnet')
+axes[1].set(xlabel = 'Physical time after tracking start [s]', ylabel = 'Relative displacement [nm]')
+axes[1].margins(y = .25)
+axes[1].legend(fontsize = 8, ncol = 2, loc = 'upper center')
 
 ########################################
-# Label the post-warm-up interval and physical units
+# Show what changes when the same initial mechanical map moves during tracking
 ########################################
-axes[0].set(ylabel = 'First support path y [nm]', title = 'Combined sources and supplied causal responses')
-axes[1].set(xlabel = 'Physical time after warm-up [s]', ylabel = 'Survey angle [nrad]', xlim = (0, min(1., DURATION_S)))
-axes[0].legend(fontsize = 8)
-axes[1].legend(fontsize = 8)
+beam_times_ms = np.arange(N_TURNS) * line.get_length() / (float(line.particle_ref.beta0[0]) * 299792458.) * 1e3
+axes[2].plot(beam_times_ms, (moving_y - frozen_y) * 1e9, color = 'tab:purple')
+axes[2].set(xlabel = 'Physical tracking time [ms]', ylabel = 'Beam Δy [nm]',
+            title = 'Actual tracked beam at the ring origin; identical launch and installation')
+for ax in axes:
+    ax.grid(alpha = .2)
 fig.tight_layout()
-
-########################################
-# Magnify dynamics about the installed ring geometry
-########################################
-layout_fig, layout_axes = mech.plot(time_s = INSPECT_TIME_S, line = line,
-    bodies = [g.name for g in girders], displacement_scale = 1e8, rotation_scale = 1e7, baseline = 'static')
 
 ################################################################################
 # Review execution costs and figures
@@ -509,9 +541,10 @@ layout_fig, layout_axes = mech.plot(time_s = INSPECT_TIME_S, line = line,
 ########################################
 # Print the measured costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<32} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nCPU operation costs\n-------------------')
+    for name, seconds in timings.items():
+        print(f'{name:<32} {seconds:9.4f} s')
 
 ########################################
 # Display the figures

@@ -3,7 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Sample one vibrating quadrupole at different bunch arrival times.
+# A sparse bunch train samples different phases of the same moving quadrupole.
 # Compare actual frozen Twiss with the independently tracked driven response.
 # Bunches run separately; this does not implement packed multibunch mechanics.
 
@@ -69,6 +69,7 @@ N_TURNS           = 256
 INITIAL_CONDITION = 'driven'          # 'driven' or 'zero_motion_closed_orbit'
 CALIBRATION_M     = 100e-9            # Central difference of the one-turn map
 BETA_SAMPLE_STEP  = 8                 # Plot sampling only; Twiss uses all elements
+PRINT_TIMINGS     = False
 
 ################################################################################
 # Set up the line, reference optics and fill clock
@@ -308,8 +309,8 @@ bunch_table = xt.Table({key: np.array([row[key] for row in frozen_rows])
                         for key in frozen_rows[0]})
 high_frequency_bunches = bunch_table.rows[
     bunch_table.frequency_hz == frequencies_hz[-1]]
-print('Bunch phases and frozen optics')
-print('------------------------------')
+print('One moving quadrupole seen by a sparse bunch train')
+print('-------------------------------------------------')
 print(f'C = {line.get_length():.3f} m; T_rev = {period_s:.9g} s; RF harmonic = {harmonic}')
 print(f'Quad: {quad}; observation: {table.name[0]}; initial state: {INITIAL_CONDITION}')
 print('Buckets:', buckets.tolist())
@@ -317,30 +318,64 @@ print('Sequential bunches share one prescribed source. Empty buckets do not rese
 print('Whole-line turn-held maps omit s/(beta0*c) passage delays and within-bunch arrival spread.')
 print('Frozen Twiss is an optics snapshot, not a time-dependent equilibrium beam.')
 print(f'The final source remains defined; the line is frozen for bucket {buckets[representative_bunch]}.')
+print(f'Quadrupole displacement amplitude: {AMPLITUDE_M * 1e9:g} nm peak.')
+print('Low frequency: bunches see almost the same magnet position and follow nearly frozen optics.')
+print('High frequency: the fill samples different positions, and beam dynamics differ from a sequence of static orbits.')
+print('\nSource and beam comparison')
+print('Frequency [Hz]  Phase span [rad]  Frozen bunch spread [nm]  Driven/static gain  Linear tracking error')
 for result in results:
     frequency_hz = result['frequency_hz']
     spread = 2 * np.pi * frequency_hz * np.ptp(arrival_offsets_s)
     error = max(bunch['relative_rms_error'] for bunch in result['bunches'])
-    print(f'{frequency_hz:11.3f} Hz: phase span {spread:.5f} rad; '
-          f'driven/static gain {result["gain"]:.5f}; relative linear RMS error {error:.3e}')
-print('\nFrozen Twiss at the line origin, with ordinary table selection:')
-print(bunch_table.cols['bucket frequency_hz phase_rad x_co_m betx_m'])
-print('\nOperation costs [s], including cold kernel preparation in the first track:')
-for name, value in timings.items():
-    print(f'{name:42s} {value:.4f}')
+    print(f'{frequency_hz:14.3f} {spread:17.5f} {np.ptp(result["frozen_orbits"]) * 1e9:25.3f}'
+          f' {result["gain"]:19.5f} {error:22.3e}')
+print('\nHigh-frequency bunches: actual magnet positions and frozen Twiss at their arrival phases')
+print('Bucket  Arrival [µs]  Magnet x [nm]  Frozen orbit x [nm]  Relative beta change [ppm]')
+for index, bucket in enumerate(buckets):
+    row = high_frequency_bunches.rows[high_frequency_bunches.bucket == bucket]
+    phase = float(row.phase_rad[0])
+    print(f'{bucket:6d} {arrival_offsets_s[index] * 1e6:13.6f} {AMPLITUDE_M * np.sin(phase) * 1e9:14.3f}'
+          f' {(float(row.x_co_m[0]) - baseline.x[0]) * 1e9:20.3f}'
+          f' {(float(row.betx_m[0]) / baseline.betx[0] - 1) * 1e6:27.3f}')
+if PRINT_TIMINGS:
+    print('\nOperation costs [s], including cold preparation in the first track:')
+    for name, value in timings.items():
+        print(f'{name:42s} {value:.4f}')
 
 ########################################
-# Plot phase and actual per-bunch closed orbit
+# Show the fill, sampled magnet positions and the resulting beam response
 ########################################
-figure, axes = plt.subplots(2, 2, figsize = (12, 7.5), layout = 'constrained')
+figure = plt.figure(figsize = (11, 8.5), layout = 'constrained')
+grid = figure.add_gridspec(3, 2, height_ratios = [.45, 1., 1.])
+fill_axis = figure.add_subplot(grid[0, :])
+axes = np.array([[figure.add_subplot(grid[1, 0]), figure.add_subplot(grid[1, 1])],
+                 [figure.add_subplot(grid[2, 0]), figure.add_subplot(grid[2, 1])]])
+# This strip is a physical arrival-time map, including empty gaps.
+fill_axis.hlines(0., 0., period_s * 1e6, color = '.75', lw = 2)
+for index, (bucket, arrival) in enumerate(zip(buckets, arrival_offsets_s)):
+    fill_axis.plot(arrival * 1e6, 0., 'o', color = 'tab:blue', ms = 6)
+    fill_axis.text(arrival * 1e6, .12, f'Bucket {bucket}', ha = 'center', fontsize = 8)
+fill_axis.annotate('Next turn', xy = (period_s * 1e6, 0.), xytext = (period_s * 1e6, -.28),
+                   ha = 'right', fontsize = 8, arrowprops = {'arrowstyle': '->', 'color': '.4'})
+fill_axis.set(xlim = (-.03 * period_s * 1e6, 1.03 * period_s * 1e6), ylim = (-.4, .45),
+              xlabel = 'Arrival time at the line origin within one revolution [µs]', yticks = [],
+              title = 'Two illustrative trains and their empty gaps; all bunches see one common vibration')
+for edge in ('left', 'right', 'top'):
+    fill_axis.spines[edge].set_visible(False)
+arrival_grid = np.linspace(0., period_s, 400)
 for result in results:
     frequency_hz = result['frequency_hz']
     label = f'{frequency_hz:g} Hz ({frequency_hz / frev_hz:.3g} f_rev)'
+    curve, = axes[0, 0].plot(arrival_grid * 1e6,
+        AMPLITUDE_M * np.sin(DRIVE_PHASE_RAD + 2 * np.pi * frequency_hz * arrival_grid) * 1e9, label = label)
     axes[0, 0].plot(arrival_offsets_s * 1e6,
-        2 * np.pi * frequency_hz * (arrival_offsets_s - arrival_offsets_s[0]), 'o-', label = label)
+        AMPLITUDE_M * np.sin(DRIVE_PHASE_RAD + 2 * np.pi * frequency_hz * arrival_offsets_s) * 1e9,
+        'o', color = curve.get_color())
     axes[0, 1].plot(arrival_offsets_s * 1e6, result['frozen_orbits'] * 1e9, 'o-', label = label)
-axes[0, 0].set(xlabel = 'Bunch arrival offset [µs]', ylabel = 'Relative source phase [rad]')
-axes[0, 1].set(xlabel = 'Bunch arrival offset [µs]', ylabel = 'Frozen closed-orbit x [nm]')
+axes[0, 0].set(xlabel = 'Bunch arrival offset [µs]', ylabel = 'Quadrupole displacement [nm]',
+               title = 'Filled-bucket markers sample the same moving magnet')
+axes[0, 1].set(xlabel = 'Bunch arrival offset [µs]', ylabel = 'Frozen closed-orbit change [nm]',
+               title = 'Actual frozen Twiss at each bunch arrival')
 for axis, result in zip(axes[1], results):
     bunch = result['bunches'][len(buckets) // 2]
     axis.plot(turns, bunch['actual'] * 1e9, label = 'Tracked')
@@ -353,7 +388,7 @@ for axis, result in zip(axes[1], results):
 for axis in axes.flat:
     axis.legend(fontsize = 8)
     axis.grid(alpha = .2)
-figure.suptitle('Fill phases, frozen Twiss and driven orbit: per-bunch turn-held model')
+figure.suptitle('A sparse fill samples one vibrating quadrupole: frozen optics and tracked beam motion', fontsize = 12)
 
 ########################################
 # Plot actual frozen beta beating for the higher source frequency
@@ -363,6 +398,7 @@ for bucket, beating in zip(buckets, results[-1]['beta_beating']):
     beta_axis.plot(baseline.s[sampled], beating * 1e6, label = f'Bucket {bucket}')
 beta_axis.set(xlabel = 's [m]', ylabel = 'Frozen Δβx / βx [ppm]',
     title = 'Actual frozen per-bunch Twiss; a sequence of optics snapshots')
+beta_axis.axvline(float(table['s', quad]), color = '.3', ls = ':', label = 'Moving quadrupole')
 beta_axis.legend(ncol = 3, fontsize = 8)
 beta_axis.grid(alpha = .2)
 plt.show()

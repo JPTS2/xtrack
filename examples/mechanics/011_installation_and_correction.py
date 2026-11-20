@@ -3,7 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Draw static installation cases independently of intentional geometry and motion.
+# Restore the design orbit after installation errors without erasing intentional quad offsets.
 # Correct their frozen BPM orbits with the same measured response matrix.
 
 ################################################################################
@@ -57,6 +57,11 @@ PROBE_RAD      = 1e-7
 SVD_REL_CUTOFF = 1e-3
 N_CORRECTIONS  = 2
 
+########################################
+# Optional performance diagnostics
+########################################
+PRINT_TIMINGS = False
+
 ################################################################################
 # Set up the ordinary Xtrack line
 ################################################################################
@@ -66,9 +71,6 @@ N_CORRECTIONS  = 2
 ########################################
 timings = {}
 
-########################################
-# Time line load and copy
-########################################
 started = perf_counter()
 
 ########################################
@@ -98,9 +100,6 @@ started = perf_counter()
 line.build_tracker()
 timings['tracker_build_s'] = perf_counter() - started
 
-########################################
-# Time reference adoption
-########################################
 started = perf_counter()
 
 ########################################
@@ -119,9 +118,6 @@ timings['reference_adoption_s'] = perf_counter() - started
 ########################################
 mech = env.mechanics
 
-########################################
-# Time geometry selection
-########################################
 started = perf_counter()
 
 ########################################
@@ -135,9 +131,6 @@ knobs = ['v_' + name.replace('.', '_') for name in correctors]
 
 timings['geometry_selection_s'] = perf_counter() - started
 
-########################################
-# Time mechanics definition
-########################################
 started = perf_counter()
 
 ########################################
@@ -169,9 +162,6 @@ def read_pickups(twiss):
 # Measure the static correction response
 ################################################################################
 
-########################################
-# Start timing calibration
-########################################
 started = perf_counter()
 
 ########################################
@@ -199,18 +189,12 @@ uu, singular, vh = np.linalg.svd(response, full_matrices = False)
 keep = singular > SVD_REL_CUTOFF * singular[0]
 inverse = (vh[keep].T / singular[keep]) @ uu[:, keep].T
 
-########################################
-# Record response calibration cost
-########################################
 timings['response_calibration_s'] = perf_counter() - started
 
 ################################################################################
 # Generate and correct the installation cases
 ################################################################################
 
-########################################
-# Start timing the seed study
-########################################
 started = perf_counter()
 
 ########################################
@@ -252,9 +236,12 @@ for seed in INSTALLATION_SEEDS:
     ########################################
     # Measure the installed orbit before correction
     ########################################
-    before = read_pickups(line.twiss4d()) - reference
+    before_twiss = line.twiss4d()
+    before = read_pickups(before_twiss) - reference
+    beam_before = np.asarray(before_twiss['y', bpms] - reference_twiss['y', bpms])
     kicks = np.zeros(len(knobs))
     after = before.copy()
+    after_twiss = before_twiss
 
     ########################################
     # Correct using the retained response modes
@@ -263,16 +250,16 @@ for seed in INSTALLATION_SEEDS:
         kicks -= inverse @ after
         for knob, kick in zip(knobs, kicks):
             env[knob] = kick
-        after = read_pickups(line.twiss4d()) - reference
+        after_twiss = line.twiss4d()
+        after = read_pickups(after_twiss) - reference
+    beam_after = np.asarray(after_twiss['y', bpms] - reference_twiss['y', bpms])
 
     ########################################
     # Retain the immutable installation case and correction result
     ########################################
-    cases.append(dict(seed = seed, installed = installed, before = before, after = after, kicks = kicks.copy()))
+    cases.append(dict(seed = seed, installed = installed, installed_pickups = installed_pickups,
+                      before = before, after = after, beam_before = beam_before, beam_after = beam_after, kicks = kicks.copy()))
 
-########################################
-# Record the complete seed-study cost
-########################################
 timings['installation_cases_and_correction_s'] = perf_counter() - started
 
 ################################################################################
@@ -287,49 +274,69 @@ print(f'Intentional quad shift_x [mm]: {DELIBERATE_X_M * 1e3:.6f}')
 print(f'BPMs / correctors / retained modes: {len(bpms)} / {len(knobs)} / {keep.sum()}')
 print(f'Bare demonstration tunes: {reference_twiss.qx:.6f} / {reference_twiss.qy:.6f}')
 print('The near-integer vertical tune and insertion beta make this demo sensitive to installation errors.')
-print('Seed     Quad y RMS [µm]    BPM error before [µm]    After [µm]    Kick RMS [µrad]')
+print('The correction targets electrical BPM errors, relative to the adopted design orbit.')
+print('Seed     Quad y RMS [µm]    BPM before [µm]    BPM after [µm]    True beam after [µm]')
 for case in cases:
     rms = lambda values: np.sqrt(np.mean(np.asarray(values)**2))
     print(f'{case["seed"]:4d} {rms(case["installed"].values[:, 1]) * 1e6:19.5f}'
-          f' {rms(case["before"]) * 1e6:24.5f} {rms(case["after"]) * 1e6:13.5f}'
-          f' {rms(case["kicks"]) * 1e6:19.5f}')
+          f' {rms(case["before"]) * 1e6:18.5f} {rms(case["after"]) * 1e6:17.5f}'
+          f' {rms(case["beam_after"]) * 1e6:23.5f}')
 print('Installation records remain immutable. Corrector trims do not redefine the installation.')
 print('No dynamic source seed enters these static installation draws.')
+print('Displaced BPM electrical zeros limit how closely electrical correction restores the true design orbit.')
 
 ################################################################################
-# Inspect seed variation and correction limits
+# See the installation errors and what the correction actually restores
 ################################################################################
 
 ########################################
-# Prepare seed, spatial and response-mode panels
+# Draw the three independent placement layers
 ########################################
-fig, axes = plt.subplots(1, 3, figsize = (12, 3.8))
+setup_fig, setup_axes = plt.subplots(1, 2, figsize = (10, 3.6))
+ax = setup_axes[0]
+ax.set_axis_off()
+for index, (title, detail) in enumerate([
+    ('Design placement', f'Intentional quad x = {DELIBERATE_X_M * 1e3:g} mm\nAdopted before errors'),
+    ('Static installation errors', 'Seeded magnet and pickup offsets\nHeld fixed during correction'),
+    ('Corrector trims', 'Steering changes the beam\nInstallation geometry is retained'),
+]):
+    y = .82 - index * .31
+    ax.text(.5, y, title + '\n' + detail, transform = ax.transAxes, ha = 'center', va = 'center', fontsize = 9,
+            bbox = {'boxstyle': 'round,pad=.4', 'fc': '0.96', 'ec': '0.45'})
+last = cases[-1]
+quad_s = table['s', quads]
+quad_y = last['installed'].values[:, 1] * 1e6
+pickup_y = last['installed_pickups'].values[:, 1] * 1e6
+setup_axes[1].plot(quad_s, quad_y, '.', label = 'Quad support installation y')
+setup_axes[1].plot(table['s', bpms], pickup_y, 's', mfc = 'none', label = 'Pickup installation y')
+setup_axes[1].set(xlabel = 'Survey position s [m]', ylabel = 'Static installation error [µm]',
+                   title = f'One actual installation realization: seed {last["seed"]}')
+setup_axes[1].legend(fontsize = 8)
+setup_axes[1].grid(alpha = .2)
+setup_fig.tight_layout()
 
 ########################################
-# Compare orbit RMS across installation seeds
+# Compare electrical errors with true beam errors at the same BPM locations
 ########################################
+fig, axes = plt.subplots(2, 2, figsize = (10, 6.5))
 before_rms = [np.sqrt(np.mean(case['before']**2)) * 1e6 for case in cases]
 after_rms = [np.sqrt(np.mean(case['after']**2)) * 1e6 for case in cases]
-axes[0].plot(INSTALLATION_SEEDS, before_rms, 'o-', label = 'Before')
-axes[0].plot(INSTALLATION_SEEDS, after_rms, 'o-', label = 'After')
-axes[0].set(xlabel = 'Installation seed', ylabel = 'Actual BPM RMS [µm]')
-axes[0].legend()
-
-########################################
-# Inspect the final seed around the ring
-########################################
-last = cases[-1]
-axes[1].plot(table['s', bpms], last['before'] * 1e6, '.-', label = 'Before')
-axes[1].plot(table['s', bpms], last['after'] * 1e6, '.-', label = 'After')
-axes[1].set(xlabel = 'BPM s [m]', ylabel = 'BPM error [µm]', title = f'Installation seed {last["seed"]}')
-axes[1].legend()
-
-########################################
-# Show which response modes the correction retained
-########################################
-axes[2].semilogy(np.arange(1, len(singular) + 1), singular / singular[0], 'o-')
-axes[2].axhline(SVD_REL_CUTOFF, ls = '--', color = '0.4')
-axes[2].set(xlabel = 'Response mode', ylabel = 'Relative singular value')
+true_after_rms = [np.sqrt(np.mean(case['beam_after']**2)) * 1e6 for case in cases]
+axes[0, 0].plot(INSTALLATION_SEEDS, before_rms, 'o-', label = 'Electrical error before correction')
+axes[0, 0].plot(INSTALLATION_SEEDS, after_rms, 'o-', label = 'Electrical error after correction')
+axes[0, 0].set(xlabel = 'Installation seed', ylabel = 'Electrical BPM RMS [µm]', title = 'Same correction procedure for every static seed')
+axes[0, 1].plot(INSTALLATION_SEEDS, after_rms, 'o-', label = 'Electrical residual')
+axes[0, 1].plot(INSTALLATION_SEEDS, true_after_rms, 'o-', label = 'True design-coordinate beam residual')
+axes[0, 1].set(xlabel = 'Installation seed', ylabel = 'Residual RMS [µm]', title = 'What remains after correction?')
+axes[1, 0].plot(table['s', bpms], last['beam_before'] * 1e6, '.-', label = 'True beam before correction')
+axes[1, 0].plot(table['s', bpms], last['beam_after'] * 1e6, '.-', label = 'True beam after correction')
+axes[1, 0].set(xlabel = 'BPM s [m]', ylabel = 'Beam error from design [µm]', title = f'Actual beam around the ring: seed {last["seed"]}')
+axes[1, 1].semilogy(np.arange(1, len(singular) + 1), singular / singular[0], 'o-', label = 'Measured response modes')
+axes[1, 1].axhline(SVD_REL_CUTOFF, ls = '--', color = '0.4', label = 'Retained-mode threshold')
+axes[1, 1].set(xlabel = 'Response mode', ylabel = 'Relative singular value', title = 'Correction uses the observable response directions')
+for ax in axes.flat:
+    ax.legend(fontsize = 8)
+    ax.grid(alpha = .2)
 fig.tight_layout()
 
 ################################################################################
@@ -337,8 +344,10 @@ fig.tight_layout()
 ################################################################################
 
 ########################################
-# Clear the installation and mechanical definitions
+# Reset study correctors, then clear the installation and mechanical definitions
 ########################################
+for knob in knobs:
+    env[knob] = 0.
 mech.clear()
 
 ########################################
@@ -354,9 +363,10 @@ print(f'Deliberate quad shift after clearing mechanics [mm]: {env[DELIBERATE_QUA
 ########################################
 # Print the measured costs
 ########################################
-print('\nReference CPU costs\n-------------------')
-for name, seconds in timings.items():
-    print(f'{name:<40} {seconds:9.4f} s')
+if PRINT_TIMINGS:
+    print('\nReference CPU costs\n-------------------')
+    for name, seconds in timings.items():
+        print(f'{name:<40} {seconds:9.4f} s')
 
 ########################################
 # Display the figures
