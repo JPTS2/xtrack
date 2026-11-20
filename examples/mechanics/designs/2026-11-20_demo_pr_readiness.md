@@ -1,5 +1,12 @@
 # Mechanics: approach decision and first-demo PR readiness
 
+This is the pre-delivery assessment. Its multi-day estimate below was superseded
+by the subsequent focused delivery slice: native integration was hardened, a
+runnable FCC ground/response lesson was added, and clean replay/package checks
+were completed. See the current [delivery record](../DELIVERY.md) and
+[FCC walkthrough](../FCC_DEMO.md). Actual GPU execution remains pending; that
+does not prevent opening the explicitly scoped working UI draft.
+
 ## Decision
 
 Keep the physical model and UI. The exploration has established useful contracts

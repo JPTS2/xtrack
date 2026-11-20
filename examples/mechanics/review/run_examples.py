@@ -69,7 +69,15 @@ def worker(script, destination):
             for p in sorted((ROOT/'xtrack/mechanics').glob('*.py'))},
         mechanics_kernel_sha256={str(p.relative_to(ROOT/'xtrack/mechanics')):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted((ROOT/'xtrack/mechanics').rglob('*.h'))},
-        tracker_sha256=hashlib.sha256((ROOT/'xtrack/tracker.py').read_bytes()).hexdigest())
+        tracker_sha256=hashlib.sha256((ROOT/'xtrack/tracker.py').read_bytes()).hexdigest(),
+        runner_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+    lattice = scope.get('lattice_path', scope.get('LATTICE_FILE'))
+    if isinstance(lattice, (str, Path)):
+        lattice = (ROOT/Path(lattice)).resolve()
+        if lattice.is_file():
+            inputs = sorted(lattice.parent.glob('*.py')) if lattice.suffix == '.py' else [lattice]
+            metadata['input_sha256'] = {
+                str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs}
     (destination/'result.json').write_text(json.dumps(metadata, indent=2)+'\n')
 
 

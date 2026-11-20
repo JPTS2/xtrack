@@ -53,7 +53,7 @@ run. These are teaching models, not FCC-ee engineering predictions.
 | [013_combined_mechanics.py](013_combined_mechanics.py) | Whole-ring ground/region/pump, feet, conditional responses, installation, drift and tracking | About 6 s |
 | [014_tables_and_quad_animation.py](014_tables_and_quad_animation.py) | Select a quad from a table, plot its composed six-coordinate history and save a cuboid GIF | About 4 s, including GIF |
 | [015_bunch_phases_and_twiss.py](015_bunch_phases_and_twiss.py) | Fill buckets, frozen per-bunch Twiss and driven orbit, with an inspectable bunch table | About 15–25 s with cold Twiss kernels |
-| [016_fcc_ground_motion.py](016_fcc_ground_motion.py) | Actual FCC Z line, 2,663 supports, common ground/feet, conditional girder/magnet/pickup responses and full tracking costs | See the measured delivery record |
+| [016_fcc_ground_motion.py](016_fcc_ground_motion.py) | Actual FCC Z line, 2,663 supports, common ground/feet, conditional girder/magnet/pickup responses and full tracking costs | About 24 s, including setup and four figures |
 
 
 Read the [API contract](API.md) for ownership, coordinate/sign conventions,
@@ -66,6 +66,8 @@ Lessons 001–015 use bundled inputs. For 016, the [FCC input instructions](revi
 pin the requested development model and give a one-command input override.
 The default path already works in this workspace. Its support grouping and
 response data are explicit demonstration assumptions, not engineering assignments.
+The [FCC walkthrough](FCC_DEMO.md) explains its terminal costs and figures; the
+default takes about 24 s locally, including source preparation and plotting.
 
 A typical setup keeps the machine's existing offsets:
 

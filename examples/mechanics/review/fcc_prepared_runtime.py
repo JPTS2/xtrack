@@ -21,7 +21,6 @@ import xtrack as xt
 
 ROOT = Path(__file__).resolve().parents[3]
 INPUT = ROOT.parent/'inputs/acc-models-fcc-ee-108.1.0/lattices/z/fccee_z_beam_1_positrons.json'
-OUTPUT = Path(__file__).resolve().parent/'results/fcc_freeze_runtime'
 
 
 def count_buffer_io(line, call):
@@ -55,7 +54,8 @@ def main():
     parser.add_argument('--threads', type=int, default=2, help='OpenMP threads')
     parser.add_argument('--input', type=Path, default=INPUT)
     parser.add_argument('--line', default='fccee_p_ring')
-    parser.add_argument('--output', type=Path, default=OUTPUT)
+    parser.add_argument('--output', type=Path, required=True,
+                        help='Choose a result directory; pinned review captures are never the default')
     parser.add_argument('--members', choices=('quads', 'all_magnets'), default='quads')
     parser.add_argument('--turns', type=int, default=64)
     parser.add_argument('--particles', type=int, nargs='+', default=[1, 32])

@@ -61,10 +61,27 @@ Compiler selection is installation-specific. The
 configuration, explicit OpenMP/CUDA/OpenCL choices and the FCC timing command.
 Do not compare a cold example's total time with warm tracking throughput.
 
-Validation outcomes for the current delivery are recorded below after the clean
-replay. The extraction manifest separately pins every selected file and the
-baseline/source commits; changing documentation does not relabel old numerical
-measurements as newer runs.
+The selected draft patch was replayed on an archived clean baseline. The full
+native suite ran there, importing that checkout rather than another installed
+Xtrack. Validation on 20 November 2026:
+
+| Check | Outcome |
+| --- | --- |
+| Complete mechanics regressions on the clean replay | **172 passed**, 260 s |
+| Targeted ordinary Tracker regressions after shared launch binding | **60 passed**; partial turns, collective ranges, backtracking, monitors and I/O |
+| Explicit hardware acceptance, serial CPU | **19 passed**, zero skips |
+| Explicit hardware acceptance, two-thread OpenMP | **19 passed**, zero skips |
+| CUDA / OpenCL preflight | **Unavailable**, exit 2; no CPU fallback |
+| Wheel and source-distribution build | Passed; mechanics Python/header files included |
+| Isolated wheel install and compiled tracking | Passed; installation/clear restoration checked |
+| Portable entry examples 001 / 004 / 015 | Passed on the current native sources |
+| Requested FCC lesson 016 | Passed; all default particles survived; four figures |
+| FCC plane-wave branch | Passed with explicit wave-only parameter overrides |
+
+These counts overlap and must not be summed as independent tests. The hardware
+runner rejects skipped/selected-away cases and source changes during a run.
+The extraction manifest separately pins every selected file and baseline/source
+commits. Historical captures retain their original hashes.
 
 ## Performance interpretation
 
@@ -83,6 +100,15 @@ this slice repeats representative cases after the integration change.
 Direct spatial-provider evaluation and repeated short calls remain more
 expensive. A pass on the measured warm path does not establish a universal
 twofold guarantee.
+
+The new [FCC lesson walkthrough](FCC_DEMO.md) reports the actual complete
+floor/girder/magnet/virtual-pickup case: about **24 s** including preparation,
+repeated measurements and plotting; default moving/nominal **1.415×**, moving /
+frozen-installed **1.251×**. Its separate longer 32-particle comparison is
+**1.049× nominal**. The whole lattice is tracked, with mechanics assigned to all
+2,663 quads. It does not claim that every dipole/sextupole has an engineering
+support assignment. Source preparation, peak host memory and finite startup are
+explicit in the walkthrough.
 
 Actual CUDA/OpenCL execution is unavailable on this workstation. CPU/OpenMP
 tests, source inspection and portable syntax do not constitute GPU validation.
