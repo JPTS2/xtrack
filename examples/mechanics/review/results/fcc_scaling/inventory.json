@@ -1,0 +1,45 @@
+{
+  "script_sha256": "bf9f90e97428569cd502b225a8f1444fbbafd7686f92cbcde881912ab78e95b3",
+  "lattice_sha256": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe",
+  "xobjects_version": "0.7.3",
+  "xtrack_version": "0.119.2",
+  "n_buffers": 1,
+  "buffer_capacity_bytes": 18087936,
+  "active_tracker_buffer_capacity_bytes": 18087936,
+  "expression_counts": {
+    "Quadrupole": {
+      "length": 2544,
+      "angle": 0,
+      "rot_s_rad": 0,
+      "shift_x": 0,
+      "shift_y": 0
+    },
+    "RBend": {
+      "length": 0,
+      "angle": 7218,
+      "rot_s_rad": 0,
+      "shift_x": 0,
+      "shift_y": 0
+    },
+    "Sextupole": {
+      "length": 2112,
+      "angle": 0,
+      "rot_s_rad": 0,
+      "shift_x": 0,
+      "shift_y": 0
+    }
+  },
+  "association_counts": {
+    "catalogue name association": 7957,
+    "quadrupole anchor candidate": 2663,
+    "unassigned": 7266,
+    "catalogue nearest quad within 3 m": 2112
+  },
+  "n_association_rows": 19998,
+  "distance_metric": "periodic longitudinal s at element entrances",
+  "same_girder_max_distance_m": 3.0,
+  "engineering_assignment": false,
+  "catalogue_generator_url": "https://github.com/skostogl/fcc-ee-magnet-catalogue/blob/main/000_create_catalogues.py",
+  "catalogue_generator_blob_sha": "d1fd495e8b55145f8930e815a9aeb3f5d33069bd",
+  "catalogue_documented_model": "LCC_107.0.0"
+}

@@ -11,6 +11,11 @@ The native implementation is in `xtrack/mechanics`; no scratch/feedback module
 is imported. These are demonstration inputs and explicit physical assumptions,
 not an FCC-ee mechanical model or performance prediction.
 
+The separate [FCC readiness review](../designs/2026-11-20_fcc_scaling_review.md)
+uses the requested development Z input. Its [cost figure](results/fcc_scaling/costs.svg)
+and [raw results](results/fcc_scaling/README.md) expose public guard failures and
+runtime scaling; the experimental numeric snapshot is not a supported workflow.
+
 Each result directory contains terminal output, SVG/PNG figures and result.json.
 The [manifest](results/manifest.json) records the current script and native source
 hashes, individual phase timings and generated artifacts. Worker elapsed time

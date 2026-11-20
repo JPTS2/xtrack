@@ -4,6 +4,12 @@ This document describes the native exploration after the fourteen-example set.
 The earlier [workflow review](designs/2026-11-19_workflow_review.md) is retained
 as a dated design record; its capability table predates this implementation.
 
+The subsequent [FCC readiness review](designs/2026-11-20_fcc_scaling_review.md)
+uses the requested development lattice. It demonstrates that the current public
+geometry guards, repeated validation, scalar update path and world-coordinate
+round trips need changes before full FCC studies. Its numeric/bulk experiments
+are measurements, not a supported runtime or accepted engineering assignments.
+
 ## Ownership and the example contract
 
 The interface follows the verified Environment/Line facade pattern in Xtrack

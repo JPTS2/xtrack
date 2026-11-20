@@ -1,0 +1,128 @@
+{
+  "phase": "field",
+  "metadata": {
+    "lattice": "/Users/jack/xsuite/mechanics/inputs/acc-models-fcc-ee-108.1.0/lattices/z/fccee_z_beam_1_positrons.json",
+    "lattice_sha256": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe",
+    "model_commit": "8805a5bb8bd568f5de2e1558037371905ecfc985",
+    "model_branch": "dev/108.1.0",
+    "model_version": "dev/LCC_108.3.0",
+    "xtrack": "0.119.2",
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "script_sha256": "8e6050420a04dc8539bc717a1dfdc0c57e07637dca039a7eff020de77b81d7da",
+    "mechanics_source_sha256": {
+      "__init__.py": "f92d46c4e9dfa5cb6fd46874f4b0f24d9200e2dcf02698cd8bc4e4b213cb30d6",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "5a22d1469e0ca541b650ecedf2dda2451d1bb49f754866abd3016085e1c30bde",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "8a94b155598ec2742d3758dc3014513fe0d74f912ee48185d7a1550acdba2f2a",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90",
+      "tables.py": "aebb3f2343270ff5b50c33069050bf9745bfbcef72cf3c9f0fbe7288dc6abfbf"
+    },
+    "cuda_module": false,
+    "opencl_module": false,
+    "thread_settings": {
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "circumference_m": 90640.19986590669,
+    "p0c_ev": 45599999997.13684,
+    "revolution_time_s": 0.000302343162587492,
+    "n_occurrences": 32204,
+    "n_unique_names": 20464,
+    "n_quadrupoles": 2663,
+    "types": {
+      "Marker": 2676,
+      "Drift": 12072,
+      "Multipole": 5414,
+      "Quadrupole": 2663,
+      "RBend": 7218,
+      "Sextupole": 2112,
+      "Octupole": 48,
+      "Cavity": 1
+    },
+    "peak_rss_after_load_mib": 296.578125,
+    "peak_rss_after_tracker_mib": 354.90625,
+    "load": {
+      "median_s": 2.1153247081674635,
+      "samples_s": [
+        2.1153247081674635
+      ]
+    },
+    "table_inspection": {
+      "median_s": 0.11740279197692871,
+      "samples_s": [
+        0.11740279197692871
+      ]
+    },
+    "tracker_build": {
+      "median_s": 0.6151890829205513,
+      "samples_s": [
+        0.6151890829205513
+      ]
+    }
+  },
+  "results": {
+    "survey": {
+      "median_s": 3.4782504171598703,
+      "samples_s": [
+        3.4782504171598703
+      ]
+    },
+    "n_receivers": 10652,
+    "n_times": 128,
+    "n_modes": 256,
+    "direct_source_workspace_estimate_bytes": 110125056,
+    "public_field_guard": "Estimated field workspace 9340040448 bytes exceeds max_memory_bytes",
+    "direct_source_evaluation": {
+      "median_s": 0.06303058308549225,
+      "samples_s": [
+        0.06303058308549225
+      ]
+    },
+    "rigid_contact_fit": {
+      "median_s": 0.507520291954279,
+      "samples_s": [
+        0.507520291954279
+      ]
+    },
+    "class_responses": {
+      "benchmark_class_0": {
+        "count": 888,
+        "frequency_hz": 8.0,
+        "median_s": 0.0039062078576534986,
+        "samples_s": [
+          0.0039062078576534986
+        ],
+        "whole_split_max_error": 0.0
+      },
+      "benchmark_class_1": {
+        "count": 888,
+        "frequency_hz": 12.0,
+        "median_s": 0.0033464159350842237,
+        "samples_s": [
+          0.0033464159350842237
+        ],
+        "whole_split_max_error": 0.0
+      },
+      "benchmark_class_2": {
+        "count": 887,
+        "frequency_hz": 18.0,
+        "median_s": 0.003981083165854216,
+        "samples_s": [
+          0.003981083165854216
+        ],
+        "whole_split_max_error": 0.0
+      }
+    },
+    "field_payload_bytes": 32979616,
+    "rigid_payload_bytes": 16362496,
+    "response_payload_bytes": 16361472,
+    "contact_residual_rms_m": 2.380769824855653e-10
+  },
+  "status": "passed",
+  "peak_rss_mib": 1007.15625
+}

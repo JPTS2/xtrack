@@ -1,0 +1,223 @@
+Loaded 32204 occurrences; 2663 quads; C=90640.200 m
+Native 1 supports: last 3.725 s
+Native 2 supports: last 1.193 s
+Native 3 supports: last 1.207 s
+Native 4 supports: last 1.175 s
+Native 5 supports: last 1.166 s
+Native 6 supports: last 1.136 s
+Native attachment blocked: qf2r.0.length: expression-driven geometry/alignment is not supported by numeric lowering
+{
+  "phase": "native",
+  "metadata": {
+    "lattice": "/Users/jack/xsuite/mechanics/inputs/acc-models-fcc-ee-108.1.0/lattices/z/fccee_z_beam_1_positrons.json",
+    "lattice_sha256": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe",
+    "model_commit": "8805a5bb8bd568f5de2e1558037371905ecfc985",
+    "model_branch": "dev/108.1.0",
+    "model_version": "dev/LCC_108.3.0",
+    "xtrack": "0.119.2",
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "script_sha256": "8e6050420a04dc8539bc717a1dfdc0c57e07637dca039a7eff020de77b81d7da",
+    "mechanics_source_sha256": {
+      "__init__.py": "f92d46c4e9dfa5cb6fd46874f4b0f24d9200e2dcf02698cd8bc4e4b213cb30d6",
+      "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+      "model.py": "5a22d1469e0ca541b650ecedf2dda2451d1bb49f754866abd3016085e1c30bde",
+      "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+      "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+      "plotting.py": "8a94b155598ec2742d3758dc3014513fe0d74f912ee48185d7a1550acdba2f2a",
+      "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+      "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90",
+      "tables.py": "aebb3f2343270ff5b50c33069050bf9745bfbcef72cf3c9f0fbe7288dc6abfbf"
+    },
+    "cuda_module": false,
+    "opencl_module": false,
+    "thread_settings": {
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "circumference_m": 90640.19986590669,
+    "p0c_ev": 45599999997.13684,
+    "revolution_time_s": 0.000302343162587492,
+    "n_occurrences": 32204,
+    "n_unique_names": 20464,
+    "n_quadrupoles": 2663,
+    "types": {
+      "Marker": 2676,
+      "Drift": 12072,
+      "Multipole": 5414,
+      "Quadrupole": 2663,
+      "RBend": 7218,
+      "Sextupole": 2112,
+      "Octupole": 48,
+      "Cavity": 1
+    },
+    "peak_rss_after_load_mib": 312.703125,
+    "peak_rss_after_tracker_mib": 378.265625,
+    "load": {
+      "median_s": 2.2005142078269273,
+      "samples_s": [
+        2.2005142078269273
+      ]
+    },
+    "table_inspection": {
+      "median_s": 0.11685429187491536,
+      "samples_s": [
+        0.11685429187491536
+      ]
+    },
+    "tracker_build": {
+      "median_s": 0.642290250165388,
+      "samples_s": [
+        0.642290250165388
+      ]
+    }
+  },
+  "results": {
+    "kernel_warmup": {
+      "median_s": 0.006050459109246731,
+      "samples_s": [
+        0.006050459109246731
+      ]
+    },
+    "frozen_tracking": [
+      {
+        "particles": 1,
+        "turns": 4,
+        "median_s": 0.011278396006673574,
+        "samples_s": [
+          0.011197000043466687,
+          0.011359791969880462
+        ],
+        "all_active": [
+          true,
+          true
+        ]
+      },
+      {
+        "particles": 32,
+        "turns": 4,
+        "median_s": 0.25129262497648597,
+        "samples_s": [
+          0.24766870797611773,
+          0.2549165419768542
+        ],
+        "all_active": [
+          true,
+          true
+        ]
+      }
+    ],
+    "reference_adoption": {
+      "median_s": 0.1139239170588553,
+      "samples_s": [
+        0.1139239170588553
+      ]
+    },
+    "unsupported_attachment": {
+      "element": "qf2r.0",
+      "error": "qf2r.0.length: expression-driven geometry/alignment is not supported by numeric lowering",
+      "elapsed_s": 0.1229838328436017,
+      "successful_groups": 6
+    },
+    "attachment": [
+      {
+        "supports": 1,
+        "element": "qd0ar.0",
+        "last_group_s": 3.725388665916398,
+        "cumulative_s": 3.725466708885506
+      },
+      {
+        "supports": 2,
+        "element": "qd0br.0",
+        "last_group_s": 1.193179874913767,
+        "cumulative_s": 4.918799459002912
+      },
+      {
+        "supports": 3,
+        "element": "qf1ar.0",
+        "last_group_s": 1.207235291833058,
+        "cumulative_s": 6.1262494588736445
+      },
+      {
+        "supports": 4,
+        "element": "qf1br.0",
+        "last_group_s": 1.174947707913816,
+        "cumulative_s": 7.3013257088605314
+      },
+      {
+        "supports": 5,
+        "element": "qf1cr.0",
+        "last_group_s": 1.166081374976784,
+        "cumulative_s": 8.467530166963115
+      },
+      {
+        "supports": 6,
+        "element": "qf1dr.0",
+        "last_group_s": 1.135937541956082,
+        "cumulative_s": 9.603586583863944
+      }
+    ],
+    "pose": {
+      "median_s": 0.00011641602031886578,
+      "samples_s": [
+        0.00023112492635846138,
+        0.00011641602031886578,
+        0.00010245922021567822
+      ]
+    },
+    "line_validation": {
+      "median_s": 0.09521795809268951,
+      "samples_s": [
+        0.09424933302216232,
+        0.09521795809268951,
+        0.12096316693350673
+      ]
+    },
+    "apply": {
+      "median_s": 0.10203441604971886,
+      "samples_s": [
+        0.10203441604971886,
+        0.10061374981887639,
+        0.12565883318893611
+      ]
+    },
+    "apply_cpu_buffer_io": {
+      "buffer_type": "BufferNumpy",
+      "read_calls": 81384,
+      "read_bytes": 651072,
+      "write_calls": 42,
+      "write_bytes": 336
+    },
+    "dynamic_tracking": [
+      {
+        "particles": 1,
+        "turns": 4,
+        "median_s": 0.4525930000236258,
+        "samples_s": [
+          0.4502544580027461,
+          0.4549315420445055
+        ],
+        "all_active": [
+          true,
+          true
+        ]
+      },
+      {
+        "particles": 32,
+        "turns": 4,
+        "median_s": 0.6951417289674282,
+        "samples_s": [
+          0.707380082923919,
+          0.6829033750109375
+        ],
+        "all_active": [
+          true,
+          true
+        ]
+      }
+    ]
+  },
+  "status": "passed",
+  "peak_rss_mib": 882.484375
+}

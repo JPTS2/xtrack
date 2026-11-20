@@ -46,6 +46,10 @@ The heavier [girder assembly review](review/demos/README.md) sits outside this
 short lesson set. It animates a rigid girder, two 0.5 m quadrupoles and a 1.5 m
 bend with independent magnet/girder motion, and saves a GIF.
 
+The [FCC readiness review](designs/2026-11-20_fcc_scaling_review.md) benchmarks the
+requested development lattice and identifies what must change before full FCC
+studies. The small teaching examples do not establish full-machine readiness.
+
 Run from this checkout with its source first on `PYTHONPATH`:
 
 ```bash
