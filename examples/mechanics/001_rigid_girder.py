@@ -272,42 +272,52 @@ print('After mechanics is cleared, tracking matches the original design placemen
 ########################################
 # Compare actual element inputs through the five lifecycle states
 ########################################
-fig, axes = plt.subplots(1, 2, figsize = (12.5, 5.2), gridspec_kw = {'width_ratios': [1.1, 1]})
+fig = plt.figure(figsize = (12.5, 5.6))
+grid = fig.add_gridspec(2, 2, width_ratios = [1.1, 1])
+placement_ax = fig.add_subplot(grid[:, 0])
+q1_ax = fig.add_subplot(grid[0, 1])
+q2_ax = fig.add_subplot(grid[1, 1], sharex = q1_ax, sharey = q1_ax)
 labels = list(placements)
 y = np.arange(len(labels))
 for index, (name, color, offset) in enumerate([
     ('q1', 'tab:blue', -.17), ('q2', 'tab:orange', .17),
 ]):
     values = np.array([placements[label][index] for label in labels]) * 1e6
-    bars = axes[0].barh(y + offset, values, height = .30, color = color, label = name)
-    axes[0].bar_label(bars, fmt = '%.3f', padding = 4, fontsize = 9)
-axes[0].set(
+    bars = placement_ax.barh(y + offset, values, height = .30, color = color, label = name)
+    placement_ax.bar_label(bars, fmt = '%.3f', padding = 4, fontsize = 9)
+placement_ax.set(
     yticks = y, yticklabels = [fill(state_labels[label], width = 32) for label in labels],
     xlabel = 'Vertical magnet placement [µm]',
     title = 'Design, installation error and vibration',
 )
-axes[0].tick_params(axis = 'y', labelsize = 9)
-axes[0].invert_yaxis()
-axes[0].margins(x = .28)
-axes[0].legend(loc = 'lower right')
+placement_ax.tick_params(axis = 'y', labelsize = 9)
+placement_ax.invert_yaxis()
+placement_ax.margins(x = .28)
+placement_ax.legend(loc = 'lower right')
 
 ########################################
 # Resolve the nanometre vibration about each installed magnet
 ########################################
-axes[1].plot(times * 1e3, q1_history.dynamic_Y * 1e9,
-             color = 'tab:blue', label = 'q1')
-axes[1].plot(times[::8] * 1e3, q2_history.dynamic_Y[::8] * 1e9,
-             'o', ms = 5, mfc = 'none', color = 'tab:orange', label = 'q2')
-axes[1].axvline(INSPECT_TIME_S * 1e3, ls = ':', color = '0.4', label = f't = {INSPECT_TIME_S:g} s')
-axes[1].set(
-    xlabel = 'Physical time [ms]', ylabel = 'Vibration displacement [nm]',
-    title = 'Common vibration about the installed placement',
-)
-axes[0].title.set_fontsize(11)
-axes[1].title.set_fontsize(11)
-axes[1].margins(y = .25)
-axes[1].legend(loc = 'upper center', ncol = 3, fontsize = 9)
-for ax in axes:
+# The histories coincide. Matching panels expose both complete curves with
+# the same sampling, line style and axis limits, without one hiding the other.
+for ax, name, history, color in [
+    (q1_ax, 'q1', q1_history, 'tab:blue'),
+    (q2_ax, 'q2', q2_history, 'tab:orange'),
+]:
+    ax.plot(times * 1e3, history.dynamic_Y * 1e9, color = color)
+    ax.axvline(INSPECT_TIME_S * 1e3, ls = ':', color = '0.4',
+               label = f't = {INSPECT_TIME_S:g} s')
+    ax.set(
+        ylabel = 'Vibration displacement [nm]',
+        title = f'{name}: vibration about the installed placement',
+    )
+    ax.title.set_fontsize(11)
+    ax.margins(y = .30)
+    ax.legend(loc = 'upper right', fontsize = 9)
+q1_ax.tick_params(labelbottom = False)
+q2_ax.set_xlabel('Physical time [ms]')
+placement_ax.title.set_fontsize(11)
+for ax in (placement_ax, q1_ax, q2_ax):
     ax.grid(axis = 'x', alpha = .2)
     ax.set_axisbelow(True)
 fig.tight_layout()
