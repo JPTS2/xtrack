@@ -1,0 +1,18 @@
+
+Loading line from dict:   0%|          | 0/20691 [00:00<?, ?it/s]
+Loading line from dict:  15%|█▌        | 3166/20691 [00:00<00:00, 31646.07it/s]
+Loading line from dict:  31%|███       | 6331/20691 [00:00<00:00, 16939.60it/s]
+Loading line from dict:  41%|████      | 8386/20691 [00:00<00:01, 9743.96it/s]
+Loading line from dict:  47%|████▋     | 9753/20691 [00:00<00:01, 8908.90it/s]
+Loading line from dict:  52%|█████▏    | 10861/20691 [00:01<00:01, 8407.47it/s]
+Loading line from dict:  57%|█████▋    | 11824/20691 [00:01<00:01, 8066.82it/s]
+Loading line from dict:  61%|██████▏   | 12699/20691 [00:01<00:01, 7870.83it/s]
+Loading line from dict:  67%|██████▋   | 13830/20691 [00:01<00:00, 8630.78it/s]
+Loading line from dict:  72%|███████▏  | 14966/20691 [00:01<00:00, 9284.95it/s]
+Loading line from dict:  78%|███████▊  | 16138/20691 [00:01<00:00, 9905.00it/s]
+Loading line from dict:  84%|████████▎ | 17325/20691 [00:01<00:00, 10429.94it/s]
+Loading line from dict:  90%|█████████ | 18701/20691 [00:01<00:00, 11349.97it/s]
+Loading line from dict:  97%|█████████▋| 20154/20691 [00:01<00:00, 12249.30it/s]
+Loading line from dict: 100%|██████████| 20691/20691 [00:01<00:00, 10622.02it/s]
+ld: warning: -pie being ignored. It is only used when linking a main executable
+ld: warning: -pie being ignored. It is only used when linking a main executable

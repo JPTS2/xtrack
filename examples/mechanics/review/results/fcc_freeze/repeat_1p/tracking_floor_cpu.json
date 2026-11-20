@@ -1,0 +1,268 @@
+{
+  "metadata": {
+    "script_sha256": "d272f6940ef483aad13435e8e8fab3c718795ac950db4e61b5d9d6b4f16d4a23",
+    "lattice_sha256": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe",
+    "xtrack_version": "0.119.2",
+    "xobjects_version": "0.7.3",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+    "context": "cpu",
+    "turns": 64,
+    "repeats": 7,
+    "n_quadrupole_occurrences": 2663,
+    "n_magnet_occurrences": 12041,
+    "meaning": "Fixed-field particle-map and launch-per-turn timing floor; no mechanics update"
+  },
+  "measurements": [
+    {
+      "case": "unmodified",
+      "particles": 1,
+      "scheduler": "multi_turn",
+      "median_s": 0.18985099997371435,
+      "samples_s": [
+        0.1943722500000149,
+        0.18952566594816744,
+        0.18949362495914102,
+        0.1900448331143707,
+        0.19145720801316202,
+        0.18985099997371435,
+        0.18873979104682803
+      ],
+      "ms_per_turn": 2.9664218745892867,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "case": "unmodified",
+      "particles": 1,
+      "scheduler": "launch_per_turn",
+      "median_s": 0.19464004202745855,
+      "samples_s": [
+        0.1947496251668781,
+        0.197299666935578,
+        0.1966676670126617,
+        0.19247837481088936,
+        0.19239870784804225,
+        0.19349833321757615,
+        0.19464004202745855
+      ],
+      "ms_per_turn": 3.04125065667904,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "case": "quad_vertical",
+      "particles": 1,
+      "scheduler": "multi_turn",
+      "median_s": 0.19309875019825995,
+      "samples_s": [
+        0.19330858392640948,
+        0.19204316707327962,
+        0.19057583389803767,
+        0.19036287488415837,
+        0.19451537495478988,
+        0.19309875019825995,
+        0.19424775009974837
+      ],
+      "ms_per_turn": 3.0171679718478117,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "case": "quad_vertical",
+      "particles": 1,
+      "scheduler": "launch_per_turn",
+      "median_s": 0.19603979191742837,
+      "samples_s": [
+        0.19603979191742837,
+        0.1968456250615418,
+        0.19848833396099508,
+        0.19644200010225177,
+        0.19508541584946215,
+        0.1949963339138776,
+        0.19546875008381903
+      ],
+      "ms_per_turn": 3.0631217487098183,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "case": "quad_six_coordinates",
+      "particles": 1,
+      "scheduler": "multi_turn",
+      "median_s": 0.2043754579499364,
+      "samples_s": [
+        0.2078833340201527,
+        0.20292954216711223,
+        0.2043084588367492,
+        0.2026730419602245,
+        0.2043754579499364,
+        0.204605583101511,
+        0.20444070897065103
+      ],
+      "ms_per_turn": 3.193366530467756,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "case": "quad_six_coordinates",
+      "particles": 1,
+      "scheduler": "launch_per_turn",
+      "median_s": 0.20793641707859933,
+      "samples_s": [
+        0.20642316690646112,
+        0.20867008296772838,
+        0.20793641707859933,
+        0.21125879092141986,
+        0.2091588331386447,
+        0.20734220813028514,
+        0.20578783308155835
+      ],
+      "ms_per_turn": 3.2490065168531146,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "case": "all_magnets_vertical",
+      "particles": 1,
+      "scheduler": "multi_turn",
+      "median_s": 0.22363575012423098,
+      "samples_s": [
+        0.224780541844666,
+        0.22363575012423098,
+        0.22264999989420176,
+        0.22309562494046986,
+        0.22313195909373462,
+        0.22656833310611546,
+        0.2246544579975307
+      ],
+      "ms_per_turn": 3.494308595691109,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "case": "all_magnets_vertical",
+      "particles": 1,
+      "scheduler": "launch_per_turn",
+      "median_s": 0.2315438750665635,
+      "samples_s": [
+        0.2315438750665635,
+        0.23362395889125764,
+        0.22886220808140934,
+        0.23305429215542972,
+        0.22867579106241465,
+        0.23137158411554992,
+        0.24163958290591836
+      ],
+      "ms_per_turn": 3.6178730479150545,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "case": "all_magnets_six_coordinates",
+      "particles": 1,
+      "scheduler": "multi_turn",
+      "median_s": 0.27726337499916553,
+      "samples_s": [
+        0.2779095829464495,
+        0.27726337499916553,
+        0.2746115408372134,
+        0.2823243329767138,
+        0.2776630420703441,
+        0.27441716683097184,
+        0.2753345419187099
+      ],
+      "ms_per_turn": 4.3322402343619615,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "case": "all_magnets_six_coordinates",
+      "particles": 1,
+      "scheduler": "launch_per_turn",
+      "median_s": 0.28298120805993676,
+      "samples_s": [
+        0.28206041594967246,
+        0.29179420904256403,
+        0.2853676250670105,
+        0.2809193329885602,
+        0.28166399989277124,
+        0.28298120805993676,
+        0.2840992081910372
+      ],
+      "ms_per_turn": 4.421581375936512,
+      "all_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    }
+  ]
+}

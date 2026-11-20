@@ -50,6 +50,13 @@ The [FCC readiness review](designs/2026-11-20_fcc_scaling_review.md) benchmarks 
 requested development lattice and identifies what must change before full FCC
 studies. The small teaching examples do not establish full-machine readiness.
 
+The subsequent [prepared-runtime and bunch review](designs/2026-11-20_prepared_runtime_review.md)
+keeps these scripts and their UI unchanged while adding native bulk assignment,
+support classes, precision-preserving local motion and context-native updates.
+[Fresh captures](review/results/prepared_examples/manifest.json) include source,
+kernel and tracker hashes. Cold preparation and steady tracking are measured
+separately in the FCC review; a first example track may compile mechanics kernels.
+
 Run from this checkout with its source first on `PYTHONPATH`:
 
 ```bash
@@ -216,8 +223,10 @@ After `apply`, actual element poses are available through
 `line.survey(include_element_frames=True)` and `get_frame(..., which='elem_start')`
 / `which='elem_end'`. The ordinary survey `X/Y/Z` path remains the nominal path.
 
-Automatic vibration tracking currently uses host numeric updates. Turn-held
-sampling and reference-speed passage sampling are both demonstrated; shared
+Automatic turn-held tracking uses prepared context kernels for analytic sources,
+rigid composition and alignment writes. Sampled/custom inputs supply a bounded
+packed block; the reference backend remains available. Reference-speed passage
+sampling is also demonstrated; shared
 prescribed sources require an explicit common `time_origin_s` for each line.
 No causal shared-response/controller event scheduler is provided. The separate
 causal filter has bounded state and preserves it across consecutive blocks.

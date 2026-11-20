@@ -1,0 +1,24 @@
+Floor motion and rigid supports
+-------------------------------
+Field: wave; supports: 3; feet per support: 4
+Record length / step [s]: 16 / 0.00390625
+Coordinate      First-girder RMS
+shift_x            10.357134 nm
+shift_y            32.370213 nm
+shift_s             7.434905 nm
+rot_x_rad           0.007312 µrad
+rot_y_rad           0.001893 µrad
+rot_s_rad           0.007202 µrad
+Contact mismatch RMS [nm]: 1.709218
+The contact mismatch is reported; the girder does not deform to remove it.
+
+Reference CPU costs
+-------------------
+line_load_and_copy_s        0.0565 s
+tracker_build_s             0.1347 s
+reference_adoption_s        0.0019 s
+mechanics_definition_s      0.0967 s
+source_geometry_s           0.0000 s
+sample_and_fit_s            0.0229 s
+apply_s                     0.0021 s
+pose_inspection_s           0.0010 s

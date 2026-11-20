@@ -5,6 +5,15 @@ Copyright (c) CERN, 2026.
 
 # Captured mechanics walkthrough
 
+The latest [prepared-runtime review](../designs/2026-11-20_prepared_runtime_review.md)
+keeps the fourteen teaching scripts unchanged. Its
+[fresh example manifest](results/prepared_examples/manifest.json) links the new
+captures; each lesson directory contains its terminal output and figures.
+[FCC prepared costs](results/fcc_freeze_runtime/README.md) and
+[bunch/Twiss figures](results/fcc_bunch_sampling/README.md) are separate review
+experiments. The detailed narrative and timing table below retain the preceding
+reference-backend captures for comparison; their hashes are historical.
+
 CPU capture on 20 November 2026, native Xtrack 0.119.2, Python 3.14 and NumPy
 2.4.1 on macOS/ARM. The fourteen lessons follow the feedback script formatting.
 The native implementation is in `xtrack/mechanics`; no scratch/feedback module
@@ -17,7 +26,7 @@ and [raw results](results/fcc_scaling/README.md) expose public guard failures an
 runtime scaling; the experimental numeric snapshot is not a supported workflow.
 
 Each result directory contains terminal output, SVG/PNG figures and result.json.
-The [manifest](results/manifest.json) records the current script and native source
+The [earlier manifest](results/manifest.json) records its script and native source
 hashes, individual phase timings and generated artifacts. Worker elapsed time
 excludes initial imports but includes figure capture and requested GIF rendering;
 instrumented phases exclude interactive display. Process peak RSS includes the
@@ -39,7 +48,7 @@ PYTHONPATH=. python examples/mechanics/review/run_examples.py
 PYTHONPATH=. python examples/mechanics/review/run_examples.py --examples 014
 ```
 
-This revision passed 53 focused mechanics checks, including table selection,
+That reference revision passed 53 focused mechanics checks, including table selection,
 finite rigid composition, source inspection, memory limits, environment copy,
 numeric exports and GIF rendering. All fourteen defaults passed and produced
 21 figures plus the new 64-frame quadrupole GIF. The earlier branch review also

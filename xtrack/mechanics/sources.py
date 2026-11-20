@@ -161,6 +161,12 @@ class DisplacementPSD:
         object.__setattr__(self, 'density', tuple(s))
         object.__setattr__(self, 'seed', int(self.seed))
 
+    def workspace_bytes(self, n_times, n_receivers):
+        # FFT quadratures/coefficients plus the dense spatial reference path.
+        # An uncorrelated record needs no identity covariance/factorization.
+        return (80*n_times*n_receivers
+                + (80*n_receivers**2 if self.correlation_length_m is not None else 0))
+
     def evaluate(self, time_s, positions_m):
         count, channels = len(time_s), len(positions_m)
         if count < 2:
@@ -183,7 +189,7 @@ class DisplacementPSD:
         if count % 2 == 0:
             s[-1] = 0.
         if self.correlation_length_m is None:
-            factor = np.eye(channels)
+            factor = None
         else:
             distances = np.linalg.norm(positions_m[:, None] - positions_m[None, :], axis=-1)
             correlation = np.exp(-distances / self.correlation_length_m)
@@ -192,7 +198,9 @@ class DisplacementPSD:
             eigenvalues[np.abs(eigenvalues) < tolerance] = 0.
             factor = eigenvectors * np.sqrt(np.maximum(eigenvalues, 0.))[None, :]
         rng = np.random.default_rng(self.seed)
-        quadratures = rng.standard_normal((2, len(f), channels)) @ factor.T
+        quadratures = rng.standard_normal((2, len(f), channels))
+        if factor is not None:
+            quadratures = quadratures @ factor.T
         coefficients = (quadratures[0] + 1j*quadratures[1]) * np.sqrt(count/dt*s[:, None]/4)
         coefficients *= np.exp(2j*np.pi*f*time_s[0])[:, None]
         return np.fft.irfft(coefficients, n=count, axis=0)

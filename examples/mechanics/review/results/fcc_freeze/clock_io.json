@@ -1,0 +1,50 @@
+{
+  "script_sha256": "0e79926b95e2e825a751f6ebb4cd8b55cd52a1b014d5274474c1508f72b7b496",
+  "xtrack_version": "0.119.2",
+  "context": "serial CPU instrumentation",
+  "meaning": "Host accesses to the particle buffer during prepared mechanics tracking; no GPU timing",
+  "measurements": [
+    {
+      "turns": 1,
+      "counts": {
+        "read:other": 12,
+        "read_bytes": 152,
+        "read:reference_turns": 2,
+        "read:beta0[0]": 2,
+        "read:time_s": 2,
+        "write:reference_turns": 1,
+        "write_bytes": 16,
+        "write:t_sim": 1,
+        "read:t_sim": 1
+      }
+    },
+    {
+      "turns": 4,
+      "counts": {
+        "read:other": 12,
+        "read_bytes": 152,
+        "read:reference_turns": 2,
+        "read:beta0[0]": 2,
+        "read:time_s": 2,
+        "write:reference_turns": 1,
+        "write_bytes": 16,
+        "write:t_sim": 1,
+        "read:t_sim": 1
+      }
+    },
+    {
+      "turns": 16,
+      "counts": {
+        "read:other": 12,
+        "read_bytes": 152,
+        "read:reference_turns": 2,
+        "read:beta0[0]": 2,
+        "read:time_s": 2,
+        "write:reference_turns": 1,
+        "write_bytes": 16,
+        "write:t_sim": 1,
+        "read:t_sim": 1
+      }
+    }
+  ]
+}

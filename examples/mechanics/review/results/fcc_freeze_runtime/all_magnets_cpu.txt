@@ -1,0 +1,283 @@
+Compiling ContextCpu kernels...
+Done compiling ContextCpu kernels.
+Compiling ContextCpu kernels...
+Done compiling ContextCpu kernels.
+{
+  "lattice_sha256": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe",
+  "script_sha256": "fdc750999ffb8f64262cdb073842263452fec738bff8d88c4d8848c7477f7362",
+  "tracker_sha256": "ffd2f54d448fa80acb9bed93b00f7b0ef51f71eec027bca4acacc70f42ce405c",
+  "mechanics_source_sha256": {
+    "xtrack/mechanics/__init__.py": "f92d46c4e9dfa5cb6fd46874f4b0f24d9200e2dcf02698cd8bc4e4b213cb30d6",
+    "xtrack/mechanics/context_arrays.py": "ab992e56f18a16067f0bc103ca3ef4965daaba547985a3ab7675a99395b782be",
+    "xtrack/mechanics/geometry_guard.py": "29e420f43f715ca981470cdea6040470aa294ef989ff04c9b33f5991ef2081ed",
+    "xtrack/mechanics/installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+    "xtrack/mechanics/local_deformations.py": "eb3ec593fea0f5fd3d23114728c6ab5cadcdd0b34828535d03433b3ac2abade2",
+    "xtrack/mechanics/model.py": "31c2a200eed3c4dd54462cb2c152f1b551c7bdabdc025380fdf76e5bab294794",
+    "xtrack/mechanics/motion.py": "216dc1643ac45af70afe5a2b71c17d76027faa6778c12e5c9f8466aec20f353d",
+    "xtrack/mechanics/observation.py": "ff2d201e23758ff5127a0f14e5c809a64d04c9e6f5a7753edb16fd5883c34369",
+    "xtrack/mechanics/plotting.py": "2131b87b0244e4d674ff323ff9c1bc08f0bded8c6879b3fc6c24548556746434",
+    "xtrack/mechanics/responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+    "xtrack/mechanics/runtime.py": "cb67d0f3b2d3c0f59e26a522532e6f7647f7ffc05ae252fc2852ac766bee65af",
+    "xtrack/mechanics/runtime_src/geometry_guard.h": "dfbc63e38380c47da79d7c150fef2b022cb0543210217ef7732b3727a670a9c2",
+    "xtrack/mechanics/runtime_src/update.h": "076d1eeda9b5bc834deadb01ad754132554e7adcafdb520cb0a8aa4e0e421ea5",
+    "xtrack/mechanics/sources.py": "1a4380a24834fcf3c9c98945ab45f1d1b9fde302b2af84804876e7d50d44f3b5",
+    "xtrack/mechanics/tables.py": "92e17f9f6c202e2188720f9ef8f52430707a73305dac370e3ec75568a68e6abc"
+  },
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "xtrack": "0.119.2",
+  "xobjects": "0.7.3",
+  "context": "cpu",
+  "members": "all_magnets",
+  "n_attachments": 12041,
+  "n_supports": 12041,
+  "hierarchy": "flat",
+  "turns": 128,
+  "thread_settings": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1"
+  },
+  "compiler_settings": {
+    "CC": "/opt/miniconda3/envs/xsuite/bin/clang",
+    "LDSHARED": "/opt/miniconda3/envs/xsuite/bin/clang -bundle -undefined dynamic_lookup"
+  },
+  "public_api": true,
+  "live_expressions_preserved": true,
+  "engineering_assignment": false,
+  "update_sampling": "turn-held",
+  "source": "analytic",
+  "source_execution": "context-native analytic",
+  "source_prepare_s": 0.010856000008061528,
+  "definition_s": 4.298198624979705,
+  "cold_prepare_s": 2.659101959085092,
+  "update_median_s": 0.0008644999470561743,
+  "update_samples_s": [
+    0.0009039998985826969,
+    0.0008857909124344587,
+    0.0008659998420625925,
+    0.0008664589840918779,
+    0.0008651670068502426,
+    0.000869374955072999,
+    0.000884499866515398,
+    0.0008652498945593834,
+    0.0008652908727526665,
+    0.0008620419539511204,
+    0.0008649588562548161,
+    0.0008620419539511204,
+    0.0008696671575307846,
+    0.0008633749093860388,
+    0.0008624591864645481,
+    0.0008637919090688229,
+    0.0008623751346021891,
+    0.0009000001009553671,
+    0.0008622501045465469,
+    0.0008852081373333931,
+    0.0008617921266704798,
+    0.0008609169162809849,
+    0.0008638750296086073,
+    0.00086162518709898,
+    0.0008688750676810741,
+    0.0008640410378575325,
+    0.0008615830447524786,
+    0.0008650829549878836,
+    0.0008623329922556877,
+    0.0008621250744909048
+  ],
+  "prepared_array_bytes": {
+    "_static_settings": 1155936,
+    "paths_offsets": 96336,
+    "paths": 96328,
+    "relations": 1155936,
+    "static_local": 1155936,
+    "geometry": 2311872,
+    "baseline": 674296,
+    "offsets": 674296,
+    "body_indices": 96328,
+    "input": 1155936,
+    "dynamic_local": 1155936,
+    "absolute_host": 96328,
+    "absolute": 96328,
+    "source_starts": 96336,
+    "source_data": 4045776,
+    "bodyout": 1155936,
+    "values": 674296
+  },
+  "guard_array_bytes": {
+    "expected_geometry": 440752,
+    "expected": 1115048,
+    "offsets": 1115048,
+    "sizes": 139381,
+    "output": 1115048
+  },
+  "update_host_buffer_io": {
+    "buffer_type": "BufferNumpy",
+    "read_calls": 0,
+    "read_bytes": 0,
+    "write_calls": 0,
+    "write_bytes": 0
+  },
+  "baseline": {
+    "1": {
+      "median_s": 0.3872346659190953,
+      "samples_s": [
+        0.3807134588714689,
+        0.3874963750131428,
+        0.3872346659190953
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 3.025270827492932
+    },
+    "32": {
+      "median_s": 8.286446916870773,
+      "samples_s": [
+        8.278111292049289,
+        8.429219250101596,
+        8.286446916870773
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 64.73786653805291
+    }
+  },
+  "dynamic": {
+    "1": {
+      "median_s": 0.6992676670197397,
+      "samples_s": [
+        0.6992676670197397,
+        0.6958527499809861,
+        0.7445599578786641
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 5.463028648591717
+    },
+    "32": {
+      "median_s": 8.994530958123505,
+      "samples_s": [
+        8.982426250120625,
+        8.994530958123505,
+        9.018665374955162
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 70.26977311033988
+    }
+  },
+  "slowdown": {
+    "1": 1.8057982111700643,
+    "32": 1.085450863120973
+  },
+  "short_calls": {
+    "1": {
+      "baseline": {
+        "median_s": 0.003053415799513459,
+        "samples_s": [
+          0.0031242500990629196,
+          0.003053415799513459,
+          0.0030390419997274876
+        ],
+        "all_active": [
+          true,
+          true,
+          true
+        ],
+        "ms_per_turn": 3.053415799513459
+      },
+      "dynamic": {
+        "median_s": 0.02810129104182124,
+        "samples_s": [
+          0.028243958950042725,
+          0.02701274980790913,
+          0.02810129104182124
+        ],
+        "all_active": [
+          true,
+          true,
+          true
+        ],
+        "ms_per_turn": 28.10129104182124
+      },
+      "slowdown": 9.203231032700817
+    },
+    "4": {
+      "baseline": {
+        "median_s": 0.01194395893253386,
+        "samples_s": [
+          0.011939707910642028,
+          0.01194395893253386,
+          0.011952500091865659
+        ],
+        "all_active": [
+          true,
+          true,
+          true
+        ],
+        "ms_per_turn": 2.985989733133465
+      },
+      "dynamic": {
+        "median_s": 0.04223541612736881,
+        "samples_s": [
+          0.042033292120322585,
+          0.04223541612736881,
+          0.042525375029072165
+        ],
+        "all_active": [
+          true,
+          true,
+          true
+        ],
+        "ms_per_turn": 10.558854031842202
+      },
+      "slowdown": 3.5361320619015846
+    },
+    "16": {
+      "baseline": {
+        "median_s": 0.04750899993814528,
+        "samples_s": [
+          0.04750899993814528,
+          0.04744866583496332,
+          0.04751149984076619
+        ],
+        "all_active": [
+          true,
+          true,
+          true
+        ],
+        "ms_per_turn": 2.96931249613408
+      },
+      "dynamic": {
+        "median_s": 0.10542591684497893,
+        "samples_s": [
+          0.1071843751706183,
+          0.10516941617242992,
+          0.10542591684497893
+        ],
+        "all_active": [
+          true,
+          true,
+          true
+        ],
+        "ms_per_turn": 6.589119802811183
+      },
+      "slowdown": 2.2190725332513637
+    }
+  },
+  "target_max_slowdown": 2.0,
+  "target_met": {
+    "1": true,
+    "32": true
+  }
+}

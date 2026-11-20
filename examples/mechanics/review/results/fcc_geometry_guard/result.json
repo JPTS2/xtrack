@@ -1,0 +1,72 @@
+{
+  "lattice_sha256": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe",
+  "script_sha256": "dda913cb9c7ed3d181b7a68b117caa83883200cb518265426a7f26352e6fbfc8",
+  "mechanics_source_sha256": {
+    "__init__.py": "f92d46c4e9dfa5cb6fd46874f4b0f24d9200e2dcf02698cd8bc4e4b213cb30d6",
+    "geometry_guard.py": "b5c6006305ddfe285ba0f52e80443f20a69a88c007a50e05566d21667d0c618e",
+    "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+    "local_deformations.py": "98f13281709c5faebac9a981f46041333fcf27ffc96a73ddde20fb5545d16d72",
+    "model.py": "557ae409ee76387ee5baa5679fd27c6a1c05c546aedb0c0a8896ec20112ba028",
+    "motion.py": "be42ff4ab1e624a2dd7d597d92d2cc3e393748d4388343097e0eeca50832907d",
+    "observation.py": "ff2d201e23758ff5127a0f14e5c809a64d04c9e6f5a7753edb16fd5883c34369",
+    "plotting.py": "bba989d71b7ecc0029b2e28b353f3fcb1b367748b7940a544914c93b8eca5893",
+    "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+    "runtime.py": "45467bda8660ad6403657cc54ae2773dd47b3b0d018267c3bf5b224d265d7883",
+    "sources.py": "1a4380a24834fcf3c9c98945ab45f1d1b9fde302b2af84804876e7d50d44f3b5",
+    "tables.py": "d7d80b5d68eea23b69ce6e66491fd95dcebd0ccbd8b4e11a9b24d700caa29074"
+  },
+  "n_supports": 2663,
+  "n_occurrences": 32204,
+  "engineering_assignment": false,
+  "detached_numeric_snapshot": false,
+  "load": {
+    "median_s": 2.4968772910069674,
+    "samples_s": [
+      2.4968772910069674
+    ]
+  },
+  "tracker_build": {
+    "median_s": 1.9393277917988598,
+    "samples_s": [
+      1.9393277917988598
+    ]
+  },
+  "public_bulk_definition": {
+    "median_s": 4.392866958864033,
+    "samples_s": [
+      4.392866958864033
+    ]
+  },
+  "full_validation": {
+    "median_s": 0.17224529199302197,
+    "samples_s": [
+      0.23383245803415775,
+      0.17224529199302197,
+      0.17139133298769593
+    ]
+  },
+  "guard_preparation": {
+    "median_s": 1.4476647081319243,
+    "samples_s": [
+      1.4476647081319243
+    ]
+  },
+  "packed_entry_validation": {
+    "median_s": 0.011290374910458922,
+    "samples_s": [
+      0.012576250126585364,
+      0.010759208118543029,
+      0.009682208998128772,
+      0.011290374910458922,
+      0.01122870808467269,
+      0.011318624950945377,
+      0.011625624960288405
+    ]
+  },
+  "protected_geometry_storage_words": 55094,
+  "total_protected_storage_words": 73735,
+  "gathered_bytes_per_entry": 589880,
+  "scalar_buffer_reads_per_entry": 0,
+  "context_to_host_arrays_per_entry": 1,
+  "cpu_only": true
+}

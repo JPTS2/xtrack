@@ -1,0 +1,21 @@
+Compiling ContextCpu kernels...
+Done compiling ContextCpu kernels.
+Compiling ContextCpu kernels...
+Done compiling ContextCpu kernels.
+Motion inputs and tracking lifecycle
+------------------------------------
+Source: harmonic; turns: 256; physical time [s]: 0.000344985333
+Installation y after disabling [µm]: 20.000000
+Input record payload [KiB]: 960.0
+Angular inputs compose as rotations. They do not change the installation settings.
+Frozen closed orbit at q0 [µm]: 46.281318
+
+Reference CPU costs
+-------------------
+line_construction_s         0.0172 s
+tracker_build_s             0.1218 s
+reference_adoption_s        0.0001 s
+mechanics_definition_s      0.0188 s
+installation_definition_s    0.0000 s
+sample_motion_s             0.0070 s
+dynamic_tracking_s          1.3274 s

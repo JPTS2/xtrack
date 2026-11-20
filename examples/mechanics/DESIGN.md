@@ -4,11 +4,14 @@ This document describes the native exploration after the fourteen-example set.
 The earlier [workflow review](designs/2026-11-19_workflow_review.md) is retained
 as a dated design record; its capability table predates this implementation.
 
-The subsequent [FCC readiness review](designs/2026-11-20_fcc_scaling_review.md)
-uses the requested development lattice. It demonstrates that the current public
-geometry guards, repeated validation, scalar update path and world-coordinate
-round trips need changes before full FCC studies. Its numeric/bulk experiments
-are measurements, not a supported runtime or accepted engineering assignments.
+The earlier [FCC readiness review](designs/2026-11-20_fcc_scaling_review.md)
+records the original reference backend's limitations on the requested lattice.
+The [prepared-runtime review](designs/2026-11-20_prepared_runtime_review.md)
+describes the subsequent native bulk setup, local precision and context-kernel
+implementation, with a twofold tracking-slowdown ceiling. Its measurements and
+fill-pattern investigation distinguish current capabilities from the remaining
+GPU, long-run streaming and packed-bunch work. Support cost proxies are not
+accepted engineering girder assignments.
 
 ## Ownership and the example contract
 
@@ -212,15 +215,18 @@ field data. Equal world scales and a local triad expose rigid motion; separate
 translation/rotation magnifications affect presentation only. Preparing a small
 selected history and rendering/encoding its GIF have distinct measured costs.
 
-The current lowering writes effective numeric element alignment fields from the
-host. It is a correctness and UI reference. It preserves captured input data but
-is not the final non-overwriting backend. Slices, shared/repeated element objects,
+Explicit application retains a host correctness reference. Automatic turn-held
+tracking now prepares context-native source/hierarchy/lowering kernels and writes
+effective numeric fields on the tracking context. Both preserve captured input
+data; occurrence-aware non-overwriting buffers remain the next backend. Slices, shared/repeated element objects,
 alignment expressions and post-binding geometry edits remain guarded. Built
 aperture models are guarded against stale geometry; pipe/body ownership and
 mounted tracking monitors still need joint implementation. Whole-environment
 JSON/copy works for builtin sources; standalone line copy/export remains guarded
 after binding. Copy the demo ring before binding to avoid its shared construction
-sublines. Repeating full surveys per attachment is included in measured setup cost.
+sublines. Individual factories include their required survey in setup cost;
+`new_girders(mapping)` resolves a whole batch with one survey and retains live
+reference-geometry expressions.
 
 Pure prescribed sources can be sampled from several beams with explicit common
 physical time origins and distinct line-local buffers. Running one line does
@@ -242,9 +248,9 @@ numeric writes, frozen tracking and dynamic tracking. GPU timings require actual
 none are claimed here. Field generation and response preparation currently use
 NumPy/SciPy on the host, even when static tracking uses a GPU context.
 
-The next implementation decision should follow the captured costs: compile
-geometry/binding indices after edits, compare occurrence-indexed effective
-buffers against cached girder boundaries, and keep only current poses plus
+The next implementation stage should follow the captured costs: extend prepared
+geometry/binding indices to occurrence-indexed effective buffers, compare them
+against cached girder boundaries, and keep only current poses plus
 bounded source/filter state on device. Do not cache a whole time-by-body matrix
 history by default. A boundary scheme must handle starts inside a group and
 observer frames. A buffer scheme must keep definition fields authoritative and
@@ -252,4 +258,6 @@ support ordinary cloned/sliced lattice occurrences. Spatial models require their
 own stated approximation/structure; an arbitrary measured covariance need not
 be low rank. Long-machine streaming, actual CPU/GPU throughput, aperture coupling,
 physical BPM tracking monitors and joint mechanics/feedback scheduling remain
-separate reviewable implementation slices.
+separate reviewable implementation slices. The prepared-runtime review also
+records short-call failures against the twofold ceiling and the need for
+phase-aware maps when multiple bunches are packed together.

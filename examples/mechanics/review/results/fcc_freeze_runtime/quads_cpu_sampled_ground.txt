@@ -1,0 +1,191 @@
+Compiling ContextCpu kernels...
+Done compiling ContextCpu kernels.
+Compiling ContextCpu kernels...
+Done compiling ContextCpu kernels.
+{
+  "lattice_sha256": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe",
+  "script_sha256": "fdc750999ffb8f64262cdb073842263452fec738bff8d88c4d8848c7477f7362",
+  "tracker_sha256": "ffd2f54d448fa80acb9bed93b00f7b0ef51f71eec027bca4acacc70f42ce405c",
+  "mechanics_source_sha256": {
+    "xtrack/mechanics/__init__.py": "f92d46c4e9dfa5cb6fd46874f4b0f24d9200e2dcf02698cd8bc4e4b213cb30d6",
+    "xtrack/mechanics/context_arrays.py": "ab992e56f18a16067f0bc103ca3ef4965daaba547985a3ab7675a99395b782be",
+    "xtrack/mechanics/geometry_guard.py": "29e420f43f715ca981470cdea6040470aa294ef989ff04c9b33f5991ef2081ed",
+    "xtrack/mechanics/installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+    "xtrack/mechanics/local_deformations.py": "eb3ec593fea0f5fd3d23114728c6ab5cadcdd0b34828535d03433b3ac2abade2",
+    "xtrack/mechanics/model.py": "31c2a200eed3c4dd54462cb2c152f1b551c7bdabdc025380fdf76e5bab294794",
+    "xtrack/mechanics/motion.py": "216dc1643ac45af70afe5a2b71c17d76027faa6778c12e5c9f8466aec20f353d",
+    "xtrack/mechanics/observation.py": "ff2d201e23758ff5127a0f14e5c809a64d04c9e6f5a7753edb16fd5883c34369",
+    "xtrack/mechanics/plotting.py": "2131b87b0244e4d674ff323ff9c1bc08f0bded8c6879b3fc6c24548556746434",
+    "xtrack/mechanics/responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+    "xtrack/mechanics/runtime.py": "cb67d0f3b2d3c0f59e26a522532e6f7647f7ffc05ae252fc2852ac766bee65af",
+    "xtrack/mechanics/runtime_src/geometry_guard.h": "dfbc63e38380c47da79d7c150fef2b022cb0543210217ef7732b3727a670a9c2",
+    "xtrack/mechanics/runtime_src/update.h": "076d1eeda9b5bc834deadb01ad754132554e7adcafdb520cb0a8aa4e0e421ea5",
+    "xtrack/mechanics/sources.py": "1a4380a24834fcf3c9c98945ab45f1d1b9fde302b2af84804876e7d50d44f3b5",
+    "xtrack/mechanics/tables.py": "92e17f9f6c202e2188720f9ef8f52430707a73305dac370e3ec75568a68e6abc"
+  },
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "xtrack": "0.119.2",
+  "xobjects": "0.7.3",
+  "context": "cpu",
+  "members": "quads",
+  "n_attachments": 2663,
+  "n_supports": 2663,
+  "hierarchy": "flat",
+  "turns": 128,
+  "thread_settings": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1"
+  },
+  "compiler_settings": {
+    "CC": "/opt/miniconda3/envs/xsuite/bin/clang",
+    "LDSHARED": "/opt/miniconda3/envs/xsuite/bin/clang -bundle -undefined dynamic_lookup"
+  },
+  "public_api": true,
+  "live_expressions_preserved": true,
+  "engineering_assignment": false,
+  "update_sampling": "turn-held",
+  "source": "sampled_ground",
+  "source_execution": "host short-record interpolation, one packed transfer, context-native composition",
+  "source_prepare_s": 0.808944916818291,
+  "definition_s": 3.764946582959965,
+  "cold_prepare_s": 1.8235608749091625,
+  "update_median_s": 0.0001812288537621498,
+  "update_samples_s": [
+    0.0001493329182267189,
+    0.0001901660580188036,
+    0.0001801669131964445,
+    0.00018479209393262863,
+    0.0001774171832948923,
+    0.00018204189836978912,
+    0.0001832079142332077,
+    0.00017370795831084251,
+    0.00018212501890957355,
+    0.00018120789900422096,
+    0.00017383298836648464,
+    0.0001812500413507223,
+    0.00018062512390315533,
+    0.0001727920025587082,
+    0.0001818749587982893,
+    0.00017608283087611198,
+    0.00017662509344518185,
+    0.00018149986863136292,
+    0.00017462484538555145,
+    0.00018191593699157238,
+    0.00018124980852007866,
+    0.00017366698011755943,
+    0.00018224981613457203,
+    0.00018112501129508018,
+    0.00018458301201462746,
+    0.00018091686069965363,
+    0.00018704193644225597,
+    0.0001784160267561674,
+    0.000194125110283494,
+    0.00020512519404292107
+  ],
+  "prepared_array_bytes": {
+    "_static_settings": 255648,
+    "paths_offsets": 21312,
+    "paths": 21304,
+    "relations": 255648,
+    "static_local": 255648,
+    "geometry": 511296,
+    "baseline": 149128,
+    "offsets": 149128,
+    "body_indices": 21304,
+    "input": 255648,
+    "dynamic_local": 255648,
+    "absolute_host": 21304,
+    "absolute": 21304,
+    "bodyout": 255648,
+    "values": 149128,
+    "raw_values": 127824,
+    "sample_starts": 21312,
+    "sample_rows": 21304,
+    "sample_values": 127824
+  },
+  "guard_array_bytes": {
+    "expected_geometry": 440752,
+    "expected": 589880,
+    "offsets": 589880,
+    "sizes": 73735,
+    "output": 589880
+  },
+  "update_host_buffer_io": {
+    "buffer_type": "BufferNumpy",
+    "read_calls": 0,
+    "read_bytes": 0,
+    "write_calls": 0,
+    "write_bytes": 0
+  },
+  "baseline": {
+    "1": {
+      "median_s": 0.3797375001013279,
+      "samples_s": [
+        0.3790435828268528,
+        0.38237604196183383,
+        0.3797375001013279
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 2.966699219541624
+    },
+    "32": {
+      "median_s": 8.295554041163996,
+      "samples_s": [
+        8.295554041163996,
+        8.260330042103305,
+        8.30106862494722
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 64.80901594659372
+    }
+  },
+  "dynamic": {
+    "1": {
+      "median_s": 0.45169325009919703,
+      "samples_s": [
+        0.45595370791852474,
+        0.45082474988885224,
+        0.45169325009919703
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 3.528853516399977
+    },
+    "32": {
+      "median_s": 8.463386166840792,
+      "samples_s": [
+        8.576375584118068,
+        8.424293583957478,
+        8.463386166840792
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 66.12020442844369
+    }
+  },
+  "slowdown": {
+    "1": 1.1894881331937686,
+    "32": 1.0202315752322249
+  },
+  "short_calls": {},
+  "target_max_slowdown": 2.0,
+  "target_met": {
+    "1": true,
+    "32": true
+  }
+}

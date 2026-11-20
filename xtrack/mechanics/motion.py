@@ -36,13 +36,24 @@ def checked_times(time_s, *, uniform=False):
 
 
 def angles_from_matrix(matrix):
-    """Survey pitch/yaw/roll for proper rotations away from gimbal lock."""
+    """Principal survey pitch/yaw/roll, retaining the rigid map near lock.
+
+    Close to pitch = +/-pi/2, independently recovering yaw and roll from tiny
+    matrix entries can destroy their well-determined combination. Recover yaw
+    from the dominant first column once roll has been chosen. At exact lock
+    individual yaw/roll remain nonunique; their reconstructed rigid map does not.
+    """
     matrix = np.asarray(matrix)
-    return np.stack((
-        np.arctan2(matrix[..., 1, 2], np.hypot(matrix[..., 1, 0], matrix[..., 1, 1])),
-        np.arctan2(matrix[..., 0, 2], matrix[..., 2, 2]),
-        np.arctan2(matrix[..., 1, 0], matrix[..., 1, 1]),
-    ), axis=-1)
+    cosine_pitch = np.hypot(matrix[...,1,0],matrix[...,1,1])
+    pitch = np.arctan2(matrix[...,1,2],cosine_pitch)
+    yaw = np.arctan2(matrix[...,0,2],matrix[...,2,2])
+    roll = np.arctan2(matrix[...,1,0],matrix[...,1,1])
+    near_lock = cosine_pitch < .01
+    if np.any(near_lock):
+        coupled = (np.arctan2(-matrix[...,2,0],matrix[...,0,0])
+                   - np.arctan2(np.sin(pitch)*np.sin(roll),np.cos(roll)))
+        yaw = np.where(near_lock,np.arctan2(np.sin(coupled),np.cos(coupled)),yaw)
+    return np.stack((pitch,yaw,roll),axis=-1)
 
 
 def checked_frames(frames):
@@ -118,23 +129,21 @@ class RigidMotion:
         defined at the destination port. No small-angle Euler subtraction; the
         response law itself remains a small-signal model if it is linear LTI.
         """
-        from scipy.spatial.transform import Rotation
+        from .local_deformations import rotation_increment
         origin = checked_frames(from_frames)
         target = checked_frames(to_frames)
         count = self.values.shape[1]
         if origin.shape != (count,4,4) or target.shape != origin.shape:
             raise ValueError('One source and destination frame is required per channel')
-        angles = self.values[..., [4,3,5]] * [1,-1,1]
-        local_rotation = Rotation.from_euler('YXZ', angles.reshape(-1,3)).as_matrix().reshape(
-            len(self.time_s),count,3,3)
-        world_rotation = origin[None,:,:3,:3] @ local_rotation @ np.swapaxes(origin[None,:,:3,:3],-1,-2)
+        local_increment = rotation_increment(*np.moveaxis(self.values[...,3:],-1,0))
+        world_increment = origin[None,:,:3,:3] @ local_increment @ np.swapaxes(origin[None,:,:3,:3],-1,-2)
         offset = target[:,:3,3]-origin[:,:3,3]
         world_translation = (np.einsum('bij,tbj->tbi',origin[:,:3,:3],self.values[...,:3])
-            + np.einsum('tbij,bj->tbi',world_rotation-np.eye(3),offset))
+            + np.einsum('tbij,bj->tbi',world_increment,offset))
         values = np.zeros_like(self.values)
         values[...,:3] = np.einsum('bji,tbj->tbi',target[:,:3,:3],world_translation)
-        output_rotation = np.swapaxes(target[None,:,:3,:3],-1,-2) @ world_rotation @ target[None,:,:3,:3]
-        values[...,3:] = angles_from_matrix(output_rotation)
+        output_increment = np.swapaxes(target[None,:,:3,:3],-1,-2) @ world_increment @ target[None,:,:3,:3]
+        values[...,3:] = angles_from_matrix(np.eye(3)+output_increment)
         return RigidMotion(self.time_s,values,self.target_names if target_names is None else target_names)
 
     def select(self, targets, *, target_names=None):
@@ -262,7 +271,7 @@ def sample_field(source, *, time_s, positions_m, polarization=(0., 1., 0.), max_
     if positions.ndim != 2 or positions.shape[1] != 3 or not len(positions):
         raise ValueError('Use nonempty receiver XYZ positions')
     channels = len(positions)
-    estimate = 112*len(times)*channels + 80*channels**2 + getattr(
+    estimate = 112*len(times)*channels + getattr(
         source, 'workspace_bytes', lambda nt, nr: 0)(len(times), channels)
     if not isinstance(max_memory_bytes, int) or max_memory_bytes <= 0 or estimate > max_memory_bytes:
         raise ValueError(f'Estimated field workspace {estimate} bytes exceeds max_memory_bytes')

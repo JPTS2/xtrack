@@ -1,0 +1,19 @@
+Shared body and separate beam clocks
+------------------------------------
+Beam       Turn spacing [µs]    Last sampled time [µs]
+Forward            0.336900                 21.224684
+Backward           0.603751                 38.036314
+Same-time local x forward / backward [nm]: -50.000000 / +50.000000
+Both lines query one immutable field; running one does not advance the other.
+This does not schedule causal shared filters, beam encounters or controllers.
+
+Reference CPU costs
+-------------------
+line_construction_s               0.0177 s
+forward_tracker_build_s           0.1236 s
+backward_tracker_build_s          0.0010 s
+mechanics_definition_s            0.0298 s
+source_definition_s               0.0001 s
+sample_motion_s                   0.0004 s
+forward_tracking_s                0.0160 s
+backward_tracking_s               0.0158 s

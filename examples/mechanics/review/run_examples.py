@@ -66,7 +66,10 @@ def worker(script, destination):
             (1024**2 if sys.platform=='darwin' else 1024),
         script_sha256=hashlib.sha256(script.read_bytes()).hexdigest(),
         mechanics_source_sha256={p.name:hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted((ROOT/'xtrack/mechanics').glob('*.py'))})
+            for p in sorted((ROOT/'xtrack/mechanics').glob('*.py'))},
+        mechanics_kernel_sha256={str(p.relative_to(ROOT/'xtrack/mechanics')):hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted((ROOT/'xtrack/mechanics').rglob('*.h'))},
+        tracker_sha256=hashlib.sha256((ROOT/'xtrack/tracker.py').read_bytes()).hexdigest())
     (destination/'result.json').write_text(json.dumps(metadata, indent=2)+'\n')
 
 

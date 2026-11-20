@@ -1,0 +1,46 @@
+{
+  "example": "001_rigid_girder.py",
+  "elapsed_s": 0.34558870922774076,
+  "timings": {
+    "line_construction_s": 0.016873667016625404,
+    "tracker_build_s": 0.12360079190693796,
+    "reference_adoption_s": 4.766695201396942e-05,
+    "reference_inspection_s": 2.7749920263886452e-05,
+    "mechanics_definition_s": 0.01856908295303583,
+    "installation_definition_s": 6.658956408500671e-07,
+    "source_definition_s": 2.7084024623036385e-05,
+    "apply_s": 0.00031254207715392113,
+    "pose_inspection_s": 0.0006844170857220888,
+    "one_pass_tracking_s": 0.00015874998643994331
+  },
+  "figures": [
+    "figure_01"
+  ],
+  "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+  "artifacts": [],
+  "xtrack": "0.119.2",
+  "numpy": "2.4.1",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "peak_rss_mib": 232.53125,
+  "script_sha256": "84dad07d505a84bc066458dacdd10297457193417925197d5af7853419fc2872",
+  "mechanics_source_sha256": {
+    "__init__.py": "f92d46c4e9dfa5cb6fd46874f4b0f24d9200e2dcf02698cd8bc4e4b213cb30d6",
+    "context_arrays.py": "ab992e56f18a16067f0bc103ca3ef4965daaba547985a3ab7675a99395b782be",
+    "geometry_guard.py": "29e420f43f715ca981470cdea6040470aa294ef989ff04c9b33f5991ef2081ed",
+    "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+    "local_deformations.py": "eb3ec593fea0f5fd3d23114728c6ab5cadcdd0b34828535d03433b3ac2abade2",
+    "model.py": "31c2a200eed3c4dd54462cb2c152f1b551c7bdabdc025380fdf76e5bab294794",
+    "motion.py": "216dc1643ac45af70afe5a2b71c17d76027faa6778c12e5c9f8466aec20f353d",
+    "observation.py": "ff2d201e23758ff5127a0f14e5c809a64d04c9e6f5a7753edb16fd5883c34369",
+    "plotting.py": "2131b87b0244e4d674ff323ff9c1bc08f0bded8c6879b3fc6c24548556746434",
+    "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+    "runtime.py": "cb67d0f3b2d3c0f59e26a522532e6f7647f7ffc05ae252fc2852ac766bee65af",
+    "sources.py": "1a4380a24834fcf3c9c98945ab45f1d1b9fde302b2af84804876e7d50d44f3b5",
+    "tables.py": "92e17f9f6c202e2188720f9ef8f52430707a73305dac370e3ec75568a68e6abc"
+  },
+  "mechanics_kernel_sha256": {
+    "runtime_src/geometry_guard.h": "dfbc63e38380c47da79d7c150fef2b022cb0543210217ef7732b3727a670a9c2",
+    "runtime_src/update.h": "076d1eeda9b5bc834deadb01ad754132554e7adcafdb520cb0a8aa4e0e421ea5"
+  },
+  "tracker_sha256": "ffd2f54d448fa80acb9bed93b00f7b0ef51f71eec027bca4acacc70f42ce405c"
+}

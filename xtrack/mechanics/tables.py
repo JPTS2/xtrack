@@ -36,6 +36,57 @@ def pose_columns(nominal, reference, static, total):
     return data
 
 
+def deformation_columns(nominal_axes, layers, *, lever=None, mount_rotation=None):
+    """Precise relative columns from local deformation data, not world poses.
+
+    ``layers`` contains deliberate, installed and total ``(d, R-I)`` arrays.
+    All are expressed about the same nominal body frames. An attached element
+    additionally supplies its fixed body-local lever and orientation.
+    """
+    from scipy.spatial.transform import Rotation
+    nominal_axes = np.asarray(nominal_axes)
+    count = len(nominal_axes)
+    lever = np.zeros((count, 3)) if lever is None else np.asarray(lever)
+    mount = np.broadcast_to(np.eye(3), (count, 3, 3)) if mount_rotation is None else np.asarray(mount_rotation)
+    data = {}
+    for prefix, before, after in (('installation', layers[0], layers[1]),
+                                  ('dynamic', layers[1], layers[2])):
+        translation_before, rotation_before = before
+        translation_after, rotation_after = after
+        difference = rotation_after-rotation_before
+        displacement = np.einsum('bij,bj->bi', nominal_axes,
+            translation_after-translation_before+np.einsum('bij,bj->bi',difference,lever))
+        for index, axis in enumerate('XYZ'):
+            data[prefix+'_'+axis] = displacement[:, index]
+        before_rotation = np.eye(3)+rotation_before
+        relative_increment = (np.swapaxes(mount,-1,-2)
+            @ np.swapaxes(before_rotation,-1,-2) @ difference @ mount)
+        angles = angles_from_matrix(np.eye(3)+relative_increment)
+        for index, angle in enumerate(('phi', 'theta', 'psi')):
+            data[prefix+'_'+angle] = angles[:, index]
+        world_increment = (nominal_axes @ difference @ np.swapaxes(before_rotation,-1,-2)
+                           @ np.swapaxes(nominal_axes,-1,-2))
+        data[prefix+'_rotvec_world'] = (Rotation.from_matrix(np.eye(3)+world_increment).as_rotvec()
+                                       if count else np.empty((0,3)))
+    return data
+
+
+def _deformation_arrays(poses, names):
+    return (np.array([poses._deformations[name][0] for name in names]).reshape(-1,3),
+            np.array([poses._deformations[name][1] for name in names]).reshape(-1,3,3))
+
+
+def _attachment_mount(manager, attachment):
+    from .local_deformations import attachment_reference
+    body = manager[attachment['body']]
+    nominal = body._nominal
+    translation, rotation = attachment_reference(attachment)
+    axes = attachment['ref_start'][:3,:3]
+    lever = nominal[:3,:3].T @ (attachment['ref_start'][:3,3]-nominal[:3,3]+axes@translation)
+    mount_rotation = nominal[:3,:3].T @ attachment['base_element'][:3,:3]
+    return lever, mount_rotation
+
+
 def mechanics_table(data, *, owner, time_s=None, time_series=None):
     columns = list(data)
     manager = owner.manager if hasattr(owner, 'manager') else owner
@@ -53,14 +104,17 @@ def element_table(view, *, time_s=None, time_series=None, names=None):
     data = dict(name=np.array(names, dtype=str),
                 body=np.array([a['body'] for a in attachments], dtype=str),
                 body_kind=np.array([view.manager[a['body']].kind for a in attachments], dtype=str),
+                support_class=np.array([view.manager[a['body']].support_class for a in attachments], dtype=str),
                 element_type=np.array([type(view.line.element_dict[n]).__name__ for n in names], dtype=str),
                 length=np.array([getattr(view.line.element_dict[n], 'length', 0.) for n in names], dtype=float))
     if time_s is not None:
         manager = view.manager
         disabled = tuple(manager.sources)
-        layers = [manager.get_body_poses(time_s=time_s, disabled_sources=disabled, include_installation=False),
-                  manager.get_body_poses(time_s=time_s, disabled_sources=disabled),
-                  manager.get_body_poses(time_s=time_s, time_series=time_series)]
+        body_names = [attachment['body'] for attachment in attachments]
+        selected_bodies = list(dict.fromkeys(body_names))
+        layers = [manager.get_body_poses(time_s=time_s, disabled_sources=disabled, include_installation=False, bodies=selected_bodies),
+                  manager.get_body_poses(time_s=time_s, disabled_sources=disabled, bodies=selected_bodies),
+                  manager.get_body_poses(time_s=time_s, time_series=time_series, bodies=selected_bodies)]
         nominal = np.array([a['ref_start'] for a in attachments]).reshape(-1, 4, 4)
         composed = []
         for poses in layers:
@@ -68,6 +122,11 @@ def element_table(view, *, time_s=None, time_series=None, names=None):
                 (poses[a['body']] @ manager[a['body']].nominal_frame.inverse()).matrix @ a['base_element']
                 for a in attachments]).reshape(-1, 4, 4))
         data.update(pose_columns(nominal, *composed))
+        mounts = [_attachment_mount(manager, attachment) for attachment in attachments]
+        axes = np.array([manager[name]._nominal[:3,:3] for name in body_names]).reshape(-1,3,3)
+        data.update(deformation_columns(axes, [_deformation_arrays(pose, body_names) for pose in layers],
+            lever=np.array([mount[0] for mount in mounts]).reshape(-1,3),
+            mount_rotation=np.array([mount[1] for mount in mounts]).reshape(-1,3,3)))
     return mechanics_table(data, owner=view, time_s=time_s, time_series=time_series)
 
 
@@ -158,13 +217,34 @@ class MechanicsTable(Table):
             manager = owner
         total = np.empty((len(times), 4, 4))
         total[0] = current.total_matrix[0]
+        body_name = attachment['body'] if hasattr(owner, 'line') else name
+        deformations = [manager._get_body_deformations(time_s=float(times[0]),
+                                                     time_series=record,bodies=[body_name])[body_name]]
         for index, time in enumerate(times[1:], 1):
-            poses = manager.get_body_poses(time_s=float(time), time_series=record)
+            poses = manager.get_body_poses(time_s=float(time), time_series=record,bodies=[body_name])
+            deformations.append(poses._deformations[body_name])
             total[index] = (poses[attachment['body']].matrix @ mount if hasattr(owner, 'line')
                             else poses[name].matrix)
         layers = [np.broadcast_to(current[prefix+'_matrix'][0], total.shape)
                   for prefix in ('nominal', 'reference', 'static')]
         output = pose_columns(*layers, total)
+        disabled = tuple(manager.sources)
+        deliberate = manager._get_body_deformations(time_s=float(times[0]),
+            disabled_sources=disabled, include_installation=False,bodies=[body_name])[body_name]
+        installed = manager._get_body_deformations(time_s=float(times[0]),
+            disabled_sources=disabled,bodies=[body_name])[body_name]
+        packed = [(np.broadcast_to(layer[0], (len(times),3)),
+                   np.broadcast_to(layer[1], (len(times),3,3))) for layer in (deliberate,installed)]
+        packed.append((np.array([layer[0] for layer in deformations]),
+                       np.array([layer[1] for layer in deformations])))
+        body_axes = np.broadcast_to(manager[body_name]._nominal[:3,:3], (len(times),3,3))
+        if hasattr(owner, 'line'):
+            lever, mount_rotation = _attachment_mount(manager, attachment)
+            kwargs = dict(lever=np.broadcast_to(lever,(len(times),3)),
+                          mount_rotation=np.broadcast_to(mount_rotation,(len(times),3,3)))
+        else:
+            kwargs = {}
+        output.update(deformation_columns(body_axes,packed,**kwargs))
         data = dict(time_s=times.copy(), **output)
         return MotionHistoryTable(dict(data, entity_name=name), col_names=list(data), index='time_s')
 

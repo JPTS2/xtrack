@@ -10,6 +10,12 @@ development Z lattice and catalogue associations. It records public-workflow
 failures, isolated scaling experiments, GPU implications and the changes needed
 before full FCC production studies.
 
+[The prepared-runtime review](2026-11-20_prepared_runtime_review.md) records the
+next implementation and the twofold performance ceiling. Its supporting notes
+cover [bulk geometry](2026-11-20_bulk_geometry.md),
+[precision and clock compensation](2026-11-20_mechanics_precision.md), and
+[GPU freeze scheduling and bunch phases](2026-11-20_gpu_freeze_runtime.md).
+
 Keep alternatives, physical contracts and decisions here as the local branch
 evolves. The executable review surface is the numbered examples, with captured
 terminal output and figures in [review](../review/README.md). Clean commit slicing

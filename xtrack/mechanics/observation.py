@@ -32,12 +32,15 @@ def project_to_bpm(*, beam_frame, bpm_frame, x=0., y=0., px=0., py=0., delta=0.)
         raise ValueError('Beam ray needs positive forward longitudinal momentum')
     local_position = np.stack((x, y, np.zeros_like(x)), axis=-1)
     local_momentum = np.stack((px, py, np.sqrt(pz2)), axis=-1)
-    origin = local_position @ beam_frame.matrix[:3, :3].T + beam_frame.XYZ
-    direction = local_momentum @ beam_frame.matrix[:3, :3].T
-    normal = bpm_frame.matrix[:3, 2]
-    denominator = direction @ normal
+    # Transform once to pickup-local coordinates. Adding the beam's transverse
+    # coordinates to a kilometre-scale world position would lose small signals.
+    change = bpm_frame.matrix[:3, :3].T @ beam_frame.matrix[:3, :3]
+    offset = bpm_frame.matrix[:3, :3].T @ (beam_frame.XYZ-bpm_frame.XYZ)
+    origin = local_position @ change.T + offset
+    direction = local_momentum @ change.T
+    denominator = direction[..., 2]
     if np.any(np.abs(denominator) < 1e-14):
         raise ValueError('Beam ray is parallel to the pickup plane')
-    advance = ((bpm_frame.XYZ-origin) @ normal)/denominator
-    local_hit = (origin + advance[..., None]*direction-bpm_frame.XYZ) @ bpm_frame.matrix[:3, :3]
+    advance = -origin[..., 2]/denominator
+    local_hit = origin + advance[..., None]*direction
     return BpmReading(local_hit[..., 0], local_hit[..., 1], advance*(1+delta))

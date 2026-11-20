@@ -5,14 +5,34 @@
 """Read-only survey and presentation of rigid poses."""
 import numpy as np
 
-def _display_matrices(reference, total, displacement_scale, rotation_scale):
+def _display_matrices(reference, total, displacement_scale, rotation_scale,
+                      *, displacement=None, world_rotvec=None):
     from scipy.spatial.transform import Rotation
     shown = reference.copy()
-    shown[:,:3,3] += displacement_scale*(total[:,:3,3]-reference[:,:3,3])
-    relative = np.swapaxes(reference[:,:3,:3],-1,-2) @ total[:,:3,:3]
-    shown[:,:3,:3] = reference[:,:3,:3] @ Rotation.from_rotvec(
-        rotation_scale*Rotation.from_matrix(relative).as_rotvec()).as_matrix()
+    displacement = total[:,:3,3]-reference[:,:3,3] if displacement is None else displacement
+    shown[:,:3,3] += displacement_scale*displacement
+    if world_rotvec is None:
+        relative = np.swapaxes(reference[:,:3,:3],-1,-2) @ total[:,:3,:3]
+        shown[:,:3,:3] = reference[:,:3,:3] @ Rotation.from_rotvec(
+            rotation_scale*Rotation.from_matrix(relative).as_rotvec()).as_matrix()
+    else:
+        shown[:,:3,:3] = Rotation.from_rotvec(rotation_scale*world_rotvec).as_matrix() @ reference[:,:3,:3]
     return shown
+
+
+def _table_display_motion(table, baseline):
+    """Scale resolved motion before adding it to large world display origins."""
+    from scipy.spatial.transform import Rotation
+    if baseline == 'nominal' and np.array_equal(table.nominal_matrix,table.reference_matrix):
+        baseline = 'reference'
+    if baseline not in ('reference','static'):
+        return {}
+    displacement = np.column_stack([table['dynamic_'+axis] for axis in 'XYZ'])
+    rotation = Rotation.from_rotvec(table.dynamic_rotvec_world)
+    if baseline == 'reference':
+        displacement += np.column_stack([table['installation_'+axis] for axis in 'XYZ'])
+        rotation = rotation*Rotation.from_rotvec(table.installation_rotvec_world)
+    return dict(displacement=displacement,world_rotvec=rotation.as_rotvec())
 
 
 def _world_points(matrix, points):
@@ -20,19 +40,22 @@ def _world_points(matrix, points):
 
 
 def motion_survey(manager, *, time_s, time_series=None, bodies=None):
-    from .tables import mechanics_table, pose_columns
+    from .tables import mechanics_table, pose_columns, deformation_columns, _deformation_arrays
     names = list(manager.bodies) if bodies is None else ([bodies] if isinstance(bodies,str) else list(bodies))
     if len(set(names)) != len(names) or not set(names).issubset(manager.bodies):
         raise ValueError('Select existing mechanics bodies')
-    total = manager.get_body_poses(time_s=time_s, time_series=time_series)
+    total = manager.get_body_poses(time_s=time_s, time_series=time_series,bodies=names)
     disabled = tuple(manager.sources)
-    static = manager.get_body_poses(time_s=time_s, disabled_sources=disabled)
-    deliberate = manager.get_body_poses(time_s=time_s, disabled_sources=disabled, include_installation=False)
+    static = manager.get_body_poses(time_s=time_s, disabled_sources=disabled,bodies=names)
+    deliberate = manager.get_body_poses(time_s=time_s, disabled_sources=disabled, include_installation=False,bodies=names)
     data = dict(name=np.array(names, dtype=str), kind=np.array([manager[n].kind for n in names], dtype=str),
+                support_class=np.array([manager[n].support_class for n in names], dtype=str),
                 parent=np.array([manager[n].parent or '' for n in names], dtype=str))
     layers = [np.array([frames[n].matrix for n in names]).reshape(-1, 4, 4)
               for frames in ({n: manager[n].nominal_frame for n in names}, deliberate, static, total)]
     data.update(pose_columns(*layers))
+    data.update(deformation_columns(layers[0][:,:3,:3],
+        [_deformation_arrays(poses,names) for poses in (deliberate,static,total)]))
     return mechanics_table(data, owner=manager, time_s=time_s, time_series=time_series)
 
 
@@ -56,7 +79,8 @@ def plot_motion(manager, *, time_s, time_series=None, bodies=None, line=None,
         raise ValueError('Select at least one body to plot')
     reference = survey[baseline+'_matrix']
     total = survey.total_matrix
-    display = _display_matrices(reference,total,displacement_scale,rotation_scale)
+    display = _display_matrices(reference,total,displacement_scale,rotation_scale,
+                                **_table_display_motion(survey,baseline))
     shown = display[:,:3,3]
     fig = plt.figure(figsize=(10, 4.8))
     layout = fig.add_subplot(121, projection='3d')
@@ -102,8 +126,7 @@ def plot_motion(manager, *, time_s, time_series=None, bodies=None, line=None,
                title=f'Displacement ×{displacement_scale:g}, t={time_s:g} s\nAxes independently scaled')
     layout.legend(fontsize=8)
     orientation = fig.add_subplot(122, projection='3d')
-    relative_rotation = reference[0, :3, :3].T @ total[0, :3, :3]
-    rotation = Rotation.from_rotvec(rotation_scale*Rotation.from_matrix(relative_rotation).as_rotvec()).as_matrix()
+    rotation = reference[0,:3,:3].T @ display[0,:3,:3]
     for i, (name, color) in enumerate(zip(('x', 'y', 's'), ('tab:red', 'tab:green', 'tab:blue'))):
         for vector, style in ((np.eye(3)[:, i], '--'), (rotation[:, i], '-')):
             orientation.plot(*np.array([np.zeros(3), vector])[:, [0, 2, 1]].T, style, color=color)
@@ -132,12 +155,11 @@ def animate_motion(manager, *, time_s, time_series=None, bodies=None, line=None,
     # Prepass current frames for fixed display limits; never retain a pose history.
     lower, upper = reference.min(axis=0), reference.max(axis=0)
     for time in times:
-        frames = manager.get_body_poses(time_s=time, time_series=time_series)
-        positions = np.array([frames[n].XYZ for n in names])
-        shown = reference+displacement_scale*(positions-reference)
+        current = motion_survey(manager,time_s=time,time_series=time_series,bodies=names)
+        display = _display_matrices(reference_frames,current.total_matrix,
+            displacement_scale,rotation_scale,**_table_display_motion(current,baseline))
+        shown = display[:,:3,3]
         lower, upper = np.minimum(lower,shown.min(axis=0)), np.maximum(upper,shown.max(axis=0))
-        display = _display_matrices(reference_frames,np.array([frames[n].matrix for n in names]),
-                                    displacement_scale,rotation_scale)
         for index,local,_ in fig._mechanics_geometry:
             xyz = _world_points(display[index],local)
             lower,upper = np.minimum(lower,xyz.min(axis=0)),np.maximum(upper,xyz.max(axis=0))
@@ -154,20 +176,18 @@ def animate_motion(manager, *, time_s, time_series=None, bodies=None, line=None,
     orientation.set(xlim=(-1.1,1.1),ylim=(-1.1,1.1),zlim=(-1.1,1.1))
 
     def update(index):
-        frames = manager.get_body_poses(time_s=times[index], time_series=time_series)
-        positions = np.array([frames[n].XYZ for n in names])
-        shown = reference+displacement_scale*(positions-reference)
+        current = motion_survey(manager,time_s=times[index],time_series=time_series,bodies=names)
+        display = _display_matrices(reference_frames,current.total_matrix,
+            displacement_scale,rotation_scale,**_table_display_motion(current,baseline))
+        shown = display[:,:3,3]
         points._offsets3d = tuple(shown[:, [0, 2, 1]].T)
-        display = _display_matrices(reference_frames,np.array([frames[n].matrix for n in names]),
-                                    displacement_scale,rotation_scale)
         for body_index,local,artist in fig._mechanics_geometry:
             artist.set_data_3d(*_world_points(display[body_index],local)[:,[0,2,1]].T)
-        relative = reference_frames[0, :3, :3].T @ frames[names[0]].matrix[:3, :3]
-        rotation = Rotation.from_rotvec(rotation_scale*Rotation.from_matrix(relative).as_rotvec()).as_matrix()
-        for index in range(3):
-            xyz = rotation[:, index][[0,2,1]]
-            orientation.lines[2*index+1].set_data_3d(*np.array([np.zeros(3),xyz]).T)
-            orientation.texts[index].set_position_3d(xyz)
+        rotation = reference_frames[0,:3,:3].T @ display[0,:3,:3]
+        for coordinate in range(3):
+            xyz = rotation[:, coordinate][[0,2,1]]
+            orientation.lines[2*coordinate+1].set_data_3d(*np.array([np.zeros(3),xyz]).T)
+            orientation.texts[coordinate].set_position_3d(xyz)
         axis.set_title(f'Displacement ×{displacement_scale:g}, t={times[index]:g} s\nAxes independently scaled')
         return (points, *orientation.lines)
 
@@ -200,7 +220,8 @@ def animate_cuboid(table, name, *, time_s, size_m, time_series=None,
         raise ValueError('Use nominal, reference or static as display baseline')
     history = table.get_time_series(name, time_s=time_s, time_series=time_series)
     reference = history[baseline+'_matrix']
-    shown = _display_matrices(reference, history.total_matrix, displacement_scale, rotation_scale)
+    shown = _display_matrices(reference, history.total_matrix, displacement_scale, rotation_scale,
+                              **_table_display_motion(history,baseline))
     # Elements are anchored at their entrance; body presentation boxes are centered.
     owner = table._owner()
     width, height, length = size

@@ -2,12 +2,12 @@
 # This file is part of the Xtrack Package.  #
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
-"""Environment bodies, line attachments and an explicit static lowering.
+"""Environment bodies, line attachments and bounded prepared rigid updates.
 
-The first lowering writes numeric effective alignments at an explicit physical
-time. enable_vibrations opts into host reference updates at turn boundaries.
-No hierarchy of xdeps expressions is installed. Occurrence buffers and girder-
-boundary kernels remain alternative accelerated lowerings of this same model.
+Explicit application retains a host correctness reference. Automatic turn
+freezes use context-native prepared kernels where supported. Geometry is
+captured in bulk without taking ownership of live lattice expressions; no
+per-scalar xdeps mechanics hierarchy or entire-run pose cache is installed.
 """
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -20,6 +20,8 @@ from ..table import Table
 from .sources import decode_source, encode_source, requires_time_series
 from .motion import RigidMotion, COORDINATES, frozen_array
 from .installation import RigidOffset
+from .local_deformations import (rotation_increment, compose_rotation,
+                                 compose, inherit, static_local, lower)
 
 
 _FIELDS = ('shift_x', 'shift_y', 'shift_s', 'rot_x_rad', 'rot_y_rad',
@@ -55,6 +57,19 @@ def _geometry(element):
     return tuple(float(getattr(element, name, 0.)) for name in _GEOMETRY)
 
 
+class _BodyPoses(dict):
+    """World display frames retaining their precise local deformation data."""
+
+    def __init__(self, manager, deformations):
+        self._deformations = deformations
+        for name, (translation, increment) in deformations.items():
+            nominal = manager[name]._nominal
+            matrix = nominal.copy()
+            matrix[:3, 3] += nominal[:3, :3] @ translation
+            matrix[:3, :3] += nominal[:3, :3] @ increment
+            self[name] = Frame(matrix)
+
+
 @dataclass(slots=True)
 class RigidBody:
     """Local alignment about a nominal world anchor; SI units.
@@ -77,9 +92,10 @@ class RigidBody:
     installation: RigidOffset = field(default_factory=RigidOffset)
     _feet: object = None
     kind: str = 'body'
+    support_class: str = ''
 
     def __setattr__(self, name, value):
-        if name in ('name', 'parent', '_nominal', '_feet', 'kind') and hasattr(self, name):
+        if name in ('name', 'parent', '_nominal', '_feet', 'kind', 'support_class') and hasattr(self, name):
             raise AttributeError('Body topology is fixed; create a new binding')
         object.__setattr__(self, name, value)
 
@@ -211,7 +227,7 @@ class MechanicsManager:
         return self.for_line(line)
 
     def new_body(self, name, *, elements=None, line=None, anchor='center', parent=None, mount=None,
-                 feet_local_m=None, kind='body'):
+                 feet_local_m=None, kind='body', support_class=''):
         """Create a named rigid magnet, pickup, equipment or support body.
 
         mount is a parent-local Frame. anchor is a nominal world Frame/XYZ;
@@ -227,9 +243,9 @@ class MechanicsManager:
                 raise ValueError('Parent must belong to this environment')
             anchor = owner.nominal_frame @ _frame(mount)
         return self._new_body(name, elements=elements, line=line, anchor=anchor, parent=parent,
-                              feet_local_m=feet_local_m, kind=kind)
+                              feet_local_m=feet_local_m, kind=kind, support_class=support_class)
 
-    def new_girder(self, name, *, elements=None, line=None, anchor='center', parent=None, feet_local_m=None):
+    def new_girder(self, name, *, elements=None, line=None, anchor='center', parent=None, feet_local_m=None, support_class=''):
         """Retrofit elements, or create an explicitly anchored shared body.
 
         'center' is the chord midpoint of the selected entrance/exit span, with
@@ -238,11 +254,19 @@ class MechanicsManager:
         Parent names refer to existing bodies. No sublines are required.
         """
         return self._new_body(name, elements=elements, line=line, anchor=anchor, parent=parent,
-                              feet_local_m=feet_local_m, kind='girder')
+                              feet_local_m=feet_local_m, kind='girder', support_class=support_class)
 
-    def _new_body(self, name, *, elements, line, anchor, parent, feet_local_m, kind):
+    def new_girders(self, assignments, *, line=None, support_class=''):
+        """Create several supports with one survey; see line.mechanics.new_girders."""
+        return self._line(line).new_girders(assignments, support_class=support_class)
+
+    def _body_definition(self, name, *, anchor, parent, feet_local_m, kind,
+                         support_class='', candidates=()):
+        """Validate/build a body without changing the manager or line."""
         if not isinstance(kind, str) or not kind:
             raise ValueError('Use a nonempty body kind, e.g. magnet, pickup or equipment')
+        if not isinstance(support_class, str):
+            raise ValueError('support_class must be a string')
         if not isinstance(name, str) or not name or name in self._bodies:
             raise ValueError('Use a new nonempty body name')
         if isinstance(parent, RigidBody):
@@ -251,10 +275,6 @@ class MechanicsManager:
             parent = parent.name
         if parent is not None and parent not in self._bodies:
             raise ValueError('Create the parent body first')
-        view, candidates = None, []
-        if elements is not None:
-            view = self._line(line)
-            candidates = view._candidates(elements)
         if isinstance(anchor, str):
             if anchor != 'center' or not candidates:
                 raise ValueError("Use anchor='center' with attachments, or supply a world Frame/XYZ point")
@@ -267,7 +287,21 @@ class MechanicsManager:
         feet = None if feet_local_m is None else frozen_array(feet_local_m)
         if feet is not None and (feet.ndim != 2 or feet.shape[1] != 3 or not len(feet)):
             raise ValueError('feet_local_m must be nonempty local XYZ coordinates')
-        body = RigidBody(name, parent, frozen, _feet=feet, kind=kind)
+        return RigidBody(name, parent, frozen, _feet=feet, kind=kind,
+                         support_class=support_class)
+
+    def _new_body(self, name, *, elements, line, anchor, parent, feet_local_m, kind,
+                  support_class=''):
+        # Reject invalid names before the potentially expensive candidate survey.
+        if not isinstance(name, str) or not name or name in self._bodies:
+            raise ValueError('Use a new nonempty body name')
+        view, candidates = None, []
+        if elements is not None:
+            view = self._line(line)
+            candidates = view._candidates(elements)
+        body = self._body_definition(name, anchor=anchor, parent=parent,
+            feet_local_m=feet_local_m, kind=kind, support_class=support_class,
+            candidates=candidates)
         self._bodies[name] = body
         if view is not None:
             view._attach(name, candidates)
@@ -352,7 +386,7 @@ class MechanicsManager:
             raise ValueError('Use at least two increasing finite times in seconds')
         counts = [len(b.targets) for b in self.sources.values()]
         estimate = 96*len(times)*sum(counts) + max(
-            (96*len(times)*len(b.targets) + 80*len(b.targets)**2
+            (96*len(times)*len(b.targets)
              + getattr(b.source, 'workspace_bytes', lambda nt, nr: 0)(len(times), len(b.targets))
              for b in self.sources.values()), default=0)
         if not isinstance(max_memory_bytes, int) or max_memory_bytes <= 0:
@@ -363,8 +397,21 @@ class MechanicsManager:
                   for name, binding in self.sources.items()}
         return MechanicalTimeSeries(self, times, values)
 
-    def get_body_poses(self, *, time_s=0., time_series=None, disabled_sources=(), include_installation=True):
-        """Inspect independent xt.Frame world poses, without changing the line."""
+    def get_body_poses(self, *, time_s=0., time_series=None, disabled_sources=(), include_installation=True,
+                       bodies=None):
+        """Inspect independent xt.Frame world poses, without changing the line.
+
+        World display coordinates have ordinary float64 resolution. Tracking
+        lowering retains local displacement/rotation increments independently;
+        a tiny dynamic displacement is never recovered from world subtraction.
+        """
+        return _BodyPoses(self, self._get_body_deformations(time_s=time_s,
+            time_series=time_series, disabled_sources=disabled_sources,
+            include_installation=include_installation, bodies=bodies))
+
+    def _get_body_deformations(self, *, time_s=0., time_series=None,
+                               disabled_sources=(), include_installation=True, bodies=None):
+        """Finite affine increments about each body's nominal local frame."""
         if not np.isscalar(time_s) or not np.isfinite(time_s):
             raise ValueError('time_s must be a finite scalar in seconds')
         if not set(disabled_sources).issubset(self.sources):
@@ -373,60 +420,75 @@ class MechanicsManager:
             time_series._check(self)
             if time_s < time_series.time_s[0] or time_s > time_series.time_s[-1]:
                 raise ValueError('Requested time lies outside the computed time series')
-        shifts = {name: np.zeros(3) for name in self.bodies}
-        rotations = {name: np.eye(3) for name in self.bodies}
+        requested = tuple(self.bodies) if bodies is None else ((bodies,) if isinstance(bodies,str) else tuple(bodies))
+        if len(set(requested)) != len(requested) or not set(requested).issubset(self.bodies):
+            raise ValueError('Select unique existing mechanics bodies')
+        needed = set(requested)
+        for name in requested:
+            parent = self.bodies[name].parent
+            while parent is not None:
+                needed.add(parent)
+                parent = self.bodies[parent].parent
+        selected = {name:body for name,body in self.bodies.items() if name in needed}
+        shifts = {name: np.zeros(3) for name in selected}
+        rotations = {name: np.zeros((3, 3)) for name in selected}
         absolute = {}
         for name, binding in self.sources.items():
             if name in disabled_sources:
                 continue
+            indices = [index for index,target in enumerate(binding.targets) if target in needed]
+            if not indices:
+                continue
+            targets = [binding.targets[index] for index in indices]
             if time_series is None:
-                values = self._evaluate_source(binding, np.array([time_s]))[0]
+                if type(binding.source) is RigidMotion:
+                    source = binding.source
+                    if time_s < source.time_s[0] or time_s > source.time_s[-1]:
+                        raise ValueError('Requested time lies outside the rigid motion record')
+                    values = np.array([[np.interp(time_s,source.time_s,source.values[:,index,j])
+                                        for j in range(6)] for index in indices])
+                else:
+                    # Arbitrary stochastic sources may depend on the complete
+                    # receiver set. Evaluate jointly, then select, preserving
+                    # their seed/correlation contract.
+                    values = self._evaluate_source(binding, np.array([time_s]))[0][indices]
             else:
                 record = time_series.values[name]
                 values = np.array([[np.interp(time_s, time_series.time_s, record[:, i, j])
-                                    for j in range(6)] for i in range(len(binding.targets))])
-            for target, value in zip(binding.targets, values):
+                                    for j in range(6)] for i in indices])
+            for target, value in zip(targets, values):
                 if binding.reference == 'absolute':
                     absolute[target] = value
                 else:
                     shifts[target] += value[:3]
                     if np.any(value[3:]):
-                        rotations[target] = Frame.from_survey_angles(
-                            phi=value[3], theta=value[4], psi=value[5]).matrix[:3, :3] @ rotations[target]
+                        rotations[target] = compose_rotation(
+                            rotation_increment(*value[3:]), rotations[target])
         world, static = {}, {}
-        for name, body in self.bodies.items():
+        for name, body in selected.items():
             local = np.array([body.shift_x, body.shift_y, body.shift_s,
                               body.rot_x_rad, body.rot_y_rad, body.rot_s_rad], dtype=float)
             if not np.all(np.isfinite(local)):
                 raise ValueError(f'{name}: local alignment must be finite')
-            delta = Frame.from_survey_angles(X=local[0], Y=local[1], Z=local[2],
-                                             phi=local[3], theta=local[4], psi=local[5])
             install = body.installation.values() if include_installation else np.zeros(6)
-            delta = delta @ Frame.from_survey_angles(X=install[0], Y=install[1], Z=install[2],
-                phi=install[3], theta=install[4], psi=install[5])
-            nominal = Frame(body._nominal)
+            delta = static_local(local, install)
             if body.parent is None:
-                static[name] = nominal @ delta
+                static[name] = delta
             else:
                 parent = self.bodies[body.parent]
-                static[name] = static[parent.name] @ parent.nominal_frame.inverse() @ nominal @ delta
+                static[name] = compose(inherit(static[parent.name], parent._nominal, body._nominal), delta)
             if name in absolute:
                 value = absolute[name]
-                dynamic_rotation = Frame.from_survey_angles(phi=value[3], theta=value[4], psi=value[5]).matrix[:3, :3]
-                target = static[name].matrix.copy()
-                axes = nominal.matrix[:3, :3]
-                target[:3, 3] += axes @ value[:3]
-                target[:3, :3] = axes @ dynamic_rotation @ axes.T @ target[:3, :3]
-                world[name] = Frame(target)
+                world[name] = (static[name][0]+value[:3],
+                    compose_rotation(rotation_increment(*value[3:]), static[name][1]))
                 continue
-            delta.matrix[:3, 3] += shifts[name]
-            delta.matrix[:3, :3] = rotations[name] @ delta.matrix[:3, :3]
+            delta = (delta[0]+shifts[name], compose_rotation(rotations[name], delta[1]))
             if body.parent is None:
-                world[name] = nominal @ delta
+                world[name] = delta
             else:
                 parent = self.bodies[body.parent]
-                world[name] = world[parent.name] @ Frame(parent._nominal).inverse() @ nominal @ delta
-        return world
+                world[name] = compose(inherit(world[parent.name], parent._nominal, body._nominal), delta)
+        return {name:world[name] for name in requested}
 
     def survey(self, *, time_s=0., time_series=None, bodies=None):
         """Read nominal, static and total world poses without writing elements."""
@@ -529,6 +591,7 @@ class MechanicsManager:
         bodies = list(self.bodies.values())
         data = dict(name=np.array([b.name for b in bodies]),
                     kind=np.array([b.kind for b in bodies]),
+                    support_class=np.array([b.support_class for b in bodies], dtype=str),
                     parent=np.array([b.parent or '' for b in bodies]))
         for field in ('shift_x', 'shift_y', 'shift_s', 'rot_x_rad', 'rot_y_rad', 'rot_s_rad'):
             data[field] = np.array([getattr(b, field) for b in bodies], dtype=float)
@@ -581,7 +644,7 @@ class MechanicsManager:
             lines.append(dict(line=names[0], reference_frame=view._reference.matrix.tolist(),
                               adopted_reference={name: values.tolist() for name, values in view._reference_inputs.items()},
                               attachments=attachments))
-        return dict(bodies=[dict(name=b.name, kind=b.kind, parent=b.parent, anchor=b._nominal.tolist(),
+        return dict(bodies=[dict(name=b.name, kind=b.kind, support_class=b.support_class, parent=b.parent, anchor=b._nominal.tolist(),
                                  alignment=[b.shift_x, b.shift_y, b.shift_s, b.rot_x_rad, b.rot_y_rad, b.rot_s_rad],
                                  installation=b.installation.values().tolist(),
                                  feet_local_m=None if b.feet_local_m is None else b.feet_local_m.tolist())
@@ -595,21 +658,25 @@ class MechanicsManager:
             raise ValueError('Load mechanics into an empty manager')
         for item in data['bodies']:
             b = self.new_body(item['name'], parent=item['parent'], anchor=Frame(item['anchor']),
-                              feet_local_m=item.get('feet_local_m'), kind=item.get('kind', 'body'))
+                              feet_local_m=item.get('feet_local_m'), kind=item.get('kind', 'body'),
+                              support_class=item.get('support_class', ''))
             b.shift_x, b.shift_y, b.shift_s, b.rot_x_rad, b.rot_y_rad, b.rot_s_rad = item['alignment']
             b.installation = RigidOffset(*item.get('installation', [0.]*6))
         for item in data['lines']:
             view = self.for_line(item['line'])
             view.set_reference_frame(Frame(item['reference_frame']))
-            for stored in item['attachments']:
-                candidates = view._candidates([stored['element']])
-                candidate = candidates[0]
+            stored_attachments = item['attachments']
+            candidates = view._candidates([a['element'] for a in stored_attachments])
+            by_name = {candidate['element']:candidate for candidate in candidates}
+            for stored in stored_attachments:
+                candidate = by_name[stored['element']]
                 for key in ('ref_start', 'ref_end', 'base_element', 'base_element_end', 'baseline'):
                     if key not in stored:
                         continue
                     candidate[key] = np.array(stored[key], dtype=float)
                 candidate['geometry'] = tuple(stored['geometry'])
-                view._attach(stored['body'], [candidate])
+                candidate['body'] = stored['body']
+            view._install_candidates(candidates)
             view._reference_inputs = {name: np.array(values, dtype=float)
                                       for name, values in item.get('adopted_reference', {}).items()}
         for item in data['sources']:
@@ -634,6 +701,8 @@ class LineMechanics:
         self._reference_inputs = {}
         self._time_origin_s = 0.
         self._sampling = 'turn'
+        self._runtime = None
+        self._backend = 'auto'
 
     def adopt_reference(self, *, elements=None):
         """Adopt existing element alignments as deliberate reference inputs.
@@ -664,13 +733,15 @@ class LineMechanics:
     def vibrations_enabled(self):
         return self._vibrations_enabled
 
-    def enable_vibrations(self, *, time_series=None, time_origin_s=None, sampling='turn'):
+    def enable_vibrations(self, *, time_series=None, time_origin_s=None, sampling='turn', backend='auto'):
         """Enable turn-boundary motion updates using Particles.time_s [s].
 
-        Current exploration backend: one host-side pose update per complete
-        turn, including on GPU contexts. No xdeps chain or per-particle source
-        evaluation. This is a correctness reference, not the final fast GPU
-        scheduler. Shared prescribed fields require an explicit common physical
+        Geometry and static placement freeze for each tracking call. The auto
+        backend uses context-native analytic sources and hierarchy/lowering
+        kernels, with batched host evaluation for sampled/custom sources.
+        backend='reference' retains explicit Python
+        lowering. No xdeps chain or per-particle source evaluation is installed.
+        Shared prescribed fields require an explicit common physical
         time origin per line; there is no shared mutable filter/controller here.
         sampling='passage' prepares each occurrence at t0+s/(beta0*c), assuming
         the reference speed. SyncTime and partial-turn integration stay guarded.
@@ -682,6 +753,10 @@ class LineMechanics:
             raise ValueError('time_origin_s must be finite physical seconds')
         if sampling not in ('turn', 'passage'):
             raise ValueError('Use turn or passage sampling')
+        if backend not in ('auto', 'compiled', 'reference'):
+            raise ValueError('Use auto, compiled or reference backend')
+        if backend == 'compiled' and sampling != 'turn':
+            raise ValueError('Compiled mechanics currently freezes at turn boundaries')
         if time_series is not None:
             time_series._check(self.manager)
         elif any(requires_time_series(b.source) for b in self.manager.sources.values()):
@@ -691,6 +766,8 @@ class LineMechanics:
         self._time_series = time_series
         self._time_origin_s = 0. if time_origin_s is None else float(time_origin_s)
         self._sampling = sampling
+        self._backend = backend
+        self._runtime = None
         self._vibrations_enabled = True
 
     def disable_vibrations(self):
@@ -702,9 +779,46 @@ class LineMechanics:
         self.apply(disabled_sources=tuple(self.manager.sources))
         self._vibrations_enabled = False
         self._time_series = None
+        self._runtime = None
+
+    def _prepare_for_tracking(self, *, log=None):
+        """Validate once at call entry; geometry freezes until the call ends."""
+        if self._time_series is not None:
+            self._time_series._check(self.manager)
+        use_compiled = (self._backend != 'reference' and self._sampling == 'turn'
+                        and not self.line.enable_time_dependent_vars
+                        and (log is None or self._backend == 'compiled'))
+        if self._backend == 'compiled' and not use_compiled:
+            raise ValueError('Compiled mechanics requires geometry fixed during a tracking call')
+        if use_compiled:
+            from .runtime import PreparedMechanics
+            if (self._runtime is None or self._runtime.revision != self.manager._revision
+                    or self._runtime.buffer is not self.line.tracker._buffer):
+                self.manager._check_aliases()
+                self._check()
+                try:
+                    self._runtime = PreparedMechanics(self)
+                except NotImplementedError:
+                    if self._backend == 'compiled':
+                        raise
+                    self._runtime = None
+            else:
+                self._runtime.guard.check()
+                self._runtime.refresh_static()
+        else:
+            self.manager._check_aliases()
+            self._check()
+            self._runtime = None
+
+    def _finish_tracking(self):
+        if self._runtime is not None:
+            self._runtime.finish()
 
     def _apply_for_tracking(self, time_s):
-        self.apply(time_s=time_s+self._time_origin_s, time_series=self._time_series, sampling=self._sampling)
+        if self._runtime is not None:
+            self._runtime.apply(time_s+self._time_origin_s, self._time_series)
+        else:
+            self.apply(time_s=time_s+self._time_origin_s, time_series=self._time_series, sampling=self._sampling)
 
     def apply(self, *, time_s=0., time_series=None, disabled_sources=(), sampling='turn'):
         """Update this line only at a physical time; other beam buffers stay put.
@@ -753,9 +867,57 @@ class LineMechanics:
         self._reference_is_explicit = True
         self.manager._revision += 1
 
-    def new_girder(self, name, *, elements, anchor='center', parent=None, feet_local_m=None):
+    def new_girder(self, name, *, elements, anchor='center', parent=None, feet_local_m=None, support_class=''):
         return self.manager.new_girder(name, line=self.line, elements=elements,
-                                       anchor=anchor, parent=parent, feet_local_m=feet_local_m)
+                                       anchor=anchor, parent=parent, feet_local_m=feet_local_m, support_class=support_class)
+
+    def new_girders(self, assignments, *, support_class=''):
+        """Create an inspectable batch of supports with one full-line survey.
+
+        assignments maps a new body name to element names, or to a dictionary
+        with elements and optional anchor, parent, feet_local_m, support_class.
+        For example {'g1': ['q1', 's1'], 'g2': {'elements': ['q2'],
+        'support_class': 'arc_quad'}}. Group members may be non-contiguous.
+        All definitions are validated before any body/binding is installed.
+        Existing supports may be parents; create parent levels first.
+        """
+        if not hasattr(assignments, 'items') or not assignments:
+            raise ValueError('Use a nonempty mapping from support names to assignments')
+        definitions = []
+        all_names = []
+        for name, value in assignments.items():
+            options = dict(value) if isinstance(value, dict) else {'elements': value}
+            unknown = set(options)-{'elements', 'anchor', 'parent', 'feet_local_m', 'support_class'}
+            if unknown or 'elements' not in options:
+                raise ValueError('Each assignment needs elements and supported girder options')
+            names = options.pop('elements')
+            names = (names,) if isinstance(names, str) else tuple(names)
+            if not names:
+                raise ValueError('Select nonempty unique element names')
+            options.setdefault('anchor', 'center')
+            options.setdefault('parent', None)
+            options.setdefault('feet_local_m', None)
+            options.setdefault('support_class', support_class)
+            definitions.append((name, names, options))
+            all_names.extend(names)
+        candidates = self._candidates(all_names)
+        # _candidates returns line order once; do not rescan/sort the line per group.
+        owner = {element:name for name, names, _ in definitions for element in names}
+        groups = {name:[] for name, _, _ in definitions}
+        for candidate in candidates:
+            groups[owner[candidate['element']]].append(candidate)
+        prepared = []
+        for name, names, options in definitions:
+            selected = groups[name]
+            body = self.manager._body_definition(name, kind='girder', candidates=selected, **options)
+            prepared.append((body, selected))
+        for body, selected in prepared:
+            self.manager._bodies[body.name] = body
+            for candidate in selected:
+                candidate['body'] = body.name
+        self._install_candidates(candidates)
+        self.manager._revision += 1
+        return {body.name:body for body, _ in prepared}
 
     def attach(self, body, *, elements):
         """Attach this line's elements to an existing physical body, possibly shared."""
@@ -783,6 +945,8 @@ class LineMechanics:
         return self
 
     def _removal_updates(self):
+        if self._runtime is not None:
+            self._runtime.finish()
         updates = []
         for name, attachment in self._attachments.items():
             element = self.line.element_dict.get(name)
@@ -802,6 +966,7 @@ class LineMechanics:
         self._line_geometry = None
         self._vibrations_enabled = False
         self._time_series = None
+        self._runtime = None
         self._reference = Frame()
         self._reference_is_explicit = False
         self._reference_inputs.clear()
@@ -816,14 +981,18 @@ class LineMechanics:
         if not self._reference_is_explicit and any(
                 v is not self and v._attachments for v in self.manager._line_views.values()):
             raise ValueError('Set an explicit survey reference frame before attaching a second line')
-        order = list(line.element_names)
+        order = {}
+        counts = {}
+        for index, name in enumerate(line.element_names):
+            order.setdefault(name, index)
+            counts[name] = counts.get(name, 0) + 1
         elements_by_id = {}
         for ll in self.manager.env._lines_weakrefs:
             for name in ll.element_names:
                 element = ll.element_dict[name]
                 elements_by_id[id(element)] = elements_by_id.get(id(element), 0) + 1
         for name in names:
-            if order.count(name) != 1 or name in self._attachments:
+            if counts.get(name, 0) != 1 or name in self._attachments:
                 raise ValueError(f'{name}: unknown, repeated or already attached occurrence')
             element = line.element_dict[name]
             if name in self._reference_inputs and not np.array_equal(_values(element), self._reference_inputs[name]):
@@ -834,12 +1003,15 @@ class LineMechanics:
                 raise ValueError(f'{name}: first lowering supports unsliced alignment-capable elements')
             if elements_by_id.get(id(element), 0) != 1:
                 raise ValueError(f'{name}: shared/repeated element objects require an occurrence-buffer lowering')
-            for field in (*_FIELDS, *_GEOMETRY):
+            for field in _FIELDS:
                 if hasattr(element, field) and getattr(getattr(line.env.ref[name], field), '_expr', None) is not None:
-                    raise ValueError(f'{name}.{field}: expression-driven geometry/alignment is not supported by numeric lowering')
+                    raise ValueError(f'{name}.{field}: expression-driven alignment is not supported by numeric lowering')
         survey = line.survey(include_element_frames=True, reverse=False)
         output = []
-        for name in sorted(names, key=order.index):
+        selected_names = set(names)
+        for name in order:
+            if name not in selected_names:
+                continue
             element = line.element_dict[name]
             output.append(dict(element=name,
                 ref_start=(self._reference @ survey.get_frame(name, which='ref_start')).matrix,
@@ -853,7 +1025,10 @@ class LineMechanics:
     def _attach(self, name, candidates):
         for candidate in candidates:
             candidate['body'] = name
-            self._attachments[candidate['element']] = candidate
+        self._install_candidates(candidates)
+
+    def _install_candidates(self, candidates):
+        self._attachments.update((c['element'], c) for c in candidates)
         self._element_names = tuple(self.line.element_names)
         self._line_geometry = self._geometry_signature()
 
@@ -861,7 +1036,24 @@ class LineMechanics:
         return tuple((id(self.line.element_dict[n]), _geometry(self.line.element_dict[n]))
                      for n in self.line.element_names)
 
+    def validate(self):
+        """Validate captured line geometry and alignment ownership explicitly.
+
+        Geometry expressions remain live and are read at attachment. Changing
+        their evaluated lengths/angles invalidates the captured survey; rebuild
+        the bindings. Strength-only changes need no geometry rebuild. Compiled
+        tracking validates once at entry and assumes fixed reference geometry
+        for that call, rather than rescanning the line at every freeze point.
+        """
+        self.manager._check_aliases()
+        self._check()
+        return self
+
     def _check(self):
+        # Explicit inspection inside a callback synchronizes one packed output,
+        # rather than mistaking the prepared kernel's own writes for user edits.
+        if self._runtime is not None:
+            self._runtime.finish()
         if self._attachments and self.line.aperture.is_built:
             raise ValueError('Discard/rebuild the aperture survey model when applying mechanics; pipe-body coupling is not implemented yet')
         if self._element_names is not None and tuple(self.line.element_names) != self._element_names:
@@ -876,9 +1068,9 @@ class LineMechanics:
                 raise ValueError(f'{name}: nominal geometry changed after attachment')
             if not np.array_equal(_values(element), a['last_written']):
                 raise ValueError(f'{name}: local alignment edited after attachment; restore/rebind explicitly')
-            for field in (*_FIELDS, *_GEOMETRY):
+            for field in _FIELDS:
                 if hasattr(element, field) and getattr(getattr(self.line.env.ref[name], field), '_expr', None) is not None:
-                    raise ValueError(f'{name}.{field}: expression-driven geometry/alignment is not supported by numeric lowering')
+                    raise ValueError(f'{name}.{field}: expression-driven alignment is not supported by numeric lowering')
 
     def _updates(self, poses, *, names=None, check=True):
         if check:
@@ -888,9 +1080,13 @@ class LineMechanics:
             a = self._attachments[name]
             element = self.line.element_dict[name]
             body = self.manager[a['body']]
-            target = poses[body.name] @ Frame(body._nominal).inverse() @ Frame(a['base_element'])
-            effective = Frame(a['ref_start']).inverse() @ target @ Frame().rotate_s(-element.rot_s_rad)
-            values = np.array([*effective.XYZ, effective.phi, effective.theta, effective.psi, 0.])
+            if hasattr(poses, '_deformations'):
+                values = lower(a, body._nominal, poses._deformations[body.name])
+            else:
+                # Private callers may still provide explicit world frames.
+                target = poses[body.name] @ Frame(body._nominal).inverse() @ Frame(a['base_element'])
+                effective = Frame(a['ref_start']).inverse() @ target @ Frame().rotate_s(-element.rot_s_rad)
+                values = np.array([*effective.XYZ, effective.phi, effective.theta, effective.psi, 0.])
             updates.append((a, element, values))
         return updates
 
@@ -903,11 +1099,23 @@ class LineMechanics:
     def read_bpm(self, name, *, time_s=0., time_series=None, beam_frame=None, **coordinates):
         """Project a nominal-frame beam ray into an attached pickup's moved frame."""
         from .observation import project_to_bpm
+        from .local_deformations import entry_affine, rotation_increment
         if name not in self._attachments:
             raise ValueError('Attach the pickup Device to mechanics before reading it')
-        target = self.get_element_poses(time_s=time_s, time_series=time_series)[name]
+        attachment = self._attachments[name]
+        body = self.manager[attachment['body']]
+        deformation = self.manager._get_body_deformations(time_s=time_s,
+            time_series=time_series,bodies=[body.name])[body.name]
+        shift, rotation = entry_affine(attachment, body._nominal, deformation)
+        design_rotation = np.eye(3)+rotation_increment(psi=attachment['geometry'][-1])
+        target = Frame.from_survey(shift, rotation @ design_rotation)
         if beam_frame is None:
-            beam_frame = Frame(self._attachments[name]['ref_start'])
+            beam_frame = Frame()
+        else:
+            reference = attachment['ref_start']
+            beam_frame = Frame.from_survey(
+                reference[:3,:3].T @ (beam_frame.XYZ-reference[:3,3]),
+                reference[:3,:3].T @ beam_frame.matrix[:3,:3])
         return project_to_bpm(beam_frame=beam_frame, bpm_frame=target, **coordinates)
 
     def get_table(self, *, time_s=None, time_series=None):

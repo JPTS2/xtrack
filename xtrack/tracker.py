@@ -299,6 +299,8 @@ class Tracker:
         try:
             return self._track_with_current_config(particles, *args, **kwargs)
         finally:
+            if self.line._mechanics_vibrations_enabled:
+                self.line.mechanics._finish_tracking()
             self.config.XTRACK_TPSA_TRACK = original_tpsa_track
 
     def _track_with_current_config(
@@ -359,12 +361,19 @@ class Tracker:
         assert self.iscollective in (True, False)
         if self.line._mechanics_vibrations_enabled and self._sync_time_controller is not None:
             raise NotImplementedError('Mechanics vibration updates with SyncTime need explicit clock scheduling')
+        if self.line._mechanics_vibrations_enabled:
+            self.line.mechanics._prepare_for_tracking(log=kwargs.get('log'))
         if (self.iscollective or self.line.enable_time_dependent_vars
             or self.line._mechanics_vibrations_enabled
             or 'log' in kwargs and kwargs['log'] is not None):
             tracking_func = self._track_with_collective
         else:
             tracking_func = self._track_no_collective
+
+        if self.line._mechanics_vibrations_enabled and self.line.mechanics._runtime is not None and not args:
+            from .mechanics.runtime import can_track_prepared, track_prepared
+            if can_track_prepared(self, particles, kwargs):
+                tracking_func = lambda pp, **kw: track_prepared(self, pp, **kw)
 
         if with_progress:
             if self.enable_pipeline_hold:
