@@ -10,6 +10,7 @@ one context gather and one bounded host transfer, not scalar GPU .get calls.
 No tracking-turn hook invokes this guard. Fixed geometry during a tracking call
 remains a scheduler contract; explicit edits are checked at the next entry.
 """
+
 from pathlib import Path
 
 import numpy as np
@@ -17,20 +18,35 @@ import xobjects as xo
 from .context_arrays import to_context
 
 
-_FIELDS = ('shift_x', 'shift_y', 'shift_s', 'rot_x_rad', 'rot_y_rad',
-           'rot_s_rad_no_frame', 'rot_shift_anchor')
+_FIELDS = (
+    'shift_x',
+    'shift_y',
+    'shift_s',
+    'rot_x_rad',
+    'rot_y_rad',
+    'rot_s_rad_no_frame',
+    'rot_shift_anchor',
+)
 
 
 def _compile(context):
     if 'mechanics_guard_gather' not in context.kernels:
-        context.add_kernels(sources=[Path(__file__).parent/'runtime_src/geometry_guard.h'],
-            kernels={'mechanics_guard_gather':xo.Kernel(args=[
-                xo.Arg(xo.Int64, name='n'),
-                xo.Arg(xo.Int64, name='offsets', pointer=True),
-                xo.Arg(xo.Int8, name='sizes', pointer=True),
-                xo.Arg(xo.Int8, name='buffer', pointer=True),
-                xo.Arg(xo.UInt64, name='out', pointer=True)], n_threads='n')},
-            extra_include_dirs=[str(Path(xo.__file__).resolve().parents[1])])
+        context.add_kernels(
+            sources=[Path(__file__).parent / 'runtime_src/geometry_guard.h'],
+            kernels={
+                'mechanics_guard_gather': xo.Kernel(
+                    args=[
+                        xo.Arg(xo.Int64, name='n'),
+                        xo.Arg(xo.Int64, name='offsets', pointer=True),
+                        xo.Arg(xo.Int8, name='sizes', pointer=True),
+                        xo.Arg(xo.Int8, name='buffer', pointer=True),
+                        xo.Arg(xo.UInt64, name='out', pointer=True),
+                    ],
+                    n_threads='n',
+                )
+            },
+            extra_include_dirs=[str(Path(xo.__file__).resolve().parents[1])],
+        )
 
 
 class GeometryGuard:
@@ -48,40 +64,63 @@ class GeometryGuard:
         self.context = self.buffer.context
         self.revision = view.manager._revision
         self.names = tuple(view.line.element_names)
-        self.objects = {name:view.line.element_dict[name] for name in self.names}
+        self.objects = {name: view.line.element_dict[name] for name in self.names}
         self.attachments = tuple(view._attachments.values())
-        from .model import _geometry
-        self.python_geometry = [(element, _geometry(element))
+        from .model import _reference_geometry
+
+        self.python_geometry = [
+            (element, _reference_geometry(element))
             for element in self.objects.values()
-            if (not type(element).__module__.startswith('xtrack.beam_elements')
-                or getattr(element, 'iscollective', False))]
-        buffers = {id(element._buffer):element._buffer
-                   for element in self.objects.values() if hasattr(element, '_buffer')}
+            if (
+                not type(element).__module__.startswith('xtrack.beam_elements')
+                or getattr(element, 'iscollective', False)
+            )
+        ]
+        buffers = {
+            id(element._buffer): element._buffer
+            for element in self.objects.values()
+            if hasattr(element, '_buffer')
+        }
         for element in self.objects.values():
-            if (type(element).__module__.startswith('xtrack.beam_elements')
-                    and not getattr(element, 'iscollective', False)
-                    and hasattr(element, '_buffer') and element._buffer is not self.buffer):
-                raise NotImplementedError('Prepared builtin geometry requires one tracker buffer')
+            if (
+                type(element).__module__.startswith('xtrack.beam_elements')
+                and not getattr(element, 'iscollective', False)
+                and hasattr(element, '_buffer')
+                and element._buffer is not self.buffer
+            ):
+                raise NotImplementedError(
+                    'Prepared builtin geometry requires one tracker buffer'
+                )
         reads = {}
         patched = []
         missing = object()
+
         def install(buffer, method, replacement):
             # Patch only these buffer instances, never a global buffer class.
             previous = buffer.__dict__.get(method, missing)
             patched.append((buffer, method, previous))
             setattr(buffer, method, replacement)
+
         def trace(buffer):
             original = buffer.to_bytearray
+
             def traced(offset, nbytes):
                 value = original(offset, nbytes)
                 if buffer is self.buffer:
                     if nbytes not in (1, 2, 4, 8):
-                        raise NotImplementedError('Prepared geometry requires scalar storage dependencies')
+                        raise NotImplementedError(
+                            'Prepared geometry requires scalar storage dependencies'
+                        )
                     reads[(int(offset), int(nbytes))] = bytes(value)
                 return value
+
             return traced
+
         def reject_arrays(*args, **kwargs):
-            raise NotImplementedError('Prepared geometry does not support array-based geometry getters; use the reference backend')
+            raise NotImplementedError(
+                'Prepared geometry does not support array-based geometry getters; use the reference backend'
+            )
+
         try:
             for buffer in buffers.values():
                 install(buffer, 'to_bytearray', trace(buffer))
@@ -99,20 +138,28 @@ class GeometryGuard:
         # public field name (for example Bend.length reads its private storage).
         offsets = [key[0] for key in reads]
         sizes = [key[1] for key in reads]
-        expected = [int.from_bytes(value, byteorder='little') for value in reads.values()]
+        expected = [
+            int.from_bytes(value, byteorder='little') for value in reads.values()
+        ]
         self.n_geometry = len(offsets)
         for attachment in self.attachments:
             element = self.objects[attachment['element']]
             offsets.extend(element._xobject._get_offset(field) for field in _FIELDS)
-            sizes.extend([8]*len(_FIELDS))
+            sizes.extend([8] * len(_FIELDS))
         self.expected_geometry = np.array(expected, dtype=np.uint64)
         self.expected = np.empty(len(offsets), dtype=np.uint64)
-        self.expected[:self.n_geometry] = self.expected_geometry
+        self.expected[: self.n_geometry] = self.expected_geometry
         manager = view.line.env.ref_manager
         self.ref_manager = manager
-        self.alignment_refs = set() if manager is None else {
-            getattr(view.line.env.ref[a['element']], field)
-            for a in self.attachments for field in _FIELDS}
+        self.alignment_refs = (
+            set()
+            if manager is None
+            else {
+                getattr(view.line.env.ref[a['element']], field)
+                for a in self.attachments
+                for field in _FIELDS
+            }
+        )
         _compile(self.context)
         array = lambda value: to_context(self.context, value)
         self.offsets = array(np.array(offsets, dtype=np.int64))
@@ -129,26 +176,63 @@ class GeometryGuard:
         if line.tracker._buffer is not self.buffer:
             raise ValueError('Tracker buffer changed; prepare mechanics again')
         if tuple(line.element_names) != self.names:
-            raise ValueError('Line sequence changed after mechanics attachment; rebuild bindings')
-        if any(line.element_dict.get(name) is not element for name,element in self.objects.items()):
-            raise ValueError('Line element object changed after mechanics attachment; rebuild bindings')
+            raise ValueError(
+                'Line sequence changed after mechanics attachment; rebuild bindings'
+            )
+        if any(
+            line.element_dict.get(name) is not element
+            for name, element in self.objects.items()
+        ):
+            raise ValueError(
+                'Line element object changed after mechanics attachment; rebuild bindings'
+            )
         if line.aperture.is_built:
-            raise ValueError('Discard/rebuild the aperture survey model when applying mechanics; pipe-body coupling is not implemented yet')
+            raise ValueError(
+                'Discard/rebuild the aperture survey model when applying mechanics; pipe-body coupling is not implemented yet'
+            )
         view.manager._check_aliases()
         if line.env.ref_manager is not self.ref_manager:
-            raise ValueError('Lattice reference manager changed; prepare mechanics again')
-        from .model import _geometry
-        if any(_geometry(element) != previous for element,previous in self.python_geometry):
-            raise ValueError('Custom element reference geometry changed after attachment; rebuild survey bindings')
-        if self.ref_manager is not None and not self.alignment_refs.isdisjoint(self.ref_manager.tasks):
-            raise ValueError('An attached element has expression-driven alignment; numeric mechanics cannot overwrite it')
-        self.context.kernels.mechanics_guard_gather(n=self.n_storage_words,
-            offsets=self.offsets, sizes=self.sizes, buffer=self.buffer.buffer, out=self.output)
+            raise ValueError(
+                'Lattice reference manager changed; prepare mechanics again'
+            )
+        from .model import _reference_geometry
+
+        if any(
+            _reference_geometry(element) != previous
+            for element, previous in self.python_geometry
+        ):
+            raise ValueError(
+                'Custom element reference geometry changed after attachment; rebuild survey bindings'
+            )
+        if self.ref_manager is not None and not self.alignment_refs.isdisjoint(
+            self.ref_manager.tasks
+        ):
+            raise ValueError(
+                'An attached element has expression-driven alignment; numeric mechanics cannot overwrite it'
+            )
+        from .model import _check_alignment_consumers
+
+        _check_alignment_consumers(self.ref_manager, self.alignment_refs)
+        self.context.kernels.mechanics_guard_gather(
+            n=self.n_storage_words,
+            offsets=self.offsets,
+            sizes=self.sizes,
+            buffer=self.buffer.buffer,
+            out=self.output,
+        )
         current = self.context.nparray_from_context_array(self.output)
-        if not np.array_equal(current[:self.n_geometry], self.expected_geometry):
-            raise ValueError('Line reference geometry changed after attachment; rebuild survey bindings')
-        expected_alignment = np.array([a['last_written'] for a in self.attachments], dtype=np.float64)
-        self.expected[self.n_geometry:] = expected_alignment.ravel().view(np.uint64)
-        if not np.array_equal(current[self.n_geometry:], self.expected[self.n_geometry:]):
-            raise ValueError('Local alignment edited after attachment; restore/rebind explicitly')
+        if not np.array_equal(current[: self.n_geometry], self.expected_geometry):
+            raise ValueError(
+                'Line reference geometry changed after attachment; rebuild survey bindings'
+            )
+        expected_alignment = np.array(
+            [a['last_written'] for a in self.attachments], dtype=np.float64
+        )
+        self.expected[self.n_geometry :] = expected_alignment.ravel().view(np.uint64)
+        if not np.array_equal(
+            current[self.n_geometry :], self.expected[self.n_geometry :]
+        ):
+            raise ValueError(
+                'Local alignment edited after attachment; restore/rebind explicitly'
+            )
         return self

@@ -3,6 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 """Bounded host-array uploads with explicit host staging ownership."""
+
 import numpy as np
 import xobjects as xo
 

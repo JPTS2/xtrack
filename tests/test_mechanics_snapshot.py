@@ -1,4 +1,7 @@
 """Ownership-safe frozen snapshots and removal failures for mechanics."""
+import gc
+import weakref
+
 import numpy as np
 import pytest
 import xobjects as xo
@@ -177,3 +180,202 @@ def test_failed_removal_does_not_partially_reset_alignments_or_enable_state(oper
     assert line.mechanics.vibrations_enabled
     assert tuple(env.mechanics.bodies) == ('g',)
     assert tuple(env.mechanics.sources) == ('tone',)
+
+
+@pytest.mark.parametrize('have_body', [False, True])
+@pytest.mark.parametrize('explicit_frame', [False, True])
+def test_copy_preserves_reference_configuration_before_attachment(have_body, explicit_frame):
+    env = xt.Environment()
+    env.new('q', xt.Quadrupole, length=.3, k1=.2, shift_x=.001)
+    line = env.new_line(name='ring', components=['q'])
+    line.mechanics.adopt_reference()
+    if explicit_frame:
+        line.mechanics.set_reference_frame(
+            xt.Frame.from_survey_angles(X=123., theta=.2))
+    if have_body:
+        env.mechanics.new_girder('unattached', anchor=(1., 2., 3.))
+    expected_frame = line.mechanics.reference_frame.matrix.copy()
+    expected_inputs = line.mechanics.get_reference_table().shift_x.copy()
+
+    for copied in (env.copy(with_progress=False),
+                   xt.Environment.from_dict(env.to_dict(), with_progress=False)):
+        other = copied.lines['ring']
+        np.testing.assert_array_equal(other.mechanics.reference_frame.matrix, expected_frame)
+        np.testing.assert_array_equal(other.mechanics.get_reference_table().shift_x, expected_inputs)
+        assert other.mechanics._reference_is_explicit == explicit_frame
+        assert not other.mechanics._attachments
+        assert not other.mechanics.vibrations_enabled
+        body = other.mechanics.new_girder('bound', elements=['q'])
+        expected_center = xt.Frame(expected_frame).translate_s(.15)
+        np.testing.assert_allclose(body.nominal_frame.matrix, expected_center.matrix,
+                                   rtol=0., atol=1e-14)
+
+
+def test_pending_reference_copy_does_not_bypass_second_line_placement_guard():
+    env = xt.Environment()
+    env.new('q1', xt.Quadrupole, length=.3, k1=.2)
+    env.new('q2', xt.Quadrupole, length=.3, k1=.2)
+    first = env.new_line(name='first', components=['q1'])
+    second = env.new_line(name='second', components=['q2'])
+    second.mechanics.adopt_reference()
+    first.mechanics.new_girder('g1', elements=['q1'])
+    copied = env.copy(with_progress=False)
+    with pytest.raises(ValueError, match='explicit survey reference frame'):
+        copied.second.mechanics.new_girder('g2', elements=['q2'])
+
+
+def test_resolved_world_can_copy_and_extend_independent_of_view_access_order():
+    env = xt.Environment()
+    for name in ('q1', 'q2', 'q3'):
+        env.new(name, xt.Quadrupole, length=.3, k1=.2)
+    first = env.new_line(name='first', components=['q1', 'q3'])
+    second = env.new_line(name='second', components=['q2'])
+    # Access order differs from attachment order. Both placements are already
+    # resolved when saved, even though the first line used its default frame.
+    second.mechanics.set_reference_frame(xt.Frame.from_survey_angles(X=10.))
+    first.mechanics.new_girder('g1', elements=['q1'])
+    second.mechanics.new_girder('g2', elements=['q2'])
+    copied = env.copy(with_progress=False)
+    for model in (env, copied):
+        assert not model.first.mechanics._reference_is_explicit
+        assert model.second.mechanics._reference_is_explicit
+        model.first.mechanics.new_girder('g3', elements=['q3'])
+        model.mechanics.apply()
+        assert model.mechanics['g3'].nominal_frame.Z == pytest.approx(.45)
+
+
+def test_unattached_configuration_uses_environment_snapshot_not_line_copy_or_pickle():
+    env = xt.Environment()
+    env.new('q', xt.Quadrupole, length=.3, k1=.2)
+    line = env.new_line(name='ring', components=['q'])
+    # Access alone is not a model and does not change ordinary serialization.
+    _ = line.mechanics
+    assert 'mechanics' not in env.to_dict()
+    assert '_mechanics' not in env.__getstate__()
+
+    line.mechanics.set_reference_frame(xt.Frame.from_survey_angles(X=123.))
+    with pytest.raises(NotImplementedError, match='complete environment'):
+        line.to_dict()
+    with pytest.raises(NotImplementedError, match='env.copy'):
+        line.copy()
+    with pytest.raises(NotImplementedError, match='to_dict'):
+        env.__getstate__()
+
+
+@pytest.mark.parametrize('query', ['poses', 'bpm'])
+@pytest.mark.parametrize('change', ['geometry', 'alignment'])
+def test_element_pose_queries_reject_invalidated_bindings(query, change):
+    env = xt.Environment()
+    env.new('d', xt.Drift, length=1.)
+    env.new('q', xt.Quadrupole, length=.3, k1=.2)
+    line = env.new_line(name='ring', components=['d', 'q'])
+    body = line.mechanics.new_girder('g', elements=['q'])
+    body.shift_x = 1e-6
+    if change == 'geometry':
+        env['d'].length = 2.
+        message = 'reference geometry changed'
+    else:
+        env['q'].shift_x = .001
+        message = 'alignment edited'
+    before = env['q'].shift_x
+    call = (line.mechanics.get_element_poses if query == 'poses'
+            else lambda: line.mechanics.read_bpm('q', x=0.))
+    with pytest.raises(ValueError, match=message):
+        call()
+    assert env['q'].shift_x == before
+
+
+@pytest.mark.parametrize('value', [1e-6 + 1e-6j, np.complex128(1e-6 + 1e-6j)])
+@pytest.mark.parametrize('operation', ['apply', 'poses', 'table', 'save'])
+def test_complex_body_reference_is_rejected_before_casting_or_writing(value, operation):
+    env, line = make_snapshot_case()
+    env.mechanics['g'].shift_y = value
+    before = values(line)
+    call = {'apply': env.mechanics.apply,
+            'poses': env.mechanics.get_body_poses,
+            'table': env.mechanics.get_table,
+            'save': env.mechanics.to_dict}[operation]
+    with pytest.raises(ValueError, match='must be real'):
+        call()
+    np.testing.assert_array_equal(values(line), before)
+
+
+def test_world_angular_source_is_not_reinterpreted_as_displacement():
+    class AngularWorldSource:
+        frame = 'world'
+        unit = 'rad'
+
+        def evaluate(self, time_s, positions_m):
+            raise AssertionError('Invalid source units must fail before evaluation')
+
+    env = xt.Environment()
+    env.mechanics.new_girder('g', anchor=(0., 0., 0.))
+    with pytest.raises(ValueError, match='displacement in metres'):
+        env.mechanics.add_source('angular', AngularWorldSource(), targets='g')
+    assert not env.mechanics.sources
+
+
+def test_anonymous_attached_line_stays_owned_until_offsets_are_restored():
+    env = xt.Environment()
+    env.new('q', xt.Quadrupole, length=.3, k1=.2, shift_x=3e-6)
+    line = env.new_line(components=['q'])
+    body = line.mechanics.new_girder('g', elements=['q'])
+    body.shift_x = 1e-4
+    env.mechanics.apply()
+    line_ref = weakref.ref(line)
+    del line
+    gc.collect()
+    assert line_ref() is not None
+    assert env['q'].shift_x != 3e-6
+    env.mechanics.clear()
+    gc.collect()
+    assert env['q'].shift_x == 3e-6
+    assert line_ref() is None
+
+
+def test_lazy_mechanics_accessor_does_not_retain_anonymous_line():
+    env = xt.Environment()
+    env.new('q', xt.Quadrupole, length=.3, k1=.2)
+    line = env.new_line(components=['q'])
+    view = line.mechanics
+    line_ref = weakref.ref(line)
+    del line
+    gc.collect()
+    assert line_ref() is None
+    assert not view._has_configuration
+
+
+@pytest.mark.parametrize('compiled', [False, True])
+def test_upstream_thickness_change_invalidates_reference_geometry(compiled):
+    line = xt.Line(elements={
+        'upstream': xt.Multipole(length=1., knl=[0.], isthick=False),
+        'q': xt.Quadrupole(length=.3, k1=.2),
+    })
+    line.set_particle_ref('proton', p0c=7e12)
+    line.mechanics.new_girder('g', elements=['q'])
+    if compiled:
+        line.mechanics.enable_vibrations(backend='compiled')
+        line.mechanics._prepare_for_tracking()
+    line['upstream'].isthick = True
+    if compiled:
+        call = lambda: line.track(line.build_particles(), num_turns=1)
+    else:
+        call = line.env.mechanics.apply
+    with pytest.raises(ValueError, match='reference geometry changed'):
+        call()
+
+
+@pytest.mark.parametrize('upstream', ['replica', 'slice'])
+def test_unsupported_upstream_geometry_is_rejected_before_binding(upstream):
+    parent = xt.Quadrupole(length=1., k1=.2)
+    if upstream == 'replica':
+        element = xt.Replica(parent_name='parent')
+    else:
+        element = xt.DriftSliceQuadrupole(_parent=parent, weight=1., _buffer=parent._buffer)
+    line = xt.Line(elements={'parent': parent, 'upstream': element,
+                             'q': xt.Quadrupole(length=.3, k1=.2)},
+                   element_names=['upstream', 'q'])
+    with pytest.raises(ValueError, match='unsliced line without replicas'):
+        line.mechanics.new_girder('g', elements=['q'])
+    assert not line.env.mechanics.bodies
+    assert not line.mechanics._attachments

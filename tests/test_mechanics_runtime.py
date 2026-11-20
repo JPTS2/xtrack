@@ -210,3 +210,56 @@ def test_fixed_scheduler_falls_back_for_reference_energy_changes():
     line.mechanics.enable_vibrations()
     line.mechanics._prepare_for_tracking()
     assert not can_track_prepared(line.tracker, line.build_particles(), {})
+
+
+@for_all_test_contexts
+def test_prepared_scheduler_accepts_spare_particle_capacity(test_context):
+    from xtrack.mechanics.runtime import can_track_prepared
+
+    _, line = make_case(test_context)
+    line.mechanics.enable_vibrations(backend='compiled')
+    line.mechanics._prepare_for_tracking()
+    particles = xt.Particles(_context=test_context, p0c=7e12,
+        x=[1e-7, -2e-7], y=[2e-8, -1e-8], _capacity=8)
+    reference = particles.copy()
+    assert can_track_prepared(line.tracker, particles, {})
+    line.track(particles, num_turns=3)
+    assert particles in line.mechanics._runtime._clocks
+    line.track(reference, num_turns=3, log=xt.Log())
+    for name in ('x', 'px', 'y', 'py', 'zeta', 'delta', 'at_turn', 'state'):
+        np.testing.assert_array_equal(
+            test_context.nparray_from_context_array(getattr(particles, name)),
+            test_context.nparray_from_context_array(getattr(reference, name)))
+    assert particles.reference_turns == reference.reference_turns == 3.
+    assert particles.time_s == reference.time_s
+
+    # A real active-particle speed mismatch still requires the conservative
+    # scheduler. Inactive slots do not change its reference-beta convention.
+    particles.beta0[1] = .5
+    assert not can_track_prepared(line.tracker, particles, {})
+    particles.state[1] = -1
+    particles.reorganize()
+    assert can_track_prepared(line.tracker, particles, {})
+
+
+@pytest.mark.parametrize('layer', ['reference', 'installation'])
+@pytest.mark.parametrize('warm', [False, True])
+def test_prepared_static_inputs_reject_complex_before_any_write(layer, warm):
+    _, line = make_case(xo.ContextCpu())
+    view = line.mechanics
+    view.enable_vibrations(backend='compiled')
+    particles = line.build_particles(x=1e-7)
+    if warm:
+        line.track(particles, num_turns=1)
+    before = np.array([[getattr(line[name], field) for field in FIELDS]
+                       for name in ('q', 'b')])
+    previous_turn = particles.at_turn.copy()
+    body = view.manager['girder']
+    offset = body if layer == 'reference' else body.installation
+    offset.shift_x = np.complex128(1e-6j)
+    with pytest.raises(ValueError, match='real'):
+        line.track(particles, num_turns=1)
+    np.testing.assert_array_equal(particles.at_turn, previous_turn)
+    np.testing.assert_array_equal(
+        [[getattr(line[name], field) for field in FIELDS] for name in ('q', 'b')], before)
+    assert view.vibrations_enabled

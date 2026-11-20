@@ -190,7 +190,7 @@ class Environment:
                 f"{n_elements} elements, {n_vars} vars, {n_particles} particles)")
 
     def __getstate__(self):
-        if self.__dict__.get('_mechanics') is not None and self._mechanics.bodies:
+        if self.__dict__.get('_mechanics') is not None and self._mechanics._has_configuration:
             raise NotImplementedError('Use env.to_dict()/from_dict() to save the experimental mechanics model')
         out = self.__dict__.copy()
         out.pop('_mechanics', None)
@@ -1178,7 +1178,7 @@ class Environment:
         out["_extra_config"] = deepcopy(self.extra_config)
         out["metadata"] = deepcopy(self.metadata)
 
-        if self.__dict__.get('_mechanics') is not None and self._mechanics.bodies:
+        if self.__dict__.get('_mechanics') is not None and self._mechanics._has_configuration:
             out['mechanics'] = self.mechanics.to_dict()
 
         if include_aperture and (len(self.aperture.profiles) or len(self.aperture.pipes)):

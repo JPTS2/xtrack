@@ -833,7 +833,7 @@ class Line:
         '''
 
         if (include_element_dict and self.env.__dict__.get('_mechanics') is not None
-                and self.mechanics._attachments):
+                and self.mechanics._has_configuration):
             raise NotImplementedError('Save the complete environment to preserve shared mechanics')
         out = {}
         out['__class__'] = self.__class__.__name__
@@ -1314,7 +1314,7 @@ class Line:
         '''
 
         if (self.env.__dict__.get('_mechanics') is not None
-                and self.mechanics._attachments):
+                and self.mechanics._has_configuration):
             raise NotImplementedError('Use env.copy() for mechanics; line-copy binding ownership is not defined yet')
         if shallow==True:
             assert _context is None and _buffer is None, (

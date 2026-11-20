@@ -3,6 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 """Read-only pose queries with normal Xsuite table selection."""
+
 from weakref import ref
 
 import numpy as np
@@ -14,25 +15,36 @@ from .motion import angles_from_matrix, checked_times
 def pose_columns(nominal, reference, static, total):
     """World positions and finite relative rotations, never Euler subtraction."""
     from scipy.spatial.transform import Rotation
+
     data = {}
-    for prefix, matrices in (('nominal', nominal), ('reference', reference),
-                              ('static', static), ('total', total)):
+    for prefix, matrices in (
+        ('nominal', nominal),
+        ('reference', reference),
+        ('static', static),
+        ('total', total),
+    ):
         for index, axis in enumerate('XYZ'):
-            data[prefix+'_'+axis] = matrices[:, index, 3].copy()
+            data[prefix + '_' + axis] = matrices[:, index, 3].copy()
         angles = angles_from_matrix(matrices[:, :3, :3])
         for index, angle in enumerate(('phi', 'theta', 'psi')):
-            data[prefix+'_'+angle] = angles[:, index]
-        data[prefix+'_matrix'] = matrices.copy()
-    for prefix, before, after in (('installation', reference, static), ('dynamic', static, total)):
+            data[prefix + '_' + angle] = angles[:, index]
+        data[prefix + '_matrix'] = matrices.copy()
+    for prefix, before, after in (
+        ('installation', reference, static),
+        ('dynamic', static, total),
+    ):
         for index, axis in enumerate('XYZ'):
-            data[prefix+'_'+axis] = after[:, index, 3]-before[:, index, 3]
+            data[prefix + '_' + axis] = after[:, index, 3] - before[:, index, 3]
         relative = np.swapaxes(before[:, :3, :3], -1, -2) @ after[:, :3, :3]
         angles = angles_from_matrix(relative)
         for index, angle in enumerate(('phi', 'theta', 'psi')):
-            data[prefix+'_'+angle] = angles[:, index]
+            data[prefix + '_' + angle] = angles[:, index]
         world_relative = after[:, :3, :3] @ np.swapaxes(before[:, :3, :3], -1, -2)
-        data[prefix+'_rotvec_world'] = (Rotation.from_matrix(world_relative).as_rotvec()
-                                      if len(total) else np.empty((0, 3)))
+        data[prefix + '_rotvec_world'] = (
+            Rotation.from_matrix(world_relative).as_rotvec()
+            if len(total)
+            else np.empty((0, 3))
+        )
     return data
 
 
@@ -44,54 +56,87 @@ def deformation_columns(nominal_axes, layers, *, lever=None, mount_rotation=None
     additionally supplies its fixed body-local lever and orientation.
     """
     from scipy.spatial.transform import Rotation
+
     nominal_axes = np.asarray(nominal_axes)
     count = len(nominal_axes)
     lever = np.zeros((count, 3)) if lever is None else np.asarray(lever)
-    mount = np.broadcast_to(np.eye(3), (count, 3, 3)) if mount_rotation is None else np.asarray(mount_rotation)
+    mount = (
+        np.broadcast_to(np.eye(3), (count, 3, 3))
+        if mount_rotation is None
+        else np.asarray(mount_rotation)
+    )
     data = {}
-    for prefix, before, after in (('installation', layers[0], layers[1]),
-                                  ('dynamic', layers[1], layers[2])):
+    for prefix, before, after in (
+        ('installation', layers[0], layers[1]),
+        ('dynamic', layers[1], layers[2]),
+    ):
         translation_before, rotation_before = before
         translation_after, rotation_after = after
-        difference = rotation_after-rotation_before
-        displacement = np.einsum('bij,bj->bi', nominal_axes,
-            translation_after-translation_before+np.einsum('bij,bj->bi',difference,lever))
+        difference = rotation_after - rotation_before
+        displacement = np.einsum(
+            'bij,bj->bi',
+            nominal_axes,
+            translation_after
+            - translation_before
+            + np.einsum('bij,bj->bi', difference, lever),
+        )
         for index, axis in enumerate('XYZ'):
-            data[prefix+'_'+axis] = displacement[:, index]
-        before_rotation = np.eye(3)+rotation_before
-        relative_increment = (np.swapaxes(mount,-1,-2)
-            @ np.swapaxes(before_rotation,-1,-2) @ difference @ mount)
-        angles = angles_from_matrix(np.eye(3)+relative_increment)
+            data[prefix + '_' + axis] = displacement[:, index]
+        before_rotation = np.eye(3) + rotation_before
+        relative_increment = (
+            np.swapaxes(mount, -1, -2)
+            @ np.swapaxes(before_rotation, -1, -2)
+            @ difference
+            @ mount
+        )
+        angles = angles_from_matrix(np.eye(3) + relative_increment)
         for index, angle in enumerate(('phi', 'theta', 'psi')):
-            data[prefix+'_'+angle] = angles[:, index]
-        world_increment = (nominal_axes @ difference @ np.swapaxes(before_rotation,-1,-2)
-                           @ np.swapaxes(nominal_axes,-1,-2))
-        data[prefix+'_rotvec_world'] = (Rotation.from_matrix(np.eye(3)+world_increment).as_rotvec()
-                                       if count else np.empty((0,3)))
+            data[prefix + '_' + angle] = angles[:, index]
+        world_increment = (
+            nominal_axes
+            @ difference
+            @ np.swapaxes(before_rotation, -1, -2)
+            @ np.swapaxes(nominal_axes, -1, -2)
+        )
+        data[prefix + '_rotvec_world'] = (
+            Rotation.from_matrix(np.eye(3) + world_increment).as_rotvec()
+            if count
+            else np.empty((0, 3))
+        )
     return data
 
 
 def _deformation_arrays(poses, names):
-    return (np.array([poses._deformations[name][0] for name in names]).reshape(-1,3),
-            np.array([poses._deformations[name][1] for name in names]).reshape(-1,3,3))
+    return (
+        np.array([poses._deformations[name][0] for name in names]).reshape(-1, 3),
+        np.array([poses._deformations[name][1] for name in names]).reshape(-1, 3, 3),
+    )
 
 
 def _attachment_mount(manager, attachment):
     from .local_deformations import attachment_reference
+
     body = manager[attachment['body']]
     nominal = body._nominal
     translation, rotation = attachment_reference(attachment)
-    axes = attachment['ref_start'][:3,:3]
-    lever = nominal[:3,:3].T @ (attachment['ref_start'][:3,3]-nominal[:3,3]+axes@translation)
-    mount_rotation = nominal[:3,:3].T @ attachment['base_element'][:3,:3]
+    axes = attachment['ref_start'][:3, :3]
+    lever = nominal[:3, :3].T @ (
+        attachment['ref_start'][:3, 3] - nominal[:3, 3] + axes @ translation
+    )
+    mount_rotation = nominal[:3, :3].T @ attachment['base_element'][:3, :3]
     return lever, mount_rotation
 
 
 def mechanics_table(data, *, owner, time_s=None, time_series=None):
     columns = list(data)
     manager = owner.manager if hasattr(owner, 'manager') else owner
-    data = dict(data, _mechanics_owner=ref(owner), _mechanics_revision=manager._revision,
-                _mechanics_record=time_series, query_time_s=time_s)
+    data = dict(
+        data,
+        _mechanics_owner=ref(owner),
+        _mechanics_revision=manager._revision,
+        _mechanics_record=time_series,
+        query_time_s=time_s,
+    )
     return MechanicsTable(data, col_names=columns)
 
 
@@ -101,32 +146,72 @@ def element_table(view, *, time_s=None, time_series=None, names=None):
     view._check()
     names = list(view._attachments) if names is None else list(names)
     attachments = [view._attachments[name] for name in names]
-    data = dict(name=np.array(names, dtype=str),
-                body=np.array([a['body'] for a in attachments], dtype=str),
-                body_kind=np.array([view.manager[a['body']].kind for a in attachments], dtype=str),
-                support_class=np.array([view.manager[a['body']].support_class for a in attachments], dtype=str),
-                element_type=np.array([type(view.line.element_dict[n]).__name__ for n in names], dtype=str),
-                length=np.array([getattr(view.line.element_dict[n], 'length', 0.) for n in names], dtype=float))
+    data = dict(
+        name=np.array(names, dtype=str),
+        body=np.array([a['body'] for a in attachments], dtype=str),
+        body_kind=np.array(
+            [view.manager[a['body']].kind for a in attachments], dtype=str
+        ),
+        support_class=np.array(
+            [view.manager[a['body']].support_class for a in attachments], dtype=str
+        ),
+        element_type=np.array(
+            [type(view.line.element_dict[n]).__name__ for n in names], dtype=str
+        ),
+        length=np.array(
+            [getattr(view.line.element_dict[n], 'length', 0.0) for n in names],
+            dtype=float,
+        ),
+    )
     if time_s is not None:
         manager = view.manager
         disabled = tuple(manager.sources)
         body_names = [attachment['body'] for attachment in attachments]
         selected_bodies = list(dict.fromkeys(body_names))
-        layers = [manager.get_body_poses(time_s=time_s, disabled_sources=disabled, include_installation=False, bodies=selected_bodies),
-                  manager.get_body_poses(time_s=time_s, disabled_sources=disabled, bodies=selected_bodies),
-                  manager.get_body_poses(time_s=time_s, time_series=time_series, bodies=selected_bodies)]
+        layers = [
+            manager.get_body_poses(
+                time_s=time_s,
+                disabled_sources=disabled,
+                include_installation=False,
+                bodies=selected_bodies,
+            ),
+            manager.get_body_poses(
+                time_s=time_s, disabled_sources=disabled, bodies=selected_bodies
+            ),
+            manager.get_body_poses(
+                time_s=time_s, time_series=time_series, bodies=selected_bodies
+            ),
+        ]
         nominal = np.array([a['ref_start'] for a in attachments]).reshape(-1, 4, 4)
         composed = []
         for poses in layers:
-            composed.append(np.array([
-                (poses[a['body']] @ manager[a['body']].nominal_frame.inverse()).matrix @ a['base_element']
-                for a in attachments]).reshape(-1, 4, 4))
+            composed.append(
+                np.array(
+                    [
+                        (
+                            poses[a['body']]
+                            @ manager[a['body']].nominal_frame.inverse()
+                        ).matrix
+                        @ a['base_element']
+                        for a in attachments
+                    ]
+                ).reshape(-1, 4, 4)
+            )
         data.update(pose_columns(nominal, *composed))
         mounts = [_attachment_mount(manager, attachment) for attachment in attachments]
-        axes = np.array([manager[name]._nominal[:3,:3] for name in body_names]).reshape(-1,3,3)
-        data.update(deformation_columns(axes, [_deformation_arrays(pose, body_names) for pose in layers],
-            lever=np.array([mount[0] for mount in mounts]).reshape(-1,3),
-            mount_rotation=np.array([mount[1] for mount in mounts]).reshape(-1,3,3)))
+        axes = np.array(
+            [manager[name]._nominal[:3, :3] for name in body_names]
+        ).reshape(-1, 3, 3)
+        data.update(
+            deformation_columns(
+                axes,
+                [_deformation_arrays(pose, body_names) for pose in layers],
+                lever=np.array([mount[0] for mount in mounts]).reshape(-1, 3),
+                mount_rotation=np.array([mount[1] for mount in mounts]).reshape(
+                    -1, 3, 3
+                ),
+            )
+        )
     return mechanics_table(data, owner=view, time_s=time_s, time_series=time_series)
 
 
@@ -142,7 +227,9 @@ class MechanicsTable(Table):
         context = self._data.get('_mechanics_owner')
         owner = None if context is None else context()
         if owner is None:
-            raise ValueError('No live mechanics context; request a fresh table from the model')
+            raise ValueError(
+                'No live mechanics context; request a fresh table from the model'
+            )
         manager = owner.manager if hasattr(owner, 'manager') else owner
         if manager._revision != self._mechanics_revision:
             raise ValueError('Mechanics definitions changed; request a fresh table')
@@ -181,8 +268,14 @@ class MechanicsTable(Table):
             return owner.manager[owner._attachments[name]['body']]
         return owner[name]
 
-    def get_time_series(self, name=None, *, time_s=None, time_series=None,
-                        max_memory_bytes=128*1024**2):
+    def get_time_series(
+        self,
+        name=None,
+        *,
+        time_s=None,
+        time_series=None,
+        max_memory_bytes=128 * 1024**2,
+    ):
         """Compose one selected entity over explicit times, on the host.
 
         If a sampled source record is bound to this table, its grid is the
@@ -201,55 +294,99 @@ class MechanicsTable(Table):
             raise ValueError('max_memory_bytes must be a positive integer')
         # Conservative bound for one output table and transient query columns.
         # Only one time slice is composed at a time; no all-body history cache.
-        if 2048*len(times) > max_memory_bytes:
+        if 2048 * len(times) > max_memory_bytes:
             raise MemoryError('Selected pose history exceeds max_memory_bytes')
         if record is not None:
             manager = owner.manager if hasattr(owner, 'manager') else owner
             record._check(manager)
         if hasattr(owner, 'line'):
-            current = element_table(owner, time_s=float(times[0]), time_series=record, names=[name])
+            current = element_table(
+                owner, time_s=float(times[0]), time_series=record, names=[name]
+            )
             manager = owner.manager
             attachment = owner._attachments[name]
             body = manager[attachment['body']]
             mount = body.nominal_frame.inverse().matrix @ attachment['base_element']
         else:
-            current = owner.survey(time_s=float(times[0]), time_series=record, bodies=[name])
+            current = owner.survey(
+                time_s=float(times[0]), time_series=record, bodies=[name]
+            )
             manager = owner
         total = np.empty((len(times), 4, 4))
         total[0] = current.total_matrix[0]
         body_name = attachment['body'] if hasattr(owner, 'line') else name
-        deformations = [manager._get_body_deformations(time_s=float(times[0]),
-                                                     time_series=record,bodies=[body_name])[body_name]]
+        deformations = [
+            manager._get_body_deformations(
+                time_s=float(times[0]), time_series=record, bodies=[body_name]
+            )[body_name]
+        ]
         for index, time in enumerate(times[1:], 1):
-            poses = manager.get_body_poses(time_s=float(time), time_series=record,bodies=[body_name])
+            poses = manager.get_body_poses(
+                time_s=float(time), time_series=record, bodies=[body_name]
+            )
             deformations.append(poses._deformations[body_name])
-            total[index] = (poses[attachment['body']].matrix @ mount if hasattr(owner, 'line')
-                            else poses[name].matrix)
-        layers = [np.broadcast_to(current[prefix+'_matrix'][0], total.shape)
-                  for prefix in ('nominal', 'reference', 'static')]
+            total[index] = (
+                poses[attachment['body']].matrix @ mount
+                if hasattr(owner, 'line')
+                else poses[name].matrix
+            )
+        layers = [
+            np.broadcast_to(current[prefix + '_matrix'][0], total.shape)
+            for prefix in ('nominal', 'reference', 'static')
+        ]
         output = pose_columns(*layers, total)
         disabled = tuple(manager.sources)
-        deliberate = manager._get_body_deformations(time_s=float(times[0]),
-            disabled_sources=disabled, include_installation=False,bodies=[body_name])[body_name]
-        installed = manager._get_body_deformations(time_s=float(times[0]),
-            disabled_sources=disabled,bodies=[body_name])[body_name]
-        packed = [(np.broadcast_to(layer[0], (len(times),3)),
-                   np.broadcast_to(layer[1], (len(times),3,3))) for layer in (deliberate,installed)]
-        packed.append((np.array([layer[0] for layer in deformations]),
-                       np.array([layer[1] for layer in deformations])))
-        body_axes = np.broadcast_to(manager[body_name]._nominal[:3,:3], (len(times),3,3))
+        deliberate = manager._get_body_deformations(
+            time_s=float(times[0]),
+            disabled_sources=disabled,
+            include_installation=False,
+            bodies=[body_name],
+        )[body_name]
+        installed = manager._get_body_deformations(
+            time_s=float(times[0]), disabled_sources=disabled, bodies=[body_name]
+        )[body_name]
+        packed = [
+            (
+                np.broadcast_to(layer[0], (len(times), 3)),
+                np.broadcast_to(layer[1], (len(times), 3, 3)),
+            )
+            for layer in (deliberate, installed)
+        ]
+        packed.append(
+            (
+                np.array([layer[0] for layer in deformations]),
+                np.array([layer[1] for layer in deformations]),
+            )
+        )
+        body_axes = np.broadcast_to(
+            manager[body_name]._nominal[:3, :3], (len(times), 3, 3)
+        )
         if hasattr(owner, 'line'):
             lever, mount_rotation = _attachment_mount(manager, attachment)
-            kwargs = dict(lever=np.broadcast_to(lever,(len(times),3)),
-                          mount_rotation=np.broadcast_to(mount_rotation,(len(times),3,3)))
+            kwargs = dict(
+                lever=np.broadcast_to(lever, (len(times), 3)),
+                mount_rotation=np.broadcast_to(mount_rotation, (len(times), 3, 3)),
+            )
         else:
             kwargs = {}
-        output.update(deformation_columns(body_axes,packed,**kwargs))
+        output.update(deformation_columns(body_axes, packed, **kwargs))
         data = dict(time_s=times.copy(), **output)
-        return MotionHistoryTable(dict(data, entity_name=name), col_names=list(data), index='time_s')
+        return MotionHistoryTable(
+            dict(data, entity_name=name), col_names=list(data), index='time_s'
+        )
 
-    def animate(self, name=None, *, time_s, size_m=None, time_series=None,
-                displacement_scale=1., rotation_scale=1., baseline='static', interval_ms=40):
+    def animate(
+        self,
+        name=None,
+        *,
+        time_s,
+        size_m=None,
+        time_series=None,
+        displacement_scale=1.0,
+        rotation_scale=1.0,
+        baseline='static',
+        interval_ms=40,
+    ):
         """Animate one rigid cuboid using its actual composed reference frames.
 
         size_m is local (width x, height y, length s), in metres. For an element,
@@ -257,15 +394,24 @@ class MechanicsTable(Table):
         The cuboid is presentation geometry, not a magnetic/aperture model.
         """
         from .plotting import animate_cuboid
+
         owner = self._owner()
         name = self._selected_name(name)
         if size_m is None:
             if not hasattr(owner, 'line'):
                 raise ValueError('Supply size_m for a body cuboid')
-            size_m = (.3, .3, float(getattr(self.get_element(name), 'length', 0.)))
-        return animate_cuboid(self, name, time_s=time_s, size_m=size_m,
-                               time_series=time_series, displacement_scale=displacement_scale,
-                               rotation_scale=rotation_scale, baseline=baseline, interval_ms=interval_ms)
+            size_m = (0.3, 0.3, float(getattr(self.get_element(name), 'length', 0.0)))
+        return animate_cuboid(
+            self,
+            name,
+            time_s=time_s,
+            size_m=size_m,
+            time_series=time_series,
+            displacement_scale=displacement_scale,
+            rotation_scale=rotation_scale,
+            baseline=baseline,
+            interval_ms=interval_ms,
+        )
 
 
 class MotionHistoryTable(Table):
@@ -277,15 +423,18 @@ class MotionHistoryTable(Table):
     def plot(self):
         """Plot dynamic world translations and rotations relative to static axes."""
         import matplotlib.pyplot as plt
+
         fig, axes = plt.subplots(2, 1, sharex=True, figsize=(8, 6))
         for axis in 'XYZ':
-            axes[0].plot(self.time_s, self['dynamic_'+axis]*1e9, label=axis)
+            axes[0].plot(self.time_s, self['dynamic_' + axis] * 1e9, label=axis)
         for angle, label in (('phi', 'Pitch'), ('theta', 'Yaw'), ('psi', 'Roll')):
-            axes[1].plot(self.time_s, self['dynamic_'+angle]*1e9, label=label)
+            axes[1].plot(self.time_s, self['dynamic_' + angle] * 1e9, label=label)
         axes[0].set(ylabel='Dynamic world displacement [nm]', title=self.entity_name)
-        axes[1].set(xlabel='Physical time [s]', ylabel='Rotation from installed axes [nrad]')
+        axes[1].set(
+            xlabel='Physical time [s]', ylabel='Rotation from installed axes [nrad]'
+        )
         for ax in axes:
             ax.legend()
-            ax.grid(alpha=.2)
+            ax.grid(alpha=0.2)
         fig.tight_layout()
         return fig, axes
