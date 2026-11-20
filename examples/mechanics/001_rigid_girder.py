@@ -26,13 +26,13 @@ import xtrack as xt
 # Design placement: deliberate magnet offsets and roll
 ########################################
 DELIBERATE_X_M       = 1e-3             # Intentional q1 horizontal offset [m]
-DELIBERATE_Y_M       = 3e-6             # Intentional q1 vertical offset [m]
+DELIBERATE_Y_M       = .1e-6            # Intentional q1 vertical offset [m]
 DELIBERATE_ROLL_RAD  = .1               # Intentional q2 roll [rad]
 
 ########################################
 # Static installation error and dynamic vibration
 ########################################
-INSTALLATION_Y_M    = 20e-6             # Static girder displacement [m]
+INSTALLATION_Y_M    = .2e-6             # Static girder installation error [m]
 VIBRATION_PEAK_M    = 50e-9             # Common vertical sine amplitude [m]
 VIBRATION_HZ        = 5.
 INSPECT_TIME_S      = .05               # A vibration maximum with these inputs
