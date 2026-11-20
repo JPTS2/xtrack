@@ -1,0 +1,52 @@
+Compiling ContextCpu kernels...
+Done compiling ContextCpu kernels.
+Compiling ContextCpu kernels...
+Done compiling ContextCpu kernels.
+FCC-ee prescribed ground motion
+-------------------------------
+Lattice: /Users/jack/xsuite/mechanics/inputs/acc-models-fcc-ee-108.1.0/lattices/z/fccee_z_beam_1_positrons.json
+Line / circumference [m]: fccee_p_ring / 90640.199866
+Quad supports / magnets / contacts: 2663 / 2663 / 10652
+Assignment: one support per quad; cyclic response classes; NOT engineering girders.
+One virtual pickup port follows a conditional quad-to-pickup response; no online BPM/feedback coupling.
+Ground / installation seeds: 1956 / 956
+Record samples / interval [s] / step [s]: 512 / [-0.4, 0.0990234] / 0.000976562
+Record sample rate / Nyquist [Hz]: 1024 / 512
+Causal filters start at rest at the beginning of this finite record.
+Floor record / bound response records [MiB]: 125.08 / 124.86
+The full records stay on the host; tracking uploads one current source block.
+Rigid contact mismatch RMS for t>=0 [nm]: 0.531634
+Ground model: psd; plane wave peak [nm]: 1; pump peak [nm]: 2
+Turns / particle counts / repeats / physical tracking duration [s]: 128 / (1, 32) / 3 / 0.0386999248
+Particles    Nominal [ms/turn]    Frozen [ms/turn]    Dynamic [ms/turn]    Moving/nominal    Moving/frozen
+Each timed packet has one motion phase; these are not packed bunches.
+        1             3.290266            3.420299             3.710582            1.1277           1.0849
+  First-particle final x change from frozen case [nm]: -1.215211
+       32            68.403765           68.954421            71.722766            1.0485           1.0401
+  First-particle final x change from frozen case [nm]: -1.215211
+name                    model       reference n_targets
+resolved_girders        RigidMotion absolute       2663
+resolved_magnets        RigidMotion absolute       2663
+resolved_virtual_pickup RigidMotion absolute          1
+
+Separate operation costs [s]
+lattice_load_s                                2.192512
+tracker_and_first_nominal_turn_s              0.636641
+nominal_tracking_1p_median_s                  0.421154
+nominal_tracking_32p_median_s                 8.755682
+reference_adoption_s                          0.111930
+geometry_selection_and_survey_s               3.633108
+mechanics_definition_s                        1.480840
+installation_and_static_apply_s               0.437354
+frozen_tracking_1p_median_s                   0.437798
+frozen_tracking_32p_median_s                  8.826166
+common_floor_and_rigid_fit_s                  2.587940
+conditional_responses_and_bindings_s          1.178225
+first_dynamic_track_1turn_s                   2.009521
+dynamic_tracking_1p_median_s                  0.474955
+dynamic_tracking_32p_median_s                 9.180514
+optional_tables_plots_and_gif_s               1.856595
+Nominal tracking repeat costs [s]: {1: [0.421154041076079, 0.4196603330783546, 0.435933040920645], 32: [8.755681874928996, 8.754273707978427, 8.759765124879777]}
+Frozen tracking repeat costs [s]: {1: [0.43779829191043973, 0.4375304998829961, 0.44452545791864395], 32: [8.824737624963745, 8.826165874954313, 8.835998833877966]}
+Dynamic tracking repeat costs [s]: {1: [0.4784345831722021, 0.4749545000959188, 0.47426891699433327], 32: [9.04163624998182, 9.18051404110156, 9.23034695792012]}
+Automatic vibrations disabled; inspect mech, source_table, body_table, element_table and quad_history.

@@ -1,0 +1,22 @@
+Reference, installation and dynamic placement
+---------------------------------------------
+Adopted q1 deliberate x / y [µm]: 1000.000 / 3.000
+Girder installation y [µm]: 20.000
+Girder dynamic world Y [nm]: 50.000
+q2 design roll [rad]: 0.100000
+Tracked exit x / y [µm]: 91.990559 / -1.970047
+q1 y after disabling / clearing [µm]: 23.000000 / 3.000000
+Disable keeps installation. Clear restores the adopted deliberate inputs.
+
+Reference CPU costs
+-------------------
+line_construction_s         0.0158 s
+tracker_build_s             0.1095 s
+reference_adoption_s        0.0001 s
+reference_inspection_s      0.0000 s
+mechanics_definition_s      0.0185 s
+installation_definition_s    0.0000 s
+source_definition_s         0.0000 s
+apply_s                     0.0003 s
+pose_inspection_s           0.0029 s
+one_pass_tracking_s         0.0001 s

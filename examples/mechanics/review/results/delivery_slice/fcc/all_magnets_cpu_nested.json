@@ -1,0 +1,192 @@
+{
+  "lattice": "/Users/jack/xsuite/mechanics/inputs/acc-models-fcc-ee-108.1.0/lattices/z/fccee_z_beam_1_positrons.json",
+  "line": "fccee_p_ring",
+  "lattice_sha256": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe",
+  "script_sha256": "dec9ee6782319b9a8ddb4ceda82c46ad8b7cae16acab0c9e611ecd06c8c4ac26",
+  "tracker_sha256": "ef8a83fcb6fb018589c4a24db51c7013b2ef0882013109986a2614d47dfeffec",
+  "mechanics_source_sha256": {
+    "xtrack/mechanics/__init__.py": "a20dcf5be632cd2e7f7f29c4de7a23fd9707203743bc1591d2675fa43ea24f22",
+    "xtrack/mechanics/context_arrays.py": "86ee77accdf471a47088d9d2d8f011eda8f1d7f8ae0b1aca4323b7365a79d538",
+    "xtrack/mechanics/geometry_guard.py": "29e420f43f715ca981470cdea6040470aa294ef989ff04c9b33f5991ef2081ed",
+    "xtrack/mechanics/installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+    "xtrack/mechanics/local_deformations.py": "137983d5e2e11b0d1342c6e6785c6a276b9f3a286adb4d7493340d4553816888",
+    "xtrack/mechanics/model.py": "6f09ff114c41b112459da4abfdda835fda352c549b4b42a8f996560ede5def4c",
+    "xtrack/mechanics/motion.py": "216dc1643ac45af70afe5a2b71c17d76027faa6778c12e5c9f8466aec20f353d",
+    "xtrack/mechanics/observation.py": "ff2d201e23758ff5127a0f14e5c809a64d04c9e6f5a7753edb16fd5883c34369",
+    "xtrack/mechanics/plotting.py": "2131b87b0244e4d674ff323ff9c1bc08f0bded8c6879b3fc6c24548556746434",
+    "xtrack/mechanics/responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+    "xtrack/mechanics/runtime.py": "048da36e777b8d5edd28c1a9e323397577ea3bbec8f624126082766be4c5b0ee",
+    "xtrack/mechanics/runtime_src/geometry_guard.h": "dfbc63e38380c47da79d7c150fef2b022cb0543210217ef7732b3727a670a9c2",
+    "xtrack/mechanics/runtime_src/update.h": "076d1eeda9b5bc834deadb01ad754132554e7adcafdb520cb0a8aa4e0e421ea5",
+    "xtrack/mechanics/sources.py": "1a4380a24834fcf3c9c98945ab45f1d1b9fde302b2af84804876e7d50d44f3b5",
+    "xtrack/mechanics/tables.py": "92e17f9f6c202e2188720f9ef8f52430707a73305dac370e3ec75568a68e6abc"
+  },
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+  "imported_xtrack": "/Users/jack/xsuite/mechanics/xtrack/xtrack/__init__.py",
+  "xtrack": "0.119.2",
+  "xobjects": "0.7.3",
+  "numpy": "2.4.1",
+  "context": "cpu",
+  "actual_context": "ContextCpu",
+  "device": null,
+  "members": "all_magnets",
+  "n_attachments": 12041,
+  "n_supports": 16055,
+  "hierarchy": "nested",
+  "turns": 128,
+  "thread_settings": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1"
+  },
+  "compiler_settings": {
+    "CC": "/opt/miniconda3/envs/xsuite/bin/clang",
+    "LDSHARED": "/opt/miniconda3/envs/xsuite/bin/clang -bundle -undefined dynamic_lookup"
+  },
+  "public_api": true,
+  "live_expressions_preserved": true,
+  "engineering_assignment": false,
+  "update_sampling": "turn-held",
+  "source": "analytic",
+  "source_execution": "context-native analytic",
+  "source_prepare_s": 1.6663259998895228,
+  "definition_s": 5.734732375014573,
+  "cold_prepare_s": 2.8892649998888373,
+  "update_median_s": 0.0010410414543002844,
+  "update_samples_s": [
+    0.0010873752180486917,
+    0.0010527088306844234,
+    0.0010346660856157541,
+    0.0010354160331189632,
+    0.0010357080027461052,
+    0.0010350001975893974,
+    0.0010407499503344297,
+    0.0010348749347031116,
+    0.0010353750549256802,
+    0.0010360830929130316,
+    0.0010548338759690523,
+    0.0010375420097261667,
+    0.0010420829057693481,
+    0.0010387501679360867,
+    0.0010427080560475588,
+    0.001051542116329074,
+    0.0010392500553280115,
+    0.0010414579883217812,
+    0.0010415418073534966,
+    0.0010462088976055384,
+    0.0010448750108480453,
+    0.0010404158383607864,
+    0.001041332958266139,
+    0.001038125017657876,
+    0.00104058301076293,
+    0.0010423751082271338,
+    0.0010404589120298624,
+    0.001071625156328082,
+    0.0010498329065740108,
+    0.001090416917577386
+  ],
+  "prepared_array_bytes": {
+    "_static_settings": 1541280,
+    "paths_offsets": 128448,
+    "paths": 224768,
+    "relations": 1541280,
+    "static_local": 1541280,
+    "geometry": 2311872,
+    "baseline": 674296,
+    "offsets": 674296,
+    "body_indices": 96328,
+    "input": 1541280,
+    "dynamic_local": 1541280,
+    "absolute_host": 128440,
+    "absolute": 128440,
+    "source_starts": 128448,
+    "source_data": 3371592,
+    "bodyout": 1541280,
+    "values": 674296
+  },
+  "guard_array_bytes": {
+    "expected_geometry": 440752,
+    "expected": 1115048,
+    "offsets": 1115048,
+    "sizes": 139381,
+    "output": 1115048
+  },
+  "update_host_buffer_io": {
+    "buffer_type": "BufferNumpy",
+    "read_calls": 0,
+    "read_bytes": 0,
+    "write_calls": 0,
+    "write_bytes": 0
+  },
+  "baseline": {
+    "1": {
+      "median_s": 0.38385299989022315,
+      "samples_s": [
+        0.38385299989022315,
+        0.3832218749448657,
+        0.38419979182071984
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 2.9988515616423683
+    },
+    "32": {
+      "median_s": 8.481568000046536,
+      "samples_s": [
+        8.481568000046536,
+        8.522786125075072,
+        8.446067833108827
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 66.26225000036357
+    }
+  },
+  "dynamic": {
+    "1": {
+      "median_s": 0.7380741671659052,
+      "samples_s": [
+        0.7294604161288589,
+        0.7380741671659052,
+        0.7410949999466538
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 5.766204430983635
+    },
+    "32": {
+      "median_s": 9.334175957832485,
+      "samples_s": [
+        9.267816083971411,
+        9.35999191692099,
+        9.334175957832485
+      ],
+      "all_active": [
+        true,
+        true,
+        true
+      ],
+      "ms_per_turn": 72.92324967056629
+    }
+  },
+  "slowdown": {
+    "1": 1.922804217700486,
+    "32": 1.1005248036425896
+  },
+  "short_calls": {},
+  "target_max_slowdown": 2.0,
+  "target_met": {
+    "1": true,
+    "32": true
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "status": "passed",
+  "purpose": "Functional plane-wave variant, not an uncontended throughput measurement",
+  "example": "016_fcc_ground_motion.py",
+  "script_sha256": "18a60d8fa782698df2e6eb4179ddf8d6882895c4117d9cbf4a4e72e533173f8b",
+  "parameter_overrides": {
+    "GROUND_MODEL": "plane_wave",
+    "WAVE_PEAK_M": 2e-08,
+    "WAVE_HZ": 10.0,
+    "WAVE_SPEED_M_S": 1000.0,
+    "PUMP_PEAK_M": 0.0,
+    "DRIFT_M_PER_S": 0.0,
+    "INSTALLATION_SIGMA_M": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "N_TURNS": 8,
+    "N_REPEATS": 1
+  },
+  "elapsed_s": 17.988660749979317,
+  "figures": [
+    "figure_01",
+    "figure_02",
+    "figure_03",
+    "figure_04"
+  ],
+  "timings": {
+    "lattice_load_s": 2.2940984170418233,
+    "tracker_and_first_nominal_turn_s": 0.6265118750743568,
+    "nominal_tracking_1p_median_s": 0.02453175000846386,
+    "reference_adoption_s": 0.11330929212272167,
+    "geometry_selection_and_survey_s": 3.703012750018388,
+    "mechanics_definition_s": 1.4958547500427812,
+    "installation_and_static_apply_s": 0.3781701249536127,
+    "frozen_tracking_1p_median_s": 0.02424745913594961,
+    "common_floor_and_rigid_fit_s": 2.3337977919727564,
+    "conditional_responses_and_bindings_s": 1.0443175409454852,
+    "first_dynamic_track_1turn_s": 2.0380897920113057,
+    "dynamic_tracking_1p_median_s": 0.05168262496590614,
+    "optional_tables_plots_and_gif_s": 1.7665962500032037
+  },
+  "source_model": "PlaneWave",
+  "records_have_finite_bounds": true
+}

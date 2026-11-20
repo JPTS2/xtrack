@@ -1,0 +1,31 @@
+{
+  "purpose": "Uncorrected installation amplitude probe, 128 turns, same seed956, one particle; no dynamic sources",
+  "lattice_sha256": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe",
+  "global_xy_limit_m": 1.0,
+  "observations": [
+    {
+      "sigma_m": 5e-06,
+      "state": -1,
+      "at_turn": 82,
+      "at_element": "sfx2l.4",
+      "x_m": -3.2750032364237356,
+      "y_m": 0.28235003983103923
+    },
+    {
+      "sigma_m": 5e-07,
+      "state": 1,
+      "at_turn": 128
+    },
+    {
+      "sigma_m": 5e-08,
+      "state": 1,
+      "at_turn": 128
+    },
+    {
+      "sigma_m": 0.0,
+      "state": 1,
+      "at_turn": 128
+    }
+  ],
+  "interpretation": "Nonlinear growth to global guard in the uncorrected5um launch; not an engineering aperture or alignment-tolerance determination"
+}

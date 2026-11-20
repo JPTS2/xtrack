@@ -1,0 +1,143 @@
+{
+  "generated_utc": "2026-11-20T14:52:29.922466+00:00",
+  "status": "cpu_openmp_verified_gpu_unavailable",
+  "purpose": "Local experimental draft delivery evidence. No CUDA/OpenCL execution or performance claim.",
+  "source_freeze_commit": "74475bc840d5b19bd2e142bbad0c449eb45b1236",
+  "hardware": {
+    "cpu": {
+      "status": "passed",
+      "exit_code": 0,
+      "counts": {
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "elapsed_s": 30.622909833909944,
+      "recorded_sources_match_current": true
+    },
+    "openmp": {
+      "status": "passed",
+      "exit_code": 0,
+      "counts": {
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "elapsed_s": 209.91855083405972,
+      "recorded_sources_match_current": true
+    },
+    "cuda": {
+      "status": "unavailable",
+      "exit_code": 2,
+      "elapsed_s": 0.0018755418714135885,
+      "stage": "context_dependency",
+      "reason": "ModuleNotFoundError: No module named 'cupy'",
+      "recorded_sources_match_current": true
+    },
+    "opencl": {
+      "status": "unavailable",
+      "exit_code": 2,
+      "elapsed_s": 0.00219474988989532,
+      "stage": "context_dependency",
+      "reason": "ModuleNotFoundError: No module named 'pyopencl'",
+      "recorded_sources_match_current": true
+    }
+  },
+  "examples": {
+    "015_bunch_phases_and_twiss": {
+      "exit_code": 0,
+      "elapsed_s": 24.299170000012964,
+      "figures": 2,
+      "peak_rss_mib": 285.078125,
+      "recorded_sources_match_current": true
+    },
+    "001_rigid_girder": {
+      "exit_code": 0,
+      "elapsed_s": 0.4831447498872876,
+      "figures": 1,
+      "peak_rss_mib": 230.828125,
+      "recorded_sources_match_current": true
+    },
+    "016_fcc_ground_motion": {
+      "exit_code": 0,
+      "elapsed_s": 23.571539249969646,
+      "figures": 4,
+      "peak_rss_mib": 1903.421875,
+      "recorded_sources_match_current": true
+    },
+    "004_demo_ring": {
+      "exit_code": 0,
+      "elapsed_s": 5.086744250031188,
+      "figures": 2,
+      "peak_rss_mib": 319.953125,
+      "recorded_sources_match_current": true
+    }
+  },
+  "portable_example_elapsed_basis": "Complete worker wall time, cold kernels and concurrent verification; not throughput measurements.",
+  "fcc_current_pipeline": {
+    "default": {
+      "elapsed_s": 23.571539249969646,
+      "peak_rss_mib": 1903.421875,
+      "slowdown": {
+        "1": {
+          "dynamic_over_nominal": 1.414607824573286,
+          "dynamic_over_frozen_installed": 1.2506880726516612
+        }
+      },
+      "record": "examples/016_fcc_ground_motion/result.json",
+      "figures_reference": "../delivery_fcc/016_fcc_ground_motion"
+    },
+    "throughput_variant": {
+      "elapsed_s": 102.11117316689342,
+      "peak_rss_mib": 2308.90625,
+      "slowdown": {
+        "1": {
+          "dynamic_over_nominal": 1.1277453230233188,
+          "dynamic_over_frozen_installed": 1.084870610214898
+        },
+        "32": {
+          "dynamic_over_nominal": 1.0485207402736991,
+          "dynamic_over_frozen_installed": 1.0401474628018001
+        }
+      },
+      "record": "fcc/016_throughput_result.json",
+      "figures_reference": "../delivery_fcc/throughput_variant"
+    }
+  },
+  "fcc_prepared_backend_probes": {
+    "all_magnets_cpu_nested.json": {
+      "slowdown": {
+        "1": 1.922804217700486,
+        "32": 1.1005248036425896
+      },
+      "source_differences_from_current": [
+        "xtrack/mechanics/context_arrays.py",
+        "xtrack/mechanics/model.py"
+      ],
+      "tracker_matches_current": true,
+      "kernels_match_current": true
+    },
+    "quads_cpu.json": {
+      "slowdown": {
+        "1": 1.1994921881866274,
+        "32": 1.0328356605630897
+      },
+      "source_differences_from_current": [
+        "xtrack/mechanics/context_arrays.py",
+        "xtrack/mechanics/model.py"
+      ],
+      "tracker_matches_current": true,
+      "kernels_match_current": true
+    }
+  },
+  "performance_note": "The two prepared-backend probes retain their actual earlier source hashes; native kernels and tracker match. Current FCC lesson records include the final native API and CuPy policy. Workloads and comparison baselines differ.",
+  "input_sha256": {
+    "xtrack/test_data/example_lattices/demo_ring/strengths.py": "605b206dd172907bb41338aa746e705368ee7c95f7748db6d19b8377f1d1cc9d",
+    "xtrack/test_data/example_lattices/demo_ring/lattice.py": "7f409049cc39db5341452c2c0c9acbcfe106ad986b1a00ce2728c46228ff5a1b",
+    "xtrack/test_data/example_lattices/demo_ring/geometry.py": "c3bedd943af178b33c2ca6506a2bd77a7a85f2706af2cf7ad5e65271f40a57ef",
+    "inputs/acc-models-fcc-ee-108.1.0/lattices/z/fccee_z_beam_1_positrons.json": "dd7c7749d1bedfa5faf41bbfd885312bbc38bec8a817460bc0627f3c4b6094fe"
+  },
+  "figures": "New FCC figures retained in sibling delivery_fcc; no figure copies here. Portable fresh figures were inspected and are reproducible with run_examples.py."
+}
