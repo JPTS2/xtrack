@@ -1,52 +1,0 @@
-Loading line from dict:   0%|          | 0/20691 [00:00<?, ?it/s]Loading line from dict:  15%|█▌        | 3119/20691 [00:00<00:00, 31174.12it/s]Loading line from dict:  30%|███       | 6237/20691 [00:00<00:00, 16255.74it/s]Loading line from dict:  40%|███▉      | 8237/20691 [00:00<00:01, 9909.51it/s] Loading line from dict:  46%|████▋     | 9587/20691 [00:01<00:02, 4398.11it/s]Loading line from dict:  51%|█████     | 10470/20691 [00:01<00:02, 4543.24it/s]Loading line from dict:  54%|█████▍    | 11225/20691 [00:01<00:02, 4684.91it/s]Loading line from dict:  58%|█████▊    | 11907/20691 [00:01<00:01, 4877.69it/s]Loading line from dict:  61%|██████    | 12558/20691 [00:02<00:01, 5014.60it/s]Loading line from dict:  65%|██████▌   | 13524/20691 [00:02<00:01, 5889.66it/s]Loading line from dict:  69%|██████▉   | 14313/20691 [00:02<00:01, 6313.27it/s]Loading line from dict:  73%|███████▎  | 15061/20691 [00:02<00:00, 6522.45it/s]Loading line from dict:  77%|███████▋  | 15947/20691 [00:02<00:00, 7098.87it/s]Loading line from dict:  81%|████████  | 16793/20691 [00:02<00:00, 7451.47it/s]Loading line from dict:  85%|████████▌ | 17595/20691 [00:03<00:00, 3151.30it/s]Loading line from dict:  88%|████████▊ | 18194/20691 [00:03<00:00, 2968.43it/s]Loading line from dict:  92%|█████████▏| 19135/20691 [00:03<00:00, 3884.20it/s]Loading line from dict:  98%|█████████▊| 20347/20691 [00:03<00:00, 5274.23it/s]Loading line from dict: 100%|██████████| 20691/20691 [00:03<00:00, 5708.47it/s]
-Compiling ContextCpu kernels...
-ld: warning: -pie being ignored. It is only used when linking a main executable
-Done compiling ContextCpu kernels.
-Compiling ContextCpu kernels...
-ld: warning: -pie being ignored. It is only used when linking a main executable
-/Users/jack/xsuite/mechanics/xtrack/examples/mechanics/016_fcc_ground_motion.py:610: UserWarning: FigureCanvasAgg is non-interactive, and thus cannot be shown
-  plt.show()
-Done compiling ContextCpu kernels.
-FCC-ee prescribed ground motion
--------------------------------
-Lattice: /Users/jack/xsuite/mechanics/inputs/acc-models-fcc-ee-108.1.0/lattices/z/fccee_z_beam_1_positrons.json
-Line / circumference [m]: fccee_p_ring / 90640.199866
-Quad supports / magnets / contacts: 2663 / 2663 / 10652
-Assignment: one support per quad; cyclic response classes; NOT engineering girders.
-One virtual pickup port follows a conditional quad-to-pickup response; no online BPM/feedback coupling.
-Ground / installation seeds: 1956 / 956
-Record samples / interval [s] / step [s]: 512 / [-0.4, 0.0990234] / 0.000976562
-Record sample rate / Nyquist [Hz]: 1024 / 512
-Causal filters start at rest at the beginning of this finite record.
-Floor record / bound response records [MiB]: 125.08 / 124.86
-The full records stay on the host; tracking uploads one current source block.
-Rigid contact mismatch RMS for t>=0 [nm]: 0.531634
-Ground model: psd; plane wave peak [nm]: 1; pump peak [nm]: 2
-Turns / particle counts / repeats / physical tracking duration [s]: 128 / (1,) / 3 / 0.0386999248
-Particles    Nominal [ms/turn]    Frozen [ms/turn]    Dynamic [ms/turn]    Moving/nominal    Moving/frozen
-Each timed packet has one motion phase; these are not packed bunches.
-        1             4.074617            4.036599             6.802252            1.6694           1.6851
-  First-particle final x change from frozen case [nm]: -1.215211
-name                    model       reference n_targets
-resolved_girders        RigidMotion absolute       2663
-resolved_magnets        RigidMotion absolute       2663
-resolved_virtual_pickup RigidMotion absolute          1
-
-Separate operation costs [s]
-lattice_load_s                                4.245445
-tracker_and_first_nominal_turn_s              1.570542
-nominal_tracking_1p_median_s                  0.521551
-reference_adoption_s                          0.130925
-geometry_selection_and_survey_s               7.388144
-mechanics_definition_s                        3.129305
-installation_and_static_apply_s               0.553676
-frozen_tracking_1p_median_s                   0.516685
-common_floor_and_rigid_fit_s                  4.974749
-conditional_responses_and_bindings_s          2.022310
-first_dynamic_track_1turn_s                   3.041645
-dynamic_tracking_1p_median_s                  0.870688
-optional_tables_plots_and_gif_s               3.612838
-Nominal tracking repeat costs [s]: {1: [0.5215509578119963, 1.1494089169427752, 0.5066362919751555]}
-Frozen tracking repeat costs [s]: {1: [1.0584981660358608, 0.4950741669163108, 0.5166846250649542]}
-Dynamic tracking repeat costs [s]: {1: [0.8706882919650525, 1.5019888749811798, 0.6378023331053555]}
-Automatic vibrations disabled; inspect mech, source_table, body_table, element_table and quad_history.

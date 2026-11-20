@@ -14,6 +14,7 @@
 import os
 from pathlib import Path
 from time import perf_counter
+from tempfile import gettempdir
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -110,7 +111,7 @@ INSPECT_TIME_S = .02
 DISPLACEMENT_SCALE = 2e7
 ROTATION_SCALE     = 2e7
 SAVE_GIF = False
-GIF_FILE = 'fcc_quad_motion.gif'
+GIF_FILE = Path(gettempdir()) / 'xtrack_fcc_quad_motion.gif'
 PLOT_MAGNIFIED_SURVEY = True
 
 ################################################################################
@@ -145,7 +146,7 @@ repo_root = Path(__file__).resolve().parents[2]
 lattice_path = (repo_root / LATTICE_FILE).resolve()
 if not lattice_path.is_file():
     raise FileNotFoundError(
-        f'{lattice_path}\nDownload the dev/108.1.0 FCC input described in review/FCC_INPUT.md.')
+        f'{lattice_path}\nSet XTRACK_MECHANICS_FCC_INPUT to the dev/108.1.0 JSON file; see README.md.')
 
 ########################################
 # Time lattice loading

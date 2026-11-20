@@ -1,3 +1,0 @@
-# Generated figures are reviewed visually; keep source diffs readable.
-*.svg -diff
-*.gif -diff

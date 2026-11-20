@@ -11,6 +11,7 @@
 ################################################################################
 from pathlib import Path
 from time import perf_counter
+from tempfile import gettempdir
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -58,7 +59,7 @@ ROTATION_SCALE     = 4e5
 N_FRAMES           = 64
 GIF_FPS            = 32
 SAVE_GIF           = True
-GIF_FILE           = Path(__file__).with_name('014_quad_motion.gif')
+GIF_FILE           = Path(gettempdir()) / 'xtrack_quad_motion.gif'
 
 ################################################################################
 # Set up the ordinary line and tracker

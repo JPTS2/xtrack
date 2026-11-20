@@ -17,11 +17,9 @@ Load an independent nominal machine with `env = xt.load(path_to_lattice)` and
 select `env['demo']`. Each load owns independent elements and variables, with
 the stored strengths applied directly. Loading does not run a matching solve.
 
-The [mechanics demo](../../../examples/mechanics/004_demo_ring.py) uses this
-nominal input for surveyed support motion. This is the same model copied from
-the local feedback exploration's `test_data/example_lattices/demo_ring` on
-19 November 2026; those model files were uncommitted there. The three Python
-files are copied unchanged. Feedback code is not a dependency of this checkout.
+The [mechanics example](../../../examples/mechanics/004_demo_ring.py) uses this
+nominal input for surveyed support motion. Geometry, operating strengths and
+assembly are separate files; loading the model requires only native Xtrack.
 
 The model has six 160 m arcs and six 90 m straights. One straight contains the
 low-beta IP; the others contain symmetric utility optics. Reference particles
