@@ -545,6 +545,11 @@ class MechanicsManager:
     def _check_aliases(self):
         counts = {}
         for line in self.env._lines_weakrefs:
+            # Collective survey/Twiss creates shallow noncollective views in
+            # distinct environments sharing this weak set. They are execution
+            # views of the same occurrences, not additional physical lines.
+            if line.env is not self.env:
+                continue
             for name in line.element_names:
                 identity = id(line.element_dict[name])
                 counts[identity] = counts.get(identity, 0) + 1
@@ -741,6 +746,9 @@ class LineMechanics:
         kernels, with batched host evaluation for sampled/custom sources.
         backend='reference' retains explicit Python
         lowering. No xdeps chain or per-particle source evaluation is installed.
+        Auto retains reference validation for collective callbacks and logs.
+        Explicit compiled mode requires their geometry/static placement to stay
+        fixed for the call; strength changes are independent of that contract.
         Shared prescribed fields require an explicit common physical
         time origin per line; there is no shared mutable filter/controller here.
         sampling='passage' prepares each occurrence at t0+s/(beta0*c), assuming
@@ -787,7 +795,8 @@ class LineMechanics:
             self._time_series._check(self.manager)
         use_compiled = (self._backend != 'reference' and self._sampling == 'turn'
                         and not self.line.enable_time_dependent_vars
-                        and (log is None or self._backend == 'compiled'))
+                        and (log is None or self._backend == 'compiled')
+                        and (not self.line.tracker.iscollective or self._backend == 'compiled'))
         if self._backend == 'compiled' and not use_compiled:
             raise ValueError('Compiled mechanics requires geometry fixed during a tracking call')
         if use_compiled:
@@ -988,6 +997,8 @@ class LineMechanics:
             counts[name] = counts.get(name, 0) + 1
         elements_by_id = {}
         for ll in self.manager.env._lines_weakrefs:
+            if ll.env is not self.manager.env:
+                continue
             for name in ll.element_names:
                 element = ll.element_dict[name]
                 elements_by_id[id(element)] = elements_by_id.get(id(element), 0) + 1

@@ -1573,7 +1573,8 @@ class Environment:
 
         Lines expose bound attachment views through ``line.mechanics``. Motion
         uses explicit physical times. ``line.mechanics.enable_vibrations()``
-        opts into experimental host reference updates at turn boundaries.
+        opts into experimental turn-boundary updates, using prepared context
+        kernels where supported and a host reference backend otherwise.
         """
         if self.__dict__.get('_mechanics') is None:
             from .mechanics import MechanicsManager
