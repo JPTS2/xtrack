@@ -52,6 +52,9 @@ def animate_assembly(histories, full_histories, *, girder_name, elements, girder
     from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
     shown = display_hierarchy(histories, girder_name=girder_name, **scales)
+    parent_static_inverse = np.linalg.inv(histories[girder_name].static_matrix)
+    carried = {name: shown[girder_name] @ parent_static_inverse @ histories[name].static_matrix
+               for name in elements}
     times = histories[girder_name].time_s
     origin = histories[girder_name].static_matrix[0, :3, 3].copy()
     origin[1] = 0.
@@ -61,10 +64,11 @@ def animate_assembly(histories, full_histories, *, girder_name, elements, girder
         return world[:, [2, 0, 1]]  # Longitudinal world Z across the screen
 
     fig = plt.figure(figsize=(12.8, 6.8), layout='constrained')
-    grid = fig.add_gridspec(2, 2, height_ratios=(4.8, 1.), width_ratios=(4., 1.))
+    grid = fig.add_gridspec(2, 3, height_ratios=(4.8, 1.), width_ratios=(2., 2., 1.))
     ax = fig.add_subplot(grid[0, :], projection='3d')
-    plot = fig.add_subplot(grid[1, 0])
-    status = fig.add_subplot(grid[1, 1])
+    common_plot = fig.add_subplot(grid[1, 0])
+    plot = fig.add_subplot(grid[1, 1])
+    status = fig.add_subplot(grid[1, 2])
     status.set_axis_off()
     fig.suptitle(title, fontsize=13, fontweight='bold')
     # Axes3D normally forces a square viewport, wasting a landscape canvas.
@@ -112,14 +116,17 @@ def animate_assembly(histories, full_histories, *, girder_name, elements, girder
         box(girder_name, vertices((.24, .045, .25), foot), '#475868')
 
     ########################################
-    # Draw fixed envelopes for the installed baseline
+    # Show where each magnet would be if carried rigidly by the girder
     ########################################
+    carrier_outlines = []
     for name, info in elements.items():
         corners = vertices(info['size_m'])
-        ghost = points(histories[name].static_matrix[0], corners)
-        artist = Poly3DCollection(ghost[FACES], facecolor=(0, 0, 0, 0), edgecolor='0.72',
-                                  linewidth=.65, linestyle='--')
+        ghost = points(carried[name][0], corners)
+        artist = Poly3DCollection(ghost[FACES], facecolor=(0, 0, 0, 0), edgecolor='0.55',
+                                  linewidth=.8, linestyle=':')
         ax.add_collection3d(artist)
+        carrier_outlines.append((name, corners, artist))
+        bounds.extend(points(matrix, corners) for matrix in carried[name])
 
     ########################################
     # Give the quadrupoles an opening and the dipole a two-pole gap
@@ -161,7 +168,7 @@ def animate_assembly(histories, full_histories, *, girder_name, elements, girder
     ########################################
     # Add a static floor and readable world dimensions
     ########################################
-    floor_y = -.6
+    floor_y = -.72
     floor = np.array([[-1.95, -.55, floor_y], [1.95, -.55, floor_y],
                       [1.95, .55, floor_y], [-1.95, .55, floor_y]])
     floor[:, 2] += histories[girder_name].static_matrix[0, 1, 3]
@@ -187,6 +194,15 @@ def animate_assembly(histories, full_histories, *, girder_name, elements, girder
     # Compare each magnet with its moving girder in physical units
     ########################################
     full_parent = full_histories[girder_name]
+    common_plot.plot(full_parent.time_s, full_parent.dynamic_Y * 1e9, color='#536b83', lw=1.5)
+    common_cursor = common_plot.axvline(times[0], color='0.2', lw=1.)
+    common_plot.set(xlim=(full_parent.time_s[0], full_parent.time_s[-1]),
+                    xlabel='Physical time [s]', ylabel='Girder world Y [nm]', title='Slow common motion')
+    common_plot.tick_params(labelsize=7)
+    common_plot.xaxis.label.set_size(8)
+    common_plot.yaxis.label.set_size(8)
+    common_plot.title.set_size(9)
+    common_plot.grid(alpha=.2)
     parent_actual_inverse = np.linalg.inv(full_parent.total_matrix)
     parent_static_inverse = np.linalg.inv(full_parent.static_matrix)
     relative_y = {}
@@ -198,20 +214,26 @@ def animate_assembly(histories, full_histories, *, girder_name, elements, girder
         plot.plot(history.time_s, relative_y[name], color=info['color'], label=info['short_label'], lw=1.1)
     cursor = plot.axvline(times[0], color='0.2', lw=1.)
     plot.set(xlim=(full_parent.time_s[0], full_parent.time_s[-1]),
-             xlabel='Physical time [s]', ylabel='Relative y [nm]')
+             xlabel='Physical time [s]', ylabel='Relative y [nm]', title='Small fast motion relative to girder')
     plot.tick_params(labelsize=7)
     plot.xaxis.label.set_size(8)
     plot.yaxis.label.set_size(8)
+    plot.title.set_size(9)
     plot.grid(alpha=.2)
     plot.legend(loc='upper right', ncol=3, fontsize=7)
     clock = status.text(.02, .98, '', fontsize=9, family='monospace', va='top', transform=status.transAxes)
-    status.text(.02, .13, f"Display T/R: girder ×{scales['girder_translation_scale']:g}/{scales['girder_rotation_scale']:g}\n"
-                f"Magnet/girder ×{scales['magnet_translation_scale']:g}/{scales['magnet_rotation_scale']:g}",
+    caption = (f"One display gain: ×{scales['girder_translation_scale']:g}\nOutlines move with the girder"
+               if len(set(scales.values())) == 1 else
+               f"Display T/R: girder ×{scales['girder_translation_scale']:g}/{scales['girder_rotation_scale']:g}\n"
+               f"Magnet/girder ×{scales['magnet_translation_scale']:g}/{scales['magnet_rotation_scale']:g}")
+    status.text(.02, .13, caption,
                 fontsize=6.5, va='top', transform=status.transAxes)
 
     def update(index):
         for name, local, artist in surfaces:
             artist.set_verts(points(shown[name][index], local)[FACES])
+        for name, local, artist in carrier_outlines:
+            artist.set_verts(points(carried[name][index], local)[FACES])
         for name, local, artist in lines:
             artist.set_data_3d(*points(shown[name][index], local).T)
         for name, local, label in labels:
@@ -233,6 +255,7 @@ def animate_assembly(histories, full_histories, *, girder_name, elements, girder
             zigzag[1:-1, 0] += .025 * (-1.) ** np.arange(11)
             artist.set_data_3d(*zigzag.T)
         cursor.set_xdata([times[index], times[index]])
+        common_cursor.set_xdata([times[index], times[index]])
         text = [f't = {times[index]:5.2f} s; y [nm]']
         for name, info in elements.items():
             value = np.interp(times[index], full_parent.time_s, relative_y[name])

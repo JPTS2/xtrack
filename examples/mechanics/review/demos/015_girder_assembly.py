@@ -56,23 +56,23 @@ GIRDER_INSTALLATION_YAW_RAD = 2e-6
 MAGNET_INSTALLATION_Y_M     = (3e-6, -5e-6, 4e-6)
 
 ########################################
-# Prescribed girder inputs: amplitude, frequency and phase
+# Dominant slow common motion: one girder cycle over the four-second record
 ########################################
 GIRDER_DRIVES = {
-    'x': (30e-9, .5, .3), 'y': (70e-9, .75, 0.), 's': (15e-9, 1., .7),
-    'pitch': (140e-9, .75, .4), 'yaw': (90e-9, .5, .8), 'roll': (180e-9, 1., .2),
+    'x': (40e-9, .25, .3), 'y': (180e-9, .25, 0.), 's': (15e-9, .25, .7),
+    'pitch': (60e-9, .25, .4), 'yaw': (45e-9, .25, .8), 'roll': (70e-9, .25, .2),
 }
 
 ########################################
-# Additional motion of each magnet relative to the girder
+# Smaller fast relative motion: eight to twelve cycles over the same record
 ########################################
 MAGNET_DRIVES = {
-    'q1': {'y': (20e-9, 3., .2), 'x': (8e-9, 2., .5),
-           'pitch': (60e-9, 2., .1), 'roll': (80e-9, 3., .6)},
-    'bend': {'y': (35e-9, 2., 1.2), 'x': (12e-9, 2.5, .3),
-             'pitch': (50e-9, 2.5, .8), 'yaw': (70e-9, 2., .4)},
-    'q2': {'y': (25e-9, 2.5, 2.1), 'x': (10e-9, 3., .9),
-           'pitch': (90e-9, 2.5, .7), 'roll': (100e-9, 2., 1.1)},
+    'q1': {'y': (14e-9, 3., .2), 'x': (3e-9, 2., .5),
+           'pitch': (8e-9, 2., .1), 'roll': (10e-9, 3., .6)},
+    'bend': {'y': (20e-9, 2., 1.2), 'x': (4e-9, 2.5, .3),
+             'pitch': (10e-9, 2.5, .8), 'yaw': (10e-9, 2., .4)},
+    'q2': {'y': (16e-9, 2.5, 2.1), 'x': (3e-9, 3., .9),
+           'pitch': (12e-9, 2.5, .7), 'roll': (12e-9, 2., 1.1)},
 }
 
 ########################################
@@ -83,8 +83,9 @@ SAMPLE_STEP_S  = 1 / 128
 N_FRAMES       = 100
 GIF_FPS        = 25
 DISPLAY_SCALES = dict(
-    girder_translation_scale = 8e5, girder_rotation_scale = 6e5,
-    magnet_translation_scale = 3e6, magnet_rotation_scale = 1.5e6,
+    # The same gain preserves the common/relative amplitude hierarchy.
+    girder_translation_scale = 1e6, girder_rotation_scale = 1e6,
+    magnet_translation_scale = 1e6, magnet_rotation_scale = 1e6,
 )
 
 ########################################
@@ -270,7 +271,7 @@ animation, figure, shown = animate_assembly(
     histories, full_histories, girder_name = 'girder', elements = elements,
     girder_size_m = GIRDER_SIZE_M, feet_local_m = np.array(FEET_LOCAL_M),
     scales = DISPLAY_SCALES, fps = GIF_FPS,
-    title = 'One rigid girder · two quadrupoles · one bend',
+    title = 'Slow common girder sway · small fast motion of the mounted magnets',
 )
 timings['animation_preparation_s'] = perf_counter() - started
 
@@ -281,6 +282,18 @@ for matrices in shown.values():
     rotation = matrices[:, :3, :3]
     np.testing.assert_allclose(np.swapaxes(rotation, -1, -2) @ rotation,
                                np.broadcast_to(np.eye(3), rotation.shape), atol = 2e-14)
+
+########################################
+# Verify that common inherited motion dominates the displayed residual
+########################################
+hierarchy_ratios = {}
+parent_static_inverse = np.linalg.inv(histories['girder'].static_matrix)
+for name in magnets:
+    carried = shown['girder'] @ parent_static_inverse @ histories[name].static_matrix
+    common = np.linalg.norm(carried[:, :3, 3] - histories[name].static_matrix[:, :3, 3], axis = 1)
+    relative = np.linalg.norm(shown[name][:, :3, 3] - carried[:, :3, 3], axis = 1)
+    hierarchy_ratios[name] = float(np.max(common) / np.max(relative))
+    assert hierarchy_ratios[name] > 4.
 
 ################################################################################
 # Render the local review artifacts
@@ -317,6 +330,10 @@ print(f'Line: {line.get_length():g} m; girder: {GIRDER_SIZE_M[2]:g} m including 
 print(f'Native bodies: {len(mech.bodies)}; registered inputs: {len(mech.sources)}')
 print(f'Physical duration: {DURATION_S:g} s; source samples: {len(times)}; GIF: {N_FRAMES} frames at {GIF_FPS} fps')
 print('Girder and all magnets remain rigid; each magnet has additional relative motion.')
+print('Common girder: 0.25 Hz, 180 nm peak vertical input; relative magnets: 2–3 Hz, 14–20 nm peak y.')
+print('All translation and rotation display gains are 1,000,000; relative motion is not enlarged separately.')
+print('Peak common / relative displacement ratios at magnet anchors:', hierarchy_ratios)
+print('Moving wire outlines show each magnet carried rigidly by the girder, before its relative motion.')
 print('Orange links are presentation geometry; no force/elasticity model is inferred.')
 print(f'GIF: {gif_file}')
 print(f'GIF dimensions: {resolution[0]} × {resolution[1]}; playback duration: {playback_duration_s:g} s')
@@ -327,6 +344,7 @@ peak_rss_mib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024**2 if 
 print(f'Peak process RSS including GIF encoder [MiB]: {peak_rss_mib:.1f}')
 (OUTPUT_DIR / 'result.json').write_text(json.dumps(dict(timings = timings, peak_rss_mib = peak_rss_mib,
     frames = N_FRAMES, duration_s = DURATION_S, display_scales = DISPLAY_SCALES,
+    peak_common_to_relative_displacement = hierarchy_ratios,
     playback_duration_s = playback_duration_s, gif_resolution = resolution, xtrack = xt.__version__,
     script_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
     helper_sha256 = hashlib.sha256(Path(__file__).with_name('girder_assembly_view.py').read_bytes()).hexdigest(),

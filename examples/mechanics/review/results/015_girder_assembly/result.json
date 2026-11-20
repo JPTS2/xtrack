@@ -1,24 +1,29 @@
 {
   "timings": {
-    "line_construction_s": 0.016819874988868833,
-    "tracker_build_s": 0.13802858302369714,
-    "reference_adoption_s": 5.425000563263893e-05,
-    "reference_survey_s": 0.020123291993513703,
-    "mechanics_definition_s": 0.004757167072966695,
-    "source_definition_s": 0.00012254109606146812,
-    "sample_motion_s": 0.00023854197934269905,
-    "selected_histories_s": 0.6947574170771986,
-    "animation_preparation_s": 0.08076004195027053,
-    "gif_render_and_encode_s": 8.147363666910678
+    "line_construction_s": 0.019177542068064213,
+    "tracker_build_s": 0.16824670904316008,
+    "reference_adoption_s": 6.045890040695667e-05,
+    "reference_survey_s": 0.02229466591961682,
+    "mechanics_definition_s": 0.005554750096052885,
+    "source_definition_s": 0.00012079207226634026,
+    "sample_motion_s": 0.0003105828072875738,
+    "selected_histories_s": 0.7494014159310609,
+    "animation_preparation_s": 0.1264279168099165,
+    "gif_render_and_encode_s": 12.04156891698949
   },
-  "peak_rss_mib": 798.453125,
+  "peak_rss_mib": 769.546875,
   "frames": 100,
   "duration_s": 4.0,
   "display_scales": {
-    "girder_translation_scale": 800000.0,
-    "girder_rotation_scale": 600000.0,
-    "magnet_translation_scale": 3000000.0,
-    "magnet_rotation_scale": 1500000.0
+    "girder_translation_scale": 1000000.0,
+    "girder_rotation_scale": 1000000.0,
+    "magnet_translation_scale": 1000000.0,
+    "magnet_rotation_scale": 1000000.0
+  },
+  "peak_common_to_relative_displacement": {
+    "q1": 8.283616943303686,
+    "bend": 9.119285164266259,
+    "q2": 16.831931681779004
   },
   "playback_duration_s": 4.000000000000003,
   "gif_resolution": [
@@ -26,8 +31,8 @@
     612
   ],
   "xtrack": "0.119.2",
-  "script_sha256": "ade43a0c4c00f62c8879568b1a27db2ceeb7d17e2859b2281107b938ccd10c70",
-  "helper_sha256": "5af9e196a552e84ce317ce3e67cb95e042e04f533077f33cb3b506301355fa8a",
+  "script_sha256": "28282c65c7f72a88189bfbb5a7b986d999cdf00fe4ed207a7f8d3aa3fe5e400a",
+  "helper_sha256": "e7349b2cf517d0ee4eab1baf56debd1610bddab0df052f3b4d8ba1f8858e8c17",
   "mechanics_source_sha256": {
     "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
     "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
