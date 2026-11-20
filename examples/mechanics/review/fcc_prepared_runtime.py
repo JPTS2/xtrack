@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import sys
 from time import perf_counter
 
 import numpy as np
@@ -23,9 +24,38 @@ INPUT = ROOT.parent/'inputs/acc-models-fcc-ee-108.1.0/lattices/z/fccee_z_beam_1_
 OUTPUT = Path(__file__).resolve().parent/'results/fcc_freeze_runtime'
 
 
+def count_buffer_io(line, call):
+    """Count Python Xobjects buffer access hooks, not every device transfer."""
+    buffer_type = type(line.element_dict[line.element_names[0]]._buffer)
+    read, write = buffer_type.to_bytearray, buffer_type.update_from_buffer
+    counts = dict(buffer_type=buffer_type.__name__, read_calls=0, read_bytes=0,
+                  write_calls=0, write_bytes=0)
+    def counted_read(self, offset, nbytes):
+        counts['read_calls'] += 1
+        counts['read_bytes'] += nbytes
+        return read(self, offset, nbytes)
+    def counted_write(self, offset, source):
+        counts['write_calls'] += 1
+        counts['write_bytes'] += len(source)
+        return write(self, offset, source)
+    try:
+        buffer_type.to_bytearray = counted_read
+        buffer_type.update_from_buffer = counted_write
+        call()
+    finally:
+        buffer_type.to_bytearray = read
+        buffer_type.update_from_buffer = write
+    return counts
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--context', choices=('cpu', 'cuda', 'opencl'), default='cpu')
+    parser.add_argument('--context', choices=('cpu', 'openmp', 'cuda', 'opencl'), default='cpu')
+    parser.add_argument('--device', help='CUDA index or OpenCL platform.device')
+    parser.add_argument('--threads', type=int, default=2, help='OpenMP threads')
+    parser.add_argument('--input', type=Path, default=INPUT)
+    parser.add_argument('--line', default='fccee_p_ring')
+    parser.add_argument('--output', type=Path, default=OUTPUT)
     parser.add_argument('--members', choices=('quads', 'all_magnets'), default='quads')
     parser.add_argument('--turns', type=int, default=64)
     parser.add_argument('--particles', type=int, nargs='+', default=[1, 32])
@@ -34,11 +64,20 @@ def main():
     parser.add_argument('--short-calls', action='store_true')
     parser.add_argument('--source', choices=('analytic', 'sampled_ground', 'direct_ground'), default='analytic')
     args = parser.parse_args()
+    if Path(xt.__file__).resolve() != (ROOT/'xtrack/__init__.py').resolve():
+        parser.error('Imported another Xtrack installation; run from this checkout with PYTHONPATH=.')
+    if args.turns <= 0 or args.repeats <= 0 or args.threads <= 0 or any(n <= 0 for n in args.particles):
+        parser.error('Turns, repeats, threads and particle counts must be positive')
+    if args.device is not None and args.context in ('cpu', 'openmp'):
+        parser.error('--device applies only to CUDA/OpenCL')
     if args.source == 'sampled_ground' and (args.members != 'quads' or args.hierarchy != 'flat'):
         parser.error('The sampled ground/response cost probe uses flat provisional quad sites')
-    context = {'cpu': xo.ContextCpu, 'cuda': xo.ContextCupy, 'opencl': xo.ContextPyopencl}[args.context]()
-    env = xt.load(INPUT)
-    line = env.fccee_p_ring
+    context = {'cpu': lambda: xo.ContextCpu(),
+               'openmp': lambda: xo.ContextCpu(omp_num_threads=args.threads),
+               'cuda': lambda: xo.ContextCupy(device=int(args.device) if args.device is not None else None),
+               'opencl': lambda: xo.ContextPyopencl(device=args.device)}[args.context]()
+    env = xt.load(args.input)
+    line = env[args.line]
     line.build_tracker(_context=context)
     line.track(line.build_particles(), num_turns=1)
     def measure(count, turns=None):
@@ -141,19 +180,22 @@ def main():
     short_dynamic = {str(turns):measure(1, turns) for turns in (1, 4, 16)} if args.short_calls else {}
     ratios = {key: dynamic[key]['median_s']/baseline[key]['median_s'] for key in baseline}
     # An update must never perform per-scalar buffer reads/writes on the host.
-    from fcc_scaling import count_buffer_io
     io = count_buffer_io(line, lambda: runtime.apply(.01))
     runtime.finish()
     line.mechanics.disable_vibrations()
     line.mechanics.validate()
-    metadata = dict(lattice_sha256=hashlib.sha256(INPUT.read_bytes()).hexdigest(),
+    metadata = dict(lattice=str(args.input.resolve()), line=args.line,
+        lattice_sha256=hashlib.sha256(args.input.read_bytes()).hexdigest(),
         script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         tracker_sha256=hashlib.sha256((ROOT/'xtrack/tracker.py').read_bytes()).hexdigest(),
         mechanics_source_sha256={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()
                                  for p in sorted((ROOT/'xtrack/mechanics').rglob('*'))
                                  if p.suffix in ('.py', '.h')},
-        platform=platform.platform(), xtrack=xt.__version__, xobjects=xo.__version__,
-        context=args.context, members=args.members, n_attachments=len(names),
+        platform=platform.platform(), python=sys.version,
+        imported_xtrack=str(Path(xt.__file__).resolve()),
+        xtrack=xt.__version__, xobjects=xo.__version__, numpy=np.__version__,
+        context=args.context, actual_context=str(context), device=args.device,
+        members=args.members, n_attachments=len(names),
         n_supports=len(env.mechanics.bodies), hierarchy=args.hierarchy, turns=args.turns,
         thread_settings={key:os.environ.get(key) for key in
             ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS')},
@@ -176,11 +218,11 @@ def main():
             slowdown=short_dynamic[key]['median_s']/short_baseline[key]['median_s'])
             for key in short_baseline},
         target_max_slowdown=2., target_met={key:value <= 2. for key,value in ratios.items()})
-    OUTPUT.mkdir(parents=True, exist_ok=True)
+    args.output.mkdir(parents=True, exist_ok=True)
     suffix = '' if args.hierarchy == 'flat' else '_nested'
     if args.source != 'analytic':
         suffix += '_'+args.source
-    (OUTPUT/f'{args.members}_{args.context}{suffix}.json').write_text(json.dumps(metadata, indent=2)+'\n')
+    (args.output/f'{args.members}_{args.context}{suffix}.json').write_text(json.dumps(metadata, indent=2)+'\n')
     print(json.dumps(metadata, indent=2))
 
 
