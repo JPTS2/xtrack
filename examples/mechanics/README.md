@@ -30,7 +30,7 @@ and tracking are timed separately. First use can compile kernels.
 
 | Example | Lesson |
 | --- | --- |
-| [001_rigid_girder.py](001_rigid_girder.py) | Compare five placement states and matched beam transport; distinguish disable from clear |
+| [001_rigid_girder.py](001_rigid_girder.py) | Compare design placement, static installation error and vibration; remove vibration, then clear mechanics |
 | [002_sources_and_vibrations.py](002_sources_and_vibrations.py) | Harmonic, measured or PSD translation/rotation; slow drift and split tracking |
 | [003_shared_girder.py](003_shared_girder.py) | One physical support, opposite beam axes and independent revolution clocks |
 | [004_demo_ring.py](004_demo_ring.py) | Drive 168 surveyed quadrupole supports and inspect magnified motion |
