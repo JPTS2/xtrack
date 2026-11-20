@@ -3,163 +3,123 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Compare harmonic, measured and PSD inputs on a six-coordinate rigid support.
-# Track a reusable record, stop vibration and retain the installation placement.
+# Enable physical-time vibration updates from harmonic, measured or PSD inputs.
+# Compare one continuous run with the same run split into two tracking calls.
+# Inspect how a rigid girder's rotation moves its two magnets differently.
 
 ################################################################################
 # Required packages
 ################################################################################
-
 from time import perf_counter
 
 import matplotlib.pyplot as plt
 import numpy as np
 import xtrack as xt
+from scipy.constants import c
 
 ################################################################################
 # User parameters
 ################################################################################
 
 ########################################
-# Choose translation and rotation source models
+# Choose the vertical and angular source models independently
 ########################################
-SOURCE          = 'harmonic'          # 'harmonic', 'measured' or 'psd'
-ROTATION_SOURCE = 'harmonic'          # 'harmonic', 'measured' or 'psd'
+SOURCE              = 'harmonic'       # 'harmonic', 'measured' or 'psd'
+ROTATION_SOURCE     = 'harmonic'       # 'harmonic', 'measured' or 'psd'
+INSTALLATION_Y_M    = .2e-6            # Static installation error, independent of dynamic seeds [m]
 
 ########################################
-# Static installation placement
+# Harmonic peaks and prescribed sample values
 ########################################
-INSTALLATION_Y = 20e-6                # [m], fixed across dynamic seeds
+AMPLITUDE_M         = 50e-9            # Vertical peak for harmonic/measured inputs [m]
+FREQUENCY_HZ        = 500.
+PITCH_RAD           = 2e-7             # Survey pitch peak [rad]
+YAW_RAD             = 3e-7             # Survey yaw peak [rad]
+ROLL_RAD            = 4e-7             # Survey roll peak [rad]
+DRIFT_M_PER_S       = 10e-9            # Independent slow longitudinal drift [m/s]
 
 ########################################
-# Vertical excitation
+# One-sided PSD inputs and independent angular seeds
 ########################################
-AMPLITUDE_M  = 50e-9                  # Peak harmonic displacement [m]
-FREQUENCY_HZ = 500.
-PSD_SEED     = 956
+PSD_FREQUENCY_HZ    = [0., 100., 200., 800., 900.]
+PSD_DENSITY_M2_HZ   = [0., 0., 1e-18, 1e-18, 0.]
+PSD_SEED            = 956
+# Angular PSD plateaux use peak**2 / 1400 rad²/Hz: the 700 Hz integrated
+# trapezoidal band gives the same expected variance as the harmonic, peak²/2.
 
 ########################################
-# Angular excitation
+# Stored record and tracking duration
 ########################################
-PITCH_RAD = 2e-7                      # Peak survey pitch [rad]
-YAW_RAD   = 3e-7
-ROLL_RAD  = 4e-7
-
-########################################
-# Prescribed slow drift
-########################################
-DRIFT_M_PER_S = 1e-9                  # Slow prescribed drift, not stochastic vibration
-
-########################################
-# Motion record sampling
-########################################
-N_SAMPLES     = 4096
-SAMPLE_STEP_S = 1e-4
-
-########################################
-# Tracking and frozen inspection
-########################################
-N_TURNS        = 256
-INSPECT_TIME_S = .0005
+N_SAMPLES           = 4096
+SAMPLE_STEP_S       = 1e-5              # 100 kHz record sampling; linear replay between samples
+N_TURNS             = 8192
+SPLIT_TURN          = N_TURNS // 2
+PLOT_TURN_STRIDE    = 16               # Diagnostic queries only; tracking still updates every turn
+INSPECT_TIME_S      = .0005            # Frozen optics time, independent of the tracking clock
 
 ################################################################################
-# Set up the ordinary Xtrack line
+# Build a periodic focusing model with one short girder
 ################################################################################
 
 ########################################
-# Start performance monitoring
+# Set up performance monitoring
 ########################################
 timings = {}
 
 ########################################
-# Time line construction
+# Construct two doublets separated by long drifts
 ########################################
+# This is a periodic transport model with a straight survey. Example 004 uses
+# a geometrically closed ring. The first doublet occupies a 1.5 m rigid girder.
 started = perf_counter()
-
-########################################
-# Construct the line and its reference particle
-########################################
 env = xt.Environment()
 components = []
 for index in range(4):
-    env.new(f'q{index}', xt.Quadrupole, length = 1., k1 = .005 * (-1)**index)
-    env.new(f'd{index}', xt.Drift, length = 100.)
+    env.new(f'q{index}', xt.Quadrupole, length = .5, k1 = .05 * (-1)**index)
+    env.new(f'd{index}', xt.Drift, length = .5 if index % 2 == 0 else 100.)
     components += [f'q{index}', f'd{index}']
 line = env.new_line(name = 'ring', components = components)
 line.set_particle_ref('proton', p0c = 7e12)
-
-timings['line_construction_s'] = perf_counter() - started
+timings['Line construction'] = perf_counter() - started
 
 ########################################
-# Prepare and time the tracker before mechanics queries
+# Prepare the tracker and the common launch
 ########################################
 started = perf_counter()
 line.build_tracker()
-timings['tracker_build_s'] = perf_counter() - started
-# This small periodic focusing model has a straight survey; 004 uses a closed ring.
+launch = line.build_particles()
+turn_period_s = line.get_length() / (float(launch.beta0[0]) * c)
+duration_s = N_TURNS * turn_period_s
+split_time_s = SPLIT_TURN * turn_period_s
+timings['Tracker and launch preparation'] = perf_counter() - started
 
 ################################################################################
-# Define the rigid support and its installation
+# Adopt the design placement and add the static installation error
 ################################################################################
 
 ########################################
-# Time reference adoption
+# Attach q0 and q1 to one rigid girder
 ########################################
 started = perf_counter()
-
-########################################
-# Adopt the existing magnetic reference
-########################################
-line.mechanics.adopt_reference()
-
-timings['reference_adoption_s'] = perf_counter() - started
-
-########################################
-# Time mechanics definition
-########################################
-started = perf_counter()
-
-########################################
-# Access the shared mechanics model
-########################################
 mech = env.mechanics
-
-########################################
-# Attach the selected quadrupoles to one girder
-########################################
+line.mechanics.adopt_reference()
 girder = line.mechanics.new_girder('g1', elements = ['q0', 'q1'])
-
-timings['mechanics_definition_s'] = perf_counter() - started
-
-########################################
-# Time installation definition
-########################################
-started = perf_counter()
-
-########################################
-# Set installation independently of dynamic seeds
-########################################
-girder.installation.shift_y = INSTALLATION_Y
-
-timings['installation_definition_s'] = perf_counter() - started
+girder.installation.shift_y = INSTALLATION_Y_M
+timings['Reference and girder definition'] = perf_counter() - started
 
 ################################################################################
-# Prepare translation, rotation and drift sources
+# Define vertical vibration, angular vibration and slow drift
 ################################################################################
-
-########################################
-# Start timing source preparation
-########################################
-started = perf_counter()
-
-########################################
-# Choose physical sample times
-########################################
-times = np.arange(N_SAMPLES) * SAMPLE_STEP_S
 
 ########################################
 # Choose the vertical displacement law
 ########################################
+started = perf_counter()
+times = np.arange(N_SAMPLES) * SAMPLE_STEP_S
+if max(duration_s, INSPECT_TIME_S) > times[-1]:
+    raise ValueError('Extend the stored record to cover tracking and frozen inspection')
+if not 0 < SPLIT_TURN < N_TURNS:
+    raise ValueError('Choose a split strictly inside the tracking run')
 if SOURCE == 'harmonic':
     source = xt.mechanics.Harmonic(amplitude = AMPLITUDE_M, frequency_hz = FREQUENCY_HZ)
 elif SOURCE == 'measured':
@@ -168,30 +128,35 @@ elif SOURCE == 'measured':
     )
 elif SOURCE == 'psd':
     source = xt.mechanics.DisplacementPSD(
-        frequency_hz = [0., 1., 2., 40., 41.],
-        density = [0., 0., 1e-17, 1e-17, 0.], seed = PSD_SEED,
+        frequency_hz = PSD_FREQUENCY_HZ, density = PSD_DENSITY_M2_HZ, seed = PSD_SEED,
     )
 else:
     raise ValueError('Choose harmonic, measured or psd')
-
-########################################
-# Bind the vertical input through the common source interface
-########################################
 mech.add_source('vertical', source, targets = ['g1'], component = 'y')
 
 ########################################
-# Create and bind pitch, yaw and roll inputs
+# Bind pitch, yaw and roll in survey coordinates
 ########################################
-for component, amplitude in [('pitch', PITCH_RAD), ('yaw', YAW_RAD), ('roll', ROLL_RAD)]:
+# Positive survey pitch is a negative right-handed rotation about local x.
+# These small angles compose as finite rotations in source insertion order.
+for index, (component, amplitude) in enumerate([
+    ('pitch', PITCH_RAD), ('yaw', YAW_RAD), ('roll', ROLL_RAD),
+]):
     if ROTATION_SOURCE == 'harmonic':
-        angular = xt.mechanics.Harmonic(amplitude = amplitude, frequency_hz = FREQUENCY_HZ, unit = 'rad')
+        angular = xt.mechanics.Harmonic(
+            amplitude = amplitude, frequency_hz = FREQUENCY_HZ, unit = 'rad',
+        )
     elif ROTATION_SOURCE == 'measured':
-        angular = xt.mechanics.MeasuredMotion(time_s = [0., .002, .004, times[-1]],
-            displacement = [0., amplitude, 0., 0.], unit = 'rad')
+        angular = xt.mechanics.MeasuredMotion(
+            time_s = [0., .002, .004, times[-1]],
+            displacement = [0., amplitude, 0., 0.], unit = 'rad',
+        )
     elif ROTATION_SOURCE == 'psd':
-        angular = xt.mechanics.AngularPSD(frequency_hz = [0., 1., 2., 40., 41.],
-            density = [0., 0., amplitude**2 / 40., amplitude**2 / 40., 0.],
-            seed = PSD_SEED + 1 + ('pitch', 'yaw', 'roll').index(component))
+        angular = xt.mechanics.AngularPSD(
+            frequency_hz = PSD_FREQUENCY_HZ,
+            density = np.array([0., 0., 1., 1., 0.]) * amplitude**2 / 1400.,
+            seed = PSD_SEED + 1 + index,
+        )
     else:
         raise ValueError('Choose harmonic, measured or psd angular motion')
     mech.add_source(component, angular, targets = ['g1'], component = component)
@@ -202,125 +167,239 @@ for component, amplitude in [('pitch', PITCH_RAD), ('yaw', YAW_RAD), ('roll', RO
 mech.add_source('slow_drift', xt.mechanics.MeasuredMotion(
     time_s = [times[0], times[-1]], displacement = [0., times[-1] * DRIFT_M_PER_S],
 ), targets = ['g1'], component = 's')
+timings['Source definitions'] = perf_counter() - started
 
 ########################################
-# Compute one reusable motion record
+# Compute one record and reuse it for both tracking runs
 ########################################
+# A PSD produces a seeded realization on this N/dt grid. Reusing the record
+# keeps both runs on exactly the same realization, including across the split.
+started = perf_counter()
 motion = mech.compute_time_series(time_s = times)
+timings['Motion record preparation'] = perf_counter() - started
 
 ########################################
-# Read the direct support inputs
-########################################
-table = motion.get_table('g1')
-
-########################################
-# Record source preparation cost
-########################################
-timings['sample_motion_s'] = perf_counter() - started
-
-################################################################################
-# Track a reusable record across consecutive calls
-################################################################################
-
-########################################
-# Create the common launch
-########################################
-particles = line.build_particles()
-
-########################################
-# Enable physical-time vibration replay
-########################################
-line.mechanics.enable_vibrations(time_series = motion)
-
-########################################
-# Start timing dynamic tracking
+# Inspect the source bindings and direct girder inputs separately
 ########################################
 started = perf_counter()
+source_table = mech.get_source_table()
+table = motion.get_table('g1')
+timings['Source and record inspection'] = perf_counter() - started
+
+################################################################################
+# Enable vibration updates and compare continuous and split tracking
+################################################################################
 
 ########################################
-# Advance the same particle in two consecutive calls
+# Track the whole interval in one call
 ########################################
-line.track(particles, num_turns = N_TURNS // 2)
-line.track(particles, num_turns = N_TURNS - N_TURNS // 2)
-timings['dynamic_tracking_s'] = perf_counter() - started
+# The default holds one mechanical pose for each complete turn, evaluated at
+# that turn's entrance time. A new call continues from particles.time_s.
+line.mechanics.enable_vibrations(time_series = motion)
+continuous = launch.copy()
+started = perf_counter()
+line.track(continuous, num_turns = N_TURNS)
+timings['Continuous tracking, first use'] = perf_counter() - started
 
 ########################################
-# Disable replay and retain the installation placement
+# Track the same launch to the split point
+########################################
+particles = launch.copy()
+started = perf_counter()
+line.track(particles, num_turns = SPLIT_TURN)
+timings['Split tracking, first call'] = perf_counter() - started
+clock_at_split_s = float(particles.time_s)
+q0_y_at_split = env['q0'].shift_y
+q1_y_at_split = env['q1'].shift_y
+
+########################################
+# Continue the same particle without restarting the source phase
+########################################
+started = perf_counter()
+line.track(particles, num_turns = N_TURNS - SPLIT_TURN)
+timings['Split tracking, second call'] = perf_counter() - started
+q0_y_at_end = env['q0'].shift_y
+q1_y_at_end = env['q1'].shift_y
+
+########################################
+# Check all six final coordinates and the accumulated physical clock
+########################################
+for coordinate in ('x', 'px', 'y', 'py', 'zeta', 'delta'):
+    np.testing.assert_array_equal(getattr(continuous, coordinate), getattr(particles, coordinate))
+np.testing.assert_equal(continuous.time_s, particles.time_s)
+np.testing.assert_equal(particles.at_turn[0], N_TURNS)
+assert continuous.state[0] == particles.state[0] == 1
+
+########################################
+# Remove all dynamic inputs and retain the static installation error
 ########################################
 line.mechanics.disable_vibrations()
-
-########################################
-# Inspect time advancement and retained static placement
-########################################
-print('Motion inputs and tracking lifecycle\n------------------------------------')
-print(f'Source: {SOURCE}; turns: {N_TURNS}; physical time [s]: {particles.time_s:.9g}')
-print(f'Installation y after disabling [µm]: {env["q0"].shift_y * 1e6:.6f}')
-print(f'Input record payload [KiB]: {sum(v.nbytes for v in motion.values.values()) / 1024:.1f}')
-print('Angular inputs compose as rotations. They do not change the installation settings.')
+np.testing.assert_equal(env['q0'].shift_y, INSTALLATION_Y_M)
+np.testing.assert_equal(env['q1'].shift_y, INSTALLATION_Y_M)
 
 ################################################################################
-# Inspect a frozen optical state
+# Inspect magnet poses at selected turn boundaries
 ################################################################################
 
 ########################################
-# Apply a chosen time with automatic replay disabled
+# Query selected tracking times without building an every-turn pose history
 ########################################
+# Include the last tracked turn of each call for the written-pose comparison.
+# Thinning diagnostic queries does not change the motion applied during tracking.
+started = perf_counter()
+diagnostic_turns = np.unique(np.r_[
+    np.arange(0, N_TURNS, PLOT_TURN_STRIDE), SPLIT_TURN - 1, N_TURNS - 1,
+])
+turn_times = diagnostic_turns * turn_period_s
+elements = line.mechanics.get_table(time_s = INSPECT_TIME_S, time_series = motion)
+q0_history = elements.rows['q0'].get_time_series(time_s = turn_times)
+q1_history = elements.rows['q1'].get_time_series(time_s = turn_times)
+timings['Read-only magnet histories'] = perf_counter() - started
+
+########################################
+# Compare actual written alignments with the requested entrance poses
+########################################
+# End-of-call fields retain the last tracked turn's pose, at (n-1)*T_rev.
+# The particle clock has already advanced to n*T_rev at that point.
+call_ends = np.searchsorted(diagnostic_turns, [SPLIT_TURN - 1, N_TURNS - 1])
+for history, actual in [
+    (q0_history, [q0_y_at_split, q0_y_at_end]),
+    (q1_history, [q1_y_at_split, q1_y_at_end]),
+]:
+    np.testing.assert_allclose(
+        actual, history.total_Y[call_ends], rtol = 0, atol = 1e-18,
+    )
+
+################################################################################
+# Compare installed and frozen-vibration closed orbits
+################################################################################
+
+########################################
+# Compute optics with only the static installation error
+########################################
+started = perf_counter()
+static_twiss = line.twiss4d()
+
+########################################
+# Apply one fixed vibration time with automatic updates disabled
+########################################
+# Frozen Twiss repeats this one map. It is distinct from driven tracking.
 mech.apply(time_s = INSPECT_TIME_S, time_series = motion)
-
-########################################
-# Compute the frozen closed orbit
-########################################
-twiss = line.twiss4d()
-print(f'Frozen closed orbit at q0 [µm]: {twiss.y[0] * 1e6:.6f}')
+frozen_twiss = line.twiss4d()
+line.mechanics.disable_vibrations()
+timings['Two frozen optics calculations'] = perf_counter() - started
 
 ################################################################################
-# Plot the three kinds of dynamic input
+# Explain the sources, clock continuity and rigid rotation
 ################################################################################
 
 ########################################
-# Prepare separate translation, angle and drift panels
+# Show the registered inputs and stored record boundaries
 ########################################
-fig, axes = plt.subplots(3, 1, figsize = (8, 7))
+print('Prescribed girder motion\n------------------------')
+print(f'Vertical source: {SOURCE}; angular sources: {ROTATION_SOURCE}.')
+print(f'Static installation error y [µm]: {INSTALLATION_Y_M * 1e6:.3f}')
+source_table.cols['name model component unit'].show()
+print(f'Record: {N_SAMPLES} samples, dt = {SAMPLE_STEP_S * 1e6:g} µs, '
+      f'0 <= t <= {times[-1] * 1e3:g} ms.')
+print(f'Direct source-record payload [KiB]: {sum(v.nbytes for v in motion.values.values()) / 1024:.1f}')
+print('Both runs replay the same record; tracking calls do not redraw a PSD realization.')
 
 ########################################
-# Draw the vertical displacement history
+# Compare completed tracking times and final particle states
 ########################################
-axes[0].plot(times, table.shift_y * 1e9, label = SOURCE)
+print('\nContinuous tracking and two consecutive calls\n'
+      '--------------------------------------------')
+print(f'Periodic model length [m]: {line.get_length():.3f}; revolution period [µs]: {turn_period_s * 1e6:.6f}')
+print('One mechanical pose is held per turn, at that turn\'s entrance time.')
+print(f'{"Tracking checkpoint":<31} {"Completed turns":>16} {"Particle time [ms]":>21}')
+for label, turns, time_s in [
+    ('One call: finished', N_TURNS, float(continuous.time_s)),
+    ('Two calls: first call finished', SPLIT_TURN, clock_at_split_s),
+    ('Two calls: second call finished', N_TURNS, float(particles.time_s)),
+]:
+    print(f'{label:<31} {turns:16d} {time_s * 1e3:21.9f}')
+print('All six final particle coordinates and the physical clock agree exactly.')
+print('The second call continues the waveform; it does not restart at t = 0.')
 
 ########################################
-# Draw the angular histories
+# Distinguish girder translation from motion at a magnet entrance
 ########################################
+print('\nRigid girder rotation and magnet placement\n'
+      '-----------------------------------------')
+print('q0 and q1 share a 1.5 m girder; their entrance origins have different lever arms.')
+print(f'Entrance motion at t = {INSPECT_TIME_S:g} s:')
+for name in ('q0', 'q1'):
+    lever_s = float(elements['reference_Z', name] - girder.nominal_frame.XYZ[2])
+    print(f'{name}: entrance lever s = {lever_s:+.3f} m; '
+          f'vertical vibration = {elements["dynamic_Y", name] * 1e9:+.3f} nm.')
+print('To first order here, vertical entrance motion is girder y + pitch * lever s.')
+print(f'After vibration and drift are removed, both magnets retain y = {INSTALLATION_Y_M * 1e6:.3f} µm.')
+
+########################################
+# Separate a frozen closed orbit from the driven trajectory
+########################################
+print('\nFrozen closed orbit at q0\n-------------------------')
+print(f'Design + static installation error [µm]: {static_twiss.y[0] * 1e6:+.6f}')
+print(f'With vibration applied at t = {INSPECT_TIME_S:g} s [µm]: {frozen_twiss.y[0] * 1e6:+.6f}')
+print('These are closed orbits of two fixed maps, not the tracked particle coordinates.')
+
+################################################################################
+# Plot the inputs and magnet motion on explicit physical-time windows
+################################################################################
+
+########################################
+# Show the vertical and angular inputs during the tracked interval
+########################################
+fig, axes = plt.subplots(2, 2, figsize = (11, 7))
+show = times <= duration_s
+axes[0, 0].plot(times[show] * 1e3, table.shift_y[show] * 1e9)
+axes[0, 0].set(title = 'Girder: prescribed vertical vibration', ylabel = 'Vertical input [nm]')
 for name, label in [('rot_x_rad', 'Pitch'), ('rot_y_rad', 'Yaw'), ('rot_s_rad', 'Roll')]:
-    axes[1].plot(times, table[name] * 1e6, label = label)
+    axes[0, 1].plot(times[show] * 1e3, table[name][show] * 1e6, label = label)
+axes[0, 1].set(title = 'Girder: prescribed angular vibration', ylabel = 'Survey angle [µrad]')
+axes[0, 1].margins(y = .25)
+axes[0, 1].legend(loc = 'upper center', ncol = 3, fontsize = 9)
 
 ########################################
-# Draw the slow longitudinal drift over the full record
+# Show both magnet entrances with equal line styles and sampling
 ########################################
-axes[2].plot(times, table.shift_s * 1e9)
+for name, history in [('q0', q0_history), ('q1', q1_history)]:
+    axes[1, 0].plot(turn_times * 1e3, history.dynamic_Y * 1e9, label = name)
+axes[1, 0].set(title = 'Magnet entrances: translation + rotation', ylabel = 'Vertical vibration [nm]')
+axes[1, 0].margins(y = .2)
+axes[1, 0].legend(loc = 'upper center', ncol = 2)
+for ax in (axes[0, 0], axes[0, 1], axes[1, 0]):
+    ax.axvline(split_time_s * 1e3, ls = ':', color = '0.35')
+    ax.set_xlim(0., duration_s * 1e3)
 
 ########################################
-# Label the different time windows and units
+# Show slow drift over the full record and mark the shorter tracked interval
 ########################################
-axes[0].set(xlabel = 'Physical time [s]', ylabel = 'Dynamic y [nm]', xlim = (0, .01),
-            title = 'Direct support inputs; installation excluded')
-axes[1].set(xlabel = 'Physical time [s]', ylabel = 'Survey angle [µrad]', xlim = (0, .01))
-axes[2].set(xlabel = 'Physical time [s]', ylabel = 'Slow s drift [nm]', xlim = (times[0], times[-1]))
-axes[0].legend()
-axes[1].legend()
+axes[1, 1].plot(times * 1e3, table.shift_s * 1e9)
+axes[1, 1].axvspan(0., duration_s * 1e3, alpha = .15, label = 'Tracked interval')
+axes[1, 1].set(title = 'Girder: slow drift over the stored record', ylabel = 'Longitudinal drift [nm]')
+axes[1, 1].legend(loc = 'upper left')
+for ax in axes.flat:
+    ax.set_xlabel('Physical time [ms]')
+    ax.grid(alpha = .2)
+fig.suptitle('Dotted lines mark the boundary between the two tracking calls', fontsize = 12)
 fig.tight_layout()
 
 ################################################################################
-# Review execution costs and figures
+# Review preparation, tracking and inspection costs separately
 ################################################################################
 
 ########################################
-# Print the measured costs
+# Report first-use work separately from the two warm tracking calls
 ########################################
-print('\nReference CPU costs\n-------------------')
+print('\nCPU operation costs\n-------------------')
 for name, seconds in timings.items():
-    print(f'{name:<24} {seconds:9.4f} s')
+    print(f'{name:<39} {seconds * 1e3:10.3f} ms')
+print('The first tracking call includes mechanics preparation and possible compilation.')
+print('Source records, diagnostic histories and frozen optics have separate costs.')
 
 ########################################
-# Display the figures
+# Display the physical comparisons
 ########################################
 plt.show()
