@@ -1,0 +1,7 @@
+{
+  "status": "passed",
+  "exit_code": 0,
+  "elapsed_s": 43.04594708303921,
+  "display_backend_for_test": "Agg; normal launcher leaves backend interactive",
+  "example_sha256": "18a60d8fa782698df2e6eb4179ddf8d6882895c4117d9cbf4a4e72e533173f8b"
+}

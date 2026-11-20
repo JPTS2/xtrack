@@ -66,6 +66,11 @@ response preparation 1.44 s and the first dynamic call 2.26 s. These costs are
 separate from warm tracking. The capture retains all repetitions, including one
 slow frozen-call outlier; the table uses medians.
 
+A clean draft replay took 22.33 s. A later direct launcher check took 43.05 s,
+with moving/nominal 1.669× and moving/frozen 1.685×; its individual calls varied
+substantially. These observed medians still pass twofold, while wall time is
+variable. All repetitions are retained rather than selecting the quickest run.
+
 Changing `PARTICLE_COUNTS` to `(1, 32)` runs the longer throughput comparison.
 That preceding run took 102 s, mainly in the repeated 32-particle tracking, and
 gave **1.049× nominal** / **1.040× frozen** for 32 particles. It used whole-record
