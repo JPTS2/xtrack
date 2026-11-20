@@ -1,29 +1,37 @@
 {
   "example": "001_rigid_girder.py",
-  "elapsed_s": 0.2925870001781732,
+  "elapsed_s": 0.4276984999887645,
   "timings": {
-    "setup_s": 0.13392937486059964,
-    "apply_and_survey_s": 0.0017541670240461826,
-    "tracker_build_s": 0.0011105420999228954,
-    "one_pass_tracking_s": 0.00010708393529057503
+    "line_construction_s": 0.01711854198947549,
+    "tracker_build_s": 0.17995249992236495,
+    "reference_adoption_s": 4.654214717447758e-05,
+    "reference_inspection_s": 2.2707972675561905e-05,
+    "mechanics_definition_s": 0.021359541919082403,
+    "installation_definition_s": 4.5797787606716156e-07,
+    "source_definition_s": 2.4499837309122086e-05,
+    "apply_s": 0.0002750419080257416,
+    "pose_inspection_s": 0.002604749985039234,
+    "one_pass_tracking_s": 0.00015783286653459072
   },
   "figures": [
     "figure_01"
   ],
   "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+  "artifacts": [],
   "xtrack": "0.119.2",
   "numpy": "2.4.1",
   "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
-  "peak_rss_mib": 240.734375,
-  "script_sha256": "148acde801c5532c309d2049fcbc6f4fa1b339283480f841452504ad91e02ab6",
+  "peak_rss_mib": 247.765625,
+  "script_sha256": "84dad07d505a84bc066458dacdd10297457193417925197d5af7853419fc2872",
   "mechanics_source_sha256": {
-    "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+    "__init__.py": "f92d46c4e9dfa5cb6fd46874f4b0f24d9200e2dcf02698cd8bc4e4b213cb30d6",
     "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
-    "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+    "model.py": "5a22d1469e0ca541b650ecedf2dda2451d1bb49f754866abd3016085e1c30bde",
     "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
     "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
-    "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+    "plotting.py": "8a94b155598ec2742d3758dc3014513fe0d74f912ee48185d7a1550acdba2f2a",
     "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
-    "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90",
+    "tables.py": "aebb3f2343270ff5b50c33069050bf9745bfbcef72cf3c9f0fbe7288dc6abfbf"
   }
 }

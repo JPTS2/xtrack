@@ -5,45 +5,59 @@ Copyright (c) CERN, 2026.
 
 # Captured mechanics walkthrough
 
-CPU capture on 19 November 2026, native Xtrack 0.119.2, Python 3.14 and NumPy
-2.4.1 on macOS/ARM. The thirteen lessons follow the feedback script formatting.
+CPU capture on 20 November 2026, native Xtrack 0.119.2, Python 3.14 and NumPy
+2.4.1 on macOS/ARM. The fourteen lessons follow the feedback script formatting.
 The native implementation is in `xtrack/mechanics`; no scratch/feedback module
 is imported. These are demonstration inputs and explicit physical assumptions,
 not an FCC-ee mechanical model or performance prediction.
 
 Each result directory contains terminal output, SVG/PNG figures and result.json.
-The [manifest](results/manifest.json) records source hashes and phase timings.
-Worker elapsed time excludes initial imports but includes figure capture;
-instrumented phases exclude interactive display. Setup may include implicit
-tracker preparation through survey; 010 builds explicitly before attachment to
-separate those costs. Process peak RSS includes the scientific Python stack.
+The [manifest](results/manifest.json) records the current script and native source
+hashes, individual phase timings and generated artifacts. Worker elapsed time
+excludes initial imports but includes figure capture and requested GIF rendering;
+instrumented phases exclude interactive display. Process peak RSS includes the
+scientific Python stack and rendering/encoding allocations.
+
+The setup boundaries now separate line load/copy, explicit tracker preparation,
+reference adoption, mechanics definition and optional geometry/table inspection.
+Surveys required inside attachment remain part of its cost. Application and
+subsequent pose inspection are separately measured. These are named operation
+costs, rather than an inclusive `setup_s` comparison between teaching workflows.
+Example 010 provides the repeated runtime comparison; 014 separately measures
+selected-history queries, plotting and GIF encoding.
+
 No CuPy or PyOpenCL runtime is installed locally, so no GPU result is claimed.
 
 ```bash
 PYTHONPATH=. python examples/mechanics/review/run_examples.py
 # Or capture one review slice, preserving the other manifest entries:
-PYTHONPATH=. python examples/mechanics/review/run_examples.py --examples 006
+PYTHONPATH=. python examples/mechanics/review/run_examples.py --examples 014
 ```
 
-The physics/API checks passed 68 focused cases, including existing environment
-and aperture regression checks. All thirteen defaults and five alternative input
-configurations passed; the optional 40-frame animation rendered successfully.
+This revision passed 53 focused mechanics checks, including table selection,
+finite rigid composition, source inspection, memory limits, environment copy,
+numeric exports and GIF rendering. All fourteen defaults passed and produced
+21 figures plus the new 64-frame quadrupole GIF. The earlier branch review also
+ran environment/API/aperture regression checks and the five alternative input
+configurations linked below; those alternative captures retain their original
+19 November source hashes.
 
 | Slice | Captured script + figures [s] | Peak process RSS [MiB] |
 | --- | ---: | ---: |
-| [001](../001_rigid_girder.py) | 0.29 | 241 |
-| [002](../002_sources_and_vibrations.py) | 0.39 | 246 |
-| [003](../003_shared_girder.py) | 0.28 | 240 |
-| [004](../004_demo_ring.py) | 2.96 | 316 |
-| [005](../005_ground_and_feet.py) | 0.56 | 263 |
-| [006](../006_transfer_chain.py) | 0.94 | 297 |
-| [007](../007_local_sources.py) | 0.57 | 258 |
-| [008](../008_regional_ground.py) | 3.42 | 426 |
-| [009](../009_moving_bpm.py) | 2.81 | 262 |
-| [010](../010_execution_costs.py) | 15.76 | 268 |
-| [011](../011_installation_and_correction.py) | 5.47 | 266 |
-| [012](../012_matrix_response.py) | 0.50 | 253 |
-| [013](../013_combined_mechanics.py) | 6.19 | 808 |
+| [001](../001_rigid_girder.py) | 0.43 | 248 |
+| [002](../002_sources_and_vibrations.py) | 0.48 | 251 |
+| [003](../003_shared_girder.py) | 0.34 | 244 |
+| [004](../004_demo_ring.py) | 3.47 | 324 |
+| [005](../005_ground_and_feet.py) | 0.70 | 274 |
+| [006](../006_transfer_chain.py) | 1.25 | 309 |
+| [007](../007_local_sources.py) | 0.70 | 278 |
+| [008](../008_regional_ground.py) | 4.12 | 449 |
+| [009](../009_moving_bpm.py) | 3.76 | 267 |
+| [010](../010_execution_costs.py) | 18.63 | 255 |
+| [011](../011_installation_and_correction.py) | 6.51 | 271 |
+| [012](../012_matrix_response.py) | 0.59 | 260 |
+| [013](../013_combined_mechanics.py) | 7.36 | 827 |
+| [014](../014_tables_and_quad_animation.py) | 4.43 | 519 |
 
 ## 001 — Reference, installation and dynamics
 
@@ -53,7 +67,7 @@ The terminal retains the existing intentional quadrupole x/y inputs of 1 mm / 3 
 
 In the figure, grey is the reference and blue is the installed/moving support and element spans. The separate orientation panel uses a proper amplified rotation. Translation/rotation display gains never enter tracking. This lesson clears mechanics at the end deliberately; the saved survey still describes the applied state.
 
-Instrumented costs: `setup_s` 0.1339 s; `apply_and_survey_s` 0.0018 s; `tracker_build_s` 0.0011 s; `one_pass_tracking_s` 0.0001 s.
+Measured operations: `line_construction_s` 17.119 ms; `tracker_build_s` 0.180 s; `reference_adoption_s` 0.047 ms; `reference_inspection_s` 0.023 ms; `mechanics_definition_s` 21.360 ms; `installation_definition_s` 0.000 ms; `source_definition_s` 0.024 ms; `apply_s` 0.275 ms; `pose_inspection_s` 2.605 ms; `one_pass_tracking_s` 0.158 ms.
 
 ## 002 — Interchangeable sources, six coordinates and slow drift
 
@@ -63,7 +77,7 @@ The default is a 50 nm, 500 Hz vertical tone, with pitch/yaw/roll peaks of 0.2 /
 
 The first two panels show the first 10 ms; the drift panel intentionally shows the full 0.4095 s record. Installation is excluded from these input plots. The PSD and measured translation/rotation alternatives were also executed, not just left as commented suggestions. Frozen Twiss is a separate explicitly applied state, with automatic vibration disabled.
 
-Instrumented costs: `setup_s` 0.1400 s; `sample_motion_s` 0.0063 s; `tracker_build_s` 0.0000 s; `dynamic_tracking_s` 0.0835 s.
+Measured operations: `line_construction_s` 17.293 ms; `tracker_build_s` 0.131 s; `reference_adoption_s` 0.064 ms; `mechanics_definition_s` 21.606 ms; `installation_definition_s` 0.000 ms; `sample_motion_s` 8.211 ms; `dynamic_tracking_s` 95.019 ms.
 
 ## 003 — Shared physical body, different line axes and clocks
 
@@ -73,7 +87,7 @@ The beams have 0.336900 and 0.603751 µs revolution intervals. At the same physi
 
 The upper panel converts both samples into world X, where they lie on the same prescribed curve. The lower panel plots line-local values against each beam's turn number and exposes both the sign and clock differences. Each line updates its own fields; the immutable source is not advanced by the other beam. Stateful shared controllers/filters are outside this scheduling example.
 
-Instrumented costs: `setup_and_record_s` 0.1456 s; `forward_tracker_build_s` 0.0000 s; `forward_tracking_s` 0.0127 s; `backward_tracker_build_s` 0.0000 s; `backward_tracking_s` 0.0128 s.
+Measured operations: `line_construction_s` 17.776 ms; `forward_tracker_build_s` 0.128 s; `backward_tracker_build_s` 1.254 ms; `mechanics_definition_s` 35.498 ms; `source_definition_s` 0.053 ms; `sample_motion_s` 0.337 ms; `forward_tracking_s` 15.138 ms; `backward_tracking_s` 14.630 ms.
 
 ## 004 — Whole surveyed demo ring
 
@@ -83,7 +97,7 @@ This is the same 1.5 km demonstration lattice as feedback, with 168 illustrative
 
 Figure 1 shows spatial phase on the ring and separately magnifies the first support's installation orientation. Figure 2 shows real world displacement versus s and local input history. Wave direction, polarization and speed are independent parameters. The PSD/measured switches were executed too. Bends/sextupoles are intentionally not assigned in this teaching layout; actual FCC-ee girder assignments remain machine data.
 
-Instrumented costs: `setup_s` 2.4530 s; `sample_motion_s` 0.0163 s; `apply_and_survey_s` 0.0507 s.
+Measured operations: `line_load_and_copy_s` 60.653 ms; `tracker_build_s` 0.140 s; `reference_adoption_s` 1.775 ms; `geometry_selection_s` 71.204 ms; `mechanics_definition_s` 2.597 s; `installation_definition_s` 0.001 ms; `sample_motion_s` 17.351 ms; `pose_prediction_s` 6.255 ms; `apply_s` 15.468 ms; `survey_verification_s` 31.266 ms.
 
 ## 005 — Floor contacts to rigid support motion
 
@@ -93,7 +107,7 @@ The common floor is sampled at four stored feet per support. Weighted rigid fitt
 
 Figure 1 is a local view of one support, its feet and element span; the orientation gain is explicit. Figure 2 shows translations, survey angles and the residual. The residual is retained rather than converted into girder bending. This is a kinematic fit followed by a chosen response model, not a prediction of contact forces or support dynamics. The correlated-PSD floor option also ran.
 
-Instrumented costs: `setup_s` 0.2563 s; `sample_and_fit_s` 0.0189 s; `apply_and_survey_s` 0.0034 s.
+Measured operations: `line_load_and_copy_s` 58.838 ms; `tracker_build_s` 0.147 s; `reference_adoption_s` 1.673 ms; `mechanics_definition_s` 0.104 s; `source_geometry_s` 0.021 ms; `sample_and_fit_s` 22.190 ms; `apply_s` 1.876 ms; `pose_inspection_s` 2.877 ms.
 
 ## 006 — Loaded floor/girder/magnet/BPM response
 
@@ -103,7 +117,7 @@ One matched floor record gives 9.103 nm RMS at the floor, 7.847 at the loaded gi
 
 Figure 1 separates gain, phase, PSD and the small BPM-minus-magnet motion. All outputs are bound as absolute responses, so parent motion is not added twice. Figure 2 is a distinct causal held-step experiment, starting at rest and settling to 50 nm. Whole-record and split-block filtering agree exactly. Offline FFT response is periodic; causal startup uses a stateful ZOH-discretized model. The pickup's reaction loading is neglected explicitly.
 
-Instrumented costs: `setup_s` 0.2180 s; `sample_and_response_s` 0.0293 s; `apply_and_survey_s` 0.0039 s; `causal_filter_s` 0.0004 s.
+Measured operations: `line_load_and_copy_s` 58.924 ms; `tracker_build_s` 96.473 ms; `reference_adoption_s` 1.672 ms; `geometry_selection_s` 76.164 ms; `mechanics_definition_s` 27.177 ms; `response_definition_s` 0.028 ms; `sample_and_response_s` 32.364 ms; `apply_s` 2.050 ms; `pose_inspection_s` 3.146 ms; `causal_filter_s` 0.847 ms.
 
 ## 007 — Mounted pump and supplied propagation
 
@@ -113,7 +127,7 @@ The pump location is a child mount of the first girder. Receiver distances are 0
 
 The left panel is the stated exponential floor footprint; the right isolates floor-path traces and compares an alternative pump mount. The retained survey contains the direct-plus-floor result. Position alone does not supply elastic propagation: decay, polarization, speed and direct coupling are user-supplied assumptions. The source is prescribed displacement, not a force-source calculation.
 
-Instrumented costs: `setup_s` 0.2584 s; `sample_field_s` 0.0005 s; `apply_and_survey_s` 0.0037 s.
+Measured operations: `line_load_and_copy_s` 58.994 ms; `tracker_build_s` 0.144 s; `reference_adoption_s` 1.830 ms; `mechanics_definition_s` 0.105 s; `source_geometry_s` 0.014 ms; `sample_field_s` 0.583 ms; `apply_s` 2.103 ms; `pose_inspection_s` 3.004 ms.
 
 ## 008 — Regional PSD, correlation length and continuous random modes
 
@@ -123,7 +137,7 @@ The observed vertical RMS is 19.066 nm near the excess region and 6.059 nm far a
 
 Figure 1 compares spatial RMS, local PSDs and band-integrated amplitude correlation with the ensemble target. The correlation RMS deviation is 0.0341 in this finite-mode, finite-time realization; it is not a machine-precision kernel claim. Increasing modes and record length is a model-convergence experiment. The regional PSD contribution is gain squared times excess PSD, retaining the shared background. Figure 2 shows the resulting ring motion. The region reappears near both ends of s because those locations are close in world space on the closed ring.
 
-Instrumented costs: `setup_s` 2.4288 s; `sample_field_s` 0.0810 s; `chunk_and_order_check_s` 0.0089 s.
+Measured operations: `line_load_and_copy_s` 58.751 ms; `tracker_build_s` 96.681 ms; `reference_adoption_s` 1.731 ms; `geometry_selection_s` 8.556 ms; `mechanics_definition_s` 2.710 s; `source_geometry_s` 0.017 ms; `source_definition_s` 0.489 ms; `sample_field_s` 0.121 s; `chunk_and_order_check_s` 17.692 ms.
 
 ## 009 — Moving electrical pickup changes the correction target
 
@@ -133,7 +147,7 @@ The nominal-frame beam RMS is 168.297 nm; the pickup itself moves by 67.835 nm R
 
 The upper panel separates beam, pickup and measured motion. The lower panel compares the two correction targets. The signed response is measured, approximately -115.818 m/rad, rather than assumed positive. Ray/plane intersection includes orientation and beam slope. This is a sequence of frozen Twiss states, not online feedback tracking; it does not import the feedback implementation.
 
-Instrumented costs: `setup_and_calibration_s` 0.3505 s; `response_records_s` 0.0008 s; `frozen_states_and_correction_s` 2.3407 s.
+Measured operations: `line_load_and_copy_s` 67.216 ms; `tracker_build_s` 0.135 s; `reference_adoption_s` 1.734 ms; `geometry_selection_s` 72.579 ms; `mechanics_definition_s` 27.172 ms; `readout_calibration_s` 0.124 s; `response_records_s` 0.951 ms; `frozen_states_and_correction_s` 3.173 s.
 
 ## 010 — What the reference backend costs
 
@@ -141,13 +155,13 @@ Instrumented costs: `setup_and_calibration_s` 0.3505 s; `response_records_s` 0.0
 
 The workload is 128 particles and 128 turns on the same ring. The table below separates attachment, pose and write costs from frozen/dynamic tracking. Kernel first use is timed separately. These are one local CPU run with available kernel caches, not hardware-independent guarantees or a comparison of identical motion semantics.
 
-The left panel shows that source-independent line validation and Python writes already cost milliseconds, then grow with support count. The right shows the sampling assumption: at 20 kHz, 2π f T_rev = 0.629 rad and turn-held versus passage-prepared offsets differ by 30.715 nm. The 168-support passage preparation is about 0.41 s because the reference repeats hierarchy evaluation. A projected million-turn full 4x4 history would occupy 20.027 GiB; it is not allocated.
+The left panel shows that source-independent line validation and Python writes already cost milliseconds, then grow with support count. The right shows the sampling assumption: at 20 kHz, 2π f T_rev = 0.629 rad and turn-held versus passage-prepared offsets differ by 30.715 nm. The 168-support passage preparation is about 0.52 s because the reference repeats hierarchy evaluation. A projected million-turn full 4x4 history would occupy 20.027 GiB; it is not allocated.
 
-| Supports | Attach [s] | Pose [ms] | Apply [ms] | Frozen 128 turns [s] | Dynamic 128 turns [s] | Passage prepare [ms] |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 0.063 | 0.034 | 1.312 | 1.675 | 1.836 | 2.2 |
-| 24 | 0.332 | 0.352 | 2.700 | 1.665 | 2.011 | 11.9 |
-| 168 | 2.327 | 2.430 | 11.088 | 1.677 | 3.109 | 412.3 |
+| Supports | Load/copy [s] | Select [ms] | Build [s] | Attach [s] | Pose [ms] | Apply [ms] | Frozen 128 turns [s] | Dynamic 128 turns [s] | Passage [ms] |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.064 | 2.344 | 0.163 | 0.078 | 0.059 | 1.581 | 1.911 | 2.154 | 2.549 |
+| 24 | 0.049 | 2.121 | 0.018 | 0.387 | 0.428 | 3.112 | 2.031 | 2.365 | 13.642 |
+| 168 | 0.049 | 2.042 | 0.019 | 2.737 | 3.145 | 13.367 | 2.023 | 3.613 | 519.672 |
 
 ## 011 — Installation/correction seed studies
 
@@ -157,7 +171,7 @@ The intended 1 mm quad shift remains the adopted reference. Independent static d
 
 The figure compares seeds, a final seed's spatial residual and the SVD spectrum. Seven response modes are retained from 14 BPMs and 9 correctors. The bare teaching ring's vertical tune is 10.01745 with large insertion beta, so its large uncorrected sensitivity is not an FCC-ee prediction. Installation records are immutable; corrector knobs remain a separate control layer. Clearing mechanics leaves the deliberate quad offset unchanged.
 
-Instrumented costs: `setup_and_tracker_s` 2.7274 s; `response_calibration_s` 1.5209 s; `installation_cases_and_correction_s` 1.0289 s.
+Measured operations: `line_load_and_copy_s` 65.501 ms; `tracker_build_s` 0.133 s; `reference_adoption_s` 1.685 ms; `geometry_selection_s` 7.602 ms; `mechanics_definition_s` 3.034 s; `response_calibration_s` 1.842 s; `installation_cases_and_correction_s` 1.199 s.
 
 ## 012 — Matrix response versus geometric lever arm
 
@@ -167,7 +181,7 @@ The supplied 6x6 complex matrix includes yaw-to-x coupling in m/rad and y-to-pit
 
 Figure 1 separates input, responded support and transported magnet histories. Figure 2 is a local geometry/orientation view. Matrix coupling and coordinate transport are different operations: the response is a supplied linear model and transport is exact rigid geometry. The optional animation was rendered with 40 frames and updates geometry as well as orientation.
 
-Instrumented costs: `setup_s` 0.2450 s; `matrix_response_and_transport_s` 0.0025 s.
+Measured operations: `line_load_and_copy_s` 58.341 ms; `tracker_build_s` 0.142 s; `reference_adoption_s` 1.740 ms; `geometry_selection_s` 71.802 ms; `mechanics_definition_s` 13.015 ms; `matrix_response_and_transport_s` 3.092 ms.
 
 ## 013 — Combined prescribed-mechanics ring
 
@@ -177,13 +191,52 @@ The capstone connects 168 supports, 168 magnet bodies, 14 pickups and 672 feet. 
 
 The contact mismatch after warm-up is 0.392 nm RMS. First-channel support/magnet/pickup y RMS is 15.289 / 20.493 / 18.675 nm over this short realization. Figure 1 shows the combined response histories. Figure 2 uses the installed placement as its baseline, so installation errors do not mask magnified dynamics. The 32 tracked turns span only 0.000160111 s: this is a scheduling smoke check. The waveform study spans 0.5 s. At 1024 Hz replay, a 40 Hz sinusoid has 0.752% worst half-step amplitude attenuation; this sampling error is separate from transform accuracy.
 
-The process peak is about 808 MiB, including Python, figures and temporary batched fitting/transport arrays. Explicit prepared support/magnet/pickup payloads total about 32.8 MiB on the host; there is no full GPU history. This demonstrates the UI composition and exposes the need for bounded streaming before long whole-machine studies.
+The process peak is about 827 MiB, including Python, figures and temporary batched fitting/transport arrays. Explicit prepared support/magnet/pickup payloads total about 32.8 MiB on the host; there is no full GPU history. This demonstrates the UI composition and exposes the need for bounded streaming before long whole-machine studies.
 
-Instrumented costs: `layout_and_installation_s` 2.7533 s; `floor_and_rigid_fit_s` 0.6499 s; `response_paths_s` 0.8870 s; `initial_frozen_twiss_s` 0.0742 s; `dynamic_tracking_s` 0.7170 s.
+Measured operations: `line_load_and_copy_s` 59.870 ms; `tracker_build_s` 0.148 s; `reference_adoption_s` 1.697 ms; `geometry_selection_s` 76.364 ms; `mechanics_definition_s` 2.917 s; `installation_definition_s` 2.090 ms; `floor_and_rigid_fit_s` 0.732 s; `response_paths_s` 1.233 s; `initial_frozen_twiss_s` 80.138 ms; `dynamic_tracking_s` 0.828 s.
+
+## 014 — Select a quadrupole, plot its history and watch it move
+
+[source](../014_tables_and_quad_animation.py), [terminal](results/014_tables_and_quad_animation/terminal.txt), [history](results/014_tables_and_quad_animation/figure_01.svg), [cuboid view](results/014_tables_and_quad_animation/figure_02.svg), [64-frame GIF](results/014_tables_and_quad_animation/motion.gif).
+
+The source inventory shows six harmonic bindings. Selecting `kind='girder'`
+gives one physical support; selecting `element_type='Quadrupole'` gives two
+separate element rows on that support. The selected `q1` retains its intentional
+1 mm horizontal offset and 0.15 rad design roll. The installed support has a
+20 µm vertical placement error and 2 µrad yaw. Table queries never apply motion.
+
+`selected.get_element()` accesses the live quadrupole.
+`selected.get_time_series()` composes 257 samples over the bound two-second
+record. The largest difference between magnet and support vertical inputs is
+200.227 nm, due to the finite rotation lever arm. The history figure shows
+world XYZ displacement in nm and pitch/yaw/roll in nrad relative to the installed
+element axes; there is no display magnification in those curves.
+
+The GIF uses a 0.3 × 0.3 × 0.5 m illustrative hollow cuboid, a moving local triad,
+and equal world axis scales. Translations are magnified by 200,000 and rotations
+by 400,000 about the installed baseline. The dashed box is that baseline. Every
+surface follows the same proper rigid transform. The cuboid defines neither a
+magnetic field nor an aperture, and rendering leaves all line inputs unchanged.
+
+Selected-history preparation took 20.36 ms; animation
+preparation took 13.96 ms. Rendering/encoding the
+64-frame GIF took 3.99 s. Process peak RSS was
+519 MiB, including scientific Python, plots and Pillow's
+encoding frames; this is an explicit diagnostic artifact, not per-turn tracking
+memory or a GPU pose cache.
+
+Measured operations: `line_construction_s` 18.159 ms; `tracker_build_s` 0.132 s; `reference_adoption_s` 0.065 ms; `mechanics_definition_s` 20.561 ms; `source_definition_s` 0.063 ms; `sample_motion_s` 0.113 ms; `table_inspection_s` 3.401 ms; `selected_history_s` 20.364 ms; `history_plot_s` 35.249 ms; `animation_preparation_s` 13.958 ms; `gif_render_and_encode_s` 3.992 s.
 
 ## Alternative inputs and animation
 
-These runs changed only the stated user parameters in memory; their result
+The additional [local assembly review](demos/README.md) uses the native model to
+animate a 3.5 m quad/drift/bend/drift/quad sequence on one rigid girder, with
+separate relative magnet motion. Its [100-frame GIF](results/015_girder_assembly/girder_assembly.gif)
+and [terminal output](results/015_girder_assembly/terminal.txt) are separate from
+the fourteen default captures and their manifest. Two local presentation checks
+bring the combined focused test run to 55 passing cases.
+
+These earlier captures (19 November) changed only the stated user parameters in memory; their result
 metadata records the overrides, original/executed code hashes and native source
 hashes. The numbered files remain ordinary editable scripts.
 

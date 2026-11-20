@@ -15,6 +15,7 @@ from pathlib import Path
 import platform
 import resource
 import runpy
+import shutil
 import subprocess
 import sys
 from time import perf_counter
@@ -52,8 +53,14 @@ def worker(script, destination):
             scope = runpy.run_path(str(script), run_name='__main__')
             if plt.get_fignums():
                 capture()
+    artifacts = []
+    if scope.get('SAVE_GIF') and scope.get('GIF_FILE'):
+        gif = Path(scope['GIF_FILE'])
+        shutil.copy2(gif, destination/'motion.gif')
+        artifacts.append('motion.gif')
     metadata = dict(example=script.name, elapsed_s=perf_counter()-started,
         timings=scope.get('timings', {}), figures=figures, python=sys.version,
+        artifacts=artifacts,
         xtrack=xt.__version__, numpy=np.__version__, platform=platform.platform(),
         peak_rss_mib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/
             (1024**2 if sys.platform=='darwin' else 1024),

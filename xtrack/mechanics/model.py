@@ -76,9 +76,10 @@ class RigidBody:
     rot_s_rad: float = 0.
     installation: RigidOffset = field(default_factory=RigidOffset)
     _feet: object = None
+    kind: str = 'body'
 
     def __setattr__(self, name, value):
-        if name in ('name', 'parent', '_nominal', '_feet') and hasattr(self, name):
+        if name in ('name', 'parent', '_nominal', '_feet', 'kind') and hasattr(self, name):
             raise AttributeError('Body topology is fixed; create a new binding')
         object.__setattr__(self, name, value)
 
@@ -209,12 +210,14 @@ class MechanicsManager:
             line = next(iter(self.env.lines.values()))
         return self.for_line(line)
 
-    def new_body(self, name, *, elements=None, line=None, anchor='center', parent=None, mount=None, feet_local_m=None):
+    def new_body(self, name, *, elements=None, line=None, anchor='center', parent=None, mount=None,
+                 feet_local_m=None, kind='body'):
         """Create a named rigid magnet, pickup, equipment or support body.
 
         mount is a parent-local Frame. anchor is a nominal world Frame/XYZ;
         specify one placement convention. Attachments retain their surveyed
         positions relative to the body. No force law is inferred from mounting.
+        kind is an explicit table-selection label (body, magnet, pickup, ...).
         """
         if mount is not None:
             if parent is None or not isinstance(anchor, str) or anchor != 'center':
@@ -223,7 +226,8 @@ class MechanicsManager:
             if self.bodies.get(owner.name) is not owner:
                 raise ValueError('Parent must belong to this environment')
             anchor = owner.nominal_frame @ _frame(mount)
-        return self.new_girder(name, elements=elements, line=line, anchor=anchor, parent=parent, feet_local_m=feet_local_m)
+        return self._new_body(name, elements=elements, line=line, anchor=anchor, parent=parent,
+                              feet_local_m=feet_local_m, kind=kind)
 
     def new_girder(self, name, *, elements=None, line=None, anchor='center', parent=None, feet_local_m=None):
         """Retrofit elements, or create an explicitly anchored shared body.
@@ -233,6 +237,12 @@ class MechanicsManager:
         anchor/orientation; a three-vector gives world position with XYZ axes.
         Parent names refer to existing bodies. No sublines are required.
         """
+        return self._new_body(name, elements=elements, line=line, anchor=anchor, parent=parent,
+                              feet_local_m=feet_local_m, kind='girder')
+
+    def _new_body(self, name, *, elements, line, anchor, parent, feet_local_m, kind):
+        if not isinstance(kind, str) or not kind:
+            raise ValueError('Use a nonempty body kind, e.g. magnet, pickup or equipment')
         if not isinstance(name, str) or not name or name in self._bodies:
             raise ValueError('Use a new nonempty body name')
         if isinstance(parent, RigidBody):
@@ -257,7 +267,7 @@ class MechanicsManager:
         feet = None if feet_local_m is None else frozen_array(feet_local_m)
         if feet is not None and (feet.ndim != 2 or feet.shape[1] != 3 or not len(feet)):
             raise ValueError('feet_local_m must be nonempty local XYZ coordinates')
-        body = RigidBody(name, parent, frozen, _feet=feet)
+        body = RigidBody(name, parent, frozen, _feet=feet, kind=kind)
         self._bodies[name] = body
         if view is not None:
             view._attach(name, candidates)
@@ -504,14 +514,49 @@ class MechanicsManager:
         self._revision += 1
         return self
 
-    def get_table(self):
-        """Configured local alignment; use get_body_poses for composed world frames."""
+    def get_table(self, *, time_s=None, time_series=None):
+        """Body inputs, or composed world poses at an explicit physical time.
+
+        No argument returns configuration without evaluating sources. Supply
+        time_s for a read-only pose table, equivalent to survey. Rows retain
+        normal Xsuite selection and can query a selected body's time history.
+        """
+        if time_s is not None:
+            return self.survey(time_s=time_s, time_series=time_series)
+        if time_series is not None:
+            raise ValueError('Supply time_s when requesting a pose table')
+        from .tables import mechanics_table
         bodies = list(self.bodies.values())
         data = dict(name=np.array([b.name for b in bodies]),
+                    kind=np.array([b.kind for b in bodies]),
                     parent=np.array([b.parent or '' for b in bodies]))
         for field in ('shift_x', 'shift_y', 'shift_s', 'rot_x_rad', 'rot_y_rad', 'rot_s_rad'):
             data[field] = np.array([getattr(b, field) for b in bodies], dtype=float)
             data['installation_'+field] = np.array([getattr(b.installation, field) for b in bodies], dtype=float)
+        return mechanics_table(data, owner=self)
+
+    def get_source_table(self):
+        """Inspect bindings without sampling or copying source waveform arrays."""
+        bindings = list(self.sources.values())
+        data = dict(name=np.array([b.name for b in bindings]),
+                    model=np.array([type(b.source).__name__ for b in bindings]),
+                    frame=np.array([getattr(b.source, 'frame', 'body_local') for b in bindings]),
+                    component=np.array([b.component if getattr(b.source, 'frame', 'body_local') == 'body_local'
+                                        else 'XYZ' if b.source.frame == 'world' else 'six_coordinates'
+                                        for b in bindings]),
+                    unit=np.array([getattr(b.source, 'unit', 'm, rad' if getattr(
+                        b.source, 'frame', 'body_local') == 'body_local_rigid' else 'm')
+                                   for b in bindings]),
+                    reference=np.array([b.reference for b in bindings]),
+                    target_names=np.array([', '.join(b.targets) for b in bindings]),
+                    n_targets=np.array([len(b.targets) for b in bindings], dtype=int))
+        # Explicit object vectors preserve tuples/models as one cell per binding.
+        for column, values in (('targets', [b.targets for b in bindings]),
+                               ('seed', [getattr(b.source, 'seed', None) for b in bindings]),
+                               ('source', [b.source for b in bindings])):
+            data[column] = np.empty(len(values), dtype=object)
+            for index, value in enumerate(values):
+                data[column][index] = value
         return Table(data)
 
     def to_dict(self):
@@ -536,7 +581,7 @@ class MechanicsManager:
             lines.append(dict(line=names[0], reference_frame=view._reference.matrix.tolist(),
                               adopted_reference={name: values.tolist() for name, values in view._reference_inputs.items()},
                               attachments=attachments))
-        return dict(bodies=[dict(name=b.name, parent=b.parent, anchor=b._nominal.tolist(),
+        return dict(bodies=[dict(name=b.name, kind=b.kind, parent=b.parent, anchor=b._nominal.tolist(),
                                  alignment=[b.shift_x, b.shift_y, b.shift_s, b.rot_x_rad, b.rot_y_rad, b.rot_s_rad],
                                  installation=b.installation.values().tolist(),
                                  feet_local_m=None if b.feet_local_m is None else b.feet_local_m.tolist())
@@ -549,8 +594,8 @@ class MechanicsManager:
         if self.bodies or self.sources or self._line_views:
             raise ValueError('Load mechanics into an empty manager')
         for item in data['bodies']:
-            b = self.new_girder(item['name'], parent=item['parent'], anchor=Frame(item['anchor']),
-                                feet_local_m=item.get('feet_local_m'))
+            b = self.new_body(item['name'], parent=item['parent'], anchor=Frame(item['anchor']),
+                              feet_local_m=item.get('feet_local_m'), kind=item.get('kind', 'body'))
             b.shift_x, b.shift_y, b.shift_s, b.rot_x_rad, b.rot_y_rad, b.rot_s_rad = item['alignment']
             b.installation = RigidOffset(*item.get('installation', [0.]*6))
         for item in data['lines']:
@@ -865,9 +910,14 @@ class LineMechanics:
             beam_frame = Frame(self._attachments[name]['ref_start'])
         return project_to_bpm(beam_frame=beam_frame, bpm_frame=target, **coordinates)
 
-    def get_table(self):
-        return Table(dict(name=np.array(list(self._attachments)),
-                          body=np.array([a['body'] for a in self._attachments.values()])))
+    def get_table(self, *, time_s=None, time_series=None):
+        """Attached element occurrences, optionally with read-only world poses.
+
+        Each attached element has its own row, even when several share a body.
+        Unattached line elements are available in line.get_table().
+        """
+        from .tables import element_table
+        return element_table(self, time_s=time_s, time_series=time_series)
 
     def get_alignment_table(self):
         """Original element-local versus current effective alignment fields.

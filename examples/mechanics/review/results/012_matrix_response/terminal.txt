@@ -14,5 +14,9 @@ Matrix coupling is a supplied small-signal response. Port transport is exact rig
 
 Reference CPU costs
 -------------------
-setup_s                                     0.2450 s
-matrix_response_and_transport_s             0.0025 s
+line_load_and_copy_s                        0.0583 s
+tracker_build_s                             0.1419 s
+reference_adoption_s                        0.0017 s
+geometry_selection_s                        0.0718 s
+mechanics_definition_s                      0.0130 s
+matrix_response_and_transport_s             0.0031 s

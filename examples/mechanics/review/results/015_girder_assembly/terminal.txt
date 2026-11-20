@@ -1,0 +1,24 @@
+Local rigid-girder assembly review
+----------------------------------
+Layout: Q1 0.5 m | drift 0.5 m | bend 1.5 m | drift 0.5 m | Q2 0.5 m
+Line: 3.5 m; girder: 3.7 m including overhang; bend: 0.06 rad
+Native bodies: 4; registered inputs: 18
+Physical duration: 4 s; source samples: 513; GIF: 100 frames at 25 fps
+Girder and all magnets remain rigid; each magnet has additional relative motion.
+Orange links are presentation geometry; no force/elasticity model is inferred.
+GIF: /Users/jack/xsuite/mechanics/xtrack/examples/mechanics/review/results/015_girder_assembly/girder_assembly.gif
+GIF dimensions: 1152 × 612; playback duration: 4 s
+
+Measured operation costs
+------------------------
+line_construction_s                0.016820 s
+tracker_build_s                    0.138029 s
+reference_adoption_s               0.000054 s
+reference_survey_s                 0.020123 s
+mechanics_definition_s             0.004757 s
+source_definition_s                0.000123 s
+sample_motion_s                    0.000239 s
+selected_histories_s               0.694757 s
+animation_preparation_s            0.080760 s
+gif_render_and_encode_s            8.147364 s
+Peak process RSS including GIF encoder [MiB]: 798.5

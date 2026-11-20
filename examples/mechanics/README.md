@@ -12,6 +12,13 @@ sources, regional spectra and moving pickups. Each script runs independently.
 The numbered lessons use the feedback examples' section formatting and editable
 **User parameters**, and leave ordinary Xsuite objects available after `%run`.
 
+An 80-character `#` heading introduces a main teaching stage. Within each stage,
+40-character headings separate the individual steps: timing setup, line
+construction, reference adoption, body assignment, source definition, sampling,
+application and inspection. The longer correction and timing loops use the same
+subheadings inside the loop. Parameters are grouped by purpose so that a reader
+can find the input to change before following its effect through the lesson.
+
 | Example | Lesson | Approximate CPU time |
 | --- | --- | --- |
 | [001_rigid_girder.py](001_rigid_girder.py) | Adopt deliberate offsets; add installation and vibration; disable and clear | About 1 s |
@@ -27,12 +34,17 @@ The numbered lessons use the feedback examples' section formatting and editable
 | [011_installation_and_correction.py](011_installation_and_correction.py) | Static installation seeds and orbit correction, preserving intended off-axis quadrupoles | About 6 s |
 | [012_matrix_response.py](012_matrix_response.py) | Complex 6x6 response, mixed units, lever arms and all rigid coordinates | About 1 s |
 | [013_combined_mechanics.py](013_combined_mechanics.py) | Whole-ring ground/region/pump, feet, conditional responses, installation, drift and tracking | About 6 s |
+| [014_tables_and_quad_animation.py](014_tables_and_quad_animation.py) | Select a quad from a table, plot its composed six-coordinate history and save a cuboid GIF | About 4 s, including GIF |
 
 Times are local CPU examples, with available kernel caches, excluding time spent
 interacting with a figure. See the [captured walkthrough](review/README.md) for
 terminal output, figures, detailed timing definitions and measured limitations.
 This is an exploration branch; these are teaching models, not an FCC-ee layout
 or mechanical performance prediction.
+
+The heavier [girder assembly review](review/demos/README.md) sits outside this
+short lesson set. It animates a rigid girder, two 0.5 m quadrupoles and a 1.5 m
+bend with independent magnet/girder motion, and saves a GIF.
 
 Run from this checkout with its source first on `PYTHONPATH`:
 
@@ -43,7 +55,7 @@ PYTHONPATH=. ipython
 ```
 
 Matplotlib provides the figures. NumPy/SciPy and the normal Xsuite dependencies
-are required. No code from the feedback checkout or the earlier scratch design
+are required; saving the GIF in 014 also uses Pillow. No code from the feedback checkout or the earlier scratch design
 is imported. The shared [demo ring](../../test_data/example_lattices/demo_ring/README.md)
 is included here. Its near-integer vertical tune and large insertion beta make
 it particularly sensitive to installation errors; its correction numbers should
@@ -122,6 +134,72 @@ measured covariance accurately with a small rank.
 
 ## Survey, figures and execution
 
+The source inventory is a normal table and does not sample the sources:
+
+```python
+sources = mech.get_source_table()
+sources.cols['name model frame component reference target_names'].show()
+source_model = sources['source', 'floor']
+```
+
+It lists registered motion bindings. Intermediate floor fields and response
+operators used to build an offline response record remain explicit objects in
+the example; they are not automatically registered as additional drives.
+
+At one physical time, select bodies and element occurrences independently:
+
+```python
+bodies = mech.get_table(time_s=.125, time_series=motion)
+girders = bodies.rows.match(kind='girder')
+
+elements = line.mechanics.get_table(time_s=.125, time_series=motion)
+quads = elements.rows.match(element_type='Quadrupole')
+selected = quads.rows['q1']
+quad = selected.get_element()
+history = selected.get_time_series()  # Uses the bound motion record's grid
+history_fig, history_axes = history.plot()
+```
+
+Body kinds are explicit metadata: `new_girder` sets `kind='girder'`, while
+`new_body(..., kind='magnet')` or `kind='pickup'` labels another rigid body.
+The line table contains attached occurrences, with one row per element even
+when several magnets share one support. Its `body_kind` identifies the support;
+`element_type` identifies the Xtrack element. Unattached elements remain in
+`line.get_table()`.
+
+No-argument mechanics tables inspect configuration without evaluating sources;
+supplying `time_s` requests composed world poses. `reference_*`, `static_*` and
+`total_*` columns carry positions, survey angles and full rigid matrices.
+`installation_X/Y/Z` and `dynamic_X/Y/Z` are world displacement contributions.
+Relative angles are extracted from relative rotation matrices, not differences
+of Euler angles. In a history plot, pitch/yaw/roll are relative to the installed
+element axes, using the Xsuite survey convention.
+
+`get_time_series` queries one selected entity. For analytic sources without a
+bound record, supply `time_s=times`. The history includes static placement,
+inherited support motion and the element's rotation lever arm; a source record's
+`get_table(body)` instead shows direct input coordinates. Histories are explicit
+bounded host allocations, with `max_memory_bytes`, and never create a tracking
+or GPU history cache. They use the current static configuration; changes to
+body/source topology require a fresh table. Ordinary numeric snapshot columns
+remain available after such changes.
+
+Example 014 also uses the selected row to animate an illustrative quadrupole:
+
+```python
+animation = selected.animate(
+    time_s=frame_times, size_m=(.3, .3, quad.length), baseline='static',
+    displacement_scale=2e5, rotation_scale=4e5)
+animation.save('quad.gif', writer='pillow', fps=32)
+```
+
+The dimensions are local width, height and length in metres. The hollow cuboid
+is display geometry; it does not define a field or aperture. Equal world axis
+scales, a dashed baseline and a moving local triad expose rigid translations
+and rotations. Neither table queries, history plots nor animations apply motion
+to the line. `get_element` gives access to the live Xtrack element, so subsequent
+edits still obey the normal mechanics alignment guards.
+
 `mech.survey(time_s=...)` reads nominal/reference/static/total body frames without
 writing elements. `mech.plot(...)` uses separate translation and rotation gains;
 element spans and feet remain rigid. `mech.animate(...)` updates translations,
@@ -146,6 +224,15 @@ built aperture models remain guarded. An independent ring copy is presently
 needed to avoid shared construction sublines. Actual GPU performance has not
 been validated here. The [design notes](DESIGN.md) explain these boundaries and
 the next backend experiments.
+
+Operation timings separate line load/copy, explicit tracker preparation,
+reference adoption, mechanics definition and optional geometry/table inspection.
+Required surveys inside attachment remain part of mechanics definition. There
+is no inclusive `setup_s` comparison across the teaching scripts. Example 010
+isolates repeated update/tracking costs; its load and selection phases are also
+separate. GIF rendering/encoding in 014 has its own timing. These are individual
+operation measurements; the runner separately captures complete script elapsed
+time and process memory.
 
 All work stays on the local exploration branch. Publishing and clean commit
 slicing remain for later review.

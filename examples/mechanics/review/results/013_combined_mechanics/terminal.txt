@@ -15,8 +15,13 @@ Sources use nominal reference geometry. The example does not infer force propaga
 
 Reference CPU costs
 -------------------
-layout_and_installation_s           2.7533 s
-floor_and_rigid_fit_s               0.6499 s
-response_paths_s                    0.8870 s
-initial_frozen_twiss_s              0.0742 s
-dynamic_tracking_s                  0.7170 s
+line_load_and_copy_s                0.0599 s
+tracker_build_s                     0.1482 s
+reference_adoption_s                0.0017 s
+geometry_selection_s                0.0764 s
+mechanics_definition_s              2.9172 s
+installation_definition_s           0.0021 s
+floor_and_rigid_fit_s               0.7319 s
+response_paths_s                    1.2332 s
+initial_frozen_twiss_s              0.0801 s
+dynamic_tracking_s                  0.8275 s

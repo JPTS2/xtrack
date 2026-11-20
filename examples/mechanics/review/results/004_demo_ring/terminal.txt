@@ -7,6 +7,13 @@ Only quadrupoles move here. Feet and mechanical responses follow in 005 and 006.
 
 Reference CPU costs
 -------------------
-setup_s                     2.4530 s
-sample_motion_s             0.0163 s
-apply_and_survey_s          0.0507 s
+line_load_and_copy_s        0.0607 s
+tracker_build_s             0.1404 s
+reference_adoption_s        0.0018 s
+geometry_selection_s        0.0712 s
+mechanics_definition_s      2.5975 s
+installation_definition_s    0.0000 s
+sample_motion_s             0.0174 s
+pose_prediction_s           0.0063 s
+apply_s                     0.0155 s
+survey_verification_s       0.0313 s

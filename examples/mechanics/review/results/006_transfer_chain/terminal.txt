@@ -14,7 +14,13 @@ Causal final pickup after 50 nm step [nm]: 50.000000
 
 Reference CPU costs
 -------------------
-setup_s                     0.2180 s
-sample_and_response_s       0.0293 s
-apply_and_survey_s          0.0039 s
-causal_filter_s             0.0004 s
+line_load_and_copy_s        0.0589 s
+tracker_build_s             0.0965 s
+reference_adoption_s        0.0017 s
+geometry_selection_s        0.0762 s
+mechanics_definition_s      0.0272 s
+response_definition_s       0.0000 s
+sample_and_response_s       0.0324 s
+apply_s                     0.0020 s
+pose_inspection_s           0.0031 s
+causal_filter_s             0.0008 s

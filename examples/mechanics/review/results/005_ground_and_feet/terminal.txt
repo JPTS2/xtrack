@@ -14,6 +14,11 @@ The contact mismatch is reported; the girder does not deform to remove it.
 
 Reference CPU costs
 -------------------
-setup_s                     0.2563 s
-sample_and_fit_s            0.0189 s
-apply_and_survey_s          0.0034 s
+line_load_and_copy_s        0.0588 s
+tracker_build_s             0.1467 s
+reference_adoption_s        0.0017 s
+mechanics_definition_s      0.1041 s
+source_geometry_s           0.0000 s
+sample_and_fit_s            0.0222 s
+apply_s                     0.0019 s
+pose_inspection_s           0.0029 s

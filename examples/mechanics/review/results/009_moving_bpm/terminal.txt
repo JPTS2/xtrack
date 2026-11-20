@@ -1,4 +1,3 @@
-The line already has an associated tracker
 Moving pickup and frozen orbit correction
 -----------------------------------------
 Measured signed corrector response [m/rad]: -115.817833
@@ -13,6 +12,11 @@ Each state is frozen Twiss. No causal controller or turn-by-turn feedback is cla
 
 Reference CPU costs
 -------------------
-setup_and_calibration_s                 0.3505 s
-response_records_s                      0.0008 s
-frozen_states_and_correction_s          2.3407 s
+line_load_and_copy_s                    0.0672 s
+tracker_build_s                         0.1348 s
+reference_adoption_s                    0.0017 s
+geometry_selection_s                    0.0726 s
+mechanics_definition_s                  0.0272 s
+readout_calibration_s                   0.1239 s
+response_records_s                      0.0010 s
+frozen_states_and_correction_s          3.1734 s

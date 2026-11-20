@@ -1,28 +1,35 @@
 {
   "example": "009_moving_bpm.py",
-  "elapsed_s": 2.81127474992536,
+  "elapsed_s": 3.7596257920376956,
   "timings": {
-    "setup_and_calibration_s": 0.3505422498565167,
-    "response_records_s": 0.0008249578531831503,
-    "frozen_states_and_correction_s": 2.3406885000877082
+    "line_load_and_copy_s": 0.06721558305434883,
+    "tracker_build_s": 0.13475179090164602,
+    "reference_adoption_s": 0.0017337920144200325,
+    "geometry_selection_s": 0.07257862505502999,
+    "mechanics_definition_s": 0.027172042056918144,
+    "readout_calibration_s": 0.12391724996268749,
+    "response_records_s": 0.0009514170233160257,
+    "frozen_states_and_correction_s": 3.1734458750579506
   },
   "figures": [
     "figure_01"
   ],
   "python": "3.14.0 | packaged by Anaconda, Inc. | (main, Oct 22 2025, 09:01:01) [Clang 20.1.8 ]",
+  "artifacts": [],
   "xtrack": "0.119.2",
   "numpy": "2.4.1",
   "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
-  "peak_rss_mib": 262.28125,
-  "script_sha256": "dcbe63bbda702ca5ffb1b72cbdddc84dbe3e098fe47dd8a450baad0c7bb928a0",
+  "peak_rss_mib": 266.828125,
+  "script_sha256": "fb473e0ef1f4233d2a24da58e38d2788d0f43286b15ce2e96264441d4319d411",
   "mechanics_source_sha256": {
-    "__init__.py": "87617879fe95d5fc18669bf2e9193f8c93aa7d6103a68325085beb0529602aa4",
+    "__init__.py": "f92d46c4e9dfa5cb6fd46874f4b0f24d9200e2dcf02698cd8bc4e4b213cb30d6",
     "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
-    "model.py": "d17b6f8ac155792c5e48a97bdce0f078aed4a900b7fb95daa7b160ad66052657",
+    "model.py": "5a22d1469e0ca541b650ecedf2dda2451d1bb49f754866abd3016085e1c30bde",
     "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
     "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
-    "plotting.py": "c6024750f8ffae3ccdd63af57cfbda292f8e349e4a82aac3de613df3c86efa90",
+    "plotting.py": "8a94b155598ec2742d3758dc3014513fe0d74f912ee48185d7a1550acdba2f2a",
     "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
-    "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90"
+    "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90",
+    "tables.py": "aebb3f2343270ff5b50c33069050bf9745bfbcef72cf3c9f0fbe7288dc6abfbf"
   }
 }

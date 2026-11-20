@@ -1,6 +1,6 @@
 # Mechanics implementation and open decisions
 
-This document describes the native exploration after the thirteen-example set.
+This document describes the native exploration after the fourteen-example set.
 The earlier [workflow review](designs/2026-11-19_workflow_review.md) is retained
 as a dated design record; its capability table predates this implementation.
 
@@ -183,6 +183,29 @@ of the ray/plane observation is tested.
 
 ## Execution, timing and remaining scope
 
+Body and attached-element pose queries use normal Xsuite table selection.
+`mech.get_table()` reads configured body inputs; `time_s=...` requests composed
+world poses. Body `kind` labels are explicit, immutable topology metadata and
+survive environment copy/JSON. Element rows retain `element_type` and `body_kind`:
+several magnets on one girder remain separately selectable. Unattached line
+elements are outside the mechanics table.
+
+The source table inventories registered bindings without evaluating models or
+copying waveform arrays. A selected pose-table row can access its live element
+or body and compute a bounded host history, including inheritance and lever
+arms. This is an explicit diagnostic, not an all-body tracking cache. Histories
+use current static settings and an explicitly supplied or table-bound source
+record. Numeric table exports omit live query context and source records;
+history exports preserve their time index. Topology/source edits invalidate
+live query context. Relative angles come from relative matrices in the preceding
+layer's axes, never Euler-angle subtraction.
+
+Example 014 plots this history and animates a single hollow cuboid using the
+same element frames. The cuboid dimensions are illustrative, not aperture or
+field data. Equal world scales and a local triad expose rigid motion; separate
+translation/rotation magnifications affect presentation only. Preparing a small
+selected history and rendering/encoding its GIF have distinct measured costs.
+
 The current lowering writes effective numeric element alignment fields from the
 host. It is a correctness and UI reference. It preserves captured input data but
 is not the final non-overwriting backend. Slices, shared/repeated element objects,
@@ -204,9 +227,12 @@ prepares each occurrence at `t0 + s/(beta0*c)`; it does not include particle-spe
 zeta/delta arrival. Its current repeated hierarchy evaluation has poor scaling.
 The dimensionless error scale is `2*pi*f*T_rev`, not source amplitude alone.
 
-The timing lesson separates model load, explicit tracker build before survey,
-attachment/setup, first kernel use, pure pose calculation, numeric writes,
-frozen tracking and dynamic tracking. GPU timings require actual GPU hardware;
+The lessons separate line load/copy, explicit tracker build before survey,
+reference adoption, attachment, and optional geometry/table inspection. Surveys
+required internally for attachment remain included in the attachment cost.
+Application and subsequent diagnostic surveys are separately measured. The
+timing lesson additionally isolates first kernel use, pure pose calculation,
+numeric writes, frozen tracking and dynamic tracking. GPU timings require actual GPU hardware;
 none are claimed here. Field generation and response preparation currently use
 NumPy/SciPy on the host, even when static tracking uses a GPU context.
 

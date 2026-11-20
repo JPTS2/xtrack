@@ -5,9 +5,6 @@
 """Read-only survey and presentation of rigid poses."""
 import numpy as np
 
-from ..table import Table
-
-
 def _display_matrices(reference, total, displacement_scale, rotation_scale):
     from scipy.spatial.transform import Rotation
     shown = reference.copy()
@@ -23,28 +20,20 @@ def _world_points(matrix, points):
 
 
 def motion_survey(manager, *, time_s, time_series=None, bodies=None):
-    from scipy.spatial.transform import Rotation
+    from .tables import mechanics_table, pose_columns
     names = list(manager.bodies) if bodies is None else ([bodies] if isinstance(bodies,str) else list(bodies))
-    if not names or not set(names).issubset(manager.bodies):
+    if len(set(names)) != len(names) or not set(names).issubset(manager.bodies):
         raise ValueError('Select existing mechanics bodies')
     total = manager.get_body_poses(time_s=time_s, time_series=time_series)
     disabled = tuple(manager.sources)
     static = manager.get_body_poses(time_s=time_s, disabled_sources=disabled)
     deliberate = manager.get_body_poses(time_s=time_s, disabled_sources=disabled, include_installation=False)
-    data = dict(name=np.array(names), parent=np.array([manager[n].parent or '' for n in names]))
-    for prefix, frames in (('nominal', {n: manager[n].nominal_frame for n in names}),
-                           ('reference', deliberate), ('static', static), ('total', total)):
-        for index, axis in enumerate('XYZ'):
-            data[prefix+'_'+axis] = np.array([frames[n].XYZ[index] for n in names])
-        for attr in ('phi', 'theta', 'psi'):
-            data[prefix+'_'+attr] = np.array([getattr(frames[n], attr) for n in names])
-        data[prefix+'_matrix'] = np.array([frames[n].matrix for n in names])
-    for index, axis in enumerate('XYZ'):
-        data['installation_'+axis] = data['static_'+axis]-data['reference_'+axis]
-        data['dynamic_'+axis] = data['total_'+axis]-data['static_'+axis]
-    data['dynamic_rotvec_world'] = np.array([Rotation.from_matrix(
-        total[n].matrix[:3, :3] @ static[n].matrix[:3, :3].T).as_rotvec() for n in names])
-    return Table(data)
+    data = dict(name=np.array(names, dtype=str), kind=np.array([manager[n].kind for n in names], dtype=str),
+                parent=np.array([manager[n].parent or '' for n in names], dtype=str))
+    layers = [np.array([frames[n].matrix for n in names]).reshape(-1, 4, 4)
+              for frames in ({n: manager[n].nominal_frame for n in names}, deliberate, static, total)]
+    data.update(pose_columns(*layers))
+    return mechanics_table(data, owner=manager, time_s=time_s, time_series=time_series)
 
 
 def plot_motion(manager, *, time_s, time_series=None, bodies=None, line=None,
@@ -63,6 +52,8 @@ def plot_motion(manager, *, time_s, time_series=None, bodies=None, line=None,
     if baseline not in ('nominal','reference','static'):
         raise ValueError('Use nominal, reference or static plot baseline')
     survey = motion_survey(manager, time_s=time_s, time_series=time_series, bodies=bodies)
+    if not len(survey):
+        raise ValueError('Select at least one body to plot')
     reference = survey[baseline+'_matrix']
     total = survey.total_matrix
     display = _display_matrices(reference,total,displacement_scale,rotation_scale)
@@ -189,3 +180,95 @@ def _set_bounds(axis,vertices):
     axis.set(xlim=(lower[0]-padding[0],upper[0]+padding[0]),
              ylim=(lower[2]-padding[2],upper[2]+padding[2]),
              zlim=(lower[1]-padding[1],upper[1]+padding[1]))
+
+
+def animate_cuboid(table, name, *, time_s, size_m, time_series=None,
+                   displacement_scale=1., rotation_scale=1., baseline='static', interval_ms=40):
+    """One illustrative hollow cuboid; all surfaces share one rigid transform."""
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    size = np.asarray(size_m)
+    if (np.iscomplexobj(size) or size.shape != (3,) or not np.all(np.isfinite(size))
+            or np.any(size <= 0)):
+        raise ValueError('size_m must be three positive finite dimensions in metres')
+    if (not np.all(np.isfinite([displacement_scale, rotation_scale, interval_ms]))
+            or min(displacement_scale, rotation_scale, interval_ms) <= 0):
+        raise ValueError('Use positive finite display gains and frame interval')
+    if baseline not in ('nominal', 'reference', 'static'):
+        raise ValueError('Use nominal, reference or static as display baseline')
+    history = table.get_time_series(name, time_s=time_s, time_series=time_series)
+    reference = history[baseline+'_matrix']
+    shown = _display_matrices(reference, history.total_matrix, displacement_scale, rotation_scale)
+    # Elements are anchored at their entrance; body presentation boxes are centered.
+    owner = table._owner()
+    width, height, length = size
+    z0 = 0. if hasattr(owner, 'line') else -length/2
+    corners = np.array([(x, y, z) for x in (-width/2, width/2)
+                        for y in (-height/2, height/2) for z in (z0, z0+length)])
+    faces = np.array([[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1],
+                      [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]])
+    origin = reference[0, :3, 3]
+
+    def displayed_points(matrix, local):
+        return (_world_points(matrix, local)-origin)[:, [0, 2, 1]]
+
+    # Four bars leave a rectangular beam opening and make roll unambiguous.
+    blocks = []
+    for low, high in (((-width/2, -height/2), (-width*.23, height/2)),
+                       ((width*.23, -height/2), (width/2, height/2)),
+                       ((-width*.23, -height/2), (width*.23, -height*.23)),
+                       ((-width*.23, height*.23), (width*.23, height/2))):
+        blocks.append(np.array([(x, y, z) for x in (low[0], high[0])
+                                for y in (low[1], high[1]) for z in (z0, z0+length)]))
+    fig = plt.figure(figsize=(8, 6.4))
+    ax = fig.add_subplot(111, projection='3d')
+    artists = []
+    for block, color in zip(blocks, ('#236ca2', '#236ca2', '#d99035', '#d99035')):
+        vertices = displayed_points(shown[0], block)
+        artist = Poly3DCollection(vertices[faces], facecolor=color, edgecolor='#19314a',
+                                  linewidth=.65, alpha=.93)
+        ax.add_collection3d(artist)
+        artists.append((block, artist))
+    ghost = displayed_points(reference[0], corners)
+    outline = Poly3DCollection(ghost[faces], facecolor=(0, 0, 0, 0), edgecolor='0.65',
+                               linewidth=.7, linestyle='--')
+    ax.add_collection3d(outline)
+    triad = []
+    triad_origin = np.array([0., 0., z0+length/2])
+    for index, color in enumerate(('tab:red', 'tab:green', 'tab:purple')):
+        local = np.array([triad_origin, triad_origin+np.eye(3)[index]*max(size)*.7])
+        points = displayed_points(shown[0], local)
+        artist, = ax.plot(*points.T, color=color, lw=2.2, label=('Local x', 'Local y', 'Local s')[index])
+        triad.append((local, artist))
+    bounds = np.concatenate([displayed_points(matrix, corners) for matrix in shown])
+    for local, _ in triad:
+        bounds = np.concatenate((bounds, *[displayed_points(matrix, local) for matrix in shown]))
+    bounds = np.concatenate((bounds, ghost))
+    low, high = bounds.min(axis=0), bounds.max(axis=0)
+    span = max(high-low)*1.15
+    center = (low+high)/2
+    ax.set(xlim=(center[0]-span/2, center[0]+span/2),
+           ylim=(center[1]-span/2, center[1]+span/2), zlim=(center[2]-span/2, center[2]+span/2),
+           xlabel='World X relative to baseline [m]', ylabel='World Z relative to baseline [m]',
+           zlabel='World Y relative to baseline [m]')
+    ax.set_box_aspect((1, 1, 1))
+    ax.view_init(elev=22, azim=-58)
+    ax.legend(loc='upper left', fontsize=8)
+    fig.text(.5, .025, f'Translations ×{displacement_scale:g}; rotations ×{rotation_scale:g}; '
+             f'dashed = {baseline}\nIllustrative envelope; display gains do not affect tracking',
+             ha='center', fontsize=9)
+    fig.subplots_adjust(bottom=.13, top=.9)
+
+    def update(index):
+        for local, artist in artists:
+            artist.set_verts(displayed_points(shown[index], local)[faces])
+        for local, artist in triad:
+            artist.set_data_3d(*displayed_points(shown[index], local).T)
+        ax.set_title(f'{name} — six-coordinate rigid motion\nPhysical time {history.time_s[index]:.4f} s')
+        return tuple(artist for _, artist in artists+triad)
+
+    update(0)
+    return FuncAnimation(fig, update, frames=len(history), interval=interval_ms,
+                          blit=False, cache_frame_data=False)

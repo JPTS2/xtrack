@@ -1,4 +1,3 @@
-The line already has an associated tracker
 Static installation and orbit correction
 ----------------------------------------
 Intentional quad shift_x [mm]: 1.000000
@@ -16,6 +15,10 @@ Deliberate quad shift after clearing mechanics [mm]: 1.000000
 
 Reference CPU costs
 -------------------
-setup_and_tracker_s                         2.7274 s
-response_calibration_s                      1.5209 s
-installation_cases_and_correction_s         1.0289 s
+line_load_and_copy_s                        0.0655 s
+tracker_build_s                             0.1331 s
+reference_adoption_s                        0.0017 s
+geometry_selection_s                        0.0076 s
+mechanics_definition_s                      3.0340 s
+response_calibration_s                      1.8423 s
+installation_cases_and_correction_s         1.1991 s

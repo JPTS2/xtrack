@@ -1,5 +1,3 @@
-The line already has an associated tracker
-The line already has an associated tracker
 Shared body and separate beam clocks
 ------------------------------------
 Beam       Turn spacing [µs]    Last sampled time [µs]
@@ -11,8 +9,11 @@ This does not schedule causal shared filters, beam encounters or controllers.
 
 Reference CPU costs
 -------------------
-setup_and_record_s                0.1456 s
-forward_tracker_build_s           0.0000 s
-forward_tracking_s                0.0127 s
-backward_tracker_build_s          0.0000 s
-backward_tracking_s               0.0128 s
+line_construction_s               0.0178 s
+forward_tracker_build_s           0.1279 s
+backward_tracker_build_s          0.0013 s
+mechanics_definition_s            0.0355 s
+source_definition_s               0.0001 s
+sample_motion_s                   0.0003 s
+forward_tracking_s                0.0151 s
+backward_tracking_s               0.0146 s

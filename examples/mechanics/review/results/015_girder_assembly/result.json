@@ -1,0 +1,49 @@
+{
+  "timings": {
+    "line_construction_s": 0.016819874988868833,
+    "tracker_build_s": 0.13802858302369714,
+    "reference_adoption_s": 5.425000563263893e-05,
+    "reference_survey_s": 0.020123291993513703,
+    "mechanics_definition_s": 0.004757167072966695,
+    "source_definition_s": 0.00012254109606146812,
+    "sample_motion_s": 0.00023854197934269905,
+    "selected_histories_s": 0.6947574170771986,
+    "animation_preparation_s": 0.08076004195027053,
+    "gif_render_and_encode_s": 8.147363666910678
+  },
+  "peak_rss_mib": 798.453125,
+  "frames": 100,
+  "duration_s": 4.0,
+  "display_scales": {
+    "girder_translation_scale": 800000.0,
+    "girder_rotation_scale": 600000.0,
+    "magnet_translation_scale": 3000000.0,
+    "magnet_rotation_scale": 1500000.0
+  },
+  "playback_duration_s": 4.000000000000003,
+  "gif_resolution": [
+    1152,
+    612
+  ],
+  "xtrack": "0.119.2",
+  "script_sha256": "ade43a0c4c00f62c8879568b1a27db2ceeb7d17e2859b2281107b938ccd10c70",
+  "helper_sha256": "5af9e196a552e84ce317ce3e67cb95e042e04f533077f33cb3b506301355fa8a",
+  "mechanics_source_sha256": {
+    "observation.py": "3a5d061c20da07e81b0e251e75387ca66c9f015ea76777023cd8b964937ce0ad",
+    "responses.py": "f055e20afef1d77f501a42bfec58430e9a75eb2d713fffed387acaed97d7ebf1",
+    "installation.py": "8225179c011e12a20b602eabd8d4049e89b131036a99a33d644d351974246cf1",
+    "plotting.py": "8a94b155598ec2742d3758dc3014513fe0d74f912ee48185d7a1550acdba2f2a",
+    "__init__.py": "f92d46c4e9dfa5cb6fd46874f4b0f24d9200e2dcf02698cd8bc4e4b213cb30d6",
+    "model.py": "5a22d1469e0ca541b650ecedf2dda2451d1bb49f754866abd3016085e1c30bde",
+    "sources.py": "2c229cd96caea4ed0fa6ae529d74baf1e9c2f57dd78fb7da4e2c53515c605d90",
+    "motion.py": "23cbe189a322e3bd3c699e14cdf8a1df53b47fd00035b8afa90ec9d63e217817",
+    "tables.py": "aebb3f2343270ff5b50c33069050bf9745bfbcef72cf3c9f0fbe7288dc6abfbf"
+  },
+  "layout_m": [
+    0.5,
+    0.5,
+    1.5,
+    0.5,
+    0.5
+  ]
+}

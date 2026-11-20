@@ -11,6 +11,11 @@ The pump body fixes nominal mounting; propagation uses that reference geometry.
 
 Reference CPU costs
 -------------------
-setup_s                     0.2584 s
-sample_field_s              0.0005 s
-apply_and_survey_s          0.0037 s
+line_load_and_copy_s        0.0590 s
+tracker_build_s             0.1441 s
+reference_adoption_s        0.0018 s
+mechanics_definition_s      0.1051 s
+source_geometry_s           0.0000 s
+sample_field_s              0.0006 s
+apply_s                     0.0021 s
+pose_inspection_s           0.0030 s
