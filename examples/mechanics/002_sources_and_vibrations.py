@@ -5,7 +5,8 @@
 
 # Translate and rotate a rigid girder carrying two quadrupoles.
 # See which magnet centres and axes move, then measure the tracked beam response.
-# Isolate translation, pitch, yaw and roll before enabling their combined motion.
+# Declare base mounts and heights, then see how a girder sways the whole magnets.
+# Compare roll about the girder base with roll about the magnetic axis.
 
 ################################################################################
 # Required packages
@@ -64,11 +65,14 @@ SAMPLE_STEP_S       = 1e-5
 PRINT_TIMINGS       = False
 
 ########################################
-# Illustrative rigid envelopes and motion magnification
+# Mechanical dimensions used for mounts and rigid drawing envelopes
 ########################################
-MAGNET_WIDTH_M      = .28              # Drawing only; not an aperture model
-MAGNET_HEIGHT_M     = .28
-DISPLAY_GAIN        = 1e6              # Applied equally to translation and rotation in geometry only
+MAGNET_HEIGHT_M     = .40              # Base to top; magnetic axis is at half-height here [m]
+MAGNET_WIDTH_M      = .28
+GIRDER_HEIGHT_M     = .25              # Bottom-to-top depth of the girder [m]
+GIRDER_WIDTH_M      = .36
+MOUNT_HEIGHT_M      = .08              # Stand between the girder top and magnet base [m]
+DISPLAY_GAIN       = 1e6               # Reference-point translation and angles; drawing only
 
 ################################################################################
 # Build the transport line and define the rigid girder reference
@@ -93,24 +97,58 @@ line = env.new_line(name = 'line', components = ['q1', 'gap', 'q2', 'to_observat
 line.set_particle_ref('proton', p0c = 7e12)
 line.build_tracker()
 launch = line.build_particles(x = LAUNCH_X_M, y = LAUNCH_Y_M)
-timings['Line, tracker and common launch'] = perf_counter() - started
+# Make the comparison environment before attaching mechanics. Both scenarios
+# contain independent elements with identical design magnetic geometry.
+axis_env = env.copy()
+axis_line = axis_env['line']
+axis_line.build_tracker()
+axis_launch = axis_line.build_particles(x = LAUNCH_X_M, y = LAUNCH_Y_M)
+timings['Lines, trackers and common launches'] = perf_counter() - started
 
 ########################################
-# Place the rotation reference on the beam axis, midway between magnet centres
+# Put the girder reference at its base and mount each magnet by its bottom face
 ########################################
-# This is the point about which the prescribed angular motion acts. Choosing
-# another anchor changes the required translation for the same physical motion.
-# With this choice, pure roll rotates the magnet axes without moving their centres.
+# The surveyed magnetic axes stay at design Y = 0. The magnet-base frame is
+# half a magnet height below its axis. Each stand lifts that base above the
+# girder top. These offsets enter the mechanics tree, not only the drawing.
 started = perf_counter()
 mech = env.mechanics
 line.mechanics.adopt_reference()
 girder_length_m = 2 * QUAD_LENGTH_M + GAP_LENGTH_M
-girder = line.mechanics.new_girder(
-    'girder', elements = ['q1', 'q2'],
-    anchor = xt.Frame.from_survey_angles(Z = girder_length_m / 2),
-)
+axis_height_above_base_m = GIRDER_HEIGHT_M + MOUNT_HEIGHT_M + MAGNET_HEIGHT_M / 2
+girder_base_y_m = -axis_height_above_base_m
+girder = mech.new_girder('girder', anchor = xt.Frame.from_survey_angles(
+    Y = girder_base_y_m, Z = girder_length_m / 2,
+))
+magnet_bodies = {}
+for name, centre_s in [('q1', QUAD_LENGTH_M / 2), ('q2', girder_length_m - QUAD_LENGTH_M / 2)]:
+    magnet_bodies[name] = mech.new_body(
+        'magnet.' + name, kind = 'magnet', parent = girder,
+        mount = xt.Frame.from_survey_angles(
+            Y = GIRDER_HEIGHT_M + MOUNT_HEIGHT_M, Z = centre_s - girder_length_m / 2,
+        ), elements = [name], line = line,
+    )
 girder.installation.shift_y = INSTALLATION_Y_M
-timings['Girder and static installation error'] = perf_counter() - started
+
+########################################
+# Build the same assembly with a reference point on the magnetic axis
+########################################
+# Holding this point fixed during roll is a different physical motion from
+# holding the girder base fixed. Both start with exactly the same magnet poses.
+axis_mech = axis_env.mechanics
+axis_line.mechanics.adopt_reference()
+axis_girder = axis_mech.new_girder('girder', anchor = xt.Frame.from_survey_angles(
+    Z = girder_length_m / 2,
+))
+for name, centre_s in [('q1', QUAD_LENGTH_M / 2), ('q2', girder_length_m - QUAD_LENGTH_M / 2)]:
+    axis_mech.new_body(
+        'magnet.' + name, kind = 'magnet', parent = axis_girder,
+        mount = xt.Frame.from_survey_angles(
+            Y = -MAGNET_HEIGHT_M / 2, Z = centre_s - girder_length_m / 2,
+        ), elements = [name], line = axis_line,
+    )
+axis_girder.installation.shift_y = INSTALLATION_Y_M
+timings['Height-aware bodies and base mounts'] = perf_counter() - started
 
 ################################################################################
 # Prescribe translation and three rigid rotations through the source interface
@@ -159,11 +197,16 @@ for index, (component, amplitude) in enumerate([
     else:
         raise ValueError('Choose harmonic, measured or psd angular motion')
     mech.add_source(component, angular, targets = ['girder'], component = component)
+    if component == 'roll':
+        roll_source = angular
 
 ########################################
 # Compute one record shared by every controlled comparison
 ########################################
 motion = mech.compute_time_series(time_s = times)
+axis_mech.add_source('roll', roll_source, targets = ['girder'], component = 'roll')
+axis_motion = axis_mech.compute_time_series(time_s = times)
+np.testing.assert_array_equal(motion.values['roll'], axis_motion.values['roll'])
 timings['Source definitions and common record'] = perf_counter() - started
 source_table = mech.get_source_table()
 
@@ -182,6 +225,10 @@ installed_frames = {
     for name in ('q1', 'q2')
 }
 installed_body = mech.get_body_poses(disabled_sources = all_sources)['girder'].matrix.copy()
+installed_magnet_bases = {
+    name: mech.get_body_poses(disabled_sources = all_sources)['magnet.' + name].XYZ.copy()
+    for name in ('q1', 'q2')
+}
 installed_centres = {
     name: matrix[:3, 3] + matrix[:3, :3] @ [0., 0., QUAD_LENGTH_M / 2]
     for name, matrix in installed_frames.items()
@@ -195,14 +242,20 @@ line.track(particle)
 baseline_exit = np.array([float(particle.x[0]), float(particle.y[0])])
 
 ########################################
-# Prepare a second launch exactly on the installed magnetic axis
+# Verify that the beam-axis-reference assembly has the same installed magnets
 ########################################
-# Its roll response is a useful control: a rolled centred quadrupole cannot
-# kick a particle travelling on its axis. The off-axis launch exposes coupling.
-centred_launch = line.build_particles(y = INSTALLATION_Y_M)
-centred = centred_launch.copy()
-line.track(centred)
-centred_baseline_exit = np.array([float(centred.x[0]), float(centred.y[0])])
+axis_mech.apply(disabled_sources = ('roll',))
+axis_installed_survey = axis_line.survey(include_element_frames = True)
+axis_installed_body = axis_mech.get_body_poses(disabled_sources = ('roll',))['girder'].matrix.copy()
+for name in ('q1', 'q2'):
+    np.testing.assert_allclose(
+        axis_installed_survey.get_frame(name, which = 'elem_start').matrix,
+        installed_frames[name], rtol = 0, atol = 1e-15,
+    )
+particle = axis_launch.copy()
+axis_line.track(particle)
+axis_baseline_exit = np.array([float(particle.x[0]), float(particle.y[0])])
+np.testing.assert_array_equal(axis_baseline_exit, baseline_exit)
 
 ################################################################################
 # Isolate each rigid motion and measure its effect on magnets and beam
@@ -215,7 +268,7 @@ cases = {
     'Vertical translation only': ('vertical',),
     'Pitch only': ('pitch',),
     'Yaw only': ('yaw',),
-    'Roll only': ('roll',),
+    'Roll about girder base': ('roll',),
     'All four motions': all_sources,
 }
 frames = {}
@@ -266,16 +319,42 @@ for label, active in cases.items():
 timings['Controlled poses and tracked probe scans'] = perf_counter() - started
 
 ########################################
-# Check that roll rotates the magnet axes while keeping both centres fixed
+# Check the height lever arm in the base-referenced roll
 ########################################
+roll_rotation = body_poses['Roll about girder base'][:3, :3] @ installed_body[:3, :3].T
 for name in ('q1', 'q2'):
-    np.testing.assert_allclose(centre_changes['Roll only'][name], 0., rtol = 0, atol = 1e-15)
-mech.apply(time_s = INSPECT_TIME_S, time_series = motion,
-           disabled_sources = tuple(name for name in all_sources if name != 'roll'))
-centred = centred_launch.copy()
-line.track(centred)
-centred_roll_change = np.array([float(centred.x[0]), float(centred.y[0])]) - centred_baseline_exit
-np.testing.assert_allclose(centred_roll_change, 0., rtol = 0, atol = 1e-15)
+    lever = installed_centres[name] - installed_body[:3, 3]
+    np.testing.assert_allclose(
+        centre_changes['Roll about girder base'][name],
+        (roll_rotation - np.eye(3)) @ lever, rtol = 0, atol = 2e-15,
+    )
+    np.testing.assert_allclose(
+        installed_centres[name] - installed_magnet_bases[name],
+        [0., MAGNET_HEIGHT_M / 2, 0.], rtol = 0, atol = 1e-15,
+    )
+
+########################################
+# Compare equal roll angles with the magnetic axis held fixed instead
+########################################
+axis_mech.apply(time_s = INSPECT_TIME_S, time_series = axis_motion)
+axis_roll_body = axis_mech.get_body_poses(time_s = INSPECT_TIME_S, time_series = axis_motion)['girder'].matrix.copy()
+axis_roll_survey = axis_line.survey(include_element_frames = True)
+axis_roll_centres = {}
+for name in ('q1', 'q2'):
+    matrix = axis_roll_survey.get_frame(name, which = 'elem_start').matrix
+    axis_roll_centres[name] = matrix[:3, 3] + matrix[:3, :3] @ [0., 0., QUAD_LENGTH_M / 2]
+    np.testing.assert_allclose(axis_roll_centres[name], installed_centres[name], rtol = 0, atol = 1e-15)
+particle = axis_launch.copy()
+axis_line.track(particle)
+axis_roll_snapshot_exit = np.array([float(particle.x[0]), float(particle.y[0])]) - axis_baseline_exit
+axis_roll_response = []
+for time_s in probe_times:
+    axis_mech.apply(time_s = float(time_s), time_series = axis_motion)
+    particle = axis_launch.copy()
+    axis_line.track(particle)
+    axis_roll_response.append([float(particle.x[0]), float(particle.y[0])])
+axis_roll_changes = np.array(axis_roll_response) - axis_baseline_exit
+axis_mech.restore()
 
 ################################################################################
 # Enable all motions and track probes arriving at different physical times
@@ -308,11 +387,11 @@ timings['Combined motion with automatic updates'] = perf_counter() - started
 vertical_at_inspection_m = body_poses['Vertical translation only'][1, 3] - installed_body[1, 3]
 isolated_rotations = {
     label: Rotation.from_matrix(body_poses[label][:3, :3] @ installed_body[:3, :3].T).as_rotvec()
-    for label in ('Pitch only', 'Yaw only', 'Roll only')
+    for label in ('Pitch only', 'Yaw only', 'Roll about girder base')
 }
 pitch_at_inspection_rad = -isolated_rotations['Pitch only'][0]
 yaw_at_inspection_rad = isolated_rotations['Yaw only'][1]
-roll_at_inspection_rad = isolated_rotations['Roll only'][2]
+roll_at_inspection_rad = isolated_rotations['Roll about girder base'][2]
 
 ################################################################################
 # Explain the applied transforms and measured beam response
@@ -325,7 +404,10 @@ print('Rigid girder motion and the tracked beam\n'
       '---------------------------------------')
 print(f'Line: q1 ({QUAD_LENGTH_M:g} m), gap ({GAP_LENGTH_M:g} m), '
       f'q2 ({QUAD_LENGTH_M:g} m), drift ({OBSERVATION_DRIFT_M:g} m), observation point.')
-print(f'Rotation reference: on the installed beam axis, halfway along the {girder_length_m:g} m girder.')
+print(f'Magnet height: {MAGNET_HEIGHT_M:g} m; base mount is {MAGNET_HEIGHT_M / 2:g} m below the magnetic axis.')
+print(f'Girder height: {GIRDER_HEIGHT_M:g} m; stand height above the girder: {MOUNT_HEIGHT_M:g} m.')
+print(f'Magnetic axis above girder-base reference: {axis_height_above_base_m:g} m.')
+print('Main case: girder-base reference held fixed during pure rotation.')
 print(f'Every case retains the same static installation error: y = {INSTALLATION_Y_M * 1e6:g} µm.')
 print(f'Every probe starts at x = {LAUNCH_X_M * 1e3:g} mm, y = {LAUNCH_Y_M * 1e3:g} mm, px = py = 0.')
 print(f'Sources: translation {SOURCE}, angles {ROTATION_SOURCE}.')
@@ -349,8 +431,13 @@ for label in cases:
           f' {q2[0] * 1e9:9.3f} {q2[1] * 1e9:9.3f} {dx:+12.6f} {dy:+12.6f}')
 print('Translation moves both magnet centres together.')
 print('Pitch gives opposite vertical centre displacements; yaw gives opposite horizontal displacements.')
-print('Roll leaves both centres fixed here, but rotates both quadrupole field axes and couples x/y.')
-print(f'Centred-launch roll control: largest beam change = {np.max(np.abs(centred_roll_change)) * 1e9:.3e} nm.')
+print('Rolling the girder about its base sways both magnet centres and rotates their field axes.')
+print(f'Height × roll predicts the first-order horizontal sway: '
+      f'{-axis_height_above_base_m * roll_at_inspection_rad * 1e9:+.3f} nm.')
+print('Roll with magnetic axis held fixed: both centres remain fixed; the field axes still rotate.')
+print(f'  Observation-point beam change [nm]: dx = {axis_roll_snapshot_exit[0] * 1e9:+.6f}, '
+      f'dy = {axis_roll_snapshot_exit[1] * 1e9:+.6f}.')
+print('These are different imposed motions: zero translation is specified at different reference points.')
 print(f'Baseline beam at the observation point: x = {baseline_exit[0] * 1e6:+.6f} µm, '
       f'y = {baseline_exit[1] * 1e6:+.6f} µm.')
 
@@ -383,21 +470,20 @@ end = np.array([[-half_width, -half_height, QUAD_LENGTH_M / 2],
                 [half_width, half_height, QUAD_LENGTH_M / 2],
                 [-half_width, half_height, QUAD_LENGTH_M / 2],
                 [-half_width, -half_height, QUAD_LENGTH_M / 2]])
-# A thin deck and two short mounts make the common rigid support visible.
-# These are drawing envelopes, transformed by the same map as both magnets.
-deck_y = -half_height - .04
+# The girder outline uses its declared height, from the base reference to its
+# top. Each stand runs from that top to the actual magnet-base mounting frame.
 deck_s = girder_length_m / 2 + .05
-deck_side = np.array([[0., deck_y - .02, -deck_s], [0., deck_y - .02, deck_s],
-                      [0., deck_y, deck_s], [0., deck_y, -deck_s], [0., deck_y - .02, -deck_s]])
-deck_plan = np.array([[-half_width - .02, deck_y, -deck_s], [-half_width - .02, deck_y, deck_s],
-                      [half_width + .02, deck_y, deck_s], [half_width + .02, deck_y, -deck_s],
-                      [-half_width - .02, deck_y, -deck_s]])
-deck_end = np.array([[-half_width - .02, deck_y - .02, 0.], [half_width + .02, deck_y - .02, 0.],
-                     [half_width + .02, deck_y, 0.], [-half_width - .02, deck_y, 0.],
-                     [-half_width - .02, deck_y - .02, 0.]])
+deck_side = np.array([[0., 0., -deck_s], [0., 0., deck_s],
+                      [0., GIRDER_HEIGHT_M, deck_s], [0., GIRDER_HEIGHT_M, -deck_s], [0., 0., -deck_s]])
+deck_plan = np.array([[-GIRDER_WIDTH_M / 2, 0., -deck_s], [-GIRDER_WIDTH_M / 2, 0., deck_s],
+                      [GIRDER_WIDTH_M / 2, 0., deck_s], [GIRDER_WIDTH_M / 2, 0., -deck_s],
+                      [-GIRDER_WIDTH_M / 2, 0., -deck_s]])
+deck_end = np.array([[-GIRDER_WIDTH_M / 2, 0., 0.], [GIRDER_WIDTH_M / 2, 0., 0.],
+                     [GIRDER_WIDTH_M / 2, GIRDER_HEIGHT_M, 0.], [-GIRDER_WIDTH_M / 2, GIRDER_HEIGHT_M, 0.],
+                     [-GIRDER_WIDTH_M / 2, 0., 0.]])
 colours = {'q1': 'tab:blue', 'q2': 'tab:orange'}
 pivot = installed_body[:3, 3]
-geometry_fig = plt.figure(figsize = (10, 6.5))
+geometry_fig = plt.figure(figsize = (11, 7.5))
 grid = geometry_fig.add_gridspec(2, 2)
 geometry_axes = [geometry_fig.add_subplot(grid[0, 0]), geometry_fig.add_subplot(grid[0, 1]),
                  geometry_fig.add_subplot(grid[1, 0])]
@@ -413,7 +499,7 @@ for ax, label, local_outline, coordinates, ordinate in [
     (geometry_axes[1], 'Pitch only', side, [2, 1], 'World Y [m]'),
     (geometry_axes[2], 'Yaw only', plan, [2, 0], 'World X [m]'),
 ]:
-    moved = body_poses[label]
+    moved = installed_body if label == 'Vertical translation only' else body_poses[label]
     enlarged_rotation = Rotation.from_matrix(moved[:3, :3] @ installed_body[:3, :3].T)
     enlarged_rotation = Rotation.from_rotvec(DISPLAY_GAIN * enlarged_rotation.as_rotvec()).as_matrix()
     enlarged_translation = DISPLAY_GAIN * (moved[:3, 3] - pivot)
@@ -425,9 +511,11 @@ for ax, label, local_outline, coordinates, ordinate in [
     longitudinal_view_points.extend([original_deck[:, coordinates], shown_deck[:, coordinates]])
     if label != 'Yaw only':
         for centre in installed_centres.values():
-            mount = np.array([centre + [0., deck_y, 0.], centre + [0., -half_height, 0.]])
+            mount_base = centre - [0., MAGNET_HEIGHT_M / 2, 0.]
+            mount = np.array([mount_base - [0., MOUNT_HEIGHT_M, 0.], mount_base])
             moved_mount = (mount - pivot) @ enlarged_rotation.T + pivot + enlarged_translation
             ax.plot(*moved_mount[:, coordinates].T, color = '0.25', lw = 1.2)
+            ax.plot(*mount_base[coordinates], 'o', ms = 4, mfc = 'white', mec = 'k')
     for name, matrix in installed_frames.items():
         original = local_outline @ matrix[:3, :3].T + matrix[:3, 3]
         shown = (original - pivot) @ enlarged_rotation.T + pivot + enlarged_translation
@@ -436,15 +524,17 @@ for ax, label, local_outline, coordinates, ordinate in [
         ax.plot(*shown[:, coordinates].T, color = colours[name])
         longitudinal_view_points.extend([original[:, coordinates], shown[:, coordinates]])
         centre = (installed_centres[name] - pivot) @ enlarged_rotation.T + pivot + enlarged_translation
-        ax.text(centre[coordinates[0]], centre[coordinates[1]], name, ha = 'center', va = 'center')
+        ax.text(centre[coordinates[0]], centre[coordinates[1]], name, ha = 'center', va = 'center',
+                bbox = {'facecolor': 'white', 'edgecolor': 'none', 'alpha': .7, 'pad': 1})
     ax.plot(pivot[coordinates[0]], pivot[coordinates[1]], 'kD', ms = 4)
     ax.axhline(INSTALLATION_Y_M if ordinate == 'World Y [m]' else 0., color = '0.85', lw = .8)
     titles = {
-        'Vertical translation only': f'Vertical translation: {vertical_at_inspection_m * 1e9:+.3g} nm',
+        'Vertical translation only': 'Installed assembly: declared heights and mounts',
         'Pitch only': f'Pitch: {pitch_at_inspection_rad * 1e6:+.3g} µrad',
         'Yaw only': f'Yaw: {yaw_at_inspection_rad * 1e6:+.3g} µrad',
     }
     ax.set(title = titles[label], xlabel = 'World Z [m]', ylabel = ordinate)
+    ax.title.set_fontsize(11)
     ax.set_aspect('equal', adjustable = 'box')
 
 # Keep these three views on common metric limits, including the full swept
@@ -457,42 +547,77 @@ for ax in geometry_axes:
     ax.set_ylim(lower[1] - padding[1], upper[1] + padding[1])
 
 ########################################
-# Show both rolled cross-sections equally, with fixed centres and rotated axes
+# Mark the declared dimensions on the installed elevation
 ########################################
-roll = body_poses['Roll only'][:3, :3] @ installed_body[:3, :3].T
-shown_roll = Rotation.from_rotvec(DISPLAY_GAIN * Rotation.from_matrix(roll).as_rotvec()).as_matrix()
-for ax, name in zip(roll_axes, ('q1', 'q2')):
-    matrix = installed_frames[name]
-    original = end @ matrix[:3, :3].T + matrix[:3, 3]
-    shown = (original - pivot) @ shown_roll.T + pivot
+height_ax = geometry_axes[0]
+for z, bottom, top, text in [
+    (.65, INSTALLATION_Y_M - MAGNET_HEIGHT_M / 2, INSTALLATION_Y_M + MAGNET_HEIGHT_M / 2,
+     f'Magnet\n{MAGNET_HEIGHT_M:g} m'),
+    (.80, pivot[1], pivot[1] + GIRDER_HEIGHT_M, f'Girder\n{GIRDER_HEIGHT_M:g} m'),
+]:
+    height_ax.annotate('', xy = (z, top), xytext = (z, bottom),
+                       arrowprops = {'arrowstyle': '<->', 'color': '0.25', 'lw': .8})
+    height_ax.text(z + .025, (bottom + top) / 2, text, fontsize = 8, va = 'center')
+height_ax.text(.55, INSTALLATION_Y_M - MAGNET_HEIGHT_M / 2 - MOUNT_HEIGHT_M / 2,
+               f'{MOUNT_HEIGHT_M:g} m stand', fontsize = 8, va = 'center')
+
+########################################
+# Compare equal roll angles about the beam axis and about the girder base
+########################################
+# Both magnets have the same end projection, so one section represents q1/q2.
+# The physical girder/magnet envelopes are identical in both comparisons.
+roll_view_points = []
+for ax, title, reference, moved in [
+    (roll_axes[0], 'Magnetic axis held fixed', axis_installed_body, axis_roll_body),
+    (roll_axes[1], 'Girder base held fixed', installed_body, body_poses['Roll about girder base']),
+]:
+    reference_point = reference[:3, 3]
+    roll = moved[:3, :3] @ reference[:3, :3].T
+    shown_roll = Rotation.from_rotvec(DISPLAY_GAIN * Rotation.from_matrix(roll).as_rotvec()).as_matrix()
+    original = end @ installed_frames['q1'][:3, :3].T + installed_frames['q1'][:3, 3]
+    shown = (original - reference_point) @ shown_roll.T + reference_point
     original_deck = deck_end @ installed_body[:3, :3].T + pivot
-    shown_deck = (original_deck - pivot) @ shown_roll.T + pivot
+    shown_deck = (original_deck - reference_point) @ shown_roll.T + reference_point
     ax.plot(original_deck[:, 0], original_deck[:, 1], '--', color = '0.6', lw = .8)
+    ax.fill(shown_deck[:, 0], shown_deck[:, 1], color = '0.5', alpha = .12)
     ax.plot(shown_deck[:, 0], shown_deck[:, 1], color = '0.25', lw = 1.2)
-    mount = np.array([[0., deck_y, 0.], [0., -half_height, 0.]]) @ shown_roll.T + pivot
+    original_mount = np.array([installed_magnet_bases['q1'] - [0., MOUNT_HEIGHT_M, 0.],
+                               installed_magnet_bases['q1']])
+    mount = (original_mount - reference_point) @ shown_roll.T + reference_point
     ax.plot(mount[:, 0], mount[:, 1], color = '0.25', lw = 1.2)
+    ax.plot(mount[-1, 0], mount[-1, 1], 'o', ms = 4, mfc = 'white', mec = 'k')
     ax.plot(original[:, 0], original[:, 1], '--', color = '0.6')
-    ax.fill(shown[:, 0], shown[:, 1], color = colours[name], alpha = .15)
-    ax.plot(shown[:, 0], shown[:, 1], color = colours[name])
-    for direction in ([half_width, 0., 0.], [0., half_height, 0.]):
-        axis = np.array([np.zeros(3), direction]) @ shown_roll.T + installed_centres[name]
-        ax.plot(axis[:, 0], axis[:, 1], color = colours[name], lw = 1)
-    ax.plot(pivot[0], pivot[1], 'kD', ms = 4)
-    ax.set(title = f'{name}: roll {roll_at_inspection_rad * 1e6:+.3g} µrad', xlabel = 'World X [m]')
+    ax.fill(shown[:, 0], shown[:, 1], color = 'tab:blue', alpha = .15)
+    ax.plot(shown[:, 0], shown[:, 1], color = 'tab:blue')
+    shown_centre = (installed_centres['q1'] - reference_point) @ shown_roll.T + reference_point
+    ax.plot(reference_point[0], reference_point[1], 'kD', ms = 4)
+    ax.plot(shown_centre[0], shown_centre[1], 'o', color = 'tab:blue', ms = 3)
+    ax.axhline(INSTALLATION_Y_M, color = '0.85', lw = .8)
+    ax.set(title = title + f'\nRoll {roll_at_inspection_rad * 1e6:+.3g} µrad; both magnets', xlabel = 'World X [m]')
+    ax.title.set_fontsize(10)
     ax.set_aspect('equal', adjustable = 'box')
-    ax.margins(x = .15, y = .15)
+    roll_view_points.extend([original[:, :2], shown[:, :2], original_deck[:, :2], shown_deck[:, :2]])
+points = np.concatenate(roll_view_points)
+lower, upper = points.min(axis = 0), points.max(axis = 0)
+padding = .12 * (upper - lower)
+for ax in roll_axes:
+    ax.set_xlim(lower[0] - padding[0], upper[0] + padding[0])
+    ax.set_ylim(lower[1] - padding[1], upper[1] + padding[1])
 roll_axes[0].set_ylabel('World Y [m]')
 roll_axes[1].tick_params(labelleft = False)
-geometry_fig.suptitle(f'Rigid magnet geometry at t = {INSPECT_TIME_S * 1e3:g} ms\n'
-                      f'Translation and rotation changes ×{DISPLAY_GAIN:,.0f} for display', fontsize = 12)
+geometry_fig.suptitle('Mounted magnets and rigid girder motion\n'
+                      f'Installed geometry at upper left; angles ×{DISPLAY_GAIN:,.0f} elsewhere '
+                      f'(t = {INSPECT_TIME_S * 1e3:g} ms)', fontsize = 11)
 geometry_fig.legend(handles = [
     Line2D([], [], ls = '--', color = '0.6', label = 'Static installation-error placement'),
     Line2D([], [], color = 'tab:blue', label = 'q1 transformed'),
     Line2D([], [], color = 'tab:orange', label = 'q2 transformed'),
     Line2D([], [], color = '0.25', label = 'Rigid girder and mounts'),
     Line2D([], [], marker = 'D', ls = '', color = 'k', label = 'Installed rotation reference'),
-], loc = 'lower center', ncol = 3, fontsize = 9)
-geometry_fig.tight_layout(rect = (0., .08, 1., 1.))
+    Line2D([], [], marker = 'o', mfc = 'white', ls = '', color = 'k', label = 'Magnet base mounts'),
+    Line2D([], [], marker = 'o', ls = '', color = 'tab:blue', label = 'Magnetic axis (end views)'),
+], loc = 'lower center', ncol = 4, fontsize = 8.5)
+geometry_fig.tight_layout(rect = (0., .08, 1., 1.), h_pad = 2.4, w_pad = 2.)
 
 ################################################################################
 # Plot the actual tracked beam response to each rigid motion
@@ -509,6 +634,9 @@ for ax, label in zip(beam_axes, cases):
     values = automatic_changes if label == 'All four motions' else screen_changes[label]
     ax.plot(probe_times * 1e3, values[:, 0] * 1e9, label = 'Horizontal beam change')
     ax.plot(probe_times * 1e3, values[:, 1] * 1e9, label = 'Vertical beam change')
+    if label == 'Roll about girder base':
+        ax.plot(probe_times * 1e3, axis_roll_changes[:, 0] * 1e9, '--', color = 'tab:blue')
+        ax.plot(probe_times * 1e3, axis_roll_changes[:, 1] * 1e9, '--', color = 'tab:orange')
     ax.axvline(INSPECT_TIME_S * 1e3, ls = ':', color = '0.5')
     ax.set(title = label + (' — automatic updates' if label == 'All four motions' else ''),
            xlabel = 'Probe arrival time [ms]', ylabel = 'Beam change [nm]')
@@ -516,10 +644,10 @@ for ax, label in zip(beam_axes, cases):
 beam_fig.suptitle('Tracked beam at the downstream observation point\n'
                   'Changes from the static installation-error case; panels have individual vertical scales', fontsize = 11)
 handles, labels = beam_axes[0].get_legend_handles_labels()
-handles.append(Line2D([], [], ls = ':', color = '0.5'))
-labels.append(f'Geometry shown at t = {INSPECT_TIME_S * 1e3:g} ms')
-beam_fig.legend(handles, labels, loc = 'lower center', ncol = 3, fontsize = 9)
-beam_fig.tight_layout(rect = (0., .04, 1., 1.))
+handles.extend([Line2D([], [], ls = ':', color = '0.5'), Line2D([], [], ls = '--', color = '0.4')])
+labels.extend([f'Geometry shown at t = {INSPECT_TIME_S * 1e3:g} ms', 'Roll control: magnetic axis fixed'])
+beam_fig.legend(handles, labels, loc = 'lower center', ncol = 2, fontsize = 9)
+beam_fig.tight_layout(rect = (0., .065, 1., 1.))
 
 ################################################################################
 # Keep performance details available after the physical comparison
