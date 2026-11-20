@@ -1,3 +1,7 @@
+# copyright ############################### #
+# This file is part of the Xtrack Package.  #
+# Copyright (c) CERN, 2026.                 #
+# ######################################### #
 """Precision-preserving rigid deformations about nominal local frames.
 
 An increment is ``(translation, rotation_minus_identity)``. Neither small

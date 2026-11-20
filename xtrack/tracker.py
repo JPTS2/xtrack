@@ -299,9 +299,11 @@ class Tracker:
         try:
             return self._track_with_current_config(particles, *args, **kwargs)
         finally:
-            if self.line._mechanics_vibrations_enabled:
-                self.line.mechanics._finish_tracking()
-            self.config.XTRACK_TPSA_TRACK = original_tpsa_track
+            try:
+                if self.line._mechanics_vibrations_enabled:
+                    self.line.mechanics._finish_tracking()
+            finally:
+                self.config.XTRACK_TPSA_TRACK = original_tpsa_track
 
     def _track_with_current_config(
             self, particles, *args, with_progress: Union[bool, int] = False,
@@ -1641,6 +1643,36 @@ class Tracker:
         self.record_last_track = monitor
         self.record_multi_element_last_track = multi_element_monitor
 
+    def _prepare_track_kernel_arguments(
+            self, particles, *, flag_monitor, buffer_monitor, offset_monitor,
+            multi_element_monitor=None):
+        """Bind the standard tracking kernel and its shared buffers once.
+
+        Range/scheduling arguments remain with the caller. Both ordinary
+        tracking and turn-held mechanics use this binding, so monitor, I/O,
+        configuration and TrackerData changes have a single integration point.
+        """
+        track_kernel, tracker_data = self.get_track_kernel_and_data_for_present_config()
+        track_kernel.description.n_threads = particles._capacity
+        return track_kernel, dict(
+            buffer=tracker_data._buffer.buffer,
+            tracker_data=tracker_data._element_ref_data,
+            particles=particles._xobject,
+            flag_reset_s_at_end_turn=self.reset_s_at_end_turn,
+            flag_monitor=flag_monitor,
+            num_ele_line=len(tracker_data.element_names),
+            line_length=tracker_data.line_length,
+            buffer_tbt_monitor=buffer_monitor,
+            offset_tbt_monitor=offset_monitor,
+            buffer_multi_element_monitor=(
+                particles._buffer.buffer if multi_element_monitor is None
+                else multi_element_monitor._buffer.buffer),
+            offset_multi_element_monitor=(
+                -1 if multi_element_monitor is None else multi_element_monitor._offset),
+            io_buffer=self.io_buffer.buffer,
+            track_flags=self.track_flags.get_flags_register(),
+        )
+
     def _track_no_collective(
         self,
         particles,
@@ -1709,8 +1741,6 @@ class Tracker:
         assert ele_start >= 0
         assert ele_start <= self.num_elements
 
-        track_flags = self.track_flags.get_flags_register()
-
         (
             num_elements_first_turn,
             num_middle_turns,
@@ -1741,44 +1771,27 @@ class Tracker:
         (flag_monitor, monitor, buffer_monitor, offset_monitor
             ) = self._get_monitor(particles, turn_by_turn_monitor, monitor_turns)
 
-        if multi_element_monitor is not None:
-            if backtrack:
-                raise NotImplementedError('Multi-element monitor not implemented yet'
-                                          ' for backtracking')
-            buffer_multi_element_monitor = multi_element_monitor._buffer.buffer
-            offset_multi_element_monitor = multi_element_monitor._offset
-        else:
-            buffer_multi_element_monitor = particles._buffer.buffer  # I just need a valid buffer
-            offset_multi_element_monitor = -1
+        if multi_element_monitor is not None and backtrack:
+            raise NotImplementedError('Multi-element monitor not implemented yet'
+                                      ' for backtracking')
 
         if self.line._needs_rng and not particles._has_valid_rng_state():
             particles._init_random_number_generator()
 
         self._prepare_particle_time_s_and_reference_turns(particles)
 
-        track_kernel, tracker_data = self.get_track_kernel_and_data_for_present_config()
-        track_kernel.description.n_threads = particles._capacity
+        track_kernel, kernel_arguments = self._prepare_track_kernel_arguments(
+            particles, flag_monitor=flag_monitor, buffer_monitor=buffer_monitor,
+            offset_monitor=offset_monitor, multi_element_monitor=multi_element_monitor)
 
         # First turn
         assert num_elements_first_turn >= 0
         track_kernel(
-            buffer=tracker_data._buffer.buffer,
-            tracker_data=tracker_data._element_ref_data,
-            particles=particles._xobject,
+            **kernel_arguments,
             num_turns=1,
             ele_start=ele_start,
             num_ele_track=num_elements_first_turn,
             flag_end_turn_actions=flag_end_first_turn_actions,
-            flag_reset_s_at_end_turn=self.reset_s_at_end_turn,
-            flag_monitor=flag_monitor,
-            num_ele_line=len(tracker_data.element_names),
-            line_length=tracker_data.line_length,
-            buffer_tbt_monitor=buffer_monitor,
-            offset_tbt_monitor=offset_monitor,
-            buffer_multi_element_monitor=buffer_multi_element_monitor,
-            offset_multi_element_monitor=offset_multi_element_monitor,
-            io_buffer=self.io_buffer.buffer,
-            track_flags=track_flags
         )
 
         self._advance_particle_time_s_and_reference_turns(
@@ -1788,23 +1801,11 @@ class Tracker:
         if num_middle_turns > 0:
             assert self.num_elements > 0
             track_kernel(
-                buffer=tracker_data._buffer.buffer,
-                tracker_data=tracker_data._element_ref_data,
-                particles=particles._xobject,
+                **kernel_arguments,
                 num_turns=num_middle_turns,
                 ele_start=0, # always full turn
                 num_ele_track=self.num_elements, # always full turn
                 flag_end_turn_actions=flag_end_middle_turn_actions,
-                flag_reset_s_at_end_turn=self.reset_s_at_end_turn,
-                flag_monitor=flag_monitor,
-                num_ele_line=len(tracker_data.element_names),
-                line_length=tracker_data.line_length,
-                buffer_tbt_monitor=buffer_monitor,
-                offset_tbt_monitor=offset_monitor,
-                buffer_multi_element_monitor=buffer_multi_element_monitor,
-                offset_multi_element_monitor=offset_multi_element_monitor,
-                io_buffer=self.io_buffer.buffer,
-                track_flags=track_flags
             )
 
             self._advance_particle_time_s_and_reference_turns(
@@ -1814,23 +1815,11 @@ class Tracker:
         if num_elements_last_turn > 0:
             assert num_elements_last_turn > 0
             track_kernel(
-                buffer=tracker_data._buffer.buffer,
-                tracker_data=tracker_data._element_ref_data,
-                particles=particles._xobject,
+                **kernel_arguments,
                 num_turns=1,
                 ele_start=0,
                 num_ele_track=num_elements_last_turn,
                 flag_end_turn_actions=False,
-                flag_reset_s_at_end_turn=self.reset_s_at_end_turn,
-                flag_monitor=flag_monitor,
-                num_ele_line=len(tracker_data.element_names),
-                line_length=tracker_data.line_length,
-                buffer_tbt_monitor=buffer_monitor,
-                offset_tbt_monitor=offset_monitor,
-                buffer_multi_element_monitor=buffer_multi_element_monitor,
-                offset_multi_element_monitor=offset_multi_element_monitor,
-                io_buffer=self.io_buffer.buffer,
-                track_flags=track_flags
             )
 
         self.record_last_track = monitor

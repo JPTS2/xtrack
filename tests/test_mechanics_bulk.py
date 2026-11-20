@@ -115,3 +115,41 @@ def test_support_class_roundtrip_and_existing_parent():
     assert copied.mechanics['floor'].support_class == 'floor'
     assert set(copied.lines['ring'].mechanics.get_table().support_class) == {'arc'}
     assert copied.ref['q1'].length._expr is not None
+
+
+def test_bulk_magnet_children_have_one_survey_and_preserve_body_kinds(monkeypatch):
+    env, line = make_line()
+    support = env.mechanics.new_girder('support', anchor=xt.Frame(), support_class='arc')
+    calls = []
+    survey = line.survey
+    def measured_survey(*args, **kwargs):
+        calls.append(None)
+        return survey(*args, **kwargs)
+    monkeypatch.setattr(line, 'survey', measured_survey)
+    magnets = env.mechanics.new_bodies({
+        'm1': dict(elements=['q1'], parent=support, support_class='arc'),
+        'm2': dict(elements=['q2'], parent=support, support_class='arc'),
+    }, line=line, kind='magnet')
+    assert len(calls) == 1
+    assert all(body.kind == 'magnet' and body.parent == support.name for body in magnets.values())
+    assert list(env.mechanics.get_table().rows.match(kind='girder').name) == ['support']
+    assert list(env.mechanics.get_table().rows.match(kind='magnet').name) == ['m1', 'm2']
+    support.shift_y = 2e-6
+    magnets['m2'].installation.shift_y = 3e-6
+    env.mechanics.apply()
+    assert line['q1'].shift_y == pytest.approx(2e-6)
+    assert line['q2'].shift_y == pytest.approx(5e-6)
+    copied = env.copy(with_progress=False)
+    assert copied.mechanics['m1'].kind == 'magnet'
+    assert copied.mechanics['m1'].parent == 'support'
+    copied.mechanics.clear()
+    assert copied['q1'].shift_x == 3e-5
+    assert copied['q2'].shift_y == 0.
+
+
+def test_invalid_bulk_body_kind_does_not_install_any_attachment():
+    env, line = make_line()
+    with pytest.raises(ValueError, match='body kind'):
+        line.mechanics.new_bodies({'m1': ['q1'], 'm2': ['q2']}, kind='')
+    assert not env.mechanics.bodies
+    assert not line.mechanics._attachments

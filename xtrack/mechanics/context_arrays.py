@@ -1,3 +1,7 @@
+# copyright ############################### #
+# This file is part of the Xtrack Package.  #
+# Copyright (c) CERN, 2026.                 #
+# ######################################### #
 """Bounded host-array uploads with explicit host staging ownership."""
 import numpy as np
 import xobjects as xo
@@ -13,5 +17,11 @@ def to_context(context, value):
     """
     value = np.ascontiguousarray(value)
     if isinstance(context, xo.ContextCupy):
-        return context.nplike_lib.array(value, blocking=True)
+        cupy = context.nplike_lib
+        # CuPy <13 always consumed NumPy inputs synchronously and did not
+        # accept this keyword. Version 13 added the asynchronous pinned-input
+        # default: https://docs.cupy.dev/en/stable/upgrade.html#cupy-v13
+        if int(cupy.__version__.split('.')[0]) < 13:
+            return cupy.array(value)
+        return cupy.array(value, blocking=True)
     return context.nparray_to_context_array(value)

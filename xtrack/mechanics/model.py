@@ -260,6 +260,10 @@ class MechanicsManager:
         """Create several supports with one survey; see line.mechanics.new_girders."""
         return self._line(line).new_girders(assignments, support_class=support_class)
 
+    def new_bodies(self, assignments, *, line=None, kind='body', support_class=''):
+        """Create attached bodies with one survey; see line.mechanics.new_bodies."""
+        return self._line(line).new_bodies(assignments, kind=kind, support_class=support_class)
+
     def _body_definition(self, name, *, anchor, parent, feet_local_m, kind,
                          support_class='', candidates=()):
         """Validate/build a body without changing the manager or line."""
@@ -632,9 +636,29 @@ class MechanicsManager:
 
         Computed manager records, automatic enable flags and causal filter
         state are not serialized. Supplied sampled sources retain their data.
+        The line remains frozen at its currently applied pose in the saved
+        environment. Conflicting local edits or changed reference geometry
+        must be resolved before saving, just as before application.
         """
+        self._check_aliases()
+        for view in self._line_views.values():
+            if view._attachments:
+                # A built aperture is valid frozen snapshot data. Applying a
+                # different pose still requires the normal aperture guard.
+                view._check(allow_built_aperture=True)
         for binding in self.sources.values():
             encode_source(binding.source)
+        bodies = []
+        for body in self.bodies.values():
+            alignment = [body.shift_x, body.shift_y, body.shift_s,
+                         body.rot_x_rad, body.rot_y_rad, body.rot_s_rad]
+            if not np.all(np.isfinite(alignment)):
+                raise ValueError(f'{body.name}: local alignment must be finite')
+            bodies.append(dict(name=body.name, kind=body.kind,
+                support_class=body.support_class, parent=body.parent,
+                anchor=body._nominal.tolist(), alignment=alignment,
+                installation=body.installation.values().tolist(),
+                feet_local_m=None if body.feet_local_m is None else body.feet_local_m.tolist()))
         lines = []
         for line, view in self._line_views.items():
             if not view._attachments:
@@ -649,17 +673,22 @@ class MechanicsManager:
             lines.append(dict(line=names[0], reference_frame=view._reference.matrix.tolist(),
                               adopted_reference={name: values.tolist() for name, values in view._reference_inputs.items()},
                               attachments=attachments))
-        return dict(bodies=[dict(name=b.name, kind=b.kind, support_class=b.support_class, parent=b.parent, anchor=b._nominal.tolist(),
-                                 alignment=[b.shift_x, b.shift_y, b.shift_s, b.rot_x_rad, b.rot_y_rad, b.rot_s_rad],
-                                 installation=b.installation.values().tolist(),
-                                 feet_local_m=None if b.feet_local_m is None else b.feet_local_m.tolist())
-                            for b in self.bodies.values()],
+        return dict(bodies=bodies,
                     sources=[dict(name=b.name, targets=list(b.targets), component=b.component,
                                   reference=b.reference, source=encode_source(b.source))
                              for b in self.sources.values()], lines=lines)
 
     def from_dict(self, data):
-        if self.bodies or self.sources or self._line_views:
+        """Load definitions into an empty or explicitly cleared manager.
+
+        Merely accessing ``line.mechanics`` does not make a configured model.
+        Existing attachments, adopted inputs or explicit survey placements must
+        be cleared first. Automatic vibrations remain disabled after loading.
+        """
+        configured_views = any(view._attachments or view._reference_inputs
+                               or view._reference_is_explicit
+                               for view in self._line_views.values())
+        if self.bodies or self.sources or configured_views:
             raise ValueError('Load mechanics into an empty manager')
         for item in data['bodies']:
             b = self.new_body(item['name'], parent=item['parent'], anchor=Frame(item['anchor']),
@@ -890,6 +919,15 @@ class LineMechanics:
         All definitions are validated before any body/binding is installed.
         Existing supports may be parents; create parent levels first.
         """
+        return self.new_bodies(assignments, kind='girder', support_class=support_class)
+
+    def new_bodies(self, assignments, *, kind='body', support_class=''):
+        """Create attached rigid bodies in one validated batch and one survey.
+
+        assignments has the same element/anchor/parent/contact options as
+        new_girders. kind labels every body, e.g. 'magnet' or 'pickup'. Parents
+        must already exist. All definitions are validated before installation.
+        """
         if not hasattr(assignments, 'items') or not assignments:
             raise ValueError('Use a nonempty mapping from support names to assignments')
         definitions = []
@@ -918,7 +956,7 @@ class LineMechanics:
         prepared = []
         for name, names, options in definitions:
             selected = groups[name]
-            body = self.manager._body_definition(name, kind='girder', candidates=selected, **options)
+            body = self.manager._body_definition(name, kind=kind, candidates=selected, **options)
             prepared.append((body, selected))
         for body, selected in prepared:
             self.manager._bodies[body.name] = body
@@ -1060,12 +1098,12 @@ class LineMechanics:
         self._check()
         return self
 
-    def _check(self):
+    def _check(self, *, allow_built_aperture=False):
         # Explicit inspection inside a callback synchronizes one packed output,
         # rather than mistaking the prepared kernel's own writes for user edits.
         if self._runtime is not None:
             self._runtime.finish()
-        if self._attachments and self.line.aperture.is_built:
+        if self._attachments and self.line.aperture.is_built and not allow_built_aperture:
             raise ValueError('Discard/rebuild the aperture survey model when applying mechanics; pipe-body coupling is not implemented yet')
         if self._element_names is not None and tuple(self.line.element_names) != self._element_names:
             raise ValueError('Line sequence changed after mechanics attachment; rebuild bindings')

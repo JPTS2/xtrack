@@ -7,6 +7,7 @@ from xtrack.mechanics.context_arrays import to_context
 
 class FakeCupyContext(xo.ContextCupy):
     """Exercise the upload policy without pretending to execute CUDA."""
+    __version__ = '13.0.0'
     def __init__(self):
         self.blocking_arguments = []
 
@@ -41,3 +42,20 @@ def test_cpu_upload_keeps_dtype_shape_and_contiguous_values():
     assert uploaded.flags.c_contiguous
     assert uploaded.dtype == values.dtype
     np.testing.assert_array_equal(uploaded, values)
+
+
+def test_older_cupy_upload_uses_its_synchronous_numpy_default():
+    class OlderCupyContext(FakeCupyContext):
+        __version__ = '12.3.0'
+
+        def array(self, value):
+            # This older API rejects blocking=..., but consumes host data
+            # before returning. Preserve that contract without a device sync.
+            return value.copy()
+
+    context = OlderCupyContext()
+    staging = np.arange(12.).reshape(4, 3)
+    expected = staging.copy()
+    uploaded = to_context(context, staging)
+    staging[:] = -1.
+    np.testing.assert_array_equal(uploaded, expected)

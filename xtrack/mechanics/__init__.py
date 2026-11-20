@@ -1,3 +1,7 @@
+# copyright ############################### #
+# This file is part of the Xtrack Package.  #
+# Copyright (c) CERN, 2026.                 #
+# ######################################### #
 """Experimental rigid-body mechanics owned by an Xtrack Environment."""
 from .sources import (Harmonic, PlaneWave, MeasuredMotion, DisplacementPSD, AngularPSD,
                       SpectralGroundMotion, LocatedSource, GaussianRegion, RegionalGroundMotion, VectorGroundMotion)

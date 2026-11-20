@@ -1,3 +1,7 @@
+# copyright ############################### #
+# This file is part of the Xtrack Package.  #
+# Copyright (c) CERN, 2026.                 #
+# ######################################### #
 """Prepared, bounded mechanics updates on the tracking context.
 
 Topology and geometry are frozen for one tracking call. Analytic sources execute
@@ -332,18 +336,11 @@ def track_prepared(tracker, particles, *, num_turns=1, turn_by_turn_monitor=None
             time_s=time_s, reference_turns=reference_turns, t_sim=step)
     flag_monitor, monitor, buffer_monitor, offset_monitor = tracker._get_monitor(
         particles, turn_by_turn_monitor, num_turns)
-    kernel, data = tracker.get_track_kernel_and_data_for_present_config()
-    kernel.description.n_threads = particles._capacity
-    args = dict(buffer=data._buffer.buffer, tracker_data=data._element_ref_data,
-        particles=particles._xobject, num_turns=1, ele_start=0,
-        num_ele_track=tracker.num_elements, flag_end_turn_actions=True,
-        flag_reset_s_at_end_turn=True, flag_monitor=flag_monitor,
-        num_ele_line=len(data.element_names), line_length=data.line_length,
-        buffer_tbt_monitor=buffer_monitor, offset_tbt_monitor=offset_monitor,
-        buffer_multi_element_monitor=(particles._buffer.buffer if multi_element_monitor is None
-                                      else multi_element_monitor._buffer.buffer),
-        offset_multi_element_monitor=(-1 if multi_element_monitor is None else multi_element_monitor._offset),
-        io_buffer=tracker.io_buffer.buffer, track_flags=tracker.track_flags.get_flags_register())
+    kernel, args = tracker._prepare_track_kernel_arguments(
+        particles, flag_monitor=flag_monitor, buffer_monitor=buffer_monitor,
+        offset_monitor=offset_monitor, multi_element_monitor=multi_element_monitor)
+    args.update(num_turns=1, ele_start=0, num_ele_track=tracker.num_elements,
+                flag_end_turn_actions=True)
     try:
         for _ in range(num_turns):
             runtime.apply(time_s+tracker.line.mechanics._time_origin_s, tracker.line.mechanics._time_series)
