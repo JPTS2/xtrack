@@ -16,6 +16,10 @@ cover [bulk geometry](2026-11-20_bulk_geometry.md),
 [precision and clock compensation](2026-11-20_mechanics_precision.md), and
 [GPU freeze scheduling and bunch phases](2026-11-20_gpu_freeze_runtime.md).
 
+[First-demo PR readiness](2026-11-20_demo_pr_readiness.md) records the subsequent
+approach decision, focused integration hardening, the new portable bunch lesson
+and a concrete scope/remaining-work estimate for an experimental draft.
+
 Keep alternatives, physical contracts and decisions here as the local branch
 evolves. The executable review surface is the numbered examples, with captured
 terminal output and figures in [review](../review/README.md). Clean commit slicing

@@ -5,6 +5,12 @@ Copyright (c) CERN, 2026.
 
 # Captured mechanics walkthrough
 
+The new [015 teaching lesson](../015_bunch_phases_and_twiss.py) promotes the
+per-bunch study to the bundled ring, with a verified FCC parameter variant.
+[Its figures and terminal](results/prepared_examples/015_bunch_phases_and_twiss/README.md)
+and the [first-demo readiness review](../designs/2026-11-20_demo_pr_readiness.md)
+are the latest additions.
+
 The latest [prepared-runtime review](../designs/2026-11-20_prepared_runtime_review.md)
 keeps the fourteen teaching scripts unchanged. Its
 [fresh example manifest](results/prepared_examples/manifest.json) links the new

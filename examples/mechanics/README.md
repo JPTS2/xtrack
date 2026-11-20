@@ -35,6 +35,7 @@ can find the input to change before following its effect through the lesson.
 | [012_matrix_response.py](012_matrix_response.py) | Complex 6x6 response, mixed units, lever arms and all rigid coordinates | About 1 s |
 | [013_combined_mechanics.py](013_combined_mechanics.py) | Whole-ring ground/region/pump, feet, conditional responses, installation, drift and tracking | About 6 s |
 | [014_tables_and_quad_animation.py](014_tables_and_quad_animation.py) | Select a quad from a table, plot its composed six-coordinate history and save a cuboid GIF | About 4 s, including GIF |
+| [015_bunch_phases_and_twiss.py](015_bunch_phases_and_twiss.py) | Fill buckets, frozen per-bunch Twiss and driven orbit, with an inspectable bunch table | About 15–25 s with cold Twiss kernels |
 
 Times are local CPU examples, with available kernel caches, excluding time spent
 interacting with a figure. See the [captured walkthrough](review/README.md) for
@@ -56,6 +57,18 @@ support classes, precision-preserving local motion and context-native updates.
 [Fresh captures](review/results/prepared_examples/manifest.json) include source,
 kernel and tracker hashes. Cold preparation and steady tracking are measured
 separately in the FCC review; a first example track may compile mechanics kernels.
+
+The [first-demo readiness review](designs/2026-11-20_demo_pr_readiness.md)
+distinguishes the successful prepared tracking path from the remaining GPU,
+source-streaming and packed-bunch work. Its recommendation is to keep the UI and
+prepare a focused experimental draft, with targeted backend comparisons.
+
+Example 015 runs on the bundled ring. Its editable parameters also select the
+FCC model used in the review. It leaves `bunch_table`, `high_frequency_bunches`,
+the two scenario results and the last live mechanics source available after
+`%run`; automatic vibrations are disabled and the line is frozen at one selected
+bunch phase. The [captured lesson](review/results/prepared_examples/015_bunch_phases_and_twiss/README.md)
+explains the figures and links the verified FCC variant.
 
 Run from this checkout with its source first on `PYTHONPATH`:
 

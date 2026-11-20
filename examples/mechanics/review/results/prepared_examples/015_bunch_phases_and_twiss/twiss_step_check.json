@@ -1,0 +1,33 @@
+{
+  "zero_repeat_max_change": 0.0,
+  "records": [
+    {
+      "step_factor": 0.5,
+      "max_beta_beating": 8.867446910088006e-07,
+      "co_x_m": -1.0713456982730213e-07,
+      "max_difference_from_default": 8.506559900922639e-10
+    },
+    {
+      "step_factor": 1.0,
+      "max_beta_beating": 8.863980878182076e-07,
+      "co_x_m": -1.0713456982730213e-07,
+      "max_difference_from_default": 0.0
+    },
+    {
+      "step_factor": 2.0,
+      "max_beta_beating": 8.86472206085287e-07,
+      "co_x_m": -1.0713456982730213e-07,
+      "max_difference_from_default": 8.082480240645395e-10
+    }
+  ],
+  "default_W_propagation_unchanged": true,
+  "quad": "arc.s1.c1.qf.in",
+  "offset_m": 9.408807689542254e-08,
+  "demo_k2lf_m2": 0.1,
+  "demo_k2ld_m2": -0.1,
+  "model_sha256": {
+    "strengths.py": "605b206dd172907bb41338aa746e705368ee7c95f7748db6d19b8377f1d1cc9d",
+    "lattice.py": "7f409049cc39db5341452c2c0c9acbcfe106ad986b1a00ce2728c46228ff5a1b",
+    "geometry.py": "c3bedd943af178b33c2ca6506a2bd77a7a85f2706af2cf7ad5e65271f40a57ef"
+  }
+}

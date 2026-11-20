@@ -1,7 +1,9 @@
 # Prepared-backend teaching captures
 
-All fourteen existing teaching scripts run unchanged on the native prepared
-backend. These headless captures include terminal output, figures and the
+The fifteen teaching scripts have headless captures on the native prepared
+backend. Lessons 001–014 retain the preceding checkpoint captures; 015 is the
+new portable bunch/Twiss lesson. Per-run source hashes identify each revision.
+These headless captures include terminal output, figures and the
 quadrupole GIF. The [manifest](manifest.json) records script, native Python,
 C-header and tracker hashes.
 
@@ -27,5 +29,6 @@ for setup/steady timing definitions, physics and remaining limitations.
 | [012](../../../012_matrix_response.py) | [terminal](012_matrix_response/terminal.txt) | [figure 1](012_matrix_response/figure_01.svg), [figure 2](012_matrix_response/figure_02.svg) | 0.58 |
 | [013](../../../013_combined_mechanics.py) | [terminal](013_combined_mechanics/terminal.txt) | [figure 1](013_combined_mechanics/figure_01.svg), [figure 2](013_combined_mechanics/figure_02.svg) | 7.87 |
 | [014](../../../014_tables_and_quad_animation.py) | [terminal](014_tables_and_quad_animation/terminal.txt) | [figure 1](014_tables_and_quad_animation/figure_01.svg), [figure 2](014_tables_and_quad_animation/figure_02.svg) | 4.16 |
+| [015](../../../015_bunch_phases_and_twiss.py) | [terminal](015_bunch_phases_and_twiss/terminal.txt) | [lesson and figures](015_bunch_phases_and_twiss/README.md) | 14.21 |
 
 [Quadrupole animation](014_tables_and_quad_animation/motion.gif).

@@ -13,6 +13,11 @@ fill-pattern investigation distinguish current capabilities from the remaining
 GPU, long-run streaming and packed-bunch work. Support cost proxies are not
 accepted engineering girder assignments.
 
+The [first-demo readiness review](designs/2026-11-20_demo_pr_readiness.md) is the
+current delivery assessment. The UI/physical model is retained; further studies
+are restricted to GPU acceptance, occurrence/phase consumption and bounded source
+execution. The new 015 lesson promotes the bunch/Twiss study to a portable example.
+
 ## Ownership and the example contract
 
 The interface follows the verified Environment/Line facade pattern in Xtrack
