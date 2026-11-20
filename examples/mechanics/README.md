@@ -31,7 +31,7 @@ and tracking are timed separately. First use can compile kernels.
 | Example | Lesson |
 | --- | --- |
 | [001_rigid_girder.py](001_rigid_girder.py) | Compare design placement, static installation error and vibration; remove vibration, then clear mechanics |
-| [002_sources_and_vibrations.py](002_sources_and_vibrations.py) | Choose harmonic, measured or PSD motion; verify the clock across tracking calls and inspect rotation lever arms |
+| [002_sources_and_vibrations.py](002_sources_and_vibrations.py) | See rigid translation, pitch, yaw and roll of two magnets; track their separate and combined beam responses |
 | [003_shared_girder.py](003_shared_girder.py) | One physical support, opposite beam axes and independent revolution clocks |
 | [004_demo_ring.py](004_demo_ring.py) | Drive 168 surveyed quadrupole supports and inspect magnified motion |
 | [005_ground_and_feet.py](005_ground_and_feet.py) | Sample the ground at four feet per support; fit all rigid coordinates and report contact mismatch |
