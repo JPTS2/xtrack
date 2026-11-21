@@ -24,6 +24,7 @@ RIPPLE_SAMPLES  = 5                     # Both ends of one cycle
 repo_root   = Path(__file__).resolve().parents[3]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env['demo']
+
 ################################################################################
 # Update a numeric family snapshot with MultiSetter
 ################################################################################
@@ -52,7 +53,7 @@ for phase in np.linspace(0.0, 2 * np.pi, RIPPLE_SAMPLES):
     setter.set_values(baseline * (1 + RIPPLE_FRACTION * np.sin(phase)))
     values = setter.get_values()
     print(f'Ripple phase {phase:.3f}: {len(values)} strengths; '
-          f'first k1 = {values[0]:.10f} m^-2')
+          f'first k1 [m^-2]: {values[0]:.10f}')
 setter.set_values(baseline)
 print('Restored family maximum |Delta k1| [m^-2]:',
       np.max(np.abs(setter.get_values() - baseline)))

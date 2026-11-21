@@ -16,7 +16,7 @@ import xtrack as xt
 ########################################
 # Reference and reserved storage
 ########################################
-P0C         = 1e9                       # Electron reference p0*c [eV]
+P0C         = 1e9                       # Electron reference momentum [eV/c]
 CAPACITY    = 8                         # Live, lost and unused array slots
 X_INITIAL   = np.array([-0.3, -0.1, 0.1, 0.3]) * 1e-3  # [m]
 

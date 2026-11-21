@@ -42,7 +42,7 @@ RATIO_TOL   = 1.0e-8                # Dimensionless
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)
 line        = env['demo']
-# A 1500 m electron ring at p0*c=1 GeV, with RF voltage zero and radiation off.
+# A 1500 m electron ring at 1 GeV/c, with RF voltage zero and radiation off.
 # Optics here is periodic 4D at delta=0 and fixed reference momentum.
 reference   = line.twiss4d()
 ratio_ref   = (reference['betx', OBSERVATION]

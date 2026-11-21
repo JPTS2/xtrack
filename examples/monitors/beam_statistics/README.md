@@ -58,6 +58,9 @@ zeta. Particles outside the central zeta interval can populate neighboring
 records, giving partial edge frames. The unwrapped time helper uses the local
 monitor clock, without adding flight time from the line entrance. The initial
 coherent pattern is not asserted to be a collective eigenmode.
+Dashed plot boundaries separate the effective-turn records. Their different
+centroid-pattern amplitudes reflect betatron motion of the prepared population,
+rather than a change in intensity or missing acquisition bins.
 
 `006` records coordinate profiles and scalar moments simultaneously. Particles
 outside a profile's coordinate range still contribute to accepted scalar

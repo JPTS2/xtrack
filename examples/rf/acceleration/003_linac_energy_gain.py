@@ -82,6 +82,8 @@ after_rebase    = particles.copy()
 ########################################
 reference_only  = initial.copy()
 line['rebase'].track(reference_only)
+print('Separate the RF energy gain from reference rebasing\n'
+      '---------------------------------------------------')
 print('Physical RF energy gain [eV]:', after_gap.energy - initial.energy)
 print('Energy change on rebasing [eV]:', after_rebase.energy - after_gap.energy)
 print('Reference-only control energy change [eV]:',
@@ -90,6 +92,8 @@ print('Reference-only control energy change [eV]:',
 ################################################################################
 # Inspect physical energy and momenta alongside their reference coordinates
 ################################################################################
+print('\nInspect physical energy and momenta at each stage\n'
+      '-------------------------------------------------')
 for label, sample in [('Initial', initial), ('After gap', after_gap),
                       ('After rebase', after_rebase),
                       ('Rebase without RF', reference_only)]:

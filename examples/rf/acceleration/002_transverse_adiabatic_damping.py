@@ -18,7 +18,7 @@ import xtrack as xt
 # User parameters
 ################################################################################
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
-PROTON_P0C      = 0.5e9                 # Initial p0*c [eV]
+PROTON_P0C      = 0.5e9                 # Initial momentum [eV/c]
 PROTON_P0C_END  = 0.6e9                 # Program endpoint beyond recorded turns
 PROTON_VOLTAGE  = 3e5                   # [V], below transition
 PROTON_TURNS    = 512

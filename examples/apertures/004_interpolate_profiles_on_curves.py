@@ -101,7 +101,11 @@ pipe.curvature      = PIPE_CURVATURE_FACTOR * curvature
 line.aperture.build_model()
 different_sections  = line.aperture.get_cross_sections_at_s(
     s_samples, extents = True)
-print('Reference / changed pipe curvature [m^-1]:', curvature, pipe.curvature)
+print('\nChange chamber curvature at fixed bend geometry\n'
+      '-----------------------------------------------')
+print('Unchanged bend-reference curvature [m^-1]:', curvature)
+print('Adjusted pipe curvature [m^-1]:', pipe.curvature)
+print('Pipe / bend curvature ratio:', PIPE_CURVATURE_FACTOR)
 different_sections.cols['s min_x max_x min_y max_y'].show(maxwidth = 'full')
 print('Maximum change in queried survey poses:',
       np.max(np.abs(different_sections.pose - sections.pose)))
@@ -124,7 +128,7 @@ axes[1].set_title(f'Pipe curvature = {PIPE_CURVATURE_FACTOR:g} × reference')
 for color, index in enumerate([0, N_SAMPLES // 2, N_SAMPLES - 1]):
     for label, table, style in [
         ('Matched', sections, '--'),
-        ('Different', different_sections, '-'),
+        ('Adjusted pipe', different_sections, '-'),
     ]:
         polygon = table.cross_section[index]
         axes[2].plot(polygon[:, 0] * 1e3, polygon[:, 1] * 1e3, style,

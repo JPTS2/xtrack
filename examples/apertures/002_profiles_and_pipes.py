@@ -100,7 +100,9 @@ winged_shape    = env.aperture.new_profile(
 # resolution samples the SVG first; PROFILE_POINTS resamples the final polygon.
 print('Define reusable transverse profiles\n'
       '-----------------------------------')
-print('SVG path (coordinates in mm):', svg_path)
+print('SVG circular-body radius [mm]:', BODY_RADIUS_MM)
+print('SVG inner / outer winglet reach [mm]:',
+      INNER_REACH_MM, OUTER_REACH_MM)
 print('SVG sampling distance [m]:', SVG_RESOLUTION)
 
 ################################################################################

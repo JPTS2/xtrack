@@ -15,7 +15,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C             = 1e9                     # Proton reference p0*c [eV]
+P0C             = 1e9                     # Proton reference momentum [eV/c]
 PARTICLE_IDS    = np.array([10, 20, 30])
 X               = np.array([-1e-3, 0, 1e-3])  # [m]
 DELTA           = np.array([-1e-3, 0, 1e-3])

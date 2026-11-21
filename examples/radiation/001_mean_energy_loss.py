@@ -17,7 +17,7 @@ import xtrack as xt
 ################################################################################
 # The lattice path is relative to the repository root.
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
-P0C             = 10e9                  # Electron reference p0*c [eV]
+P0C             = 10e9                  # Electron reference momentum [eV/c]
 
 ################################################################################
 # Launch the same electron through the RF-free ring with radiation off and on

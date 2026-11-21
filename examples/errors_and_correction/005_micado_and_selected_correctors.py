@@ -62,6 +62,8 @@ micado      = line.correct_trajectory(
 tw_micado   = line.twiss4d()
 kicks_x     = micado.x_correction.get_kick_values()
 kicks_y     = micado.y_correction.get_kick_values()
+print('Inspect the correctors selected by MICADO\n'
+      '-----------------------------------------')
 for plane, plane_correction, kicks in zip(
         ['x', 'y'], [micado.x_correction, micado.y_correction],
         [kicks_x, kicks_y]):
@@ -84,6 +86,8 @@ selected    = line.correct_trajectory(
     n_iter              = 1,
 )
 tw_selected = line.twiss4d()
+print('\nCompare automatic selection with restricted hardware\n'
+      '----------------------------------------------------')
 for label, tw in [('Before', tw_before), ('MICADO', tw_micado),
                   ('Selected hardware', tw_selected)]:
     print(label, 'BPM rms x / y [m]:',

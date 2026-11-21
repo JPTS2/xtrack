@@ -48,7 +48,7 @@ optimized = source.copy()
 print('Prepare an independent optimized snapshot\n'
       '-----------------------------------------')
 print('Independent environments:', source.env is not optimized.env)
-# The model supplies a 1500 m electron ring at reference p0*c = 1 GeV.
+# The model supplies a 1500 m electron ring at reference momentum 1 GeV/c.
 # RF voltage and radiation are off. Both copies start with the same strengths.
 
 ########################################

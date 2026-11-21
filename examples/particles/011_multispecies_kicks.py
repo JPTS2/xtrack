@@ -12,7 +12,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C     = 1.0e9                         # Proton reference p0*c [eV]
+P0C     = 1.0e9                         # Proton reference momentum [eV/c]
 SPECIES = np.array(['proton', 'deuteron', 'He4'])
 K0L     = 1.0e-4                        # Integrated dipole strength [rad]
 

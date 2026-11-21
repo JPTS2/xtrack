@@ -36,7 +36,8 @@ K1_STEP     = 1.0e-5                 # [m^-2]
 ################################################################################
 # Load the transport and propagate specified entrance optics
 ################################################################################
-# Electron reference p0*c = 1 GeV; no RF or radiation. This is open-line optics:
+# Electron reference momentum = 1 GeV/c; no RF or radiation.
+# This is open-line optics:
 # the entrance conditions stay fixed, and no periodic tune is being matched.
 repo_root   = Path(__file__).resolve().parents[2]
 env         = xt.load(repo_root / LATTICE_FILE)

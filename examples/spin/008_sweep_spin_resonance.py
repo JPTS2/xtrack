@@ -20,7 +20,7 @@ import xtrack as xt
 # Shared electron ring, radiation and RF off
 ########################################
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
-P0C             = 10e9                  # Reference p0*c [eV]
+P0C             = 10e9                  # Reference momentum [eV/c]
 DELTA_MAX       = 1e-4                  # Uniform deterministic momentum sample
 N_PARTICLES     = 21
 

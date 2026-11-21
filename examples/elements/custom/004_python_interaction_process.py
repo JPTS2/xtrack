@@ -19,7 +19,7 @@ import xtrack as xt
 ########################################
 # Unit-weight electron population
 ########################################
-P0C         = 1e9                       # Electron reference p0*c [eV]
+P0C         = 1e9                       # Electron reference momentum [eV/c]
 X           = np.array([-0.3, -0.1, 0.1, 0.3]) * 1e-3  # [m]
 
 ########################################

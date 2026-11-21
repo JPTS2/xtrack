@@ -7,7 +7,6 @@
 # Required packages
 ################################################################################
 from pathlib import Path
-from time import perf_counter
 
 import xtrack as xt
 
@@ -85,7 +84,6 @@ action      = ActionTrackedDetuning(line, NUM_TURNS)
 ########################################
 # Each action evaluation tracks four particles. These are finite-amplitude
 # slopes between 1 and 2 sigma, not an exact zero-action normal form.
-start_time  = perf_counter()
 opt         = line.match(
     vary    = xt.VaryList(
         ['k3lf', 'k3ld'], step = K3L_STEP, limits = K3L_LIMITS),
@@ -97,7 +95,6 @@ opt         = line.match(
 opt.target_status()
 print('Match two actual octupoles using tracking-derived observables\n'
       '-------------------------------------------------------------')
-print('Tracking-derived match time [s]:', perf_counter() - start_time)
 for name in ['k3lf', 'k3ld']:
     print(name, '[m^-3]:', env[name])
 
@@ -112,6 +109,8 @@ check_action    = ActionTrackedDetuning(
     amplitude   = CHECK_AMPLITUDE,
 )
 check_detuning  = check_action.run()
+print('\nRemeasure with more turns and smaller launches\n'
+      '---------------------------------------------')
 for name in ['det_xx', 'det_yy']:
     print(f'{name} [m^-1]: {check_detuning[name]:.3f}; '
           f'independent target residual [m^-1] = '

@@ -12,7 +12,7 @@ import xtrack as xt
 # User parameters
 ################################################################################
 SPECIES = 'proton'
-P0C     = 1.0e9                         # Reference p0*c [eV]
+P0C     = 1.0e9                         # Reference momentum [eV/c]
 
 ################################################################################
 # Define the reference

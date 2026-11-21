@@ -18,7 +18,7 @@ import xtrack as xt
 ########################################
 # Reference particle and RF
 ########################################
-P0C             = 1.0e9                 # Proton reference p0*c [eV]
+P0C             = 1.0e9                 # Proton reference momentum [eV/c]
 VOLTAGE         = 1.0e6                 # [V]
 FREQUENCY       = 400.0e6               # [Hz]
 PHASE           = np.pi / 4             # [rad], at zeta = 0

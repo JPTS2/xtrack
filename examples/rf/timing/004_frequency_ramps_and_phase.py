@@ -18,7 +18,7 @@ import xtrack as xt
 ########################################
 # Weak RF timing probe on a repeated straight flight path
 ########################################
-P0C                 = 1e9               # Electron reference p0*c [eV]
+P0C                 = 1e9               # Electron reference momentum [eV/c]
 PATH_LENGTH         = 30.0              # [m]; not a closed ring geometry
 VOLTAGE             = 100.0             # [V]; small kicks, fixed reference p0
 N_TURNS             = 64

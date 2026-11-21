@@ -15,11 +15,11 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-MODEL_DIR       = 'test_data/example_lattices/fcc_ee_z'
-SIGMA_SHIFT     = 5e-6                   # Independent x/y offsets [m]
-SEED            = 2026
-STRENGTH_FILES    = ['strengths.py', 'strengths_larger_ip_beta.py']
-LABELS          = ['Nominal beta*', 'Larger beta*']
+MODEL_DIR           = 'test_data/example_lattices/fcc_ee_z'
+SIGMA_SHIFT         = 5e-6                 # Independent x/y offsets [m]
+SEED                = 2026
+STRENGTH_FILES      = ['strengths.py', 'strengths_larger_ip_beta.py']
+LABELS              = ['Nominal beta*', 'Larger beta*']
 
 ################################################################################
 # Compare the same errors at two optics settings

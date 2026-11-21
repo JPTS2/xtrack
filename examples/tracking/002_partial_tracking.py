@@ -13,7 +13,7 @@ import xtrack as xt
 ################################################################################
 N_ELEMENTS      = 10
 DRIFT_LENGTH    = 1.0                      # [m]
-P0C             = 7.0e12                    # Proton reference p0*c [eV]
+P0C             = 7.0e12                    # Proton reference momentum [eV/c]
 X               = 1.0e-3                    # [m]
 PX              = 1.0e-5                    # Normalized canonical momentum
 

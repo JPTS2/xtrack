@@ -21,7 +21,7 @@ import xtrack as xt
 ########################################
 GEOMETRY_FILE   = 'test_data/example_lattices/demo_ring/geometry.py'
 OUTPUT_FILE     = 'outputs/matched_strengths.json'
-P0C             = 1e9               # Electron reference p0*c [eV]
+P0C             = 1e9               # Electron reference momentum [eV/c]
 HARMONIC        = 200
 CELL_QX         = 0.25
 CELL_QY         = 0.25

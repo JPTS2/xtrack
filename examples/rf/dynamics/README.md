@@ -33,6 +33,8 @@ bucket; its outside-bucket particles slip in RF phase without being removed.
 The accelerating model supplies 50 keV per turn to the reference, shifts the
 RF phase and prepares a finite-length native matched sample. Its entrance
 Hamiltonian is not assumed invariant under the accelerating discrete map.
+A separate local phase-space view resolves the matched sample and tracked
+trajectory that occupy a small region of the full separatrix plot.
 
 `004` loads the shared ring at 10 GeV/c, powers 50 MV RF, compensates mean
 radiation and applies native tapering. The effective bucket has an asymmetric

@@ -79,7 +79,7 @@ for iteration in range(2):
     for plane in ['x', 'y']:
         kicks   = getattr(bounded, plane + '_correction').get_kick_values()
         print(f'Call {iteration + 1}, {plane}: '
-              f'maximum absolute correction = {np.max(np.abs(kicks)):.3e}')
+              f'maximum absolute correction [rad]: {np.max(np.abs(kicks)):.3e}')
 bounded_orbit   = line.twiss4d()
 for label, tw in [('Before', before), ('Unbounded', free_orbit),
                   ('Bounded', bounded_orbit)]:

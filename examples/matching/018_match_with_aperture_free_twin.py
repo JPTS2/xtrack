@@ -16,7 +16,7 @@ import xtrack as xt
 ########################################
 # Proton transport and offset physical opening
 ########################################
-P0C             = 10.0e9                # Proton reference p0*c [eV]
+P0C             = 10.0e9                # Proton reference momentum [eV/c]
 BUMP_X          = -1e-3                 # Orbit through the aperture [m]
 APERTURE_X      = (-1.5e-3, -0.5e-3)    # Allowed horizontal interval [m]
 BETX_START      = 1.0                   # [m]

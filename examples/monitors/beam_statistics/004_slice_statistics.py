@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Two selected bunches and local half-open slice window
 ########################################
-P0C             = 1e9                  # Electron reference p0*c [eV]
+P0C             = 1e9                  # Electron reference momentum [eV/c]
 SPACING         = 10.0                 # [m], not an RF-bucket definition
 SLOTS           = [0, 2]
 ZETA_RANGE      = (-1.0, 1.0)           # Local bunch coordinate [m]
@@ -66,8 +66,9 @@ monitor = xt.BeamStatsMonitor(
 monitor.track(particles)
 print('Prepare and acquire one snapshot, without an RF-equilibrium assumption\n'
       '----------------------------------------------------------------------')
-print('Levels/default/shape:', monitor.available_levels,
-      monitor.default_level, monitor.mean_x.shape)
+print('Available acquisition levels:', monitor.available_levels)
+print('Default acquisition level:', monitor.default_level)
+print('Mean-x shape (turn, selected slot, slice):', monitor.mean_x.shape)
 print('Slice-center shape:', monitor.zeta_centers.shape)
 
 ################################################################################

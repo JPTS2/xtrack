@@ -18,7 +18,7 @@ import xtrack as xt
 ########################################
 # Proton reference and prescribed source distribution
 ########################################
-P0C             = 1.0e9                 # Reference p0*c [eV]
+P0C             = 1.0e9                 # Reference momentum [eV/c]
 BUNCH_INTENSITY = 1.0e11                # Number of source protons
 SIGMA_X         = 2.0e-3                # Prescribed transverse rms size [m]
 SIGMA_Y         = 2.0e-3                # [m]

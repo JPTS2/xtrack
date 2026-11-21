@@ -35,7 +35,7 @@ N_REPEATS       = 5
 ########################################
 # Common mean-radiation operating point
 ########################################
-P0C             = 10e9                   # Electron reference p0*c [eV]
+P0C             = 10e9                   # Electron reference momentum [eV/c]
 RF_VOLTAGE      = 50e6                   # [V]
 HARMONIC        = 200
 

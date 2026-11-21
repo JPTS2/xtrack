@@ -24,7 +24,7 @@ LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 ########################################
 # Bounded reference-momentum scan
 ########################################
-P0C_VALUES      = np.linspace(9.8e9, 10.2e9, 9)   # p0*c [eV]
+P0C_VALUES      = np.linspace(9.8e9, 10.2e9, 9)   # momentum [eV/c]
 
 ################################################################################
 # Compare the native fractional spin tune with the planar a*gamma relation
@@ -55,6 +55,8 @@ for p0c in P0C_VALUES:
     folded      = abs((a_gamma + 0.5) % 1.0 - 0.5)
     samples.append((p0c, gamma, a_gamma, folded, twiss.spin_tune_fractional))
 samples = np.array(samples)
+print('Compare native and folded planar spin tunes\n'
+      '-------------------------------------------')
 xt.Table(
     data    = {
         'p0c_GeV':          samples[:, 0] / 1e9,

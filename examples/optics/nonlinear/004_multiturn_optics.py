@@ -21,7 +21,7 @@ QX          = 0.255
 QY          = 0.31
 BETA        = 1.0                   # Both rotation-map beta functions [m]
 K3L         = -1e5                  # Integrated normal octupole [m^-3]
-P0C         = 7e12                  # Proton reference p0*c [eV]
+P0C         = 7e12                  # Proton reference momentum [eV/c]
 MAP_LENGTH  = 1.0                   # Abstract turn length [m]
 
 ########################################

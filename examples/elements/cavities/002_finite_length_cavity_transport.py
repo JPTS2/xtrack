@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Reference particle and finite-length RF
 ########################################
-P0C             = 200.0e6               # Proton reference p0*c [eV]
+P0C             = 200.0e6               # Proton reference momentum [eV/c]
 LENGTH          = 0.5                   # [m]
 VOLTAGE         = 1.0e6                 # Total voltage [V]
 FREQUENCY       = 20.0e6                # [Hz]

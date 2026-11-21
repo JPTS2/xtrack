@@ -36,9 +36,10 @@ integration approximation; the printed differences should be considered when
 changing the working point. The incoming file supplies positions, slopes and
 kinetic energy. It is placed directly in the stored coordinates, without
 rematching to the displaced closed orbit; the resulting coherent mismatch is
-visible against the instantaneous closed-orbit samples. Slopes are converted
-to native momenta in the paraxial approximation. The example interprets the post-stripping circulating
-particles as protons; it does not model charge exchange, foil scattering or space charge.
+visible against the instantaneous closed-orbit samples. Field-free input slopes
+are converted exactly to momenta normalized by the reference momentum. The
+example interprets the post-stripping circulating particles as protons; it does
+not model charge exchange, foil scattering or space charge.
 The native injection sampler draws a fresh random subset from the input each
 turn without depleting the source. The simulation covers the full collapse,
 but does not establish injection efficiency or aperture acceptance.

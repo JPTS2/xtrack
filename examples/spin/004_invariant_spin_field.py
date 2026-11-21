@@ -20,7 +20,7 @@ import xtrack as xt
 # Shared electron ring and a local solenoid
 ########################################
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
-P0C             = 10e9                  # Reference p0*c [eV]
+P0C             = 10e9                  # Reference momentum [eV/c]
 SOLENOID_S      = 2.0                   # [m], inside an existing drift
 SOLENOID_LENGTH = 0.2                   # [m]
 SOLENOID_KS     = 0.05                  # Bz/(B*rho) [m^-1]

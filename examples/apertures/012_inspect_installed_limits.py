@@ -18,7 +18,7 @@ import xtrack as xt
 ########################################
 # Existing tracking limits in a straight line
 ########################################
-P0C             = 1e9                   # Electron reference p0*c [eV]
+P0C             = 1e9                   # Electron reference momentum [eV/c]
 STATION_START   = 1.0                   # Two co-located limits [m]
 STATION_END     = 3.0                   # Final ellipse [m]
 LINE_LENGTH     = 4.0                   # [m]

@@ -20,7 +20,7 @@ import xtrack as xt
 # Shared electron ring and compensated mean-radiation operating point
 ########################################
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
-P0C             = 10e9                   # Electron reference p0*c [eV]
+P0C             = 10e9                   # Electron reference momentum [eV/c]
 RF_VOLTAGE      = 50e6                   # [V]
 HARMONIC        = 200
 

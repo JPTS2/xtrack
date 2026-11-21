@@ -20,7 +20,7 @@ import xtrack as xt
 # Shared planar geometry at a local 10 GeV/c electron setting
 ########################################
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
-P0C             = 10e9                  # Reference p0*c [eV]
+P0C             = 10e9                  # Reference momentum [eV/c]
 
 ########################################
 # Number of representative bending-element rows to display
@@ -40,6 +40,8 @@ line        = env['demo']
 env['p0c']  = P0C
 line.set_particle_ref('electron', p0c = env['p0c'])
 twiss       = line.twiss4d(radiation_integrals = True)
+print('Inspect native radiation-integral predictions\n'
+      '---------------------------------------------')
 print('I2 [m^-1] / I3 [m^-2] / I4x [m^-1] / I5x [m^-1]:',
       twiss.rad_int_i2, twiss.rad_int_i3,
       twiss.rad_int_i4x, twiss.rad_int_i5x)

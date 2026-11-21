@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Prepared population and profile ranges
 ########################################
-P0C             = 1e9                  # Electron reference p0*c [eV]
+P0C             = 1e9                  # Electron reference momentum [eV/c]
 N_PARTICLES     = 256
 SEED            = 76
 X_RANGE         = (-1e-3, 1e-3)         # Half-open profile range [m]
@@ -71,6 +71,8 @@ monitor = xt.BeamStatsMonitor(
     },
 )
 monitor.track(particles)
+print('Inspect the recorded profile arrays\n'
+      '-----------------------------------')
 print('Profile coordinates/shapes:', monitor.profile_coordinates,
       {name: value.shape for name, value in monitor.profiles.items()})
 

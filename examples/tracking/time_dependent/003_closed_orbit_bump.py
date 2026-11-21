@@ -35,16 +35,13 @@ PROBE_X         = [-1e-5, 0.0, 1e-5]   # Initial x outside the bump [m]
 ORBIT_TOL       = 1e-10                 # Match x [m] and canonical px
 
 ################################################################################
-# Load the nominal reference clock
-################################################################################
-repo_root   = Path(__file__).resolve().parents[3]
-################################################################################
 # Drive a spatially closed bump with one common envelope
 ################################################################################
 
 ########################################
 # Match four independent correctors on a fresh nominal ring
 ########################################
+repo_root   = Path(__file__).resolve().parents[3]
 bump_env    = xt.load(repo_root / LATTICE_FILE)
 bump_line   = bump_env['demo']
 period      = bump_line.get_length() / (bump_line.particle_ref.beta0[0] * c)

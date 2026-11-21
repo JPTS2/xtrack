@@ -18,7 +18,7 @@ import xtrack as xt
 ########################################
 # One-turn surrogate and its geometric-action detuning
 ########################################
-P0C     = 7.0e9                 # Proton reference p0*c [eV]
+P0C     = 7.0e9                 # Proton reference momentum [eV/c]
 QX      = 0.28
 QY      = 0.31
 BETX    = 2.0                   # [m], alpha_x = 0

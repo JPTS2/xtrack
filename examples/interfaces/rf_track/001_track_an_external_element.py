@@ -19,7 +19,7 @@ import xtrack as xt
 # Element and reference
 ########################################
 DRIFT_LENGTH    = 2.0                   # [m]
-P0C             = 1.0e9                 # Electron reference p0*c [eV]
+P0C             = 1.0e9                 # Electron reference momentum [eV/c]
 
 ########################################
 # Five entrance probes

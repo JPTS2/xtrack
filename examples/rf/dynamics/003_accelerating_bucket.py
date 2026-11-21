@@ -19,7 +19,7 @@ import xtrack as xt
 ########################################
 # Ideal ring and single-harmonic RF
 ########################################
-P0C             = 1e9               # Electron reference p0*c [eV]
+P0C             = 1e9               # Electron reference momentum [eV/c]
 CIRCUMFERENCE   = 100.0             # [m]
 ALPHA_C         = 0.02              # Constant momentum compaction
 HARMONIC        = 20
@@ -35,6 +35,7 @@ N_ACCEL_PARTICLES   = 256
 ACCEL_TURNS         = 64
 SEED                = 753
 NEMITT              = 1e-6              # Transverse launch scale [m]
+
 ################################################################################
 # Define a native nonlinear RF map with independent transverse transport
 ################################################################################
@@ -104,6 +105,7 @@ accelerating_bunch = xp.generate_matched_gaussian_bunch(
     nemitt_y        = NEMITT,
     sigma_z         = SIGMA_Z_ACCEL,
 )
+initial_bunch = accelerating_bunch.copy()
 print('Accelerating sample RMS length [m], fraction inside entrance bucket:',
       np.std(accelerating_bunch.zeta), np.mean(
           accelerating_bucket.is_in_separatrix(
@@ -129,6 +131,7 @@ print('After acceleration: states / reference momentum [GeV/c]:',
 print('Fraction still inside the initial bucket:', np.mean(
     accelerating_bucket.is_in_separatrix(
         accelerating_bunch.zeta, accelerating_bunch.delta)))
+print('Tracked delta uses the accelerating reference momentum at each turn.')
 # This bucket is evaluated at the entrance reference, not updated every turn.
 # Its effective fixed point need not equal the discrete map's exact orbit.
 # Reference acceleration also prevents an exact conserved-Hamiltonian claim.
@@ -145,4 +148,23 @@ for axis in axes:
     axis.grid()
 fig.tight_layout()
 
+################################################################################
+# Resolve the matched sample and its motion on their own scale
+################################################################################
+# The full separatrix is much wider than this prepared sample. The origin stays
+# at the entrance stable point, while tracked delta uses the evolving p0c.
+# This is a co-moving coordinate view, not a fixed laboratory-momentum portrait.
+fig_zoom, axis = plt.subplots(figsize = (8, 4))
+axis.scatter((initial_bunch.zeta - accelerating_bucket.z_sfp) * 1e3,
+              initial_bunch.delta - accelerating_bucket.dp0,
+              s = 6, alpha = 0.4, label = 'Initial matched sample')
+axis.plot((accelerating_record.zeta[0] - accelerating_bucket.z_sfp) * 1e3,
+           accelerating_record.delta[0] - accelerating_bucket.dp0,
+           '.-', markersize = 3, linewidth = 0.8,
+           label = 'One tracked particle')
+axis.set_xlabel('zeta - entrance stable zeta [mm]')
+axis.set_ylabel('delta - entrance dp0')
+axis.grid()
+axis.legend()
+fig_zoom.tight_layout()
 plt.show()

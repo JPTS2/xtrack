@@ -12,7 +12,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C         = 1.0e9                     # Proton reference p0*c [eV]
+P0C         = 1.0e9                     # Proton reference momentum [eV/c]
 PARTICLE_ID = np.array([42, 7, 19, 3])
 FOLLOW_ID   = 42                        # Identifier to follow through sorting
 X           = np.array([2e-3, -1e-3, 3e-3, 0.0])  # [m]

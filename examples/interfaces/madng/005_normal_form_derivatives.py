@@ -72,6 +72,8 @@ normal_form = line.madng_twiss(
     mapdef_normal_form  = MAP_ORDER,
     nslice              = MADNG_SLICES,
 )
+print('Evaluate the nominal normal form\n'
+      '--------------------------------')
 print('Native full tunes / MAD-NG normal-form fractional tunes:',
       normal_form.qx, normal_form.qy,
       normal_form.q1_nf_ng, normal_form.q2_nf_ng)

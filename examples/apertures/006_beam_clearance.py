@@ -128,6 +128,8 @@ with_margins        = line.aperture.get_aperture_sigmas_for_twiss(
     num_rays    = N_RAYS,
 )
 sections_after      = line.aperture.get_cross_sections_at_s(sample_s)
+print('\nReserve mechanical and orbit margins\n'
+      '------------------------------------')
 sections_after.cols['s tol_x tol_y tol_r'].show(maxwidth = 'full')
 print('Maximum chamber-polygon change after adding margins [m]:',
       np.max(np.abs(sections_after.cross_section
@@ -139,6 +141,8 @@ print('Maximum chamber-polygon change after adding margins [m]:',
 # Inspect directional margins at the smallest sampled clearance
 ########################################
 worst       = int(np.argmin(with_margins.n1))
+print('\nInspect directional clearance at the limiting sample\n'
+      '----------------------------------------------------')
 print('Smallest sampled clearance n1 with margins:', with_margins.n1[worst])
 print('Location in quadrupole [m]:', clearance.s[worst] - start_s)
 directional, _  = line.aperture.get_hvd_aperture_sigmas_at_s(

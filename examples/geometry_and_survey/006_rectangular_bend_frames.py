@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Rectangular magnet and common field-free launch
 ########################################
-P0C             = 1e9                   # Proton reference p0*c [eV]
+P0C             = 1e9                   # Proton reference momentum [eV/c]
 CHORD_LENGTH    = 2.0                   # Magnet chord [m]
 ANGLE           = 0.2                   # Reference deflection [rad]
 DRIFT_LENGTH    = 1.0                   # Each adjacent drift [m]
@@ -75,8 +75,9 @@ for row, (plane, roll) in enumerate([('Horizontal', 0.0),
                           '.-', label = body + ' reference')
         axes[row, 0].plot(trajectory[:, 2], trajectory[:, transverse_index],
                           '--', label = body + ' ray')
-        axes[row, 1].plot(tw.s, tw.betx, label = body + ' beta_x')
-        axes[row, 1].plot(tw.s, tw.bety, '--', label = body + ' beta_y')
+        reference_angle = np.arctan2(
+            survey.es[:, transverse_index], survey.es[:, 2])
+        axes[row, 1].plot(survey.s, reference_angle, '.-', label = body)
 
         ########################################
         # Inspect face frames and distributed reference angles
@@ -99,7 +100,8 @@ for row, (plane, roll) in enumerate([('Horizontal', 0.0),
     axes[row, 0].set(xlabel = 'Global Z [m]',
                      ylabel = 'Global ' + ('X' if row == 0 else 'Y') + ' [m]',
                      title = plane + ' bending plane')
-    axes[row, 1].set(xlabel = 'Reference s [m]', ylabel = 'Beta [m]')
+    axes[row, 1].set(xlabel = 'Reference s [m]',
+                     ylabel = 'Reference tangent angle [rad]')
 for axis in axes.ravel():
     axis.legend(fontsize = 'small')
     axis.grid()

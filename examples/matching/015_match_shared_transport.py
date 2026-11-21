@@ -16,7 +16,7 @@ import xtrack as xt
 ########################################
 # Shared-magnet transport reference
 ########################################
-P0C_TRANSPORT   = 1e9                   # Electron reference p0*c [eV]
+P0C_TRANSPORT   = 1e9                   # Electron reference momentum [eV/c]
 BETX_ENTRANCE   = 3.0                   # Both routes [m]; alpha_x = 0
 BETY_ENTRANCE   = 4.0                   # Both routes [m]; alpha_y = 0
 K1_COMMON       = 0.20                  # Shared quadrupole [m^-2]

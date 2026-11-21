@@ -80,8 +80,9 @@ line.track(particles, num_turns = N_TURNS)
 # Outlying zeta can therefore populate neighboring effective-turn records.
 print('Inspect the local arrival clock and full-turn slice arrays\n'
       '----------------------------------------------------------')
-print('Levels/default/shape:', monitor.available_levels,
-      monitor.default_level, monitor.mean_x.shape)
+print('Available acquisition levels:', monitor.available_levels)
+print('Default acquisition level:', monitor.default_level)
+print('Mean-x shape (effective turn, slice):', monitor.mean_x.shape)
 print('Recorded reference-turn bins:', monitor.turns)
 print('Weight by effective turn:', monitor.get('num_particles', level = 'beam'))
 print('Coasting zeta_centers property:', monitor.zeta_centers)
@@ -104,8 +105,16 @@ counts  = monitor.num_particles
 valid   = counts > 0
 fig, ax = plt.subplots(figsize = (9, 4))
 ax.plot(1e6 * tt[valid], 1e3 * monitor.mean_x[valid], '.-')
+boundaries = 0.5 * (tt[:-1, -1] + tt[1:, 0])
+for index, boundary in enumerate(boundaries):
+    ax.axvline(boundary * 1e6, color = '0.5', linestyle = '--',
+                label = 'Effective-turn boundary' if index == 0 else None)
 ax.set_xlabel('Unwrapped local arrival time [us]')
 ax.set_ylabel('Weighted slice mean x [mm]')
+ax.legend()
 ax.grid()
 fig.tight_layout()
+print('Dashed boundaries separate successive effective-turn records.')
+print('The prepared transverse pattern oscillates with betatron motion;')
+print('its changing amplitude is not a change in the recorded population.')
 plt.show()

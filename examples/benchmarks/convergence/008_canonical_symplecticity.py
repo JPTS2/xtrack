@@ -13,7 +13,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C             = 1e9                   # Proton reference p0*c [eV]
+P0C             = 1e9                   # Proton reference momentum [eV/c]
 LENGTH          = 1.0                   # [m]
 RK4_STEPS       = [8, 16, 32, 64]
 PROBE_SCALES    = [1e-4, 1e-5, 1e-6, 1e-7]

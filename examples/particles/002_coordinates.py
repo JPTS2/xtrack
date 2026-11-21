@@ -14,7 +14,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C         = 1.0e9                     # Proton reference p0*c [eV]
+P0C         = 1.0e9                     # Proton reference momentum [eV/c]
 X           = np.array([-1e-3, 0.0, 1e-3])  # [m]
 PX          = np.array([0.05, 0.10, 0.15])  # Normalized canonical px
 ZETA        = np.array([-0.01, 0.0, 0.01])  # [m]

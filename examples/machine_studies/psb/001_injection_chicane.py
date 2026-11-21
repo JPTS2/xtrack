@@ -20,7 +20,7 @@ import xtrack as xt
 ########################################
 SEQUENCE_FILE   = 'test_data/psb_chicane/psb.seq'
 STRENGTH_FILE   = 'test_data/psb_chicane/psb_fb_lhc.str'
-P0C             = 0.5708301551893517e9    # Proton reference p0*c [eV]
+P0C             = 0.5708301551893517e9    # Proton reference momentum [eV/c]
 BUMPER_SHIFT    = -0.0442                # All four bumper offsets [m]
 OUTPUT_FILE     = 'outputs/psb_chicane.json'
 

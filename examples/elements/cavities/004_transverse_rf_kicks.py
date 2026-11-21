@@ -18,7 +18,7 @@ import xtrack as xt
 ########################################
 # Reference and transverse RF
 ########################################
-P0C             = 1.0e9                 # Proton reference p0*c [eV]
+P0C             = 1.0e9                 # Proton reference momentum [eV/c]
 CRAB_VOLTAGE    = 1.0e6                 # [V]
 FREQUENCY       = 400.0e6               # [Hz]
 PHASE           = 0.0                   # [rad]
@@ -82,6 +82,24 @@ expected_px = k0l * np.sin(phase_seen)
 expected_energy = -CRAB_VOLTAGE * wave_number * X_START * np.cos(phase_seen)
 crab_energy     = (crab_particles.ptau - initial.ptau) * initial.p0c
 rf_energy       = (rf_particles.ptau - initial.ptau) * initial.p0c
+
+########################################
+# Read both kicks at the same arrival coordinates
+########################################
+print('Compare transverse and companion energy kicks\n'
+      '---------------------------------------------')
+print('Common horizontal offset [mm]:', X_START * 1e3)
+print('Positive zeta arrives earlier; the off-axis energy kick follows')
+print('the derivative of the transverse RF phase dependence.')
+xt.Table(
+    data    = {
+        'particle_id': initial.particle_id,
+        'zeta_mm':     ZETA_SCAN * 1e3,
+        'crab_px_1e6': crab_particles.px * 1e6,
+        'rf_px_1e6':   rf_particles.px * 1e6,
+        'crab_dE_keV': crab_energy * 1e-3,
+        'rf_dE_keV':   rf_energy * 1e-3},
+    index   = 'particle_id').show(maxwidth = 'full')
 
 ########################################
 # Plot both descriptions and the analytic kicks

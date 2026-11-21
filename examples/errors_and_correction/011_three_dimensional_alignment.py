@@ -18,7 +18,7 @@ import xtrack as xt
 ########################################
 # One curved reference element and three entrance probes
 ########################################
-P0C             = 1e9                  # Electron reference p0*c [eV]
+P0C             = 1e9                  # Electron reference momentum [eV/c]
 BEND_LENGTH     = 2.0                  # Reference arc length [m]
 BEND_ANGLE      = 0.05                 # Horizontal reference deflection [rad]
 DELTA_VALUES    = np.array([-1e-4, 0.0, 1e-4])  # Include the delta=0 probe
@@ -77,6 +77,8 @@ line['bend'].rot_s_rad_no_frame     = ROLL
 # The anchor is a distance in metres along that arc, not a length fraction.
 misaligned = initial.copy()
 line.track(misaligned, num_turns = 1)
+print('Compare nominal and misaligned transport\n'
+      '----------------------------------------')
 print('Nominal exit coordinates:')
 nominal.get_table().cols['particle_id x px y py zeta delta s state'].show(
     maxwidth = 'full')

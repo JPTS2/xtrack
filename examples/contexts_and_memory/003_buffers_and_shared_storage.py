@@ -55,8 +55,8 @@ quad_a.k1   = CHANGED_K1
 print('Sharing a buffer does not share field values\n'
       '--------------------------------------------')
 print('Elements in the same buffer:')
-print(f'  Changed quad_a k1: {quad_a.k1:g} m^-2')
-print(f'  Unchanged quad_b k1: {quad_b.k1:g} m^-2')
+print(f'  Changed quad_a k1 [m^-2]: {quad_a.k1:g}')
+print(f'  Unchanged quad_b k1 [m^-2]: {quad_b.k1:g}')
 
 ########################################
 # Copy particles into the same buffer
@@ -85,14 +85,14 @@ shallow['qb'].k1    = CHANGED_K1
 print('\nChoose whether a copied line shares its elements\n'
       '------------------------------------------------')
 print('After changing qb through the shallow copy:')
-print(f"  Original line qb k1: {line['qb'].k1:g} m^-2")
-print(f"  Shallow copy qb k1: {shallow['qb'].k1:g} m^-2")
-print(f"  Deep copy qb k1: {deep['qb'].k1:g} m^-2")
+print(f"  Original line qb k1 [m^-2]: {line['qb'].k1:g}")
+print(f"  Shallow copy qb k1 [m^-2]: {shallow['qb'].k1:g}")
+print(f"  Deep copy qb k1 [m^-2]: {deep['qb'].k1:g}")
 
 ########################################
 # A deep copy has independent elements
 ########################################
 deep['qa'].k1   = K1
 print('After changing qa through the deep copy:')
-print(f"  Original line qa k1: {line['qa'].k1:g} m^-2")
-print(f"  Deep copy qa k1: {deep['qa'].k1:g} m^-2")
+print(f"  Original line qa k1 [m^-2]: {line['qa'].k1:g}")
+print(f"  Deep copy qa k1 [m^-2]: {deep['qa'].k1:g}")

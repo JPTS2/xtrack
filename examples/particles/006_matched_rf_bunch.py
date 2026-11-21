@@ -20,7 +20,7 @@ import xtrack as xt
 ########################################
 # Ideal ring with linearized RF focusing
 ########################################
-P0C             = 3e9                     # Proton reference p0*c [eV]
+P0C             = 3e9                     # Proton reference momentum [eV/c]
 CIRCUMFERENCE   = 100.0                   # [m]
 ALPHA_C         = 0.2                     # Momentum compaction
 HARMONIC        = 20

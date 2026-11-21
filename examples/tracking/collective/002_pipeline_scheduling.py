@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Two identical proton bunches and one abstract interaction point
 ########################################
-P0C                 = 7e12              # Proton reference p0*c [eV]
+P0C                 = 7e12              # Proton reference momentum [eV/c]
 BUNCH_POPULATION    = 1e11              # Real protons per bunch
 N_MACROPARTICLES    = 256               # Multiple of four for reflection pairs
 SIGMA_X             = 1e-4              # Gaussian population scale [m]
@@ -127,6 +127,8 @@ multitracker.track(num_turns = N_TURNS, turn_by_turn_monitor = True)
 ########################################
 # Check that both bunches progressed through the requested turns
 ########################################
+print('Inspect pipeline progress and exchanged moments\n'
+      '-----------------------------------------------')
 for name in ['b1', 'b2']:
     particles = bunches[name]
     print(name, 'turns / states:', np.unique(particles.at_turn),

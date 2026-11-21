@@ -20,7 +20,7 @@ ELEMENT         = 'arc.s1.c1.qd'
 HALF_X          = 0.02                  # Elliptical chamber semiaxis [m]
 HALF_Y          = 0.01                  # Elliptical chamber semiaxis [m]
 PIPE_SHIFT_X    = 0.002                 # Chamber translation [m]
-OUTPUT_DIR      = Path(__file__).resolve().parent / 'outputs'
+OUTPUT_DIR      = 'outputs'             # Destination beside this script
 
 ################################################################################
 # Add a named chamber to the shared ring
@@ -53,8 +53,9 @@ original    = line.aperture.get_cross_sections_at_s([centre_s])
 ########################################
 # Explicitly include aperture definitions and placements with the line
 ########################################
-OUTPUT_DIR.mkdir(exist_ok = True)
-line_file   = OUTPUT_DIR / 'demo_with_apertures.json'
+output_dir  = Path(__file__).resolve().parent / OUTPUT_DIR
+output_dir.mkdir(exist_ok = True)
+line_file   = output_dir / 'demo_with_apertures.json'
 line.to_json(line_file, include_aperture = True)
 restored    = xt.load(line_file)
 restored.aperture.build_model()
@@ -64,7 +65,7 @@ restored.aperture.build_model()
 ########################################
 # Carry the aperture model onto another copy of the same named lattice
 ########################################
-aperture_file   = OUTPUT_DIR / 'demo_apertures.json'
+aperture_file   = output_dir / 'demo_apertures.json'
 env.aperture.to_json(aperture_file)
 target_env      = xt.load(repo_root / LATTICE_FILE)
 target_env.aperture.from_json(aperture_file)
@@ -93,12 +94,20 @@ restored.aperture.get_extents_at_s([centre_s]).show(maxwidth = 'full')
 ########################################
 # Compare the same section from both native persistence paths
 ########################################
+restored_section    = restored.aperture.get_cross_sections_at_s([centre_s])
+transferred_section = target.aperture.get_cross_sections_at_s([centre_s])
+print('\nCompare both reload routes with the original section\n'
+      '----------------------------------------------------')
+for table, label in [(restored_section, 'Complete line'),
+                      (transferred_section, 'Aperture-only')]:
+    print(label, 'maximum polygon-coordinate difference [m]:',
+          np.max(np.abs(table.cross_section - original.cross_section)))
+
 fig, ax     = plt.subplots(figsize = (7, 5))
 for table, label, style in [
     (original, 'Before saving', '-'),
-    (restored.aperture.get_cross_sections_at_s([centre_s]),
-     'Complete line', '--'),
-    (target.aperture.get_cross_sections_at_s([centre_s]), 'Aperture-only', ':'),
+    (restored_section, 'Complete line', '--'),
+    (transferred_section, 'Aperture-only', ':'),
 ]:
     points  = table.cross_section[0]
     closed  = np.vstack([points, points[0]])

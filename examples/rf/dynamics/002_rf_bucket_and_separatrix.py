@@ -19,7 +19,7 @@ import xtrack as xt
 ########################################
 # Ideal ring with a stationary single-harmonic RF system
 ########################################
-P0C             = 1e9               # Electron reference p0*c [eV]
+P0C             = 1e9               # Electron reference momentum [eV/c]
 CIRCUMFERENCE   = 100.0             # [m]
 ALPHA_C         = 0.02              # Constant momentum compaction
 HARMONIC        = 20

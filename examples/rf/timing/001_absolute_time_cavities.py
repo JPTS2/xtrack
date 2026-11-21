@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Electron reference and two observation positions
 ########################################
-P0C         = 1e9                       # Reference p0*c [eV]
+P0C         = 1e9                       # Reference momentum [eV/c]
 DISTANCE    = 0.75                      # Second position measured from s=0 [m]
 CLOCK_START = 2e-9                      # Shared reference-clock epoch [s]
 ZETA        = 0.02                      # Positive means earlier arrival [m]

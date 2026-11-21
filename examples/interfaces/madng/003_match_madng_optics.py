@@ -92,6 +92,8 @@ requested   = np.array([
     reference['beta11_ng', OBSERVATION], reference['beta22_ng', OBSERVATION]])
 ng_after    = np.array([
     checked['beta11_ng', OBSERVATION], checked['beta22_ng', OBSERVATION]])
+print('\nCompare the matched observables at the named BPM\n'
+      '------------------------------------------------')
 xt.Table(
     data    = {
         'quantity':      np.array(['beta_x [m]', 'beta_y [m]']),

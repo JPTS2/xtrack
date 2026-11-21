@@ -50,7 +50,7 @@ k1_before   = {name: env[name] for name in ['kqf', 'kqd']}
 ########################################
 # Define variables and targets
 ########################################
-# The ring supplies an electron reference at p0*c = 1 GeV, with RF voltage
+# The ring supplies a 1 GeV/c electron reference, with RF voltage
 # zero and radiation off. Periodic 4D optics uses delta=0 at fixed p0.
 # Family variables drive all their quadrupoles through lattice expressions.
 
@@ -153,10 +153,10 @@ print('\nCheck the resulting tunes and family strengths\n'
       '----------------------------------------------')
 print(f'Final Qx = {tw.qx:.10f}; residual = {tw.qx - QX_TARGET:+.3e}')
 print(f'Final Qy = {tw.qy:.10f}; residual = {tw.qy - QY_TARGET:+.3e}')
-print(f'Allowed family strengths: [{K1_MIN}, {K1_MAX}] m^-2')
+print(f'Allowed family strengths [m^-2]: [{K1_MIN}, {K1_MAX}]')
 for name in ['kqf', 'kqd']:
     strength = env[name]
-    print(f'{name} = {strength:.10f} m^-2; '
+    print(f'{name} [m^-2]: {strength:.10f}; '
           f'within bounds: {K1_MIN <= strength <= K1_MAX}')
 
 ################################################################################

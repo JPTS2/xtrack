@@ -21,7 +21,7 @@ import xtrack as xt
 # Shared electron ring and a gentle reference-momentum ramp
 ########################################
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
-P0C_END         = 1.00004e9             # Final program p0*c [eV]
+P0C_END         = 1.00004e9             # Final program momentum [eV/c]
 N_TURNS         = 256                   # Two extra turns leave a program margin
 
 ########################################

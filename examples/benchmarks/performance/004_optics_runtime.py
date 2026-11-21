@@ -19,7 +19,7 @@ import xtrack as xt
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 RF_VOLTAGE      = 1e5                   # [V], stable longitudinal focusing
 N_REPEATS       = 7
-RADIATION_P0C   = 10e9                  # Separate radiating setting [eV]
+RADIATION_P0C   = 10e9                  # Radiating reference momentum [eV/c]
 RADIATION_RF    = 50e6                  # [V], above mean radiation loss
 OPEN_START      = 'arc.s1.c1.qf.in'
 OPEN_END        = 'straight.s1.start'

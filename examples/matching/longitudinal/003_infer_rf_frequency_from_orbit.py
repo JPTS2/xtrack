@@ -34,11 +34,8 @@ SEARCH_TURNS    = 4
 repo_root                       = Path(__file__).resolve().parents[3]
 env                             = xt.load(repo_root / LATTICE_FILE)
 line                            = env['demo']
-p0c                             = float(line.particle_ref.p0c[0])
 beta0                           = float(line.particle_ref.beta0[0])
-period0                         = line.get_length() / (beta0 * c)
 frequency0                      = float(line['rf.1'].frequency)
-harmonic                        = round(frequency0 * period0)
 cavity_s                        = float(line.get_table()['s', 'rf.1'])
 cavity_time                     = cavity_s / (beta0 * c)
 env['voltage_rf']               = RF_VOLTAGE
@@ -90,7 +87,6 @@ signal                          = line.twiss(
 # This synthetic measurement has no noise or alignment errors. Keep the RF
 # phase fixed, so one dispersive position determines the one unknown trim.
 # A zero-dispersion BPM would not identify its sign near the reference orbit.
-known_trim                      = KNOWN_TRIM
 measured_x                      = signal['x', BPM_OBSERVATION]
 env['rf_relative_frequency']    = 0.0
 print('Infer a frequency trim from a horizontal orbit measurement\n'

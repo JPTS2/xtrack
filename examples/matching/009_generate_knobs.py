@@ -22,7 +22,7 @@ import xtrack as xt
 LATTICE_FILE    = 'test_data/example_lattices/demo_ring/lattice.py'
 KNOB_NAME       = 'horizontal_tune'
 VERTICAL_KNOB   = 'vertical_tune'
-QX_INCREMENT    = 0.002                 # Matched endpoint Qx increment
+QX_INCREMENT    = 0.01                 # Matched endpoint Qx increment
 QY_INCREMENT    = 0.001                 # Matched endpoint Qy increment
 N_SAMPLES       = 5
 

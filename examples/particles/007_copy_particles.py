@@ -12,7 +12,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C         = 1e9                         # Proton reference p0*c [eV]
+P0C         = 1e9                         # Proton reference momentum [eV/c]
 X           = np.array([-1e-3, 0, 1e-3])  # Launch positions [m]
 K1L_A       = 0.2                         # Integrated k1 [m^-1]
 K1L_B       = 0.4                         # [m^-1]

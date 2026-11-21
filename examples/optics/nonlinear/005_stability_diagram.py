@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Integrable detuning map and Gaussian emittances
 ########################################
-P0C         = 7e12                  # Proton reference p0*c [eV]
+P0C         = 7e12                  # Proton reference momentum [eV/c]
 QX          = 0.28
 QY          = 0.31
 DET_XX      = 1e6                   # dQx/dJx [m^-1]
@@ -85,6 +85,8 @@ footprint = line.get_footprint(
 betagamma   = float(line.particle_ref.beta0[0] * line.particle_ref.gamma0[0])
 jx          = footprint.Jx_2d / betagamma
 jy          = footprint.Jy_2d / betagamma
+print('Check tracked tunes against the integrable map\n'
+      '----------------------------------------------')
 print('Maximum tracked-minus-analytic tune errors x/y:',
       np.max(np.abs(footprint.qx - (QX + DET_XX * jx + DET_XY * jy))),
       np.max(np.abs(footprint.qy - (QY + DET_XY * jx + DET_YY * jy))))

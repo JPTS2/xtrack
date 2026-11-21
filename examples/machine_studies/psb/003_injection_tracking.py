@@ -85,9 +85,13 @@ incoming    = xt.Particles(
     zeta    = source[:, 4] * 1e-3,
     weight  = PARTICLE_WEIGHT,
 )
-# The input angles are slopes in mrad; native momenta are normalized to p0.
-incoming.px = source[:, 1] * 1e-3 * (1 + incoming.delta)
-incoming.py = source[:, 3] * 1e-3 * (1 + incoming.delta)
+# The input angles are slopes in mrad. At this field-free input plane,
+# p_s/p0 = (1+delta)/sqrt(1+x'^2+y'^2); this retains the exact slope convention.
+slope_x         = source[:, 1] * 1e-3
+slope_y         = source[:, 3] * 1e-3
+momentum_s      = (1 + incoming.delta) / np.sqrt(1 + slope_x**2 + slope_y**2)
+incoming.px     = slope_x * momentum_s
+incoming.py     = slope_y * momentum_s
 # The source is placed directly in the stored coordinates, without rematching
 # to the displaced circulating orbit. The resulting mismatch is visible.
 # Its H-minus labels are not a stripping/foil interaction model.

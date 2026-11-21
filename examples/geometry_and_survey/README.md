@@ -77,6 +77,8 @@ coincide at the differently oriented planes.
 planes, then compares straight-body and curved-body representations with thick
 slices. The field setting and chord/angle are fixed. Straight-body face maps
 carry the reference-angle changes at their boundaries; curved-body slices
-carry distributed curvature. Local coordinates can differ despite the same
-global exit ray. Tables and plots expose this geometry; the comparison is not
-a proof that all finite-amplitude maps or coarse slice counts are equivalent.
+carry distributed curvature. The tangent-angle panels show the different
+reference conventions directly, beside the global reference paths and rays.
+Local coordinates can differ despite the same global exit ray. The comparison
+is not a proof that all finite-amplitude maps or coarse slice counts are
+equivalent.

@@ -29,7 +29,7 @@ PEAK_EZ         = 10e6                  # Chosen peak |complex Ez| [V/m]
 ########################################
 # Electron probes
 ########################################
-P0C             = 100e6                 # Reference p0*c [eV]
+P0C             = 100e6                 # Reference momentum [eV/c]
 N_PROBES        = 13
 PHASE_RANGE     = (-180, 180)           # Entrance arrival-time phases [deg]
 
@@ -81,7 +81,7 @@ gain_mev    = (energy_out - energy_in) * 1e-6
 
 print('Scan the entrance arrival time\n------------------------------')
 print(f'Field-map length [m]: {line.get_length():.6f}')
-print(f'Chosen peak |complex Ez|: {PEAK_EZ * 1e-6:.3f} MV/m')
+print(f'Chosen peak |complex Ez| [MV/m]: {PEAK_EZ * 1e-6:.3f}')
 print(f'Fixed reference momentum [MeV/c]: {particles.p0c[0] * 1e-6:.3f}')
 xt.Table(
     data    = {

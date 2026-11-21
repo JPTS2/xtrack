@@ -82,11 +82,13 @@ cooler.track(powered)
 # px/py are canonical momenta normalized to p0, not geometric slopes.
 # ElectronCooler uses length to integrate its force; it does not drift x/y or
 # advance s. The guiding field enters the friction model, not a solenoid map.
+print('Inspect the single-passage friction kicks\n'
+      '-----------------------------------------')
 for coordinate in ['px', 'py', 'delta']:
     before      = np.asarray(getattr(initial, coordinate))
     after       = np.asarray(getattr(powered, coordinate))
     off         = np.asarray(getattr(unpowered, coordinate))
-    print(coordinate, '(dimensionless):')
+    print(coordinate, '[1]:')
     xt.Table(
         data    = {
             'particle_id':       initial.particle_id,

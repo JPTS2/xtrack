@@ -68,6 +68,8 @@ nominal = line.twiss(
 ################################################################################
 # Solve the actual synchronous period for each static frequency offset
 ################################################################################
+print('Check the synchronous return at each RF setting\n'
+      '-----------------------------------------------')
 rows    = []
 for shift in FREQUENCY_SHIFTS:
     env['frequency_rf'] = frequency0 + shift

@@ -16,7 +16,7 @@ import xtrack as xt
 ########################################
 # Field-free entrance state
 ########################################
-P0C                 = 1.0e9             # Proton reference p0*c [eV]
+P0C                 = 1.0e9             # Proton reference momentum [eV/c]
 X_START             = 2.0e-3            # [m]
 Y_START             = -0.5e-3           # [m]
 PX_START            = 1.0e-3            # P_x / p0

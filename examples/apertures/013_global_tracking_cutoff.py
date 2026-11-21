@@ -19,7 +19,7 @@ import xtrack as xt
 ########################################
 LENGTH          = 2.0                   # [m]
 N_DRIFTS        = 16
-P0C             = 1e9                   # Electron reference p0*c [eV]
+P0C             = 1e9                   # Electron reference momentum [eV/c]
 X_INITIAL       = np.array([0.0, 0.005, -0.005])  # [m]
 PX_INITIAL      = np.array([0.0, 0.006, -0.006])  # p_x/p0
 

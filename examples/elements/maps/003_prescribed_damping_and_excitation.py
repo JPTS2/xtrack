@@ -13,7 +13,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C             = 1e9                   # Proton reference p0*c [eV]
+P0C             = 1e9                   # Proton reference momentum [eV/c]
 DAMPING_RATE    = 0.1                   # Fractional x reduction per pass
 NOISE_SIGMA     = 1e-4                  # Added Gaussian x kick RMS [m]
 N_PARTICLES     = 2048

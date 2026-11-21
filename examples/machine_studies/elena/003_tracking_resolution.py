@@ -110,8 +110,11 @@ for steps in STEPS:
 ########################################
 fig, axes = plt.subplots(1, 2, figsize = (11, 4), layout = 'constrained')
 turns, positions = histories[max(STEPS)]
-axes[0].plot(turns[-1], 1e3 * (positions[-1] - tw_ref.x[0]))
+axes[0].plot(
+    turns[-1], 1e3 * (positions[-1] - tw_ref.x[0]),
+    label = f'(x_n, y_n) = ({X_NORMALIZED[-1]:g}, {Y_NORMALIZED[-1]:g})')
 axes[0].set(xlabel = 'Turn', ylabel = 'x - closed orbit [mm]')
+axes[0].legend()
 
 ########################################
 # Exclude the reference point from the logarithmic error plot

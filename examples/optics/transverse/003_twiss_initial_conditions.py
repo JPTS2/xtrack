@@ -51,7 +51,7 @@ line.insert(env.place(INTERIOR_ELEMENT, at = INTERIOR_AT))
 ################################################################################
 # Calculate the full open-line solution
 ################################################################################
-# The model supplies an electron reference particle with p0*c = 1 GeV.
+# The model supplies a 1 GeV/c electron reference particle.
 # Unspecified entrance orbit and dispersion components are zero.
 tw_full = line.twiss(
     method  = '4d',

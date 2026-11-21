@@ -59,6 +59,8 @@ line.aperture.build_model()
 initial         = line.build_particles(x = X_INITIAL)
 without_limits  = initial.copy()
 line.track(without_limits)
+print('Track with chamber geometry only\n'
+      '--------------------------------')
 print('Alive with geometry only:', np.count_nonzero(without_limits.state > 0))
 
 ################################################################################

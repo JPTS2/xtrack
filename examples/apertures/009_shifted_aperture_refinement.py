@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Thick magnetic transport between two transformed checks
 ########################################
-P0C             = 1e9                  # Electron reference p0*c [eV]
+P0C             = 1e9                  # Electron reference momentum [eV/c]
 QUAD_LENGTH     = 2.0                  # [m]
 QUAD_K1         = 0.25                 # Nonzero normal gradient [m^-2]
 START_AXES      = (0.020, 0.015)        # Ellipse half axes [m]

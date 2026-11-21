@@ -16,7 +16,7 @@ import xtrack as xt
 ########################################
 # Reference and RF
 ########################################
-P0C             = 1.0e9                 # Proton reference p0*c [eV]
+P0C             = 1.0e9                 # Proton reference momentum [eV/c]
 LENGTH          = 1.0                   # [m]
 VOLTAGE         = 5.0e6                 # [V]
 FREQUENCY       = 200.0e6               # [Hz]

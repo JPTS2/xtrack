@@ -19,7 +19,7 @@ import xtrack as xt
 ########################################
 # Same single-bend setting for both native stochastic models
 ########################################
-P0C             = 10e9                  # Reference p0*c [eV]
+P0C             = 10e9                  # Reference momentum [eV/c]
 BEND_LENGTH     = 1.0                   # [m]
 BEND_ANGLE      = 0.005                 # [rad]
 N_KICKS         = 8

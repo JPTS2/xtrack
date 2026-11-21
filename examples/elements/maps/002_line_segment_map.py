@@ -18,7 +18,7 @@ from scipy.constants import c
 ########################################
 # Reference and assigned transverse optics
 ########################################
-P0C             = 1.0e9                 # Proton reference p0*c [eV]
+P0C             = 1.0e9                 # Proton reference momentum [eV/c]
 LENGTH          = 100.0                 # Surrogate segment length [m]
 QX              = 0.31                  # Horizontal phase advance [turns/pass]
 QY              = 0.32                  # Vertical phase advance [turns/pass]

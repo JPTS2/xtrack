@@ -22,7 +22,7 @@ import xtrack as xt
 # Shared ring and compensated RF
 ########################################
 LATTICE_FILE            = 'test_data/example_lattices/demo_ring/lattice.py'
-P0C_RADIATION           = 10e9          # Electron reference p0*c [eV]
+P0C_RADIATION           = 10e9          # Electron reference momentum [eV/c]
 RF_VOLTAGE_RADIATION    = 50e6          # Above the mean loss per turn [V]
 HARMONIC_RADIATION      = 200
 

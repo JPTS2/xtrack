@@ -129,6 +129,8 @@ matched = line.twiss(
     search_for_t_rev            = True,
     num_turns_search_t_rev      = SEARCH_TURNS,
 )
+print('Match synchronous momentum and arrival coordinate\n'
+      '-------------------------------------------------')
 print('Requested/matched entrance delta:', DELTA_TARGET, matched.delta[0])
 print('Requested/matched entrance zeta [m]:', ZETA_TARGET, matched.zeta[0])
 print('Reference momentum remains [eV/c]:', line.particle_ref.p0c[0])
@@ -146,14 +148,8 @@ print('Matched/linearized relative frequency offsets:',
 ########################################
 # Check closure in the RF-synchronous frame, not the reference clock
 ########################################
-particle    = line.build_particles(
-    x       = matched.x[0],
-    px      = matched.px[0],
-    y       = matched.y[0],
-    py      = matched.py[0],
-    zeta    = matched.zeta[0],
-    delta   = matched.delta[0],
-)
+# Reuse the native synchronous particle, including its reference quantities.
+particle    = matched.particle_on_co.copy()
 initial     = particle.copy()
 line.track(particle)
 expected_zeta_slip = beta0 * c * (period0 - harmonic / line['rf.1'].frequency)

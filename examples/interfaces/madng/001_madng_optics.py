@@ -67,7 +67,7 @@ print(f'MAD-NG tunes: Qx = {qx_ng:.8f}, Qy = {qy_ng:.8f}')
 line['dkqf']    = DKQF
 tw_trimmed      = line.madng_twiss()
 print('\nChange a shared family knob\n---------------------------')
-print(f'Focusing family trim: dkqf = {DKQF:.3g} m^-2')
+print(f'Focusing-family trim dkqf [m^-2]: {DKQF:.3g}')
 print(f'Xtrack tune shifts: dQx = {tw_trimmed.qx - tw.qx:.8f}, '
       f'dQy = {tw_trimmed.qy - tw.qy:.8f}')
 qx_trimmed_ng   = tw_trimmed.mu1_ng[-1] - tw_trimmed.mu1_ng[0]

@@ -13,7 +13,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C             = 1e9                   # Proton reference p0*c [eV]
+P0C             = 1e9                   # Proton reference momentum [eV/c]
 LENGTH          = 10.0                  # Bookkeeping path length [m]
 YAW             = 0.05                  # [rad]
 PITCH           = 0.04                  # [rad]

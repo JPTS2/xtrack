@@ -13,7 +13,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C         = 10e9                  # Electron reference p0*c [eV]
+P0C         = 10e9                  # Electron reference momentum [eV/c]
 BEND_LENGTH = 1.0                   # [m]
 BEND_ANGLES = [0.005, 0.05]         # Low/high mean emission occurrence
 N_KICKS     = 8
@@ -37,6 +37,7 @@ for row, angle in enumerate(BEND_ANGLES):
     line.track(probe)
     mean_loss = float((energy_in - probe.energy)[0])
     print('Bend angle [rad], deterministic loss [keV]:', angle, mean_loss / 1e3)
+    losses = []
     for model in ['quantum', 'quantum-kick']:
         line.configure_radiation(model = model)
         particles   = line.build_particles(x = np.zeros(N_PARTICLES))
@@ -51,10 +52,15 @@ for row, angle in enumerate(BEND_ANGLES):
               np.corrcoef(particles.x, particles.delta)[0, 1])
         print('  Max |py| (planar control), surviving fraction:',
               np.max(np.abs(particles.py)), np.mean(particles.state > 0))
-        axes[row, 0].hist(loss / mean_loss, bins = N_BINS,
-                          histtype = 'step', density = True, label = model)
+        losses.append((model, loss / mean_loss))
         axes[row, 1].scatter(particles.x * 1e6, particles.px * 1e6,
                              s = 2, alpha = 0.15, label = model)
+    # Use identical bin boundaries for the two finite-sample distributions.
+    edges = np.histogram_bin_edges(
+        np.concatenate([values for _, values in losses]), bins = N_BINS)
+    for model, values in losses:
+        axes[row, 0].hist(values, bins = edges,
+                          histtype = 'step', density = True, label = model)
     axes[row, 0].set(title = f'Angle {angle:g} rad',
                      xlabel = 'Loss / deterministic mean', ylabel = 'Density')
     axes[row, 1].set(xlabel = 'Exit x [µm]', ylabel = 'Exit px [10^-6]')

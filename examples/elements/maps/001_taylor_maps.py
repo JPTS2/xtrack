@@ -19,7 +19,7 @@ import xtrack as xt
 ########################################
 # Reference line
 ########################################
-P0C             = 1.0e9                 # Proton reference p0*c [eV]
+P0C             = 1.0e9                 # Proton reference momentum [eV/c]
 DRIFT_LENGTH    = 0.5                   # [m]
 K1L             = 0.2                   # Normal quadrupole [m^-1]
 K2L             = 20.0                  # Normal sextupole [m^-2]

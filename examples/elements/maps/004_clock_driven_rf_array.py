@@ -12,7 +12,7 @@ import xtrack as xt
 ################################################################################
 # User parameters
 ################################################################################
-P0C             = 1e9                  # Proton reference p0*c [eV]
+P0C             = 1e9                  # Proton reference momentum [eV/c]
 LENGTH          = 100.0                # [m]
 RF_FREQUENCY    = 100e6                # [Hz]
 RF_TIMES        = [0.0, 1e-3, 2e-3]    # [s]

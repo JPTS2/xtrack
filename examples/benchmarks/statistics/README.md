@@ -30,8 +30,10 @@ establish agreement to arbitrary accuracy, particularly in poorly sampled tails.
 The regime study keeps both models identical within each bend setting, then
 changes the bend angle. A stronger bend changes emission occurrence and photon
 energy scales; the finite samples are not a rare-tail or ring-equilibrium test.
+The two models use common histogram bin boundaries within each regime.
 
-Fresh particle batches receive native RNG streams. NumPy seeds control only
-explicit resampling in these scripts, not the native radiation realization.
+Fresh particle batches receive automatically initialized native RNG streams.
+Only bootstrap resampling is explicitly seeded here; these scripts do not
+prescribe the native radiation seeds or claim reproducible photon realizations.
 For the underlying models and an introductory histogram, see
 [quantum radiation](../../radiation/006_quantum_radiation.py).
