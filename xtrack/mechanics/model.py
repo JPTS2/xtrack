@@ -337,15 +337,7 @@ class MechanicsManager:
         positions relative to the body. No force law is inferred from mounting.
         kind is an explicit table-selection label (body, magnet, pickup, ...).
         """
-        if mount is not None:
-            if parent is None or not isinstance(anchor, str) or anchor != 'center':
-                raise ValueError(
-                    'A mount requires a parent and no explicit world anchor'
-                )
-            owner = self[parent] if isinstance(parent, str) else parent
-            if self.bodies.get(owner.name) is not owner:
-                raise ValueError('Parent must belong to this environment')
-            anchor = owner.nominal_frame @ _frame(mount)
+        anchor = self._resolve_mount(anchor=anchor, parent=parent, mount=mount)
         return self._new_body(
             name,
             elements=elements,
@@ -357,6 +349,17 @@ class MechanicsManager:
             support_class=support_class,
         )
 
+    def _resolve_mount(self, *, anchor, parent, mount):
+        """Resolve one parent-local mount without changing body definitions."""
+        if mount is None:
+            return anchor
+        if parent is None or not isinstance(anchor, str) or anchor != 'center':
+            raise ValueError('A mount requires a parent and no explicit world anchor')
+        owner = self.bodies.get(parent) if isinstance(parent, str) else parent
+        if not isinstance(owner, RigidBody) or self.bodies.get(owner.name) is not owner:
+            raise ValueError('Parent must belong to this environment')
+        return owner.nominal_frame @ _frame(mount)
+
     def new_girder(
         self,
         name,
@@ -365,6 +368,7 @@ class MechanicsManager:
         line=None,
         anchor='center',
         parent=None,
+        mount=None,
         feet_local_m=None,
         support_class='',
     ):
@@ -373,14 +377,16 @@ class MechanicsManager:
         'center' is the chord midpoint of the selected entrance/exit span, with
         axes from its first nominal entrance frame. A Frame gives full world
         anchor/orientation; a three-vector gives world position with XYZ axes.
-        Parent names refer to existing bodies. No sublines are required.
+        A mount gives a parent-local Frame instead of a world anchor. Parent
+        names refer to existing bodies. No sublines are required.
         """
-        return self._new_body(
+        return self.new_body(
             name,
             elements=elements,
             line=line,
             anchor=anchor,
             parent=parent,
+            mount=mount,
             feet_local_m=feet_local_m,
             kind='girder',
             support_class=support_class,
@@ -867,19 +873,31 @@ class MechanicsManager:
             attachment['last_written'] = values.copy()
 
     def _check_aliases(self):
-        counts = {}
+        # Only attached objects consume numeric placements. Still scan every
+        # physical line: an alias can be introduced under a different name or
+        # on an otherwise unattached line after these bindings were prepared.
+        needed = set()
+        for view in self._line_views.values():
+            elements = view.line.element_dict
+            needed.update(id(elements[name]) for name in view._attachments)
+        if not needed:
+            return
+        counts = dict.fromkeys(needed, 0)
         for line in self.env._lines_weakrefs:
             # Collective survey/Twiss creates shallow noncollective views in
             # distinct environments sharing this weak set. They are execution
             # views of the same occurrences, not additional physical lines.
             if line.env is not self.env:
                 continue
+            elements = line.element_dict
             for name in line.element_names:
-                identity = id(line.element_dict[name])
-                counts[identity] = counts.get(identity, 0) + 1
+                identity = id(elements[name])
+                if identity in needed:
+                    counts[identity] += 1
         for view in self._line_views.values():
+            elements = view.line.element_dict
             for name in view._attachments:
-                if counts.get(id(view.line.element_dict[name])) != 1:
+                if counts.get(id(elements[name])) != 1:
                     raise ValueError(
                         f'{name}: shared/repeated element objects require an occurrence-buffer lowering'
                     )
@@ -1148,6 +1166,7 @@ class LineMechanics:
         self._sampling = 'turn'
         self._runtime = None
         self._backend = 'auto'
+        self._prepared_empty_log = None
 
     @property
     def _has_configuration(self):
@@ -1206,7 +1225,9 @@ class LineMechanics:
         kernels, with batched host evaluation for sampled/custom sources.
         backend='reference' retains explicit Python
         lowering. No xdeps chain or per-particle source evaluation is installed.
-        Auto retains reference validation for collective callbacks and logs.
+        Auto retains reference validation for collective callbacks and nonempty
+        or custom logs. An empty builtin Log executes no callbacks and retains
+        native motion updates under the ordinary logging scheduler.
         Explicit compiled mode requires their geometry/static placement to stay
         fixed for the call; strength changes are independent of that contract.
         Shared prescribed fields require an explicit common physical
@@ -1255,13 +1276,20 @@ class LineMechanics:
 
     def _prepare_for_tracking(self, *, log=None):
         """Validate once at call entry; geometry freezes until the call ends."""
+        from ..tracker import Log
+
+        self._prepared_empty_log = None
         if self._time_series is not None:
             self._time_series._check(self.manager)
+        # Do not trust callbacks or subclasses overriding iteration. The exact
+        # empty builtin Log has no user code; Tracker still resets its output
+        # and owns the logging scheduler. Nonempty logs retain per-turn checks.
+        empty_log = type(log) is Log and not log
         use_compiled = (
             self._backend != 'reference'
             and self._sampling == 'turn'
             and not self.line.enable_time_dependent_vars
-            and (log is None or self._backend == 'compiled')
+            and (log is None or empty_log or self._backend == 'compiled')
             and (not self.line.tracker.iscollective or self._backend == 'compiled')
         )
         if self._backend == 'compiled' and not use_compiled:
@@ -1291,12 +1319,26 @@ class LineMechanics:
             self.manager._check_aliases()
             self._check()
             self._runtime = None
+        if empty_log and self._backend == 'auto' and self._runtime is not None:
+            self._prepared_empty_log = log
 
     def _finish_tracking(self):
-        if self._runtime is not None:
-            self._runtime.finish()
+        try:
+            if self._runtime is not None:
+                self._runtime.finish()
+        finally:
+            self._prepared_empty_log = None
+
+    def _check_prepared_empty_log(self, log):
+        if log is not None and log:
+            raise ValueError(
+                'An initially empty Log changed during prepared mechanics; '
+                'restart tracking with a fixed log'
+            )
 
     def _apply_for_tracking(self, time_s):
+        admitted_log = self._prepared_empty_log
+        self._check_prepared_empty_log(admitted_log)
         if self._runtime is not None:
             self._runtime.apply(time_s + self._time_origin_s, self._time_series)
         else:
@@ -1305,6 +1347,9 @@ class LineMechanics:
                 time_series=self._time_series,
                 sampling=self._sampling,
             )
+        # A custom source may have added callbacks while evaluating its values.
+        # Reject before Tracker executes them under a frozen-geometry contract.
+        self._check_prepared_empty_log(admitted_log)
 
     def apply(
         self, *, time_s=0.0, time_series=None, disabled_sources=(), sampling='turn'
@@ -1369,6 +1414,7 @@ class LineMechanics:
         elements,
         anchor='center',
         parent=None,
+        mount=None,
         feet_local_m=None,
         support_class='',
     ):
@@ -1378,6 +1424,7 @@ class LineMechanics:
             elements=elements,
             anchor=anchor,
             parent=parent,
+            mount=mount,
             feet_local_m=feet_local_m,
             support_class=support_class,
         )
@@ -1386,7 +1433,8 @@ class LineMechanics:
         """Create an inspectable batch of supports with one full-line survey.
 
         assignments maps a new body name to element names, or to a dictionary
-        with elements and optional anchor, parent, feet_local_m, support_class.
+        with elements and optional anchor, parent, mount, feet_local_m,
+        support_class. A mount is a parent-local Frame, as in new_body.
         For example {'g1': ['q1', 's1'], 'g2': {'elements': ['q2'],
         'support_class': 'arc_quad'}}. Group members may be non-contiguous.
         All definitions are validated before any body/binding is installed.
@@ -1397,9 +1445,10 @@ class LineMechanics:
     def new_bodies(self, assignments, *, kind='body', support_class=''):
         """Create attached rigid bodies in one validated batch and one survey.
 
-        assignments has the same element/anchor/parent/contact options as
-        new_girders. kind labels every body, e.g. 'magnet' or 'pickup'. Parents
-        must already exist. All definitions are validated before installation.
+        assignments has the same element/anchor/parent/mount/contact options as
+        new_girders. A parent-local mount and an explicit world anchor are
+        mutually exclusive. kind labels every body, e.g. 'magnet' or 'pickup'.
+        Parents must already exist. All definitions are validated before installation.
         """
         if not hasattr(assignments, 'items') or not assignments:
             raise ValueError('Use a nonempty mapping from support names to assignments')
@@ -1411,6 +1460,7 @@ class LineMechanics:
                 'elements',
                 'anchor',
                 'parent',
+                'mount',
                 'feet_local_m',
                 'support_class',
             }
@@ -1426,6 +1476,10 @@ class LineMechanics:
             options.setdefault('parent', None)
             options.setdefault('feet_local_m', None)
             options.setdefault('support_class', support_class)
+            options['anchor'] = self.manager._resolve_mount(
+                anchor=options['anchor'], parent=options['parent'],
+                mount=options.pop('mount', None),
+            )
             definitions.append((name, names, options))
             all_names.extend(names)
         candidates = self._candidates(all_names)

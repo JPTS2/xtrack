@@ -504,7 +504,14 @@ class RegionalGroundMotion:
         )
 
     def evaluate(self, time_s, positions_m):
-        output = self.background.evaluate(time_s, positions_m)
+        background = np.asarray(self.background.evaluate(time_s, positions_m))
+        # Providers may return cached or read-only samples. Own the accumulation
+        # buffer and promote integer inputs without discarding complex values;
+        # the sampling/binding boundary still validates real displacement.
+        output = np.array(
+            background, dtype=np.result_type(background.dtype, float), copy=True
+        )
+        del background
         for region in self.regions:
             radius2 = np.sum((positions_m - region.center_m) ** 2, axis=1)
             output += np.exp(-radius2 / (2 * region.sigma_m**2))[

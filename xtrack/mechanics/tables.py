@@ -127,6 +127,25 @@ def _attachment_mount(manager, attachment):
     return lever, mount_rotation
 
 
+def _static_inputs(body):
+    """Small immutable case identity; never read lowered element/device fields."""
+    from .model import _reference_values
+
+    return tuple(_reference_values(body)) + tuple(body.installation.values())
+
+
+def _table_static_case(owner, names):
+    manager = owner.manager if hasattr(owner, 'manager') else owner
+    case = {}
+    for name in names:
+        name = owner._attachments[name]['body'] if hasattr(owner, 'line') else name
+        while name is not None and name not in case:
+            body = manager[name]
+            case[name] = _static_inputs(body)
+            name = body.parent
+    return case
+
+
 def mechanics_table(data, *, owner, time_s=None, time_series=None):
     columns = list(data)
     manager = owner.manager if hasattr(owner, 'manager') else owner
@@ -135,6 +154,7 @@ def mechanics_table(data, *, owner, time_s=None, time_series=None):
         _mechanics_owner=ref(owner),
         _mechanics_revision=manager._revision,
         _mechanics_record=time_series,
+        _mechanics_static_case=_table_static_case(owner, data['name']),
         query_time_s=time_s,
     )
     return MechanicsTable(data, col_names=columns)
@@ -218,9 +238,11 @@ def element_table(view, *, time_s=None, time_series=None, names=None):
 class MechanicsTable(Table):
     """A pose/configuration snapshot, retaining context through row selection.
 
-    History queries use the current static configuration and the supplied (or
-    bound) source record. They do not cache a lattice history or write elements.
-    Topology/source changes invalidate the query context; request a fresh table.
+    Numeric columns remain readable snapshots. Live queries require the captured
+    deliberate/installation inputs for the selected body and its ancestors,
+    including for configuration tables made without time_s. Request a fresh
+    table after changing that static case. Equal-value reapplication is allowed.
+    Topology/source changes also invalidate context. No lattice history is cached.
     """
 
     def _owner(self):
@@ -238,7 +260,8 @@ class MechanicsTable(Table):
     def to_dict(self, **kwargs):
         """Export a numeric snapshot without live model references/source records."""
         result = super().to_dict(**kwargs)
-        for key in ('_mechanics_owner', '_mechanics_revision', '_mechanics_record'):
+        for key in ('_mechanics_owner', '_mechanics_revision', '_mechanics_record',
+                    '_mechanics_static_case'):
             result['attrs'].pop(key, None)
         return result
 
@@ -251,19 +274,37 @@ class MechanicsTable(Table):
             raise KeyError(f'{name!r} is not in this table selection')
         return name
 
+    def _check_static_case(self, owner, name):
+        manager = owner.manager if hasattr(owner, 'manager') else owner
+        name = owner._attachments[name]['body'] if hasattr(owner, 'line') else name
+        captured = self._data.get('_mechanics_static_case', {})
+        while name is not None:
+            body = manager[name]
+            if name not in captured or captured[name] != _static_inputs(body):
+                raise ValueError(
+                    'Mechanics static/reference case changed; request a fresh table'
+                )
+            name = body.parent
+
     def get_element(self, name=None):
-        """Access the live Xtrack element for one selected occurrence."""
+        """Access a live element, provided this row's static case is unchanged.
+
+        This does not apply query_time_s or return a frozen element copy. Fields
+        reflect the currently applied time, and strength edits remain visible.
+        """
         owner = self._owner()
         if not hasattr(owner, 'line'):
             raise TypeError('Use line.mechanics.get_table() to select an element')
         name = self._selected_name(name)
+        self._check_static_case(owner, name)
         owner._check()
         return owner.line.element_dict[name]
 
     def get_body(self, name=None):
-        """Access a selected body, or the body supporting a selected element."""
+        """Access a live body while the selected row's static case is unchanged."""
         owner = self._owner()
         name = self._selected_name(name)
+        self._check_static_case(owner, name)
         if hasattr(owner, 'line'):
             return owner.manager[owner._attachments[name]['body']]
         return owner[name]
@@ -284,6 +325,7 @@ class MechanicsTable(Table):
         """
         owner = self._owner()
         name = self._selected_name(name)
+        self._check_static_case(owner, name)
         record = self._mechanics_record if time_series is None else time_series
         if time_s is None:
             if record is None:

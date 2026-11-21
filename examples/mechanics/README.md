@@ -96,6 +96,17 @@ while retaining installation. `clear()` restores adopted element inputs and
 removes mechanics. `reference='absolute'` replaces inherited dynamic motion at a
 child while retaining static placement; relative sources compose down the tree.
 
+Pose rows retain their deliberate/installation case. After changing that case,
+request a fresh table before querying a row's history or live element; old numeric
+columns remain readable. Batch `new_bodies` and `new_girders` accept the same
+parent-local `mount=xt.Frame(...)` convention as scalar construction.
+
+For supplied contact responses, `TabulatedResponse` also accepts rectangular
+matrices `(frequency, output_channels, input_channels)`. Apply them to explicitly
+ordered numeric channels, then construct a six-coordinate `RigidMotion` for
+body replay. State port frames and units; the matrix dimensions infer no support
+mechanics. Filtering remains a host-side periodic preparation operation.
+
 ## FCC input
 
 016 tracks the actual positron Z line from the

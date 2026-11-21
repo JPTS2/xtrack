@@ -64,7 +64,8 @@ class GeometryGuard:
         self.context = self.buffer.context
         self.revision = view.manager._revision
         self.names = tuple(view.line.element_names)
-        self.objects = {name: view.line.element_dict[name] for name in self.names}
+        elements = view.line.element_dict
+        self.objects = {name: elements[name] for name in self.names}
         self.attachments = tuple(view._attachments.values())
         from .model import _reference_geometry
 
@@ -171,6 +172,10 @@ class GeometryGuard:
         """Validate at tracking entry, making one context-to-host array read."""
         view = self.view
         line = view.line
+        # Reacquire the live mapping on every entry. Hoisting this property
+        # avoids rebuilding/accessing it once per occurrence without caching
+        # ownership across calls or overlooking replacement of a live element.
+        elements = line.element_dict
         if view.manager._revision != self.revision:
             raise ValueError('Mechanics definitions changed; prepare bindings again')
         if line.tracker._buffer is not self.buffer:
@@ -180,7 +185,7 @@ class GeometryGuard:
                 'Line sequence changed after mechanics attachment; rebuild bindings'
             )
         if any(
-            line.element_dict.get(name) is not element
+            elements.get(name) is not element
             for name, element in self.objects.items()
         ):
             raise ValueError(

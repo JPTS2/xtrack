@@ -15,9 +15,11 @@ class FrequencyResponse:
     def apply(self, values, time_s):
         """Offline periodic FFT response. No padding, warm-up or causal transient.
 
-        Scalar transfer is dimensionless. A matrix acts on the final coordinate
-        axis; mixed m/rad channels require corresponding SI cross-coupling units.
-        Input/output ports must have the same specified reference frames/points.
+        Scalar transfer is dimensionless. A matrix maps the final input-channel
+        axis to its output-channel axis. Its shape is (frequencies, outputs,
+        inputs); leading receiver/batch axes are retained. The caller specifies
+        channel order, units and input/output ports. No frame/lever conversion
+        or physical force response is inferred from an array's dimensions.
         """
         times = checked_times(time_s, uniform=True)
         values = np.asarray(values)
@@ -36,11 +38,19 @@ class FrequencyResponse:
         spectrum = np.fft.rfft(values, axis=0)
         if transfer.shape == frequency.shape:
             spectrum *= transfer.reshape((-1,) + (1,) * (values.ndim - 1))
-        elif transfer.shape == (len(frequency), values.shape[-1], values.shape[-1]):
+        elif (
+            values.ndim >= 2
+            and transfer.ndim == 3
+            and transfer.shape[0] == len(frequency)
+            and transfer.shape[1] > 0
+            and transfer.shape[2] > 0
+            and transfer.shape[2] == values.shape[-1]
+        ):
             spectrum = np.einsum('fij,f...j->f...i', transfer, spectrum)
         else:
             raise ValueError(
-                'Response must return (frequencies,) or (frequencies, channels, channels)'
+                'Response must return (frequencies,) or '
+                '(frequencies, output_channels, input_channels) matching the input'
             )
         # A real record has real self-conjugate endpoints. Reject lost phase if
         # a nonzero endpoint cannot represent the requested complex response.
@@ -124,8 +134,11 @@ class LoadedTwoMass(FrequencyResponse):
 class TabulatedResponse(FrequencyResponse):
     """Complex scalar or matrix response, interpolated in real/imaginary parts.
 
-    Matrices use SI coordinates [x,y,s,pitch,yaw,roll] at stated matching ports.
-    Cross terms therefore carry m/rad or rad/m. No implicit lever-arm transport.
+    Matrices have shape (frequencies, output_channels, input_channels). For a
+    rigid-to-rigid response both axes use [x,y,s,pitch,yaw,roll], with SI cross
+    units such as m/rad. A contact-to-body map may instead have 3*N contact
+    displacement inputs and six rigid outputs. Specify all port frames, channel
+    order and units explicitly. No implicit fitting or lever-arm transport.
     """
 
     frequency_hz: object
@@ -147,10 +160,11 @@ class TabulatedResponse(FrequencyResponse):
             or response.shape[0] != len(frequency)
             or not np.all(np.isfinite(frequency))
             or not np.all(np.isfinite(response))
-            or (response.ndim == 3 and response.shape[1:] != (6, 6))
+            or (response.ndim == 3 and 0 in response.shape[1:])
         ):
             raise ValueError(
-                'Use increasing frequency and finite scalar or 6x6 response'
+                'Use increasing frequency and finite scalar or '
+                '(frequencies, output_channels, input_channels) response'
             )
         frequency.flags.writeable = response.flags.writeable = False
         object.__setattr__(self, 'frequency_hz', frequency)
