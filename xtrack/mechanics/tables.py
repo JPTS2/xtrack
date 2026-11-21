@@ -146,6 +146,33 @@ def _table_static_case(owner, names):
     return case
 
 
+def _table_live_inputs(owner, names):
+    """Capture binding identities, not commands or a provider/history cache."""
+    manager = owner.manager if hasattr(owner, 'manager') else owner
+    direct = {}
+    for name, binding in manager.sources.items():
+        if getattr(binding, 'live', False):
+            entry = (name, getattr(binding, 'role', 'disturbance'))
+            for target in binding.targets:
+                direct.setdefault(target, []).append(entry)
+    if not direct:
+        return {}
+    inherited = {}
+    result = {}
+    for name in names:
+        body_name = owner._attachments[name]['body'] if hasattr(owner, 'line') else name
+        pending, current = [], body_name
+        while current is not None and current not in inherited:
+            pending.append(current)
+            current = manager[current].parent
+        for current in reversed(pending):
+            parent = manager[current].parent
+            entries = inherited.get(parent, ()) + tuple(direct.get(current, ()))
+            inherited[current] = tuple(dict.fromkeys(entries))
+        result[name] = inherited[body_name]
+    return result
+
+
 def mechanics_table(data, *, owner, time_s=None, time_series=None):
     columns = list(data)
     manager = owner.manager if hasattr(owner, 'manager') else owner
@@ -155,12 +182,21 @@ def mechanics_table(data, *, owner, time_s=None, time_series=None):
         _mechanics_revision=manager._revision,
         _mechanics_record=time_series,
         _mechanics_static_case=_table_static_case(owner, data['name']),
+        _mechanics_live_inputs=_table_live_inputs(owner, data['name']),
         query_time_s=time_s,
     )
     return MechanicsTable(data, col_names=columns)
 
 
-def element_table(view, *, time_s=None, time_series=None, names=None):
+def element_table(
+    view,
+    *,
+    time_s=None,
+    time_series=None,
+    names=None,
+    _source_values=None,
+    disabled_sources=(),
+):
     if time_s is None and time_series is not None:
         raise ValueError('Supply time_s when requesting a pose table')
     view._check()
@@ -199,7 +235,11 @@ def element_table(view, *, time_s=None, time_series=None, names=None):
                 time_s=time_s, disabled_sources=disabled, bodies=selected_bodies
             ),
             manager.get_body_poses(
-                time_s=time_s, time_series=time_series, bodies=selected_bodies
+                time_s=time_s,
+                time_series=time_series,
+                bodies=selected_bodies,
+                _source_values=_source_values,
+                disabled_sources=disabled_sources,
             ),
         ]
         nominal = np.array([a['ref_start'] for a in attachments]).reshape(-1, 4, 4)
@@ -243,6 +283,9 @@ class MechanicsTable(Table):
     including for configuration tables made without time_s. Request a fresh
     table after changing that static case. Equal-value reapplication is allowed.
     Topology/source changes also invalidate context. No lattice history is cached.
+    A point query with live inputs samples their current held state, not past
+    applied commands. Inspect query_kind/live_state/live_source_names. Histories
+    of such inputs require an explicit applied source recorder snapshot.
     """
 
     def _owner(self):
@@ -260,10 +303,54 @@ class MechanicsTable(Table):
     def to_dict(self, **kwargs):
         """Export a numeric snapshot without live model references/source records."""
         result = super().to_dict(**kwargs)
-        for key in ('_mechanics_owner', '_mechanics_revision', '_mechanics_record',
-                    '_mechanics_static_case'):
+        for key in (
+            '_mechanics_owner',
+            '_mechanics_revision',
+            '_mechanics_record',
+            '_mechanics_static_case',
+            '_mechanics_live_inputs',
+        ):
             result['attrs'].pop(key, None)
+        result['attrs'].update(
+            query_kind=self.query_kind,
+            live_state=self.live_state,
+            live_inputs={name: self._live_inputs(name) for name in self.name},
+        )
         return result
+
+    def _live_inputs(self, name):
+        captured = self._data.get(
+            '_mechanics_live_inputs', self._data.get('live_inputs', {})
+        )
+        return tuple(tuple(entry) for entry in captured.get(name, ()))
+
+    @property
+    def live_source_names(self):
+        """Live input bindings affecting this selection, without reading them."""
+        return tuple(
+            dict.fromkeys(
+                source for name in self.name for source, _ in self._live_inputs(name)
+            )
+        )
+
+    @property
+    def live_source_roles(self):
+        """Roles associated with the captured live binding identities."""
+        return dict(entry for name in self.name for entry in self._live_inputs(name))
+
+    @property
+    def live_state(self):
+        """Whether live inputs were unevaluated or sampled at their held state."""
+        if not self.live_source_names:
+            return 'not_live'
+        return 'unevaluated' if self.query_time_s is None else 'current_held'
+
+    @property
+    def query_kind(self):
+        """Configured point queries are not records of previously applied poses."""
+        if self.query_time_s is None:
+            return 'configuration'
+        return 'current_held_pose' if self.live_source_names else 'prescribed_pose'
 
     def _selected_name(self, name):
         if name is None:
@@ -291,6 +378,7 @@ class MechanicsTable(Table):
 
         This does not apply query_time_s or return a frozen element copy. Fields
         reflect the currently applied time, and strength edits remain visible.
+        This accessor does not evaluate live input providers.
         """
         owner = self._owner()
         if not hasattr(owner, 'line'):
@@ -315,6 +403,7 @@ class MechanicsTable(Table):
         *,
         time_s=None,
         time_series=None,
+        applied_history=None,
         max_memory_bytes=128 * 1024**2,
     ):
         """Compose one selected entity over explicit times, on the host.
@@ -322,16 +411,56 @@ class MechanicsTable(Table):
         If a sampled source record is bound to this table, its grid is the
         default. This includes deliberate, installation and inherited dynamic
         transforms; it differs from a source record's direct-input get_table.
+        Live inputs require applied_history from record_applied_sources; current
+        provider values are never used to reconstruct their past.
         """
         owner = self._owner()
         name = self._selected_name(name)
         self._check_static_case(owner, name)
-        record = self._mechanics_record if time_series is None else time_series
+        manager = owner.manager if hasattr(owner, 'manager') else owner
+        body_name = owner._attachments[name]['body'] if hasattr(owner, 'line') else name
+        live = self._live_inputs(name)
+        if live and applied_history is None:
+            sources = ', '.join(source for source, _ in live)
+            raise ValueError(
+                f'Cannot reconstruct history of live mechanics inputs ({sources}): '
+                'no recorded applied history is available. Inspect the numeric '
+                'snapshot or a current-held point pose instead.'
+            )
+        if applied_history is not None:
+            from .applied_history import AppliedSourceHistory
+
+            if not isinstance(applied_history, AppliedSourceHistory):
+                raise TypeError('Supply an immutable applied source history snapshot')
+            applied_history._check(manager, bodies=[body_name])
+            required = {source for source, _ in live} - set(
+                applied_history.disabled_sources
+            )
+            if not required.issubset(applied_history.values):
+                raise ValueError(
+                    'Applied history does not cover all selected live inputs'
+                )
+            if (
+                time_series is not None
+                and time_series is not applied_history.prescribed_record
+            ):
+                raise ValueError(
+                    'Supplied prescribed record differs from the applied history'
+                )
+            record = applied_history.prescribed_record
+        else:
+            record = self._mechanics_record if time_series is None else time_series
         if time_s is None:
-            if record is None:
+            if applied_history is not None:
+                time_s = applied_history.time_s
+            elif record is None:
                 raise ValueError('Supply time_s or a sampled time_series record')
-            time_s = record.time_s
+            else:
+                time_s = record.time_s
         times = checked_times(time_s)
+        if applied_history is not None:
+            applied_history.at(float(times[0]))
+            applied_history.at(float(times[-1]))
         if not isinstance(max_memory_bytes, int) or max_memory_bytes <= 0:
             raise ValueError('max_memory_bytes must be a positive integer')
         # Conservative bound for one output table and transient query columns.
@@ -339,11 +468,23 @@ class MechanicsTable(Table):
         if 2048 * len(times) > max_memory_bytes:
             raise MemoryError('Selected pose history exceeds max_memory_bytes')
         if record is not None:
-            manager = owner.manager if hasattr(owner, 'manager') else owner
             record._check(manager)
+
+        def replay(time):
+            if applied_history is None:
+                return {}
+            return dict(
+                _source_values=applied_history.at(time),
+                disabled_sources=applied_history.disabled_sources,
+            )
+
         if hasattr(owner, 'line'):
             current = element_table(
-                owner, time_s=float(times[0]), time_series=record, names=[name]
+                owner,
+                time_s=float(times[0]),
+                time_series=record,
+                names=[name],
+                **replay(float(times[0])),
             )
             manager = owner.manager
             attachment = owner._attachments[name]
@@ -351,20 +492,28 @@ class MechanicsTable(Table):
             mount = body.nominal_frame.inverse().matrix @ attachment['base_element']
         else:
             current = owner.survey(
-                time_s=float(times[0]), time_series=record, bodies=[name]
+                time_s=float(times[0]),
+                time_series=record,
+                bodies=[name],
+                **replay(float(times[0])),
             )
             manager = owner
         total = np.empty((len(times), 4, 4))
         total[0] = current.total_matrix[0]
-        body_name = attachment['body'] if hasattr(owner, 'line') else name
         deformations = [
             manager._get_body_deformations(
-                time_s=float(times[0]), time_series=record, bodies=[body_name]
+                time_s=float(times[0]),
+                time_series=record,
+                bodies=[body_name],
+                **replay(float(times[0])),
             )[body_name]
         ]
         for index, time in enumerate(times[1:], 1):
             poses = manager.get_body_poses(
-                time_s=float(time), time_series=record, bodies=[body_name]
+                time_s=float(time),
+                time_series=record,
+                bodies=[body_name],
+                **replay(float(time)),
             )
             deformations.append(poses._deformations[body_name])
             total[index] = (
@@ -414,7 +563,17 @@ class MechanicsTable(Table):
         output.update(deformation_columns(body_axes, packed, **kwargs))
         data = dict(time_s=times.copy(), **output)
         return MotionHistoryTable(
-            dict(data, entity_name=name), col_names=list(data), index='time_s'
+            dict(
+                data,
+                entity_name=name,
+                history_kind=(
+                    'applied_live_inputs'
+                    if applied_history is not None
+                    else 'prescribed_inputs'
+                ),
+            ),
+            col_names=list(data),
+            index='time_s',
         )
 
     def animate(
@@ -424,6 +583,7 @@ class MechanicsTable(Table):
         time_s,
         size_m=None,
         time_series=None,
+        applied_history=None,
         displacement_scale=1.0,
         rotation_scale=1.0,
         baseline='static',
@@ -449,6 +609,7 @@ class MechanicsTable(Table):
             time_s=time_s,
             size_m=size_m,
             time_series=time_series,
+            applied_history=applied_history,
             displacement_scale=displacement_scale,
             rotation_scale=rotation_scale,
             baseline=baseline,
@@ -457,7 +618,10 @@ class MechanicsTable(Table):
 
 
 class MotionHistoryTable(Table):
-    """One entity's composed world pose history, indexed by physical seconds."""
+    """One entity's poses composed from prescribed inputs at physical seconds.
+
+    This table does not acquire or retrospectively sample live command providers.
+    """
 
     def __init__(self, data, col_names=None, index='time_s', **kwargs):
         super().__init__(data, col_names=col_names, index=index, **kwargs)

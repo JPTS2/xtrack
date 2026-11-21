@@ -26,3 +26,25 @@ def to_context(context, value):
             return cupy.array(value)
         return cupy.array(value, blocking=True)
     return context.nparray_to_context_array(value)
+
+
+def upload_into(context, destination, value):
+    """Update an existing array and finish consuming its reusable host staging.
+
+    No temporary device array is allocated on the supported contexts. Transfers
+    use the same stream/queue as tracking; completion protects the next host
+    write as well as a queued reader of the previous destination contents.
+    """
+    value = np.ascontiguousarray(value)
+    if destination.shape != value.shape or destination.dtype != value.dtype:
+        raise ValueError('Context upload must preserve destination shape and dtype')
+    if isinstance(context, xo.ContextCpu):
+        np.copyto(destination, value)
+    elif isinstance(context, xo.ContextCupy):
+        stream = context.nplike_lib.cuda.get_current_stream()
+        destination.set(value, stream=stream)
+        stream.synchronize()
+    elif isinstance(context, xo.ContextPyopencl):
+        destination.set(value, queue=context.queue, async_=False)
+    else:
+        destination[:] = to_context(context, value)

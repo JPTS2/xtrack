@@ -197,6 +197,49 @@ GPUFUN void mechanics_rotation_increment(const double phi, const double theta,
     END_VECTORIZE
 }
 
+/* Mixed rows retain the original binding order. A nonnegative source_rows
+ * entry selects an uploaded six-coordinate sample; -1 selects analytic data
+ * in the same seven-double layout as mechanics_sources. Composing two finished
+ * analytic/sample rotations instead would change noncommuting source order. */
+/*gpukern*/ void mechanics_sources_mixed(
+        const int64_t n,
+        /*gpuglmem*/ const int64_t* source_starts,
+        /*gpuglmem*/ const int64_t* source_rows,
+        /*gpuglmem*/ const double* source_data,
+        /*gpuglmem*/ const double* sample_values,
+        const double time_s,
+        /*gpuglmem*/ double* dynamic_local) {
+    VECTORIZE_OVER(body, n)
+    double result[12] = {0.};
+    for (int64_t source = source_starts[body]; source < source_starts[body+1]; source++) {
+        double values[6] = {0.};
+        const int64_t row = source_rows[source];
+        if (row >= 0) {
+            for (int i = 0; i < 6; i++) values[i] = sample_values[6*row+i];
+        } else {
+            const int component = (int)source_data[7*source];
+            const double value = source_data[7*source+1] * sin(
+                source_data[7*source+2] * time_s + source_data[7*source+3]);
+            if (component == -1) {
+                for (int i = 0; i < 3; i++)
+                    values[i] = value * source_data[7*source+4+i];
+            } else {
+                values[component] = value;
+            }
+        }
+        for (int i = 0; i < 3; i++) result[i] += values[i];
+        if (values[3] != 0. || values[4] != 0. || values[5] != 0.) {
+            double left[9], right[9], combined[9];
+            mechanics_rotation_increment(values[3], values[4], values[5], left);
+            for (int i = 0; i < 9; i++) right[i] = result[3+i];
+            mechanics_rotation_product(left, right, combined);
+            for (int i = 0; i < 9; i++) result[3+i] = combined[i];
+        }
+    }
+    for (int i = 0; i < 12; i++) dynamic_local[12*body+i] = result[i];
+    END_VECTORIZE
+}
+
 /* Each body thread traverses immutable root-to-body indices independently.
  * No thread reads a parent's output, so no in-kernel global barrier is needed.
  * Absolute motion retains inherited static placement but replaces inherited

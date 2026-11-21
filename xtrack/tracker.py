@@ -300,7 +300,7 @@ class Tracker:
             return self._track_with_current_config(particles, *args, **kwargs)
         finally:
             try:
-                if self.line._mechanics_vibrations_enabled:
+                if self.line._mechanics_updates_enabled:
                     self.line.mechanics._finish_tracking()
             finally:
                 self.config.XTRACK_TPSA_TRACK = original_tpsa_track
@@ -361,18 +361,18 @@ class Tracker:
                 )
 
         assert self.iscollective in (True, False)
-        if self.line._mechanics_vibrations_enabled and self._sync_time_controller is not None:
+        if self.line._mechanics_updates_enabled and self._sync_time_controller is not None:
             raise NotImplementedError('Mechanics vibration updates with SyncTime need explicit clock scheduling')
-        if self.line._mechanics_vibrations_enabled:
+        if self.line._mechanics_updates_enabled:
             self.line.mechanics._prepare_for_tracking(log=kwargs.get('log'))
         if (self.iscollective or self.line.enable_time_dependent_vars
-            or self.line._mechanics_vibrations_enabled
+            or self.line._mechanics_updates_enabled
             or 'log' in kwargs and kwargs['log'] is not None):
             tracking_func = self._track_with_collective
         else:
             tracking_func = self._track_no_collective
 
-        if self.line._mechanics_vibrations_enabled and self.line.mechanics._runtime is not None and not args:
+        if self.line._mechanics_updates_enabled and self.line.mechanics._runtime is not None and not args:
             from .mechanics.runtime import can_track_prepared, track_prepared
             if can_track_prepared(self, particles, kwargs):
                 tracking_func = lambda pp, **kw: track_prepared(self, pp, **kw)
@@ -485,7 +485,7 @@ class Tracker:
         self._check_invalidated()
         if args := kwargs:
             raise TypeError(f"unsupported TPSA tracking arguments: {sorted(args)}")
-        if self.iscollective or self.line.enable_time_dependent_vars or self.line._mechanics_vibrations_enabled:
+        if self.iscollective or self.line.enable_time_dependent_vars or self.line._mechanics_updates_enabled:
             raise NotImplementedError("TPSA tracking is not implemented for collective/time-dependent tracking")
         if not isinstance(self._context, xo.ContextCpu):
             raise NotImplementedError("TPSA tracking is implemented only for ContextCpu")
@@ -1440,7 +1440,7 @@ class Tracker:
         if ele_start is None:
             ele_start = 0
 
-        if self.line._mechanics_vibrations_enabled:
+        if self.line._mechanics_updates_enabled:
             if (ele_start != 0 or ele_stop is not None or num_elements is not None
                     or _session_to_resume is not None or self._enable_pipeline_hold
                     or self.skip_end_turn_actions or not self.reset_s_at_end_turn
@@ -1525,7 +1525,7 @@ class Tracker:
 
             if particles is not None and not _is_resume_within_turn(tt, tt_resume):
                 self._prepare_particle_time_s_and_reference_turns(particles)
-                if self.line._mechanics_vibrations_enabled:
+                if self.line._mechanics_updates_enabled:
                     self.line.mechanics._apply_for_tracking(particles.time_s)
 
             if log is not None and not _is_resume_within_turn(tt, tt_resume):

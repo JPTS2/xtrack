@@ -27,3 +27,4 @@ from .installation import RigidOffset, InstallationErrors
 from .observation import project_to_bpm, BpmReading
 from .model import MechanicsManager, LineMechanics, MechanicalTimeSeries
 from .tables import MechanicsTable, MotionHistoryTable
+from .applied_history import AppliedSourceRecorder, AppliedSourceHistory

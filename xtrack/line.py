@@ -1963,6 +1963,14 @@ class Line:
         view = manager._line_views.get(self)
         return view is not None and view.vibrations_enabled
 
+    @property
+    def _mechanics_updates_enabled(self):
+        manager = self.env.__dict__.get('_mechanics')
+        if manager is None:
+            return False
+        view = manager._line_views.get(self)
+        return view is not None and view.automatic_updates_enabled
+
     @property_with_doc_group("Reference Particle and Particle Generation")
     def xpart(self):
         """Xpart particle-generation helpers associated with this line."""
@@ -2728,8 +2736,8 @@ class Line:
         with_progress=True,
         chi=None, charge_ratio=None, mass_ratio=None,
     ):
-        if self._mechanics_vibrations_enabled:
-            raise ValueError('Disable vibrations and apply a fixed mechanics time before computing Twiss')
+        if self._mechanics_updates_enabled:
+            raise ValueError('Disable vibrations and freeze mechanics updates before computing Twiss')
         if not self._has_valid_tracker():
             self.build_tracker()
 

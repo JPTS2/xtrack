@@ -169,6 +169,9 @@ class DisplacementPSD:
     shifting the requested window does not restart the same waveform. Changing
     N or dt changes the finite periodic model. Reuse one computed record for
     tracking comparisons; compute_time_series never implicitly wraps a record.
+    Bind one receiver set jointly. Separate bindings of the same FFT field are
+    rejected because restarting its random receiver basis changes coherency.
+    SpectralGroundMotion instead defines one field across receiver subsets.
     """
 
     frequency_hz: tuple
@@ -637,6 +640,57 @@ def _source_seeds(source):
             for seed in _source_seeds(component)
         ]
     return []
+
+
+def _fft_field_keys(source):
+    """Finite FFT fields whose receiver basis must be sampled jointly.
+
+    LocatedSource samples its waveform at the one excitation port, independently
+    of the receivers. Reusing that temporal excitation is intentional and does
+    not restart a receiver-dependent spatial factorization.
+    """
+    if isinstance(source, DisplacementPSD):
+        return {
+            (
+                type(source).__name__,
+                source.frequency_hz,
+                source.density,
+                source.seed,
+                source.correlation_length_m,
+            )
+        }
+    if isinstance(source, RegionalGroundMotion):
+        return set().union(
+            _fft_field_keys(source.background),
+            *(_fft_field_keys(region.source) for region in source.regions),
+        )
+    if isinstance(source, VectorGroundMotion):
+        return set().union(
+            *(_fft_field_keys(component) for component in source.components)
+        )
+    return set()
+
+
+def validate_source_bindings(source, existing_bindings):
+    """Reject separate bindings that restart one finite FFT receiver model.
+
+    A DisplacementPSD/AngularPSD record is defined jointly for a receiver set.
+    Repeating the specification in another binding restarts its random basis;
+    equal seeds alone do not preserve the requested spatial coherency. Bind the
+    receivers together, or use a continuous SpectralGroundMotion field. This
+    check also survives copy/JSON, where shared Python identity is not retained.
+    """
+    incoming = _fft_field_keys(source)
+    if incoming and any(
+        incoming.intersection(_fft_field_keys(binding.source))
+        for binding in existing_bindings
+    ):
+        raise ValueError(
+            'One finite FFT field needs one joint receiver binding; select all '
+            'targets together or explicitly replay a jointly computed record. '
+            'For displacement fields, SpectralGroundMotion supports receiver '
+            'subsets'
+        )
 
 
 def requires_time_series(source):

@@ -63,7 +63,15 @@ def _world_points(matrix, points):
     return points @ matrix[:3, :3].T + matrix[:3, 3]
 
 
-def motion_survey(manager, *, time_s, time_series=None, bodies=None):
+def motion_survey(
+    manager,
+    *,
+    time_s,
+    time_series=None,
+    bodies=None,
+    _source_values=None,
+    disabled_sources=(),
+):
     from .tables import (
         mechanics_table,
         pose_columns,
@@ -78,7 +86,13 @@ def motion_survey(manager, *, time_s, time_series=None, bodies=None):
     )
     if len(set(names)) != len(names) or not set(names).issubset(manager.bodies):
         raise ValueError('Select existing mechanics bodies')
-    total = manager.get_body_poses(time_s=time_s, time_series=time_series, bodies=names)
+    total = manager.get_body_poses(
+        time_s=time_s,
+        time_series=time_series,
+        bodies=names,
+        _source_values=_source_values,
+        disabled_sources=disabled_sources,
+    )
     disabled = tuple(manager.sources)
     static = manager.get_body_poses(
         time_s=time_s, disabled_sources=disabled, bodies=names
@@ -379,6 +393,7 @@ def animate_cuboid(
     time_s,
     size_m,
     time_series=None,
+    applied_history=None,
     displacement_scale=1.0,
     rotation_scale=1.0,
     baseline='static',
@@ -404,7 +419,9 @@ def animate_cuboid(
         raise ValueError('Use positive finite display gains and frame interval')
     if baseline not in ('nominal', 'reference', 'static'):
         raise ValueError('Use nominal, reference or static as display baseline')
-    history = table.get_time_series(name, time_s=time_s, time_series=time_series)
+    history = table.get_time_series(
+        name, time_s=time_s, time_series=time_series, applied_history=applied_history
+    )
     reference = history[baseline + '_matrix']
     shown = _display_matrices(
         reference,
