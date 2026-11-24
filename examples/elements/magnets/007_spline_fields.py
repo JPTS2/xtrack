@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Reference and physical field
 ########################################
-P0C             = 1.0e9                 # Proton reference p0*c [eV]
+P0C             = 1.0e9                 # Proton reference momentum [eV/c]
 LENGTH          = 0.4                   # Local longitudinal interval [m]
 MEAN_BY         = 0.02                  # Mean vertical field [T]
 MEAN_GRADIENT   = 0.3                   # Mean dB_y/dx [T/m]

@@ -21,7 +21,7 @@ QUAD_LENGTH     = 1.0                    # [m]
 K1              = 0.7                    # [m^-2]
 P0C             = 1.0e9                  # Proton reference momentum [eV/c]
 N_SLICES        = 3
-SLICE_COUNTS    = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536]
+SLICE_COUNTS    = [1, 4, 16, 64, 256]
 
 ########################################
 # Common entrance coordinates
@@ -238,7 +238,7 @@ for index, (axis, label) in enumerate(zip(
         axis.loglog(SLICE_COUNTS, errors[mode][:, index], '.-', label = mode)
     axis.set_xlabel('Number of slices')
     axis.set_ylabel(label)
-    axis.set_xticks([1, 16, 256, 4096], labels = [1, 16, 256, 4096])
+    axis.set_xticks([1, 4, 16, 64, 256], labels = [1, 4, 16, 64, 256])
     axis.grid(which = 'both', alpha = 0.3)
     axis.legend()
 fig.suptitle('Quadrupole slicing: convergence to the unsliced map')

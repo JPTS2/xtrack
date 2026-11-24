@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Reference and physical field
 ########################################
-P0C             = 1.0e9                 # Proton reference p0*c [eV]
+P0C             = 1.0e9                 # Proton reference momentum [eV/c]
 LENGTH          = 0.4                   # Local longitudinal interval [m]
 MEAN_BY         = 0.02                  # Mean vertical field [T]
 H_REFERENCE     = 0.15                  # Reference curvature [m^-1]
@@ -199,7 +199,7 @@ slice_particles = parent_particles.copy()
 combined.track(parent_particles)
 sliced.track(slice_particles)
 print('Parent minus sliced exit coordinates [m, 1, m, 1]:',
-      [getattr(parent_particles, coord)[0]
-       - getattr(slice_particles, coord)[0]
-       for coord in ['x', 'px', 'y', 'py']])
+      np.array([getattr(parent_particles, coord)[0]
+                - getattr(slice_particles, coord)[0]
+                for coord in ['x', 'px', 'y', 'py']]))
 plt.show()

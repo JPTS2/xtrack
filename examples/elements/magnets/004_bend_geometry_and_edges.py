@@ -23,7 +23,7 @@ CHANGED_ANGLE   = 0.3                   # Fixed-chord geometry change [rad]
 ########################################
 # Reference particle and vertical probe
 ########################################
-P0C             = 1.0e9                 # Proton reference p0*c [eV]
+P0C             = 1.0e9                 # Proton reference momentum [eV/c]
 Y_START         = 1.0e-3                # [m]; x = px = py = delta = 0
 
 ################################################################################
@@ -55,11 +55,14 @@ print('Common reference curvature [m^-1]:', BEND_ANGLE / sector.length)
 ########################################
 changed = rectangular.copy()
 changed.angle = CHANGED_ANGLE
-print('Changed chord and arc lengths [m]:',
-      changed.length_straight, changed.length)
-print('Changed analytic arc length [m]:',
+print('\nIncrease angle at fixed chord\n'
+      '-----------------------------')
+print('Bend angle before / after [rad]:', BEND_ANGLE, CHANGED_ANGLE)
+print('Fixed chord length [m]:', changed.length_straight)
+print('Reference arc length after increasing angle [m]:', changed.length)
+print('Analytic arc length at the increased angle [m]:',
       CHORD_LENGTH / np.sinc(CHANGED_ANGLE / (2 * np.pi)))
-print('Changed reference curvature and field k0 [m^-1]:',
+print('Reference curvature and geometry-following k0 [m^-1]:',
       changed.h, changed.h)
 
 ################################################################################

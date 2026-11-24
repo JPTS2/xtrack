@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Magnetic transport
 ########################################
-P0C             = 1.0e9                 # Proton reference p0*c [eV]
+P0C             = 1.0e9                 # Proton reference momentum [eV/c]
 QUAD_LENGTH     = 0.5                   # [m]
 DRIFT_LENGTH    = 0.5                   # Length on each side [m]
 K1              = 0.8                   # [m^-2]

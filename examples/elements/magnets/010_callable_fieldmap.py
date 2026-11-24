@@ -17,7 +17,7 @@ import xtrack as xt
 ########################################
 # Field-free entrance and exit
 ########################################
-P0C             = 1e9                   # Proton reference p0*c [eV]
+P0C             = 1e9                   # Proton reference momentum [eV/c]
 FIELD_LENGTH    = 1.0                   # [m]
 PEAK_BS         = 1.0                   # Longitudinal field [T]
 X_START         = 1e-3                  # [m]
@@ -31,8 +31,10 @@ BORIS_STEPS     = 256
 PROFILE_SLICES  = 64
 
 ################################################################################
-# Supply a three-dimensional magnetic-field callable
+# Define the solenoid field as a Python function
 ################################################################################
+# The integrator calls this function at its tracking points. Given Cartesian
+# x, y, z in metres, it returns Bx, By, Bz in tesla.
 # The transverse terms make div(B)=0 to this linear transverse order.
 # This near-axis model is not an exact finite-coil vacuum field solution.
 def solenoid_field(x, y, z):
@@ -51,7 +53,7 @@ initial = xt.Particles(
 ################################################################################
 
 ########################################
-# Record trajectories in the callable Cartesian frame
+# Record the trajectory in the field's Cartesian frame
 ########################################
 integrator = xt.BorisSpatialIntegrator(
     fieldmap_callable = solenoid_field,
@@ -74,6 +76,9 @@ refined = xt.BorisSpatialIntegrator(
 )
 refined_particles = initial.copy()
 refined.track(refined_particles)
+print('Track through the analytic solenoid field\n'
+      '----------------------------------------')
+print('The field function returns Bx, By, Bz [T] at each tracking point.')
 print('Boris step refinement: exit x/y differences [m]:',
       boris_particles.x - refined_particles.x,
       boris_particles.y - refined_particles.y)
@@ -97,6 +102,8 @@ line = xt.Line(elements = [
 native_particles = initial.copy()
 line.track(native_particles, turn_by_turn_monitor = 'ONE_TURN_EBE')
 record = line.record_last_track
+print('\nCompare the sampled native profile\n'
+      '----------------------------------')
 print('Sampled native minus refined Boris exit x/y [m]:',
       native_particles.x - refined_particles.x,
       native_particles.y - refined_particles.y)
@@ -110,7 +117,7 @@ fig, axes = plt.subplots(1, 2, figsize = (10, 4), layout = 'constrained')
 for axis, coordinate in zip(axes, ['x', 'y']):
     axis.plot(integrator.z_log[:, 0],
               getattr(integrator, coordinate + '_log')[:, 0] * 1e3,
-              label = 'Spatial Boris')
+              label = 'Analytic field (Boris)')
     axis.plot(record.s[0], getattr(record, coordinate)[0] * 1e3,
               '.', label = 'Native sampled profile')
     axis.set(xlabel = 'Cartesian field coordinate z [m]',
