@@ -3,8 +3,9 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Assign supports on the same demonstration ring as the feedback examples.
-# Inspect wave, PSD or stated motion with native mechanics survey and plots.
+# How does a spatial ground-motion field change a ring's frozen closed orbit?
+# Place the quadrupoles on supports, then compare the same installed machine
+# with its dynamic input removed and with one prescribed field snapshot.
 
 ################################################################################
 # Required packages
@@ -26,7 +27,7 @@ import xtrack as xt
 # Ring and source selection
 ########################################
 LATTICE_FILE = 'test_data/example_lattices/demo_ring/lattice.py'
-SOURCE       = 'wave'                                             # 'wave', 'psd' or 'measured'
+SOURCE       = 'wave'                 # 'wave', 'psd' or 'measured'
 
 ########################################
 # First-support installation errors
@@ -55,7 +56,6 @@ PSD_SEED                 = 956
 # Frozen inspection time
 ########################################
 TIME_S = .125
-PRINT_TIMINGS = False
 
 ########################################
 # Motion sampling
@@ -63,33 +63,34 @@ PRINT_TIMINGS = False
 SAMPLE_STEP_S = 1 / 256
 N_SAMPLES     = 2048
 
+########################################
+# Optional execution-cost output
+########################################
+PRINT_TIMINGS = False
+
 ################################################################################
 # Set up the ordinary Xtrack line
 ################################################################################
 
 ########################################
-# Start performance monitoring
+# Prepare optional execution-cost diagnostics
 ########################################
 timings = {}
 
 ########################################
-# Time line load and copy
-########################################
-started = perf_counter()
-
-########################################
 # Locate and load the demonstration ring
 ########################################
+started = perf_counter()
 repo_root = Path(__file__).resolve().parents[2]
 nominal_env = xt.load(repo_root / LATTICE_FILE)
-line = nominal_env['demo'].copy()        # Reference backend rejects shared construction sublines
+line = nominal_env['demo'].copy()        # Work on an independent machine
 env = line.env
 env['demo'] = line
 
 timings['line_load_and_copy_s'] = perf_counter() - started
 
 ########################################
-# Prepare and time the tracker before mechanics queries
+# Build the ordinary tracking model
 ########################################
 started = perf_counter()
 line.build_tracker()
@@ -105,25 +106,17 @@ timings['tracker_build_s'] = perf_counter() - started
 mech = env.mechanics
 
 ########################################
-# Time reference adoption
-########################################
-started = perf_counter()
-
-########################################
 # Adopt existing offsets as the deliberate reference
 ########################################
+started = perf_counter()
 line.mechanics.adopt_reference()
 
 timings['reference_adoption_s'] = perf_counter() - started
 
 ########################################
-# Time geometry selection
-########################################
-started = perf_counter()
-
-########################################
 # Survey the nominal frames and select quadrupoles
 ########################################
+started = perf_counter()
 nominal = line.survey(include_element_frames = True)
 quads = list(line.get_table().rows.match(element_type = 'Quadrupole').name)
 
@@ -134,24 +127,17 @@ timings['geometry_selection_s'] = perf_counter() - started
 ########################################
 # Illustrative supports, not an FCC-ee mechanical layout. Replace this loop
 # with a machine-specific env.call(...) script for actual assignments.
-########################################
-# Time mechanics definition
-########################################
 started = perf_counter()
 
 assignments = {f'g.{name}': [name] for name in quads}
 girders = list(line.mechanics.new_girders(assignments).values())
+timings['mechanics_definition_s'] = perf_counter() - started
 
 ########################################
 # Set the first support's installation placement
 ########################################
-first = girders[0]
-
-timings['mechanics_definition_s'] = perf_counter() - started
-########################################
-# Time installation definition
-########################################
 started = perf_counter()
+first = girders[0]
 
 first.installation.shift_x, first.installation.shift_y, first.installation.shift_s = INSTALLATION_SHIFT_M
 first.installation.rot_x_rad, first.installation.rot_y_rad, first.installation.rot_s_rad = INSTALLATION_ANGLES_RAD
@@ -163,13 +149,9 @@ timings['installation_definition_s'] = perf_counter() - started
 ################################################################################
 
 ########################################
-# Start timing motion preparation
-########################################
-started = perf_counter()
-
-########################################
 # Choose physical sample times
 ########################################
+started = perf_counter()
 times = np.arange(N_SAMPLES) * SAMPLE_STEP_S
 
 ########################################
@@ -196,16 +178,16 @@ else:
 ########################################
 # Bind one jointly sampled source to every support
 ########################################
-mech.add_source('floor_input', source, targets = [g.name for g in girders], component = 'y')
+mech.add_source(
+    'floor_input', source,
+    targets = [g.name for g in girders], component = 'y',
+)
 
 ########################################
 # Compute a reusable motion record
 ########################################
 motion = mech.compute_time_series(time_s = times)
 
-########################################
-# Record the motion preparation cost
-########################################
 timings['sample_motion_s'] = perf_counter() - started
 
 ################################################################################
@@ -213,30 +195,19 @@ timings['sample_motion_s'] = perf_counter() - started
 ################################################################################
 
 ########################################
-# Start timing application and inspection
-########################################
-started = perf_counter()
-
-########################################
 # Predict the element poses without modifying the line
 ########################################
+started = perf_counter()
 targets = line.mechanics.get_element_poses(time_s = TIME_S, time_series = motion)
 timings['pose_prediction_s'] = perf_counter() - started
 
 ########################################
-# Time alignment application separately from survey verification
-########################################
-started = perf_counter()
-
-########################################
 # Apply the selected mechanical state
 ########################################
+started = perf_counter()
 mech.apply(time_s = TIME_S, time_series = motion)
 timings['apply_s'] = perf_counter() - started
 
-########################################
-# Time the independent native-survey verification
-########################################
 started = perf_counter()
 moved = line.survey(include_element_frames = True)
 
@@ -282,19 +253,30 @@ timings['Matched frozen optics'] = perf_counter() - started
 ########################################
 # State the physical change and the measured beam response
 ########################################
-print('A spatial motion field across a surveyed ring\n--------------------------------------------')
+print('A ground-motion field across the demonstration ring\n'
+      '--------------------------------------------------')
 print(f'Ring length: {line.get_length():.1f} m; quadrupoles on individual supports: {len(girders)}.')
 print(f'Source model: {SOURCE}; displayed physical time: {TIME_S:g} s.')
 if SOURCE == 'wave':
     print(f'Wave: {WAVE_FREQUENCY_HZ:g} Hz, speed {WAVE_SPEED_M_S:g} m/s, wavelength {WAVE_SPEED_M_S / WAVE_FREQUENCY_HZ:g} m.')
     print(f'Propagation direction XYZ: {WAVE_DIRECTION}; polarization XYZ: {WAVE_POLARIZATION} (normalized independently).')
-print('Both optics cases retain the same first-support installation error.')
-print('Only the prescribed dynamic support motion changes between the cases.')
-print('\nFrozen mechanical and beam changes\n----------------------------------')
+print('Each quadrupole has one illustrative rigid support; there is no contact-response model here.')
+print('\nCompare two frozen maps of the same installed machine\n'
+      '----------------------------------------------------')
+print('Case                        Largest |x| [µm]    Largest |y| [µm]')
+for label, twiss in [('Installation only', installed_twiss),
+                     ('Installation + motion', moving_twiss)]:
+    print(f'{label:<27} {np.max(np.abs(twiss.x)) * 1e6:16.6f}'
+          f' {np.max(np.abs(twiss.y)) * 1e6:19.6f}')
+print('Design and installation are identical in both cases; only the dynamic field changes.')
+print('\nMechanical input and resulting orbit difference\n'
+      '----------------------------------------------')
 print(f'Largest |world-Y support displacement| [nm]: {np.max(np.abs(survey.dynamic_Y)) * 1e9:.3f}')
 print(f'Largest |horizontal closed-orbit change| [µm]: {np.max(np.abs(dx)) * 1e6:.6f}')
 print(f'Largest |vertical closed-orbit change| [µm]: {np.max(np.abs(dy)) * 1e6:.6f}')
 print(f'Applied-frame check: largest position error {survey_error_m:.3g} m, orientation error {survey_error_rad:.3g} rad.')
+print('The lower panels show the orbit difference, rather than the installation orbit.')
+print('These are closed orbits of frozen maps, not a prediction that a driven beam follows them.')
 print('These support assignments illustrate the API; they are not an engineering girder layout.')
 
 ################################################################################
@@ -317,9 +299,16 @@ if SOURCE == 'wave':
     direction /= np.linalg.norm(direction)
     origin = centres[:, [0, 2]].mean(axis = 0)
     length = .3 * np.ptp(centres[:, [0, 2]], axis = 0).max()
-    axes[0, 0].annotate('Wave travels', xy = origin + length * direction[[0, 2]], xytext = origin,
-                       arrowprops = {'arrowstyle': '->', 'color': '0.2'}, fontsize = 9)
-axes[0, 0].set(title = 'Support locations and wave phase around the ring', xlabel = 'World X [m]', ylabel = 'World Z [m]')
+    # Draw the vector independently of its label: a text bounding box must
+    # not move the arrow tail and visually change the propagation direction.
+    if np.linalg.norm(direction[[0, 2]]) > 0:
+        axes[0, 0].annotate('', xy = origin + length * direction[[0, 2]], xytext = origin,
+                           arrowprops = {'arrowstyle': '->', 'color': '0.2'})
+        axes[0, 0].text(origin[0], origin[1] - .12 * length, 'Wave travels',
+                       ha = 'center', va = 'top', fontsize = 9)
+    else:
+        axes[0, 0].text(*origin, 'Wave travels normal to this plan', ha = 'center', fontsize = 9)
+axes[0, 0].set(title = '1. Surveyed supports sample one field', xlabel = 'World X [m]', ylabel = 'World Z [m]')
 axes[0, 0].set_aspect('equal', adjustable = 'box')
 
 ########################################
@@ -327,23 +316,23 @@ axes[0, 0].set_aspect('equal', adjustable = 'box')
 ########################################
 for axis in 'XYZ':
     axes[0, 1].plot(nominal['s', quads], survey['dynamic_' + axis] * 1e9, '.-', ms = 2, label = 'World ' + axis)
-axes[0, 1].set(title = 'Different supports sample different spatial phases', xlabel = 'Nominal s [m]', ylabel = 'Dynamic support displacement [nm]')
+axes[0, 1].set(title = '2. Spatial input at the support locations', xlabel = 'Nominal s [m]', ylabel = 'Dynamic support displacement [nm]')
 axes[0, 1].legend(fontsize = 8)
 
 ########################################
 # Show both measured orbit-plane changes on equal footing
 ########################################
 axes[1, 0].plot(moving_twiss.s, dx * 1e6, color = 'tab:blue')
-axes[1, 0].set(title = 'Horizontal closed-orbit change', xlabel = 'Nominal s [m]', ylabel = 'With motion − installed baseline [µm]')
+axes[1, 0].set(title = '3. Horizontal orbit response', xlabel = 'Nominal s [m]', ylabel = 'Orbit change Δx [µm]')
 axes[1, 1].plot(moving_twiss.s, dy * 1e6, color = 'tab:orange')
-axes[1, 1].set(title = 'Vertical closed-orbit change', xlabel = 'Nominal s [m]', ylabel = 'With motion − installed baseline [µm]')
+axes[1, 1].set(title = '4. Vertical orbit response', xlabel = 'Nominal s [m]', ylabel = 'Orbit change Δy [µm]')
 for ax in (axes[0, 1], axes[1, 0], axes[1, 1]):
     ax.grid(alpha = .2)
-fig.suptitle(f'Same ring and installation errors; dynamic field evaluated at t = {TIME_S:g} s', fontsize = 12)
+fig.suptitle(f'Frozen field at t = {TIME_S:g} s; Δorbit = (installation + motion) − installation', fontsize = 12)
 fig.tight_layout(h_pad = 2.)
 
 ################################################################################
-# Review execution costs and figures
+# Display figures and optional execution costs
 ################################################################################
 
 ########################################

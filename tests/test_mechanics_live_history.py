@@ -204,6 +204,73 @@ def record_three_freezes(
     return recorder
 
 
+def test_off_grid_history_holds_prescribed_and_live_values_together():
+    env, line, held = model()
+    line.set_particle_ref('proton', p0c=7e12)
+    env.mechanics.add_source('tone', xt.mechanics.Harmonic(10e-6, 1.),
+                            targets='support.live')
+    record = env.mechanics.compute_time_series(time_s=[0., .125, .25, .5])
+    recorder = line.mechanics.record_applied_sources(sources='mover', case_scope='line')
+    for time, value in ((0., 20e-6), (.25, 40e-6)):
+        held.value = value
+        line.mechanics.apply(time_s=time, time_series=record, disabled_sources='ground')
+    applied = recorder.snapshot()
+    recorder.stop()
+    calls = held.calls
+    for owner, name in ((line.mechanics, 'q.live'), (env.mechanics, 'magnet.live')):
+        history = owner.get_table().rows[name].get_time_series(
+            time_s=[.125, .25], applied_history=applied,
+        )
+        np.testing.assert_array_equal(history.pose_time_s, [0., .25])
+        np.testing.assert_allclose(history.dynamic_Y, [20e-6, 50e-6], atol=1e-20)
+    frozen = line.mechanics.freeze_at(time_s=.125, applied_history=applied)
+    assert frozen.pose_time_s == 0.
+    assert frozen.element_poses['q.live'].Y == pytest.approx(20e-6)
+    assert held.calls == calls
+
+
+@pytest.mark.parametrize('operation', ['restore', 'line_clear', 'env_clear'])
+def test_reset_stops_applied_source_recording(operation):
+    env, line, held = model()
+    recorder = record_three_freezes(env, line, held)
+    actions = dict(restore=env.mechanics.restore, line_clear=line.mechanics.clear,
+                   env_clear=env.mechanics.clear)
+    actions[operation]()
+    assert not recorder.active
+    assert recorder.n_samples == 3
+    np.testing.assert_array_equal(recorder.snapshot().time_s, [0., .25, .5])
+
+
+@pytest.mark.parametrize('backend', ['compiled', 'reference'])
+def test_named_mask_reaches_tracking_applied_table_and_queries(backend):
+    env, line, held = model()
+    line.set_particle_ref('proton', p0c=7e12)
+    view = line.mechanics
+    view.apply(time_s=0., disabled_sources='mover')
+    calls = held.calls
+    masked = view.get_table(time_s=0., disabled_sources='mover').rows['q.live']
+    assert masked.live_source_names == ()
+    expected = 2e-9 * np.sin(.4)
+    assert masked.dynamic_Y[0] == pytest.approx(expected, rel=1e-12)
+    assert view.get_element_poses(disabled_sources='mover')['q.live'].Y == pytest.approx(expected)
+    assert view.read_bpm('q.live', disabled_sources='mover', x=0., y=0.).y == pytest.approx(-expected)
+    history = masked.get_time_series(time_s=[0., .125])
+    assert history.disabled_sources == ('mover',)
+    assert history.dynamic_Y[0] == pytest.approx(expected)
+    view.enable_vibrations(backend=backend, disabled_sources='mover')
+    line.track(line.build_particles())
+    assert held.calls == calls
+    applied = view.get_applied_table()
+    assert applied['Y', 'q.live'] == pytest.approx(expected)
+    assert applied.disabled_sources == ('mover',)
+    assert applied.last_applied_time_s == 0.
+    view.disable_vibrations()
+    assert not view.controls_enabled
+    assert held.calls == calls
+    env.mechanics.restore()
+    assert view.get_applied_table().last_applied_time_s is None
+
+
 @pytest.mark.parametrize('body_table', [False, True])
 def test_applied_live_history_replays_captured_commands_without_provider_queries(
     body_table,
@@ -218,7 +285,9 @@ def test_applied_live_history_replays_captured_commands_without_provider_queries
     selected = owner.get_table().rows[name]
     times = np.array([0.0, 0.125, 0.25, 0.5])
     history = selected.get_time_series(time_s=times, applied_history=applied)
-    expected = 2e-9 * np.sin(4 * np.pi * times + 0.4) + [20e-9, 20e-9, 40e-9, -10e-9]
+    freeze_times = np.array([0., 0., .25, .5])
+    np.testing.assert_array_equal(history.pose_time_s, freeze_times)
+    expected = 2e-9 * np.sin(4 * np.pi * freeze_times + 0.4) + [20e-9, 20e-9, 40e-9, -10e-9]
     np.testing.assert_allclose(history.dynamic_Y, expected, rtol=0, atol=1e-22)
     assert history.history_kind == 'applied_live_inputs'
     assert held.calls == calls

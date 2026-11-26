@@ -7,24 +7,50 @@ import pytest
 import xtrack as xt
 
 
-def test_absolute_motion_does_not_double_count_parent_or_erase_installation():
+def test_measured_total_poses_are_converted_into_finite_mount_motion():
     env = xt.Environment()
-    parent = env.mechanics.new_girder('parent', anchor=xt.Frame())
-    child = env.mechanics.new_body('child', parent=parent, mount=xt.Frame().translate_s(2))
-    parent.installation.shift_y = 3e-6
+    mech = env.mechanics
+    parent = mech.new_girder('parent', anchor=xt.Frame.from_survey_angles(X=500., psi=.2))
+    child = mech.new_body('child', parent=parent,
+                          mount=xt.Frame.from_survey_angles(Y=.45, Z=2., phi=.15))
+    parent.installation.shift_y = .005
+    parent.installation.rot_s_rad = .025
+    child.installation.shift_x = .004
+    child.installation.rot_y_rad = .12
     times = np.array([0., 1.])
-    values = np.zeros((2, 1, 6))
-    values[..., 1] = 1e-6
-    values[..., 4] = .2
-    env.mechanics.add_source('moving_parent', xt.mechanics.RigidMotion(times, values), targets=['parent'])
-    env.mechanics.add_source('fixed_child', xt.mechanics.RigidMotion(times, np.zeros((2, 1, 6))),
-                              targets=['child'], reference='absolute')
-    poses = env.mechanics.get_body_poses(time_s=.5)
-    np.testing.assert_allclose(poses['child'].XYZ, [0, 3e-6, 2], atol=1e-15)
-    np.testing.assert_allclose(poses['child'].matrix[:3, :3], np.eye(3), atol=1e-15)
-    assert poses['parent'].theta == pytest.approx(.2)
-    with pytest.raises(ValueError, match='combined'):
-        env.mechanics.add_source('extra', xt.mechanics.Harmonic(1e-6, 1), targets=['child'])
+    values = np.array([[.01, -.02, .03, .1, -.2, .3], [-.01, .02, -.03, -.1, .2, -.3]])
+    mech.add_source('base', xt.mechanics.RigidMotion(times, values), targets='parent')
+    totals = np.array([[(mech.get_body_poses(time_s=t)['child']
+                         @ xt.Frame.from_survey_angles(X=.006, Y=.01, phi=-.15, psi=.04)).matrix]
+                       for t in times])
+    converted = mech.relative_motion_from_poses(time_s=times, targets='child', total_poses=totals)
+    mech.add_source('measured_residual', converted, targets='child')
+    for row, time in enumerate(times):
+        np.testing.assert_allclose(mech.get_body_poses(time_s=time)['child'].matrix,
+                                   totals[row, 0], atol=2e-13, rtol=0)
+    # The residual remains mounted if another independent source is added.
+    before = mech.get_body_poses(time_s=0.)['child'].Y
+    mech.add_source('later_floor_source', xt.mechanics.Harmonic(2e-3, 0., np.pi/2),
+                    targets='parent')
+    assert mech.get_body_poses(time_s=0.)['child'].Y != before
+
+
+def test_relative_record_reconstructs_total_finite_offset_at_the_carried_port():
+    times = [0., 1.]
+    from scipy.spatial.transform import Rotation
+
+    carried = np.array([[.01, .02, .03, .15, -.2, .3], [-.02, .015, .035, .5, .1, -.2]])
+    total = carried + [.004, -.008, .009, -.12, .13, .07]
+    relative = xt.mechanics.RigidMotion(times, total, 'q').relative_to(
+        xt.mechanics.RigidMotion(times, carried, 'q'))
+    def rot(values):
+        return Rotation.from_euler('YXZ', values[:, [4, 3, 5]] * [1, -1, 1])
+
+    carried_rotation = rot(carried)
+    np.testing.assert_allclose(carried[:, :3] + carried_rotation.apply(relative.values[:, 0, :3]),
+                               total[:, :3], atol=2e-17)
+    np.testing.assert_allclose((carried_rotation * rot(relative.values[:, 0])).as_matrix(),
+                               rot(total).as_matrix(), atol=4e-16)
 
 
 def test_angular_units_and_noncommuting_source_composition():
@@ -95,6 +121,19 @@ def test_matrix_filter_phase_and_causal_block_state():
     causal.reset()
     split = np.concatenate([causal.process(values[:701]), causal.process(values[701:])])
     np.testing.assert_array_equal(split, whole)
+    causal.reset()
+    prefix = causal.process(values[:701])
+    checkpoint = json.loads(json.dumps(causal.get_state()))
+    resumed = xt.mechanics.CausalResponse(oscillator=oscillator, sample_step_s=1/256)
+    resumed.set_state(checkpoint)
+    invalid = {**checkpoint, 'sample_step_s': 1/512}
+    with pytest.raises(ValueError, match='same discrete filter'):
+        resumed.set_state(invalid)
+    with pytest.raises(ValueError, match='delay state'):
+        resumed.set_state({**checkpoint, 'delay': [[[np.nan]]]})
+    np.testing.assert_array_equal(
+        np.concatenate([prefix, resumed.process(values[701:])]), whole,
+    )
     from scipy.signal import lsim
     omega = 2*np.pi*oscillator.frequency_hz
     step = np.ones(256)*1e-8
@@ -136,7 +175,7 @@ def test_adopted_reference_installation_and_dynamic_seeds_are_independent():
     env.new('q', xt.Quadrupole, length=.5, k1=.2, shift_x=.001, rot_s_rad=.1)
     line = env.new_line(name='line', components=['q'])
     line.mechanics.adopt_reference()
-    body = line.mechanics.new_girder('g', elements=['q'])
+    line.mechanics.new_girder('g', elements=['q'])
     for dynamic_seed in (5, 6):
         installation = env.mechanics.generate_installation_errors(seed=956, translation_sigma_m=(1e-5,2e-5,0))
         installation.apply(env.mechanics)

@@ -18,17 +18,6 @@ import xobjects as xo
 from .context_arrays import to_context
 
 
-_FIELDS = (
-    'shift_x',
-    'shift_y',
-    'shift_s',
-    'rot_x_rad',
-    'rot_y_rad',
-    'rot_s_rad_no_frame',
-    'rot_shift_anchor',
-)
-
-
 def _compile(context):
     if 'mechanics_guard_gather' not in context.kernels:
         context.add_kernels(
@@ -45,7 +34,6 @@ def _compile(context):
                     n_threads='n',
                 )
             },
-            extra_include_dirs=[str(Path(xo.__file__).resolve().parents[1])],
         )
 
 
@@ -66,12 +54,30 @@ class GeometryGuard:
         self.names = tuple(view.line.element_names)
         elements = view.line.element_dict
         self.objects = {name: elements[name] for name in self.names}
-        self.attachments = tuple(view._attachments.values())
-        from .model import _reference_geometry
+        self.attachments = tuple(view._numeric_attachments())
+        self.has_solenoid_axes = bool(view._solenoid_axes)
+        from .model import (
+            _attachment_fields, _reference_geometry, _resolved_slice_parent,
+            _storage_identity,
+        )
+        from ..beam_elements.slice_base import _SliceBase
+
+        self.slice_parents = [
+            (element, element.parent_name, _resolved_slice_parent(element, elements))
+            for element in self.objects.values()
+            if isinstance(element, _SliceBase)
+        ]
+        geometry_objects = list(view._protected_geometry_objects().values())
+        geometry_objects = list({id(obj): obj for obj in geometry_objects}.values())
+        self.storage = [
+            (element, _storage_identity(element))
+            for element in geometry_objects
+            if hasattr(element, '_xobject')
+        ]
 
         self.python_geometry = [
             (element, _reference_geometry(element))
-            for element in self.objects.values()
+            for element in geometry_objects
             if (
                 not type(element).__module__.startswith('xtrack.beam_elements')
                 or getattr(element, 'iscollective', False)
@@ -79,10 +85,10 @@ class GeometryGuard:
         ]
         buffers = {
             id(element._buffer): element._buffer
-            for element in self.objects.values()
+            for element in geometry_objects
             if hasattr(element, '_buffer')
         }
-        for element in self.objects.values():
+        for element in geometry_objects:
             if (
                 type(element).__module__.startswith('xtrack.beam_elements')
                 and not getattr(element, 'iscollective', False)
@@ -145,8 +151,9 @@ class GeometryGuard:
         self.n_geometry = len(offsets)
         for attachment in self.attachments:
             element = self.objects[attachment['element']]
-            offsets.extend(element._xobject._get_offset(field) for field in _FIELDS)
-            sizes.extend([8] * len(_FIELDS))
+            fields = _attachment_fields(attachment)
+            offsets.extend(element._xobject._get_offset(field) for field in fields)
+            sizes.extend([8] * len(fields))
         self.expected_geometry = np.array(expected, dtype=np.uint64)
         self.expected = np.empty(len(offsets), dtype=np.uint64)
         self.expected[: self.n_geometry] = self.expected_geometry
@@ -158,7 +165,7 @@ class GeometryGuard:
             else {
                 getattr(view.line.env.ref[a['element']], field)
                 for a in self.attachments
-                for field in _FIELDS
+                for field in _attachment_fields(a)
             }
         )
         _compile(self.context)
@@ -191,7 +198,25 @@ class GeometryGuard:
             raise ValueError(
                 'Line element object changed after mechanics attachment; rebuild bindings'
             )
-        if line.aperture.is_built:
+        if any(
+            element.parent_name != name
+            or elements.get(name) is not parent
+            or element._parent is not parent
+            for element, name, parent in self.slice_parents
+        ):
+            raise ValueError(
+                'Native slice reference geometry changed after attachment; rebuild bindings'
+            )
+        from .model import _storage_identity
+
+        if any(_storage_identity(element) != previous
+               for element, previous in self.storage):
+            raise ValueError(
+                'Element geometry storage changed after preparation; prepare bindings again'
+            )
+        if view._pipes is not None:
+            view._pipes.validate()
+        if line.aperture.is_built and view._pipes is None:
             raise ValueError(
                 'Discard/rebuild the aperture survey model when applying mechanics; pipe-body coupling is not implemented yet'
             )
@@ -230,8 +255,10 @@ class GeometryGuard:
             raise ValueError(
                 'Line reference geometry changed after attachment; rebuild survey bindings'
             )
-        expected_alignment = np.array(
-            [a['last_written'] for a in self.attachments], dtype=np.float64
+        alignment_rows = [a['last_written'] for a in self.attachments]
+        expected_alignment = (
+            np.concatenate(alignment_rows) if self.has_solenoid_axes
+            else np.array(alignment_rows, dtype=np.float64)
         )
         self.expected[self.n_geometry :] = expected_alignment.ravel().view(np.uint64)
         if not np.array_equal(

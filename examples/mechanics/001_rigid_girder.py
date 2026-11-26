@@ -44,6 +44,11 @@ HISTORY_DURATION_S  = .4                # Two vibration periods with these input
 N_HISTORY_SAMPLES   = 161
 CONTEXT             = xo.ContextCpu()
 
+########################################
+# Optional performance diagnostics
+########################################
+PRINT_TIMINGS       = False
+
 ################################################################################
 # Build and track the design placement
 ################################################################################
@@ -306,7 +311,7 @@ for ax, name, history, color in [
 ]:
     ax.plot(times * 1e3, history.dynamic_Y * 1e9, color = color)
     ax.axvline(INSPECT_TIME_S * 1e3, ls = ':', color = '0.4',
-               label = f't = {INSPECT_TIME_S:g} s')
+               label = f'Applied pose: {INSPECT_TIME_S * 1e3:g} ms')
     ax.set(
         ylabel = 'Vibration displacement [nm]',
         title = f'{name}: vibration about the installed placement',
@@ -329,13 +334,14 @@ fig.tight_layout()
 ########################################
 # Report physical operations in milliseconds
 ########################################
-print('\nCPU operation costs\n-------------------')
-print(f'{"Operation":<38} {"Time [ms]":>10}')
-for label, seconds in timings.items():
-    print(f'{label:<38} {seconds * 1e3:10.3f}')
-print('One-pass costs include a fresh launch copy and first-use dispatch where applicable.')
-print('Histories are read-only diagnostics; these timings are not a throughput comparison.')
-print('No automatic vibration updates run in this lesson. Example 002 introduces them.')
+if PRINT_TIMINGS:
+    print('\nCPU operation costs\n-------------------')
+    print(f'{"Operation":<38} {"Time [ms]":>10}')
+    for label, seconds in timings.items():
+        print(f'{label:<38} {seconds * 1e3:10.3f}')
+    print('One-pass costs include a fresh launch copy and first-use dispatch where applicable.')
+    print('Histories are read-only diagnostics; these timings are not a throughput comparison.')
+    print('No automatic vibration updates run in this lesson. Example 002 introduces them.')
 
 ########################################
 # Display the two physical comparisons

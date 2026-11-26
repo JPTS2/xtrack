@@ -55,7 +55,7 @@ def test_regional_without_excess_still_returns_owned_samples():
 @pytest.mark.parametrize('invalid, message', [
     (np.ones((2, 1), dtype=complex)*(1+1j), 'real'),
     (np.full((2, 1), np.nan), 'finite'),
-    (np.ones((2, 1, 1)), 'vector displacement'),
+    (np.ones((2, 1, 1)), 'shape'),
 ])
 def test_regional_copy_does_not_hide_invalid_provider_output(invalid, message):
     source = xt.mechanics.RegionalGroundMotion(CachedScalarSource(invalid), ())
@@ -84,3 +84,65 @@ def test_nested_builtin_regions_preserve_background_and_field_queries():
     np.testing.assert_allclose(chunks, whole, rtol=0, atol=1e-23)
     subset = outer.evaluate(times, positions[[2, 0]])
     np.testing.assert_allclose(subset, whole[:, [2, 0]], rtol=0, atol=1e-23)
+
+
+def test_regional_definition_consumes_iterables_only_once():
+    """Building regions from an iterator must not silently remove their motion."""
+    background = xt.mechanics.Harmonic(1., 0., phase_rad=np.pi/2)
+    excess = xt.mechanics.Harmonic(2., 0., phase_rad=np.pi/2)
+    region = xt.mechanics.GaussianRegion(excess, (0., 0., 0.), 1.)
+    source = xt.mechanics.RegionalGroundMotion(background, iter([region]))
+    assert source.regions == (region,)
+    np.testing.assert_array_equal(source.evaluate(np.array([0., 1.]), np.zeros((1, 3))), 3.)
+
+
+class SharedScalarSource:
+    frame = 'body_local'
+    unit = 'm'
+
+    def evaluate(self, *, time_s, positions_m):
+        return 1. + 2.*time_s
+
+
+@pytest.mark.parametrize('n_times', [2, 3])
+def test_shared_scalar_waveform_preserves_time_axis_in_source_compositions(n_times):
+    """A shared time history must never broadcast along the receiver axis."""
+    times = np.arange(n_times, dtype=float)
+    positions = np.array([[0., 0., 0.], [1., 0., 0.]])
+    waveform = SharedScalarSource()
+    shared = np.broadcast_to((1. + 2.*times)[:, None], (n_times, 2))
+
+    field = xt.mechanics.sample_field(waveform, time_s=times, positions_m=positions)
+    vector = xt.mechanics.VectorGroundMotion((None, waveform, None))
+    np.testing.assert_array_equal(field.values[..., 1], shared)
+    np.testing.assert_array_equal(vector.evaluate(times, positions)[..., 1], shared)
+
+    region = xt.mechanics.GaussianRegion(waveform, (0., 0., 0.), 1.)
+    regional = xt.mechanics.RegionalGroundMotion(waveform, (region,))
+    expected = shared * (1. + np.exp(-np.array([0., 1.])/2))
+    np.testing.assert_allclose(regional.evaluate(times, positions), expected, rtol=1e-15)
+
+    located = xt.mechanics.LocatedSource(waveform, (0., 0., 0.), 2., 4.)
+    distance = np.array([0., 1.])
+    expected = (1. + 2.*(times[:, None] - distance/4.)) * np.exp(-distance/2.)
+    np.testing.assert_allclose(located.evaluate(times, positions)[..., 1], expected, rtol=1e-15)
+
+
+@pytest.mark.parametrize('wrapper', ['vector', 'regional_excess', 'located'])
+@pytest.mark.parametrize('invalid, message', [
+    (np.array([[1.+1j]]), 'real'),
+    (np.array([[np.inf]]), 'finite'),
+    (np.ones((1, 1)), 'shape'),
+])
+def test_scalar_source_wrappers_reject_invalid_samples_before_composition(wrapper, invalid, message):
+    """Neither a zero mixing weight nor broadcasting can hide invalid input."""
+    provider = CachedScalarSource(invalid)
+    if wrapper == 'vector':
+        source = xt.mechanics.VectorGroundMotion((provider, None, None), mixing=np.zeros((3, 3)))
+    elif wrapper == 'regional_excess':
+        region = xt.mechanics.GaussianRegion(provider, (0., 0., 0.), 1.)
+        source = xt.mechanics.RegionalGroundMotion(SharedScalarSource(), (region,))
+    else:
+        source = xt.mechanics.LocatedSource(provider, (0., 0., 0.), 2., 4.)
+    with pytest.raises(ValueError, match=message):
+        source.evaluate(np.array([0., 1.]), np.zeros((2, 3)))

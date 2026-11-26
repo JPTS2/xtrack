@@ -15,6 +15,17 @@ from ..table import Table
 COORDINATES = ('shift_x', 'shift_y', 'shift_s', 'rot_x_rad', 'rot_y_rad', 'rot_s_rad')
 
 
+def sample_at(times, values, time_s, *, interpolation='linear', selection=slice(None)):
+    if time_s < times[0] or time_s > times[-1]:
+        raise ValueError('Requested time lies outside the computed motion record')
+    index = int(np.searchsorted(times, time_s, side='right')) - 1
+    first = values[index, selection]
+    if interpolation == 'previous' or time_s == times[index]:
+        return first
+    weight = (time_s - times[index]) / (times[index + 1] - times[index])
+    return first + weight * (values[index + 1, selection] - first)
+
+
 def frozen_array(value):
     if np.iscomplexobj(value):
         raise ValueError('Motion samples must be real')
@@ -22,6 +33,17 @@ def frozen_array(value):
     if not np.all(np.isfinite(array)):
         raise ValueError('Motion samples must be finite')
     return np.frombuffer(array.tobytes(), dtype=float).reshape(array.shape)
+
+
+def checked_scalar(value, name):
+    """Own one finite real physical parameter, never an array of channels."""
+    array = np.asarray(value)
+    if array.ndim != 0 or array.dtype.kind not in 'fiu':
+        raise ValueError(f'{name} must be a finite real scalar')
+    value = float(array)
+    if not np.isfinite(value):
+        raise ValueError(f'{name} must be a finite real scalar')
+    return value
 
 
 def checked_times(time_s, *, uniform=False):
@@ -35,6 +57,14 @@ def checked_times(time_s, *, uniform=False):
             np.diff(times), dt, rtol=0, atol=tolerance
         ):
             raise ValueError('Filtering requires uniformly spaced times')
+    return times
+
+
+def checked_sample_times(time_s):
+    """A finite real vector of query times (not necessarily increasing)."""
+    times = np.asarray(time_s)
+    if times.ndim != 1 or np.iscomplexobj(times) or not np.all(np.isfinite(times)):
+        raise ValueError('Supply a vector of finite real sample times')
     return times
 
 
@@ -105,7 +135,12 @@ class RigidMotion:
         values = frozen_array(self.values)
         if values.ndim == 2:
             values = values[:, None, :]
-        if values.ndim != 3 or values.shape[0] != len(times) or values.shape[2] != 6:
+        if (
+            values.ndim != 3
+            or values.shape[0] != len(times)
+            or values.shape[1] == 0
+            or values.shape[2] != 6
+        ):
             raise ValueError('Rigid values must have shape (times, targets, 6)')
         names = (
             (self.target_names,)
@@ -123,7 +158,7 @@ class RigidMotion:
         return self.time_s.nbytes + self.values.nbytes
 
     def evaluate(self, time_s, positions_m):
-        times = np.asarray(time_s)
+        times = checked_sample_times(time_s)
         if np.any(times < self.time_s[0]) or np.any(times > self.time_s[-1]):
             raise ValueError('Requested time lies outside the rigid motion record')
         if len(positions_m) != self.values.shape[1]:
@@ -208,6 +243,38 @@ class RigidMotion:
             names if target_names is None else target_names,
         )
 
+    def relative_to(self, carried):
+        """Convert total dynamic response to a relative input at the same ports.
+
+        Both records describe motion at the same reference points, times and
+        axes. Transport the parent's motion to the child ports before calling.
+        The carried record supplies the motion to remove, including any
+        lever arms at those ports. This operation composes finite rotations
+        and differences local translations, preserving small increments.
+        """
+        from .local_deformations import rotation_increment
+
+        if (
+            not isinstance(carried, RigidMotion)
+            or self.values.shape != carried.values.shape
+            or self.target_names != carried.target_names
+            or not np.array_equal(self.time_s, carried.time_s)
+        ):
+            raise ValueError('Use the same times, targets and axes for total and carried motion')
+        carried_increment = rotation_increment(
+            *np.moveaxis(carried.values[..., 3:], -1, 0)
+        )
+        inverse = np.swapaxes(np.eye(3) + carried_increment, -1, -2)
+        delta = self.values - carried.values
+        relative_rotation = inverse @ (
+            rotation_increment(*np.moveaxis(self.values[..., 3:], -1, 0))
+            - carried_increment
+        )
+        values = np.empty_like(delta)
+        values[..., :3] = (inverse @ delta[..., :3, None])[..., 0]
+        values[..., 3:] = angles_from_matrix(np.eye(3) + relative_rotation)
+        return RigidMotion(self.time_s, values, self.target_names)
+
     def superpose(self, other):
         """Combine coframed prescribed motions: sum translation, compose rotation.
 
@@ -248,6 +315,113 @@ class RigidMotion:
 
 
 @dataclass(frozen=True)
+class ModalMotion:
+    """Prescribed small-deformation shapes with time-dependent modal amplitudes.
+
+    mode_shapes[mode, target, coordinate] gives [x,y,s,pitch,yaw,roll]
+    per unit of modal amplitude at each named nominal body frame. Units of
+    the resulting coordinates are metres and survey radians. The caller
+    defines the modal normalization, including the units of each amplitude.
+    Linear superposition takes place in these coordinates. Each resulting
+    pose then participates in ordinary finite rigid composition.
+
+    amplitudes[time, mode] is shared across targets. For multiple independently
+    driven supports, use amplitudes[time, group, mode] and give the integer
+    amplitude_groups[target]. A mount defined at its neutral axis can carry
+    children above it, using the ordinary hierarchy to include lever arms.
+    This record describes kinematics at the specified mounting stations.
+    """
+
+    time_s: object
+    amplitudes: object
+    mode_shapes: object
+    target_names: tuple
+    mode_names: tuple
+    amplitude_groups: object = None
+    frame = 'body_local_rigid'
+
+    def __post_init__(self):
+        times = checked_times(self.time_s)
+        amplitudes = frozen_array(self.amplitudes)
+        shapes = frozen_array(self.mode_shapes)
+        targets = tuple(self.target_names)
+        modes = tuple(self.mode_names)
+        for names in (targets, modes):
+            if (
+                not names or any(not isinstance(name, str) or not name for name in names)
+                or len(set(names)) != len(names)
+            ):
+                raise ValueError('Use unique nonempty modal target and mode names')
+        if isinstance(self.target_names, str) or isinstance(self.mode_names, str):
+            raise ValueError('Use a sequence of target and mode names')
+        if shapes.shape != (len(modes), len(targets), 6):
+            raise ValueError('Mode shapes must be (modes, targets, 6)')
+        groups = self.amplitude_groups
+        if amplitudes.ndim == 2 and groups is None:
+            if amplitudes.shape != (len(times), len(modes)):
+                raise ValueError('Modal amplitudes must match times and modes')
+        elif amplitudes.ndim == 3 and groups is not None:
+            groups = np.asarray(groups)
+            if (
+                amplitudes.shape[0] != len(times)
+                or amplitudes.shape[2] != len(modes)
+                or groups.shape != (len(targets),)
+                or groups.dtype.kind not in 'iu'
+                or np.any(groups < 0)
+                or np.any(groups >= amplitudes.shape[1])
+            ):
+                raise ValueError('Use one valid amplitude group index per target')
+            groups = np.frombuffer(groups.astype(np.intp).tobytes(), dtype=np.intp)
+        else:
+            raise ValueError('Use (times, modes) or (times, groups, modes) with group indices')
+        object.__setattr__(self, 'time_s', times)
+        object.__setattr__(self, 'amplitudes', amplitudes)
+        object.__setattr__(self, 'mode_shapes', shapes)
+        object.__setattr__(self, 'target_names', targets)
+        object.__setattr__(self, 'mode_names', modes)
+        object.__setattr__(self, 'amplitude_groups', groups)
+
+    @property
+    def nbytes(self):
+        groups = self.amplitude_groups
+        return (self.time_s.nbytes + self.amplitudes.nbytes + self.mode_shapes.nbytes
+                + (0 if groups is None else groups.nbytes))
+
+    def workspace_bytes(self, n_times, n_targets):
+        group_count = 1 if self.amplitude_groups is None else self.amplitudes.shape[1]
+        return 8 * n_times * len(self.mode_names) * (4 * group_count + n_targets)
+
+    def evaluate(self, time_s, positions_m):
+        if len(positions_m) != len(self.target_names):
+            raise ValueError('Modal motion channels must match source targets')
+        times = checked_sample_times(time_s)
+        if np.any(times < self.time_s[0]) or np.any(times > self.time_s[-1]):
+            raise ValueError('Requested time lies outside the modal motion record')
+        upper = np.searchsorted(self.time_s, times, side='right')
+        upper = np.minimum(upper, len(self.time_s) - 1)
+        lower = upper - 1
+        fraction = (times - self.time_s[lower]) / (self.time_s[upper] - self.time_s[lower])
+        fraction = fraction.reshape((-1,) + (1,) * (self.amplitudes.ndim - 1))
+        amplitudes = self.amplitudes[lower] * (1 - fraction) + self.amplitudes[upper] * fraction
+        if self.amplitude_groups is None:
+            return np.einsum('tm,mbc->tbc', amplitudes, self.mode_shapes)
+        return np.einsum(
+            'tbm,mbc->tbc', amplitudes[:, self.amplitude_groups], self.mode_shapes
+        )
+
+    def to_dict(self):
+        return dict(
+            time_s=self.time_s.tolist(),
+            amplitudes=self.amplitudes.tolist(),
+            mode_shapes=self.mode_shapes.tolist(),
+            target_names=list(self.target_names),
+            mode_names=list(self.mode_names),
+            amplitude_groups=(None if self.amplitude_groups is None
+                              else self.amplitude_groups.tolist()),
+        )
+
+
+@dataclass(frozen=True)
 class FieldMotion:
     """World XYZ displacement at fixed nominal receivers, in metres."""
 
@@ -264,6 +438,7 @@ class FieldMotion:
         if (
             positions.ndim != 2
             or positions.shape[1] != 3
+            or not len(positions)
             or values.shape != (len(times), len(positions), 3)
         ):
             raise ValueError(
@@ -382,9 +557,13 @@ def sample_field(
 ):
     """Sample one joint field at all receivers; scalar sources use polarization.
 
+    A scalar source may supply one shared waveform (times,) or separate
+    waveforms (times, receivers).
     This bounded host reference does not allocate a GPU time-by-body history.
     DisplacementPSD has dense spatial cost; account for that workspace too.
     """
+    from .sources import _scalar_displacement_samples
+
     times, positions = checked_times(time_s), frozen_array(positions_m)
     if positions.ndim != 2 or positions.shape[1] != 3 or not len(positions):
         raise ValueError('Use nonempty receiver XYZ positions')
@@ -403,7 +582,8 @@ def sample_field(
             f'Estimated field workspace {estimate} bytes exceeds max_memory_bytes'
         )
     values = np.asarray(source.evaluate(time_s=times, positions_m=positions))
-    if values.shape == (len(times), channels):
+    if values.shape in ((len(times),), (len(times), channels)):
+        values = _scalar_displacement_samples(values, times, positions)
         if np.iscomplexobj(polarization):
             raise ValueError('World polarization must be real')
         vector = np.asarray(polarization, dtype=float)

@@ -14,8 +14,11 @@ def to_context(context, value):
     CuPy's default nonblocking array construction can race the next host write.
     One explicit blocking batch transfer is the reference sampled-input policy;
     analytic motion has no per-freeze host payload. OpenCL's Xobjects upload
-    uses its blocking to_device default, and CPU execution is synchronous.
+    uses its blocking to_device default. CPU allocation owns a copy too;
+    the caller may overwrite staging immediately after this operation.
     """
+    if isinstance(context, xo.ContextCpu):
+        return np.array(value, copy=True, order='C')
     value = np.ascontiguousarray(value)
     if isinstance(context, xo.ContextCupy):
         cupy = context.nplike_lib

@@ -10,7 +10,7 @@ captured in bulk without taking ownership of live lattice expressions; no
 per-scalar xdeps mechanics hierarchy or entire-run pose cache is installed.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field as dataclass_field
 from types import MappingProxyType
 from weakref import WeakKeyDictionary, ref
 
@@ -18,8 +18,10 @@ import numpy as np
 
 from ..survey import Frame
 from ..table import Table
+from ..base_element import Replica
+from ..beam_elements.slice_base import _SliceBase
 from .sources import decode_source, encode_source, requires_time_series
-from .motion import RigidMotion, COORDINATES, frozen_array, checked_times
+from .motion import RigidMotion, COORDINATES, frozen_array, checked_times, sample_at
 from .installation import RigidOffset
 from .local_deformations import (
     rotation_increment,
@@ -41,6 +43,7 @@ _FIELDS = (
     'rot_shift_anchor',
 )
 _GEOMETRY = ('length', 'angle', 'h', 'hxl', 'rot_s_rad')
+_SOLENOID_AXIS_FIELDS = ('x0', 'y0')
 
 
 def _frame(value):
@@ -65,8 +68,20 @@ def _frame(value):
     return Frame(matrix)
 
 
-def _values(element):
-    return np.array([float(getattr(element, name)) for name in _FIELDS])
+def _values(element, fields=_FIELDS):
+    return np.array([float(getattr(element, name)) for name in fields])
+
+
+def _attachment_fields(attachment):
+    return _SOLENOID_AXIS_FIELDS if 'projection' in attachment else _FIELDS
+
+
+def _check_transverse_values(body, values):
+    if body._transverse_only and np.any(np.asarray(values)[..., 2:]):
+        raise ValueError(
+            f'{body.name}: relative solenoid axis supports only transverse x/y '
+            'translations; move the common chart for rigid rotations and longitudinal motion'
+        )
 
 
 def _reference_values(body):
@@ -74,8 +89,11 @@ def _reference_values(body):
     if np.iscomplexobj(values):
         raise ValueError(f'{body.name}: local alignment must be real')
     values = np.asarray(values, dtype=float)
+    if values.shape != (6,):
+        raise ValueError(f'{body.name}: local alignment must be six scalar coordinates')
     if not np.all(np.isfinite(values)):
         raise ValueError(f'{body.name}: local alignment must be finite')
+    _check_transverse_values(body, values)
     return values
 
 
@@ -84,7 +102,64 @@ def _geometry(element):
 
 
 def _reference_geometry(element):
-    return _geometry(element), bool(getattr(element, 'isthick', False))
+    # Survey dispatches frame-changing elements through this protocol instead
+    # of the length/angle/tilt arc. Capture the same increment, so Translation,
+    # Rotation (including its sequence), native slice edges and custom survey
+    # elements cannot change the reference path behind an adopted binding.
+    # GeometryGuard also traces the scalar storage read by this call once.
+    frame_increment = None
+    if hasattr(element, 'track_frame'):
+        frame = Frame()
+        element.track_frame(frame, backtrack=False)
+        frame_increment = tuple(frame.matrix.ravel())
+    return (
+        _geometry(element),
+        bool(getattr(element, 'isthick', False)),
+        getattr(element, 'rbend_model', None),
+        frame_increment,
+    )
+
+
+def _resolved_slice_parent(element, elements):
+    """Check both the survey name and the tracking reference of a native slice."""
+    name = getattr(element, 'parent_name', None)
+    parent = elements.get(name)
+    if parent is None or isinstance(parent, (Replica, _SliceBase)):
+        raise ValueError(
+            'Native slice reference geometry requires a resolved, named parent'
+        )
+    actual = element._parent
+    if actual is not None and actual is not parent:
+        raise ValueError('Native slice reference geometry changed: inconsistent parent')
+    return parent
+
+
+def _slice_reference_geometry(element, elements):
+    parent = _resolved_slice_parent(element, elements)
+    # The survey has already linked the native slices. Trace the actual
+    # tracking reference as well: the cached Python parent alone cannot detect
+    # a changed Xobject pointer. GeometryGuard gathers these bytes in bulk.
+    pointer = element._xobject._parent
+    if (
+        pointer is None
+        or pointer._buffer is not parent._buffer
+        or pointer._offset != parent._offset
+    ):
+        raise ValueError('Native slice reference geometry changed: inconsistent pointer')
+    return (
+        element.parent_name,
+        id(parent),
+        float(element.weight),
+        float(element.slice_offset),
+        _reference_geometry(parent),
+    )
+
+
+def _storage_identity(element):
+    xobject = getattr(element, '_xobject', None)
+    if xobject is not None:
+        return id(xobject._buffer), xobject._offset
+    return None
 
 
 def _check_alignment_consumers(manager, alignment_refs):
@@ -114,6 +189,41 @@ class _BodyPoses(dict):
             self[name] = Frame(matrix)
 
 
+class _BodyDeformations(dict):
+    """Composed increments and the exact local inputs before inheritance."""
+
+    def __init__(self, composed, local):
+        super().__init__(composed)
+        self.local = local
+
+
+@dataclass(frozen=True, slots=True)
+class FrozenMechanicalState:
+    """One line's applied alignment and matching fixed-survey aperture cuts.
+
+    time_s is the request; pose_time_s is the actual freeze used. static_case
+    maps body names to six reference coordinates followed by six installation
+    coordinates. design_alignment holds the adopted element alignment fields.
+    live_values contains the normalized enabled live inputs used in this freeze.
+    Element frames and aperture checks are detached outputs for inspection
+    or for building a frozen tracking line.
+    """
+
+    time_s: float
+    pose_time_s: float
+    query_kind: str
+    element_poses: object
+    aperture: object
+    pipe_table: object
+    limits: object
+    design_alignment: object
+    static_case: object
+    source_names: tuple
+    disabled_sources: tuple
+    prescribed_record: object
+    live_values: object
+
+
 @dataclass(slots=True)
 class RigidBody:
     """Local alignment about a nominal world anchor; SI units.
@@ -134,10 +244,11 @@ class RigidBody:
     rot_x_rad: float = 0.0
     rot_y_rad: float = 0.0
     rot_s_rad: float = 0.0
-    installation: RigidOffset = field(default_factory=RigidOffset)
+    installation: RigidOffset = dataclass_field(default_factory=RigidOffset)
     _feet: object = None
     kind: str = 'body'
     support_class: str = ''
+    _transverse_only: bool = False
 
     def __setattr__(self, name, value):
         if name in (
@@ -147,6 +258,7 @@ class RigidBody:
             '_feet',
             'kind',
             'support_class',
+            '_transverse_only',
         ) and hasattr(self, name):
             raise AttributeError('Body topology is fixed; create a new binding')
         object.__setattr__(self, name, value)
@@ -177,14 +289,24 @@ class SourceBinding:
     reference: str = 'relative'
     role: str = 'disturbance'
     live: bool = False
+    transverse_indices: tuple = ()
+
+    def _check_transverse(self, values):
+        if self.transverse_indices and np.any(
+            values[..., list(self.transverse_indices), 2:]
+        ):
+            raise ValueError(
+                f'{self.name}: relative solenoid axis supports only transverse x/y translations'
+            )
 
 
 class MechanicalTimeSeries:
     """Reusable sampled source displacements, independent of live body settings.
 
     Values are read-only (time, target, 6) arrays in metres and survey radians.
-    Reuse this object for matched comparisons. Interpolation for apply/get_poses
-    is linear, bounded by the supplied record, with no periodic replay.
+    Reuse this object for matched comparisons. replay_modes reports source
+    evaluation, linear interpolation, or previous-sample hold for each binding.
+    All replay is bounded by the supplied record.
     """
 
     def __setattr__(self, name, value):
@@ -195,7 +317,7 @@ class MechanicalTimeSeries:
     def __delattr__(self, name):
         raise AttributeError('MechanicalTimeSeries is read-only')
 
-    def __init__(self, manager, time_s, values):
+    def __init__(self, manager, time_s, values, *, interpolation='linear', _providers=None):
         times = checked_times(time_s)
         if any(
             name not in manager.sources or manager.sources[name].live for name in values
@@ -211,6 +333,8 @@ class MechanicalTimeSeries:
             raise ValueError(
                 'Time series values must have shape (times, source targets, 6)'
             )
+        for name, value in arrays.items():
+            manager.sources[name]._check_transverse(value)
         self._manager = ref(manager)
         self._revision = manager._revision
         self._bodies = tuple(manager.bodies)
@@ -231,6 +355,30 @@ class MechanicalTimeSeries:
         )
         self.time_s = times
         self.values = MappingProxyType(arrays)
+        if interpolation not in ('linear', 'previous'):
+            raise ValueError('Use linear or previous replay for supplied samples')
+        self._providers = MappingProxyType(dict(_providers or {}))
+        self.replay_modes = MappingProxyType({
+            name: 'source' if name in self._providers else interpolation for name in arrays
+        })
+
+    def _check_time(self, time_s):
+        if time_s < self.time_s[0] or time_s > self.time_s[-1]:
+            raise ValueError('Requested time lies outside the computed motion record')
+
+    def _sample(self, binding, time_s, *, positions=None, axes=None, selection=slice(None)):
+        name = binding.name
+        provider = self._providers.get(name)
+        if provider is None:
+            return sample_at(self.time_s, self.values[name], time_s,
+                             interpolation=self.replay_modes[name], selection=selection)
+        self._check_time(time_s)
+        if type(provider) is RigidMotion:
+            return sample_at(provider.time_s, provider.values, time_s, selection=selection)
+        values = self._manager()._evaluate_source(
+            binding, np.array([time_s]), positions=positions, axes=axes, provider=provider,
+        )
+        return values[0, selection]
 
     @staticmethod
     def _freeze(value):
@@ -240,8 +388,6 @@ class MechanicalTimeSeries:
     def get_table(self, body):
         """Direct source coordinates; no static or inherited motion.
 
-        An absolute binding reports absolute dynamic coordinates about the
-        static body's anchor. Inspect references to distinguish binding modes.
         Multiple relative input rotations compose in source insertion order.
         """
         if body not in self._bodies:
@@ -293,6 +439,9 @@ class MechanicsManager:
     Access as env.mechanics. line.mechanics supplies a bound line view of the
     same manager. The environment is a geometry namespace, not an implicit
     common turn clock: all motion queries/application use physical time_s.
+    Ownership checks cover physical lines in this environment. Explicitly
+    sharing writable Xobject storage with another environment is unsupported;
+    use env.copy() for independent mechanics scenarios.
     """
 
     def __init__(self, env):
@@ -435,6 +584,16 @@ class MechanicsManager:
             assignments, kind=kind, support_class=support_class
         )
 
+    def attach_bodies(self, assignments, *, line=None):
+        """Attach existing physical bodies with one line survey."""
+        return self._line(line).attach_bodies(assignments)
+
+    def new_solenoid_axis(self, name, *, elements, line=None, anchor='center'):
+        """Create a transverse field-axis body relative to one attached chart."""
+        return self._line(line).new_solenoid_axis(
+            name, elements=elements, anchor=anchor
+        )
+
     def _body_definition(
         self,
         name,
@@ -445,6 +604,7 @@ class MechanicsManager:
         kind,
         support_class='',
         candidates=(),
+        transverse_only=False,
     ):
         """Validate/build a body without changing the manager or line."""
         if not isinstance(kind, str) or not kind:
@@ -453,6 +613,8 @@ class MechanicsManager:
             )
         if not isinstance(support_class, str):
             raise ValueError('support_class must be a string')
+        if not isinstance(transverse_only, (bool, np.bool_)):
+            raise ValueError('A transverse-only body flag must be boolean')
         if not isinstance(name, str) or not name or name in self._bodies:
             raise ValueError('Use a new nonempty body name')
         if isinstance(parent, RigidBody):
@@ -477,7 +639,8 @@ class MechanicsManager:
         if feet is not None and (feet.ndim != 2 or feet.shape[1] != 3 or not len(feet)):
             raise ValueError('feet_local_m must be nonempty local XYZ coordinates')
         return RigidBody(
-            name, parent, frozen, _feet=feet, kind=kind, support_class=support_class
+            name, parent, frozen, _feet=feet, kind=kind, support_class=support_class,
+            _transverse_only=bool(transverse_only),
         )
 
     def _new_body(
@@ -491,6 +654,7 @@ class MechanicsManager:
         feet_local_m,
         kind,
         support_class='',
+        transverse_only=False,
     ):
         # Reject invalid names before the potentially expensive candidate survey.
         if not isinstance(name, str) or not name or name in self._bodies:
@@ -507,10 +671,11 @@ class MechanicsManager:
             kind=kind,
             support_class=support_class,
             candidates=candidates,
+            transverse_only=transverse_only,
         )
-        self._bodies[name] = body
         if view is not None:
             view._attach(name, candidates)
+        self._bodies[name] = body
         self._revision += 1
         return body
 
@@ -528,9 +693,10 @@ class MechanicsManager:
         """Bind a named source model, independently of girder construction.
 
         Scalar inputs use nominal-body x/y/s [m] or pitch/yaw/roll [rad].
-        RigidMotion supplies all six coordinates. Relative motion composes down
-        the mounting tree; absolute motion replaces inherited vibration while
-        retaining the static mounting/alignment. No Euler-angle subtraction.
+        RigidMotion and ModalMotion supply all six coordinates. A mounted
+        body always inherits parent motion. Supply its response relative to
+        the carried port, for example using RigidMotion.relative_to().
+        The legacy reference='absolute' spelling is accepted only on roots.
         role='control' distinguishes applied actuator motion from disturbances.
         live=True reads the current held provider at each freeze and is never
         captured by compute_time_series. Providers must not advance plant state.
@@ -576,36 +742,16 @@ class MechanicsManager:
             raise ValueError(
                 'Rigid motion target names/order must match binding targets'
             )
-        for binding in self.sources.values():
-            if set(binding.targets).intersection(targets) and (
-                'absolute' in (reference, binding.reference)
-            ):
-                raise ValueError(
-                    'An absolute-driven body needs one explicit combined motion input'
-                )
-            for control_targets, absolute_targets in (
-                (
-                    targets if role == 'control' else (),
-                    binding.targets if binding.reference == 'absolute' else (),
-                ),
-                (
-                    binding.targets if binding.role == 'control' else (),
-                    targets if reference == 'absolute' else (),
-                ),
-            ):
-                for absolute_target in absolute_targets:
-                    parent = self._bodies[absolute_target].parent
-                    while parent is not None:
-                        if parent in control_targets:
-                            raise ValueError(
-                                'An absolute descendant source would mask ancestor control; '
-                                'mount the control downstream or supply one combined response'
-                            )
-                        parent = self._bodies[parent].parent
         for target in targets:
             parent = self._bodies[target].parent
+            if parent is not None and reference == 'absolute':
+                raise ValueError(
+                    f'{target}: a mounted body inherits parent motion. '
+                    'Convert a supplied total record with RigidMotion.relative_to() '
+                    'using the carried motion at the same port'
+                )
             while parent is not None:
-                if parent in targets and reference == 'relative':
+                if parent in targets:
                     raise ValueError(
                         'One source cannot drive both a body and its ancestor'
                     )
@@ -613,26 +759,34 @@ class MechanicsManager:
             if (
                 frame == 'world'
                 and self._bodies[target].parent is not None
-                and reference != 'absolute'
             ):
                 raise ValueError(
-                    'World-field shortcut drives roots; child absolute drives need explicit response handling'
+                    'World-field shortcut drives roots. Resolve a relative response at the mounted port'
                 )
         from .sources import validate_source_bindings
 
         validate_source_bindings(source, self.sources.values())
+        transverse_indices = tuple(
+            index for index, target in enumerate(targets)
+            if self._bodies[target]._transverse_only
+        )
+        if transverse_indices and frame == 'body_local' and component not in ('x', 'y'):
+            raise ValueError(
+                'A relative solenoid axis accepts only transverse x/y source components'
+            )
         binding = SourceBinding(
-            name, source, targets, component, reference, role, bool(live)
+            name, source, targets, component, 'relative', role, bool(live),
+            transverse_indices,
         )
         self._sources[name] = binding
         self._revision += 1
         return binding
 
-    def _evaluate_source(self, binding, time_s):
-        positions = np.array([self._bodies[n]._nominal[:3, 3] for n in binding.targets])
-        values = np.asarray(
-            binding.source.evaluate(time_s=time_s, positions_m=positions)
-        )
+    def _evaluate_source(self, binding, time_s, *, positions=None, axes=None, provider=None):
+        if positions is None:
+            positions = np.array([self._bodies[n]._nominal[:3, 3] for n in binding.targets])
+        source = binding.source if provider is None else provider
+        values = np.asarray(source.evaluate(time_s=time_s, positions_m=positions))
         if np.iscomplexobj(values) or not np.all(np.isfinite(values)):
             raise ValueError(
                 f'{binding.name}: source must return finite real displacement'
@@ -641,16 +795,16 @@ class MechanicsManager:
         if frame == 'body_local_rigid':
             if values.shape != (len(time_s), len(positions), 6):
                 raise ValueError('Rigid source must return shape (times, targets, 6)')
+            binding._check_transverse(values)
             # Providers may reuse their own buffer for the next binding.
             return np.array(values, copy=True)
         output = np.zeros((len(time_s), len(binding.targets), 6))
         if frame == 'world':
             if values.shape != (len(time_s), len(positions), 3):
                 raise ValueError('World source must return shape (times, targets, 3)')
-            rotations = np.array(
-                [self._bodies[n]._nominal[:3, :3] for n in binding.targets]
-            )
-            output[..., :3] = np.einsum('bji,tbj->tbi', rotations, values)
+            if axes is None:
+                axes = np.array([self._bodies[n]._nominal[:3, :3] for n in binding.targets])
+            output[..., :3] = np.einsum('bji,tbj->tbi', axes, values)
             return output
         if values.shape == (len(time_s),):
             values = np.broadcast_to(values[:, None], (len(time_s), len(positions)))
@@ -663,7 +817,8 @@ class MechanicsManager:
         ] = values
         return output
 
-    def compute_time_series(self, *, time_s, max_memory_bytes=128 * 1024**2):
+    def compute_time_series(self, *, time_s, max_memory_bytes=128 * 1024**2,
+                            disabled_sources=(), interpolation='auto'):
         """Compute reusable prescribed motion at explicit times [s], on the host.
 
         Live bindings are omitted, never frozen into a historical record.
@@ -671,13 +826,30 @@ class MechanicsManager:
         Analytic/measured models accept nonuniform increasing times; PSD models
         require a uniform grid. This explicit short-record backend has a
         conservative allocation guard and never creates a GPU history cache.
+        Pass the same source mask to subsequent pose and tracking operations.
+
+        Auto replay evaluates built-in sources at the requested physical time,
+        retaining any prepared FFT realization and the original measured knots.
+        Custom prescribed providers are sampled once and replayed linearly.
+        Explicit linear or previous replay uses the supplied time grid for all
+        sources. These are offline resampling choices, separate from tracking
+        freeze cadence.
         """
+        from .sources import prepare_source_replay, retained_fourier_bytes
+
+        if interpolation not in ('auto', 'linear', 'previous'):
+            raise ValueError('Use auto, linear or previous record interpolation')
         times = checked_times(time_s)
+        mask = self._source_mask(disabled_sources)
         prescribed = {
-            name: binding for name, binding in self.sources.items() if not binding.live
+            name: binding for name, binding in self.sources.items()
+            if not binding.live and name not in mask
         }
-        counts = [len(b.targets) for b in prescribed.values()]
-        estimate = 96 * len(times) * sum(counts) + max(
+        spectral = sum(
+            retained_fourier_bytes(b.source, len(times), len(b.targets))
+            for b in prescribed.values() if interpolation == 'auto'
+        )
+        estimate = spectral + 96 * len(times) * sum(len(b.targets) for b in prescribed.values()) + max(
             (
                 96 * len(times) * len(b.targets)
                 + getattr(b.source, 'workspace_bytes', lambda nt, nr: 0)(
@@ -693,11 +865,18 @@ class MechanicsManager:
             raise ValueError(
                 f'Estimated short-record workspace {estimate} bytes exceeds max_memory_bytes'
             )
-        values = {
-            name: self._evaluate_source(binding, times)
-            for name, binding in prescribed.items()
-        }
-        return MechanicalTimeSeries(self, times, values)
+        values, providers = {}, {}
+        for name, binding in prescribed.items():
+            positions = np.array([self._bodies[n]._nominal[:3, 3] for n in binding.targets])
+            provider = (prepare_source_replay(binding.source, times, positions)
+                        if interpolation == 'auto' else None)
+            if provider is not None:
+                providers[name] = provider
+            values[name] = self._evaluate_source(binding, times, positions=positions, provider=provider)
+        return MechanicalTimeSeries(
+            self, times, values, _providers=providers,
+            interpolation='previous' if interpolation == 'previous' else 'linear',
+        )
 
     def _body_closure(self, bodies=None):
         requested = (
@@ -717,8 +896,15 @@ class MechanicsManager:
                 parent = self.bodies[parent].parent
         return needed
 
+    def _source_mask(self, names):
+        names = (names,) if isinstance(names, str) else tuple(names)
+        for name in names:
+            if not isinstance(name, str) or name not in self.sources:
+                raise ValueError(f'Unknown disabled source {name!r}')
+        return tuple(dict.fromkeys(names))
+
     def _sample_live_values(self, time_s, *, bodies=None, disabled_sources=()):
-        if not np.isscalar(time_s) or not np.isfinite(time_s):
+        if not np.isscalar(time_s) or np.iscomplexobj(time_s) or not np.isfinite(time_s):
             raise ValueError('time_s must be a finite scalar in seconds')
         needed = self._body_closure(bodies)
         return {
@@ -728,6 +914,54 @@ class MechanicsManager:
             and name not in disabled_sources
             and needed.intersection(binding.targets)
         }
+
+    def relative_motion_from_poses(self, *, time_s, targets, total_poses,
+                                   time_series=None, disabled_sources=()):
+        """Convert total world poses at named body origins into mount motion.
+
+        total_poses has shape (times, targets, 4, 4) and includes static
+        placement. Parent motion is evaluated at the matching physical times
+        with the supplied record and mask. Bind the returned motion to the
+        same targets. Subsequent changes to parent motion propagate normally.
+        World input translations have binary64 precision.
+        """
+        from .motion import angles_from_matrix, checked_frames
+
+        times = checked_times(time_s)
+        names = (targets,) if isinstance(targets, str) else tuple(targets)
+        self._body_closure(names)
+        bodies = [self[name] for name in names]
+        parents = tuple(dict.fromkeys(body.parent for body in bodies if body.parent is not None))
+        mask = self._source_mask(disabled_sources)
+        needed = self._body_closure(parents)
+        if any(binding.live and binding.name not in mask and needed.intersection(binding.targets)
+               for binding in self.sources.values()):
+            raise ValueError('Converting a pose history requires prescribed parent motion')
+        matrices = np.asarray(total_poses)
+        if not names or matrices.shape != (len(times), len(names), 4, 4):
+            raise ValueError('Supply total poses with shape (times, targets, 4, 4)')
+        matrices = checked_frames(matrices.reshape(-1, 4, 4)).reshape(matrices.shape)
+        local_static = [static_local(_reference_values(body), body.installation.values())
+                        for body in bodies]
+        values = np.empty((len(times), len(names), 6))
+        for row, time in enumerate(times):
+            dynamic = self._get_body_deformations(
+                time_s=time, time_series=time_series, disabled_sources=mask, bodies=parents,
+            )
+            for column, (body, local) in enumerate(zip(bodies, local_static)):
+                parent = body.parent
+                carried = local if parent is None else compose(
+                    inherit(dynamic[parent], self[parent]._nominal, body._nominal), local,
+                )
+                basis, origin = body._nominal[:3, :3], body._nominal[:3, 3]
+                position = origin + basis @ carried[0]
+                carried_axes = basis @ (np.eye(3) + carried[1])
+                local_axes = np.eye(3) + local[1]
+                convert = local_axes @ carried_axes.T
+                target = matrices[row, column]
+                values[row, column, :3] = convert @ (target[:3, 3] - position)
+                values[row, column, 3:] = angles_from_matrix(convert @ target[:3, :3] @ local_axes.T)
+        return RigidMotion(times, values, names)
 
     def get_body_poses(
         self,
@@ -768,10 +1002,9 @@ class MechanicsManager:
         _source_values=None,
     ):
         """Finite affine increments about each body's nominal local frame."""
-        if not np.isscalar(time_s) or not np.isfinite(time_s):
+        if not np.isscalar(time_s) or np.iscomplexobj(time_s) or not np.isfinite(time_s):
             raise ValueError('time_s must be a finite scalar in seconds')
-        if not set(disabled_sources).issubset(self.sources):
-            raise ValueError('Unknown disabled source')
+        disabled_sources = self._source_mask(disabled_sources)
         if time_series is not None:
             time_series._check(self)
         requested = (
@@ -783,7 +1016,6 @@ class MechanicsManager:
         selected = {name: body for name, body in self.bodies.items() if name in needed}
         shifts = {name: np.zeros(3) for name in selected}
         rotations = {name: np.zeros((3, 3)) for name in selected}
-        absolute = {}
         for name, binding in self.sources.items():
             if name in disabled_sources:
                 continue
@@ -813,21 +1045,7 @@ class MechanicsManager:
                     )
                 if type(binding.source) is RigidMotion:
                     source = binding.source
-                    if time_s < source.time_s[0] or time_s > source.time_s[-1]:
-                        raise ValueError(
-                            'Requested time lies outside the rigid motion record'
-                        )
-                    values = np.array(
-                        [
-                            [
-                                np.interp(
-                                    time_s, source.time_s, source.values[:, index, j]
-                                )
-                                for j in range(6)
-                            ]
-                            for index in indices
-                        ]
-                    )
+                    values = sample_at(source.time_s, source.values, time_s, selection=indices)
                 else:
                     # Arbitrary stochastic sources may depend on the complete
                     # receiver set. Evaluate jointly, then select, preserving
@@ -836,54 +1054,28 @@ class MechanicsManager:
                         indices
                     ]
             else:
-                if time_s < time_series.time_s[0] or time_s > time_series.time_s[-1]:
-                    raise ValueError(
-                        'Requested time lies outside the computed time series'
-                    )
-                record = time_series.values[name]
-                values = np.array(
-                    [
-                        [
-                            np.interp(time_s, time_series.time_s, record[:, i, j])
-                            for j in range(6)
-                        ]
-                        for i in indices
-                    ]
-                )
+                values = time_series._sample(binding, time_s, selection=indices)
             for target, value in zip(targets, values):
-                if binding.reference == 'absolute':
-                    absolute[target] = value
-                else:
-                    shifts[target] += value[:3]
-                    if np.any(value[3:]):
-                        rotations[target] = compose_rotation(
-                            rotation_increment(*value[3:]), rotations[target]
-                        )
-        world, static = {}, {}
+                _check_transverse_values(self[target], value)
+                shifts[target] += value[:3]
+                if np.any(value[3:]):
+                    rotations[target] = compose_rotation(
+                        rotation_increment(*value[3:]), rotations[target]
+                    )
+        world, local_deformations = {}, {}
         for name, body in selected.items():
             local = _reference_values(body)
             install = (
                 body.installation.values() if include_installation else np.zeros(6)
             )
+            _check_transverse_values(body, install)
             delta = static_local(local, install)
-            if body.parent is None:
-                static[name] = delta
-            else:
-                parent = self.bodies[body.parent]
-                static[name] = compose(
-                    inherit(static[parent.name], parent._nominal, body._nominal), delta
-                )
-            if name in absolute:
-                value = absolute[name]
-                world[name] = (
-                    static[name][0] + value[:3],
-                    compose_rotation(rotation_increment(*value[3:]), static[name][1]),
-                )
-                continue
             delta = (
                 delta[0] + shifts[name],
                 compose_rotation(rotations[name], delta[1]),
             )
+            if body._transverse_only:
+                local_deformations[name] = delta
             if body.parent is None:
                 world[name] = delta
             else:
@@ -891,7 +1083,11 @@ class MechanicsManager:
                 world[name] = compose(
                     inherit(world[parent.name], parent._nominal, body._nominal), delta
                 )
-        return {name: world[name] for name in requested}
+        return _BodyDeformations(
+            {name: world[name] for name in requested},
+            {name: local_deformations[name] for name in requested
+             if name in local_deformations},
+        )
 
     def survey(
         self,
@@ -925,6 +1121,7 @@ class MechanicsManager:
         rotation_scale=1.0,
         view='line',
         baseline='reference',
+        disabled_sources=(),
     ):
         """Plot magnified rigid geometry; gains affect display only."""
         from .plotting import plot_motion
@@ -939,6 +1136,7 @@ class MechanicsManager:
             rotation_scale=rotation_scale,
             view=view,
             baseline=baseline,
+            disabled_sources=disabled_sources,
         )
 
     def animate(
@@ -953,6 +1151,7 @@ class MechanicsManager:
         interval_ms=80,
         view='line',
         baseline='reference',
+        disabled_sources=(),
     ):
         """Animate selected poses with bounded history; retain the returned animation."""
         from .plotting import animate_motion
@@ -968,6 +1167,7 @@ class MechanicsManager:
             interval_ms=interval_ms,
             view=view,
             baseline=baseline,
+            disabled_sources=disabled_sources,
         )
 
     def apply(self, *, time_s=0.0, time_series=None, disabled_sources=()):
@@ -977,8 +1177,10 @@ class MechanicsManager:
         register a track callback, or update sources once per particle/turn.
         Unsupported bindings/conflicting edits are rejected before any writes.
         """
+        disabled_sources = self._source_mask(disabled_sources)
         self._check_aliases()
-        views = [view for view in self._line_views.values() if view._attachments]
+        views = [view for view in self._line_views.values()
+                 if view._attachments or view._pipes is not None]
         for view in views:
             if view._applied_source_recorder is not None:
                 view._applied_source_recorder.check_case()
@@ -1008,7 +1210,7 @@ class MechanicsManager:
                 time_series=time_series,
             )
         for attachment, element, values in updates:
-            for field, value in zip(_FIELDS, values):
+            for field, value in zip(_attachment_fields(attachment), values):
                 setattr(element, field, value)
             attachment['last_written'] = values.copy()
         for view in views:
@@ -1025,25 +1227,72 @@ class MechanicsManager:
         updates = []
         for view in self._line_views.values():
             view._check()
-            for attachment in view._attachments.values():
+            for attachment in view._numeric_attachments():
                 element = view.line.element_dict[attachment['element']]
                 updates.append((attachment, element, attachment['baseline']))
         for attachment, element, values in updates:
-            for field, value in zip(_FIELDS, values):
+            for field, value in zip(_attachment_fields(attachment), values):
                 setattr(element, field, value)
             attachment['last_written'] = values.copy()
+        for view in self._line_views.values():
+            if view._applied_source_recorder is not None:
+                view._applied_source_recorder.stop()
+            view._last_applied_time_s = None
+            view._last_applied_passage_speed = None
+            view._last_applied_source_mask = ()
+            view._last_applied_time_series = None
+            view._last_applied_controls = frozenset()
+            view._last_control_values.clear()
 
     def _check_aliases(self):
         # Only attached objects consume numeric placements. Still scan every
         # physical line: an alias can be introduced under a different name or
         # on an otherwise unattached line after these bindings were prepared.
-        needed = set()
+        needed = []
         for view in self._line_views.values():
             elements = view.line.element_dict
-            needed.update(id(elements[name]) for name in view._attachments)
+            needed.extend((name, elements[name]) for name in view._attachments)
         if not needed:
             return
-        counts = dict.fromkeys(needed, 0)
+        counts = self._alias_counts(element for _, element in needed)
+        for name, element in needed:
+            if counts.get(id(element)) != 1:
+                raise ValueError(
+                    f'{name}: shared/repeated element objects require an occurrence-buffer lowering'
+                )
+
+    def _alias_counts(self, targets):
+        """Count active occurrences that consume the target's numeric fields.
+
+        A native slice can share parent storage without the parent's name
+        appearing in any active sequence. Replicas can resolve through other
+        replicas to either the target or one of its native slices.
+        """
+        targets = {id(element): element for element in targets}
+        counts = dict.fromkeys(targets, 0)
+        by_buffer = {}
+        for identity, element in targets.items():
+            storage = _storage_identity(element)
+            if storage is not None:
+                buffer_id, offset = storage
+                offsets = by_buffer.setdefault(buffer_id, {})
+                if offset in offsets:
+                    raise ValueError(
+                        'Numeric mechanics cannot own shared/repeated element storage'
+                    )
+                offsets[offset] = identity
+
+        def match(element):
+            identity = id(element)
+            if identity in targets:
+                return identity
+            xobject = getattr(element, '_xobject', None)
+            if xobject is not None:
+                offsets = by_buffer.get(id(xobject._buffer))
+                if offsets is not None:
+                    return offsets.get(xobject._offset)
+            return None
+
         for line in self.env._lines_weakrefs:
             # Collective survey/Twiss creates shallow noncollective views in
             # distinct environments sharing this weak set. They are execution
@@ -1052,16 +1301,31 @@ class MechanicsManager:
                 continue
             elements = line.element_dict
             for name in line.element_names:
-                identity = id(elements[name])
-                if identity in needed:
-                    counts[identity] += 1
-        for view in self._line_views.values():
-            elements = view.line.element_dict
-            for name in view._attachments:
-                if counts.get(id(elements[name])) != 1:
-                    raise ValueError(
-                        f'{name}: shared/repeated element objects require an occurrence-buffer lowering'
-                    )
+                element = elements[name]
+                if isinstance(element, Replica):
+                    # An invalid replica on another, unbound line has no
+                    # resolvable target to which our numeric writes could alias.
+                    try:
+                        element = element.resolve(elements)
+                    except (KeyError, RecursionError):
+                        continue
+                if isinstance(element, _SliceBase):
+                    # Before building a tracker the storage pointer may be
+                    # unset. Also check an existing cached parent in case the
+                    # named target was subsequently changed.
+                    matched = {
+                        match(element),
+                        match(elements.get(getattr(element, 'parent_name', None))),
+                        match(element._parent),
+                    }
+                    matched.discard(None)
+                    for identity in matched:
+                        counts[identity] += 1
+                else:
+                    identity = match(element)
+                    if identity is not None:
+                        counts[identity] += 1
+        return counts
 
     def clear(self):
         """Restore original local alignments and remove all mechanics data.
@@ -1077,7 +1341,7 @@ class MechanicsManager:
             if view._attachments and view.line.aperture.is_built:
                 view.line.aperture.discard_model()
         for attachment, element, values in updates:
-            for field, value in zip(_FIELDS, values):
+            for field, value in zip(_attachment_fields(attachment), values):
                 setattr(element, field, value)
         for view in views:
             view._clear_bindings()
@@ -1086,15 +1350,17 @@ class MechanicsManager:
         self._revision += 1
         return self
 
-    def get_table(self, *, time_s=None, time_series=None):
+    def get_table(self, *, time_s=None, time_series=None, disabled_sources=()):
         """Body inputs, or composed world poses at an explicit physical time.
 
         No argument returns configuration without evaluating sources. Supply
         time_s for a read-only pose table, equivalent to survey. Rows retain
         normal Xsuite selection and can query a selected body's time history.
         """
+        disabled_sources = self._source_mask(disabled_sources)
         if time_s is not None:
-            return self.survey(time_s=time_s, time_series=time_series)
+            return self.survey(time_s=time_s, time_series=time_series,
+                               disabled_sources=disabled_sources)
         if time_series is not None:
             raise ValueError('Supply time_s when requesting a pose table')
         from .tables import mechanics_table
@@ -1115,7 +1381,7 @@ class MechanicsManager:
             data['installation_' + field] = np.array(
                 [values[index] for values in installation_values], dtype=float
             )
-        return mechanics_table(data, owner=self)
+        return mechanics_table(data, owner=self, disabled_sources=disabled_sources)
 
     def get_source_table(self):
         """Inspect bindings without sampling or copying source waveform arrays."""
@@ -1178,7 +1444,7 @@ class MechanicsManager:
         """
         self._check_aliases()
         for view in self._line_views.values():
-            if view._attachments:
+            if view._attachments or view._pipes is not None:
                 # A built aperture is valid frozen snapshot data. Applying a
                 # different pose still requires the normal aperture guard.
                 view._check(allow_built_aperture=True)
@@ -1195,15 +1461,18 @@ class MechanicsManager:
         bodies = []
         for body in self.bodies.values():
             alignment = _reference_values(body).tolist()
+            installation = body.installation.values()
+            _check_transverse_values(body, installation)
             bodies.append(
                 dict(
                     name=body.name,
                     kind=body.kind,
                     support_class=body.support_class,
+                    transverse_only=body._transverse_only,
                     parent=body.parent,
                     anchor=body._nominal.tolist(),
                     alignment=alignment,
-                    installation=body.installation.values().tolist(),
+                    installation=installation.tolist(),
                     feet_local_m=None
                     if body.feet_local_m is None
                     else body.feet_local_m.tolist(),
@@ -1237,6 +1506,15 @@ class MechanicsManager:
                         for name, values in view._reference_inputs.items()
                     },
                     attachments=attachments,
+                    solenoid_axes=[
+                        dict(element=a['element'], body=a['body'],
+                             baseline=a['baseline'].tolist())
+                        for a in view._solenoid_axes.values()
+                    ],
+                    pipes=([] if view._pipes is None else [
+                        dict(name=name, body=body)
+                        for name, body in view._pipes.owners.items()
+                    ]),
                 )
             )
         return dict(
@@ -1265,19 +1543,70 @@ class MechanicsManager:
         """
         if self._has_configuration:
             raise ValueError('Load mechanics into an empty manager')
+        candidate = MechanicsManager(self.env)
+        aperture_lines = [self.env.lines[item['line']] for item in data['lines']
+                          if item.get('pipes')]
+        if aperture_lines:
+            aperture_env = self.env.aperture
+            was_built = aperture_env.is_built
+            unbuilt = [line.aperture for line in aperture_lines if not line.aperture.is_built]
+        try:
+            candidate._load_definitions(data)
+        except Exception:
+            if aperture_lines:
+                if not was_built:
+                    aperture_env.discard_model()
+                else:
+                    for aperture in unbuilt:
+                        aperture.discard_model()
+            raise
+        self._bodies.update(candidate._bodies)
+        self._sources.update(candidate._sources)
+        for line, loaded in candidate._line_views.items():
+            view = self.for_line(line)
+            view._reference = loaded._reference
+            view._reference_is_explicit = loaded._reference_is_explicit
+            view._reference_inputs = loaded._reference_inputs
+            view._attachments = loaded._attachments
+            view._solenoid_axes = loaded._solenoid_axes
+            view._element_names = loaded._element_names
+            view._line_geometry = loaded._line_geometry
+            view._bound_line = loaded._bound_line
+            view._pipes = loaded._pipes
+            if view._pipes is not None:
+                view._pipes.view = view
+        self._revision += 1
+        return self
+
+    def _load_definitions(self, data):
         for item in data['bodies']:
-            b = self.new_body(
+            b = self._new_body(
                 item['name'],
+                elements=None,
+                line=None,
                 parent=item['parent'],
                 anchor=Frame(item['anchor']),
                 feet_local_m=item.get('feet_local_m'),
                 kind=item.get('kind', 'body'),
                 support_class=item.get('support_class', ''),
+                transverse_only=item.get('transverse_only', False),
             )
             b.shift_x, b.shift_y, b.shift_s, b.rot_x_rad, b.rot_y_rad, b.rot_s_rad = (
                 item['alignment']
             )
             b.installation = RigidOffset(*item.get('installation', [0.0] * 6))
+            _reference_values(b)
+            _check_transverse_values(b, b.installation.values())
+        for item in data['sources']:
+            self.add_source(
+                item['name'],
+                decode_source(item['source']),
+                targets=item['targets'],
+                component=item['component'],
+                reference=item.get('reference', 'relative'),
+                role=item.get('role', 'disturbance'),
+                live=item.get('live', False),
+            )
         for item in data['lines']:
             view = self.for_line(item['line'])
             view.set_reference_frame(Frame(item['reference_frame']))
@@ -1290,6 +1619,7 @@ class MechanicsManager:
             by_name = {candidate['element']: candidate for candidate in candidates}
             for stored in stored_attachments:
                 candidate = by_name[stored['element']]
+                self[stored['body']]
                 for key in (
                     'ref_start',
                     'ref_end',
@@ -1304,23 +1634,28 @@ class MechanicsManager:
                 candidate['body'] = stored['body']
             if candidates:
                 view._install_candidates(candidates)
+            axes = item.get('solenoid_axes', ())
+            by_body = {}
+            for axis in axes:
+                by_body.setdefault(axis['body'], []).append(axis['element'])
+            for body, names in by_body.items():
+                view.attach_solenoid_axis(body, elements=names)
+            for axis in axes:
+                if np.iscomplexobj(axis['baseline']):
+                    raise ValueError('Stored solenoid-axis baseline must be real')
+                baseline = np.array(axis['baseline'], dtype=float)
+                if baseline.shape != (2,) or not np.all(np.isfinite(baseline)):
+                    raise ValueError('Stored solenoid-axis baseline must contain finite x0/y0')
+                view._solenoid_axes[axis['element']]['baseline'] = baseline
             view._reference_is_explicit = item.get('reference_is_explicit', True)
             view._reference_inputs = {
                 name: np.array(values, dtype=float)
                 for name, values in item.get('adopted_reference', {}).items()
             }
-        for item in data['sources']:
-            source = item['source']
-            self.add_source(
-                item['name'],
-                decode_source(source),
-                targets=item['targets'],
-                component=item['component'],
-                reference=item.get('reference', 'relative'),
-                role=item.get('role', 'disturbance'),
-                live=item.get('live', False),
-            )
-        return self
+            if item.get('pipes'):
+                view.attach_pipes({pipe['name']: pipe['body']
+                                   for pipe in item['pipes']})
+        self._check_aliases()
 
 
 class LineMechanics:
@@ -1333,12 +1668,17 @@ class LineMechanics:
         self._reference = Frame()
         self._reference_is_explicit = False
         self._attachments = {}
+        self._solenoid_axes = {}
+        self._pipes = None
         self._element_names = None
         self._line_geometry = None
         self._vibrations_enabled = False
         self._controls_enabled = False
         self._source_mode_configured = False
+        self._tracking_source_mask = ()
+        self._last_applied_source_mask = ()
         self._last_applied_time_s = None
+        self._last_applied_passage_speed = None
         self._last_applied_time_series = None
         self._last_control_values = {}
         self._last_applied_controls = set()
@@ -1360,6 +1700,7 @@ class LineMechanics:
     def _has_configuration(self):
         return bool(
             self._attachments or self._reference_inputs or self._reference_is_explicit
+            or self._pipes is not None
         )
 
     def adopt_reference(self, *, elements=None):
@@ -1416,9 +1757,40 @@ class LineMechanics:
         return self._last_applied_time_s
 
     def _consumed_bodies(self):
-        return {attachment['body'] for attachment in self._attachments.values()}
+        bodies = {attachment['body'] for attachment in self._attachments.values()}
+        bodies.update(axis['body'] for axis in self._solenoid_axes.values())
+        if self._pipes is not None:
+            bodies.update(self._pipes.bodies)
+        return bodies
+
+    def _numeric_attachments(self):
+        yield from self._attachments.values()
+        yield from self._solenoid_axes.values()
+
+    def _protected_geometry_objects(self):
+        """Active reference objects, including hidden named slice parents.
+
+        Resolve only Python ownership metadata, not scalar geometry values.
+        Integrations can use this to reject raw writes that would invalidate a
+        captured survey, including writes to parents absent from the sequence.
+        """
+        elements = self.line.element_dict
+        objects = {name: elements[name] for name in self.line.element_names}
+        for element in tuple(objects.values()):
+            if isinstance(element, _SliceBase):
+                parent = _resolved_slice_parent(element, elements)
+                objects[element.parent_name] = parent
+        return objects
+
+    def _occurrence_bodies(self, name):
+        bodies = [self._attachments[name]['body']]
+        if name in self._solenoid_axes:
+            bodies.append(self._solenoid_axes[name]['body'])
+        return bodies
 
     def _source_enabled(self, binding):
+        if binding.name in self._tracking_source_mask:
+            return False
         if not self._source_mode_configured:
             return True
         return (
@@ -1433,6 +1805,7 @@ class LineMechanics:
             self._source_mode_configured,
             self._vibrations_enabled,
             self._controls_enabled,
+            self._tracking_source_mask,
         )
         if key != self._disabled_source_cache_key:
             self._disabled_source_cache = tuple(
@@ -1444,9 +1817,11 @@ class LineMechanics:
         return self._disabled_source_cache
 
     def _remember_applied(
-        self, time_s, source_values, *, disabled_sources=None, time_series=None
+        self, time_s, source_values, *, disabled_sources=None, time_series=None,
+        passage_speed=None,
     ):
         self._last_applied_time_s = float(time_s)
+        self._last_applied_passage_speed = passage_speed
         if self._control_metadata_revision != self.manager._revision:
             needed = self.manager._body_closure(self._consumed_bodies())
             controls = {
@@ -1463,6 +1838,7 @@ class LineMechanics:
             disabled_sources = self._disabled_tracking_sources()
             time_series = self._time_series
         self._last_applied_time_series = time_series
+        self._last_applied_source_mask = tuple(disabled_sources)
         self._last_applied_controls = self._relevant_control_names.difference(
             disabled_sources
         )
@@ -1505,20 +1881,7 @@ class LineMechanics:
                 and self._last_applied_time_series is not None
                 and name in self._last_applied_time_series.values
             ):
-                record = self._last_applied_time_series.values[name]
-                values[name] = np.array(
-                    [
-                        [
-                            np.interp(
-                                time_s,
-                                self._last_applied_time_series.time_s,
-                                record[:, i, j],
-                            )
-                            for j in range(6)
-                        ]
-                        for i in range(len(binding.targets))
-                    ]
-                )
+                values[name] = self._last_applied_time_series._sample(binding, time_s)
             else:
                 values[name] = self.manager._evaluate_source(
                     binding, np.array([time_s])
@@ -1540,9 +1903,10 @@ class LineMechanics:
             )
 
     def record_applied_sources(
-        self, *, sources, max_samples=4096, max_memory_bytes=8 * 1024**2
+        self, *, sources, max_samples=4096, max_memory_bytes=8 * 1024**2,
+        case_scope='affected',
     ):
-        """Record a bounded selected live-input trace; no implicit pose history."""
+        """Record a bounded live-input trace; use case_scope='line' for full replay."""
         from .applied_history import AppliedSourceRecorder
 
         recorder = AppliedSourceRecorder(
@@ -1550,12 +1914,14 @@ class LineMechanics:
             sources=sources,
             max_samples=max_samples,
             max_memory_bytes=max_memory_bytes,
+            case_scope=case_scope,
         )
         self._applied_source_recorder = recorder
         return recorder
 
     def enable_vibrations(
-        self, *, time_series=None, time_origin_s=None, sampling='turn', backend='auto'
+        self, *, time_series=None, time_origin_s=None, sampling='turn', backend='auto',
+        disabled_sources=None,
     ):
         """Enable turn-boundary motion updates using Particles.time_s [s].
 
@@ -1573,6 +1939,8 @@ class LineMechanics:
         time origin per line; there is no shared mutable filter/controller here.
         sampling='passage' prepares each occurrence at t0+s/(beta0*c), assuming
         the reference speed. SyncTime and partial-turn integration stay guarded.
+        disabled_sources selects a source mask by name. Omit it to keep the
+        current tracking selection, or pass () to clear the explicit mask.
         """
         self._enable_updates(
             time_series=time_series,
@@ -1580,10 +1948,12 @@ class LineMechanics:
             sampling=sampling,
             backend=backend,
             disturbances=True,
+            disabled_sources=disabled_sources,
         )
 
     def enable_controls(
-        self, *, time_series=None, time_origin_s=None, sampling='turn', backend='auto'
+        self, *, time_series=None, time_origin_s=None, sampling='turn', backend='auto',
+        disabled_sources=None,
     ):
         """Enable applied control motion without implicitly enabling disturbances."""
         self._enable_updates(
@@ -1592,17 +1962,22 @@ class LineMechanics:
             sampling=sampling,
             backend=backend,
             disturbances=self._vibrations_enabled,
+            disabled_sources=disabled_sources,
         )
 
     def _enable_updates(
-        self, *, time_series, time_origin_s, sampling, backend, disturbances
+        self, *, time_series, time_origin_s, sampling, backend, disturbances,
+        disabled_sources,
     ):
         attached = [v for v in self.manager._line_views.values() if v._attachments]
         if not self._attachments or (len(attached) != 1 and time_origin_s is None):
             raise NotImplementedError(
                 'Automatic multi-line sampling needs an explicit common time_origin_s per line'
             )
-        if time_origin_s is not None and not np.isfinite(time_origin_s):
+        if time_origin_s is not None and (
+            not np.isscalar(time_origin_s) or np.iscomplexobj(time_origin_s)
+            or not np.isfinite(time_origin_s)
+        ):
             raise ValueError('time_origin_s must be finite physical seconds')
         if sampling not in ('turn', 'passage'):
             raise ValueError('Use turn or passage sampling')
@@ -1610,13 +1985,17 @@ class LineMechanics:
             raise ValueError('Use auto, compiled or reference backend')
         if backend == 'compiled' and sampling != 'turn':
             raise ValueError('Compiled mechanics currently freezes at turn boundaries')
+        mask = (self._tracking_source_mask if disabled_sources is None
+                else self.manager._source_mask(disabled_sources))
         needed = self.manager._body_closure(self._consumed_bodies())
         bindings = [
             binding
             for binding in self.manager.sources.values()
             if needed.intersection(binding.targets)
+            and binding.name not in mask
             and (disturbances or binding.role == 'control')
         ]
+        self._check_automatic_pipes(bindings)
         if sampling == 'passage' and any(binding.live for binding in bindings):
             raise ValueError(
                 'Live sources support turn freezes, not predicted passage-time motion'
@@ -1638,10 +2017,22 @@ class LineMechanics:
         self._time_origin_s = 0.0 if time_origin_s is None else float(time_origin_s)
         self._sampling = sampling
         self._backend = backend
+        self._tracking_source_mask = mask
         self._runtime = None
         self._vibrations_enabled = disturbances
         self._controls_enabled = True
         self._source_mode_configured = True
+
+    def _check_automatic_pipes(self, bindings):
+        if self._pipes is None or not self._pipes.bodies:
+            return
+        ancestors = self.manager._body_closure(self._pipes.bodies)
+        if any(ancestors.intersection(binding.targets) for binding in bindings):
+            raise NotImplementedError(
+                'Automatic moving-pipe aperture updates are not implemented; '
+                'use get_aperture(time_s=...) for frozen-time geometry and '
+                'generate tracking limits from that view'
+            )
 
     def disable_vibrations(self):
         """Remove disturbances, retaining applied control and its automatic updates.
@@ -1649,25 +2040,30 @@ class LineMechanics:
         Source phases/records are not reset. A later enable resumes at the
         particles' physical time, rather than restarting a random waveform.
         """
-        disabled = tuple(
-            name
-            for name, binding in self.manager.sources.items()
+        disturbances = tuple(
+            binding.name for binding in self.manager.sources.values()
             if binding.role == 'disturbance'
         )
-        held = self._held_control_values() if self._sampling == 'turn' else {}
+        disabled = self.manager._source_mask(
+            (*self._tracking_source_mask, *self._last_applied_source_mask, *disturbances)
+        )
+        time = self._last_applied_time_s
+        speed = self._last_applied_passage_speed
+        sampling = self._sampling if time is None else ('turn' if speed is None else 'passage')
+        held = self._held_control_values() if sampling == 'turn' else {}
         self.apply(
-            time_s=0.0
-            if self._last_applied_time_s is None
-            else self._last_applied_time_s,
-            time_series=self._time_series,
+            time_s=0.0 if time is None else time,
+            time_series=self._time_series if time is None else self._last_applied_time_series,
             disabled_sources=disabled,
-            sampling=self._sampling,
+            sampling=sampling,
             _source_values=held,
+            _passage_speed=speed,
         )
         self._vibrations_enabled = False
         needed = self.manager._body_closure(self._consumed_bodies())
         self._controls_enabled = self._controls_enabled and any(
-            binding.role == 'control' and needed.intersection(binding.targets)
+            binding.role == 'control' and binding.name not in self._tracking_source_mask
+            and needed.intersection(binding.targets)
             for binding in self.manager.sources.values()
         )
         if self._time_series is not None and not any(
@@ -1693,6 +2089,10 @@ class LineMechanics:
         from ..tracker import Log
 
         self._prepared_empty_log = None
+        self._check_automatic_pipes(
+            binding for binding in self.manager.sources.values()
+            if self._source_enabled(binding)
+        )
         if self._applied_source_recorder is not None:
             self._applied_source_recorder.check_case()
         if self._time_series is not None:
@@ -1745,6 +2145,86 @@ class LineMechanics:
         finally:
             self._prepared_empty_log = None
 
+    def _check_tracking_window(self, particles, *, num_turns, prepared):
+        """Validate known finite replay domains before advancing any particles."""
+        from scipy.constants import c
+        from .runtime import has_fixed_reference
+        from .sources import LocatedSource, RegionalGroundMotion, VectorGroundMotion
+        from .sources import source_time_bounds
+
+        if num_turns is None:
+            num_turns = 1
+        if not isinstance(num_turns, (int, np.integer)) or num_turns < 1:
+            return
+        tracker = self.line.tracker
+        if tracker.iscollective or self.line.enable_time_dependent_vars:
+            return
+        record = self._time_series
+        bounded = {}
+        for name, binding in self.manager.sources.items():
+            if not self._source_enabled(binding):
+                continue
+            if record is not None and not binding.live and name in record.values:
+                bounds = (record.time_s[0], record.time_s[-1])
+            else:
+                positions = ()
+                if type(binding.source) in (LocatedSource, RegionalGroundMotion, VectorGroundMotion):
+                    positions = [self.manager[target]._nominal[:3, 3] for target in binding.targets]
+                bounds = source_time_bounds(binding.source, positions)
+            if bounds is not None:
+                bounded[name] = bounds
+        if not bounded:
+            return
+        needed = self.manager._body_closure(self._consumed_bodies())
+        bounded = {name: bounds for name, bounds in bounded.items()
+                   if needed.intersection(self.manager.sources[name].targets)}
+        if not bounded:
+            return
+        fixed = self._runtime.fixed_reference if self._runtime is not None else has_fixed_reference(tracker)
+        if not fixed:
+            return
+
+        first = float(particles.time_s)
+        beta = float(particles._xobject.beta0[0])
+        if not np.isfinite(beta) or beta <= 0:
+            return
+        step = tracker._tracker_data_base.line_length / (beta * c)
+        if prepared:
+            clock = self._runtime._clock_for(particles, first, particles.reference_turns, step)
+        else:
+            clock = first
+        # Match each scheduler's arithmetic exactly at record boundaries.
+        for _ in range(num_turns - 1):
+            clock += step
+        first += self._time_origin_s
+        last = float(clock) + self._time_origin_s
+
+        passage = self._sampling == 'passage'
+        if passage:
+            if self.line.particle_ref is None:
+                raise ValueError('Set a reference particle for passage-time sampling')
+            speed = float(self.line.particle_ref.beta0[0]) * c
+            table = self.line.get_table()
+            arrivals = [
+                (self.manager._body_closure(self._occurrence_bodies(name)),
+                 float(table['s', name]) / speed)
+                for name in self._attachments
+            ]
+        for name, (start, stop) in bounded.items():
+            lo, hi = first, last
+            if passage:
+                targets = self.manager.sources[name].targets
+                delays = [delay for closure, delay in arrivals if closure.intersection(targets)]
+                if not delays:
+                    continue
+                lo += min(delays)
+                hi += max(delays)
+            if lo < start or hi > stop:
+                raise ValueError(
+                    f'{name}: requested mechanics freeze times [{lo:.17g}, {hi:.17g}] s '
+                    f'lie outside the motion record [{start:.17g}, {stop:.17g}] s'
+                )
+
     def _check_prepared_empty_log(self, log):
         if log is not None and log:
             raise ValueError(
@@ -1758,6 +2238,10 @@ class LineMechanics:
         if self._runtime is not None:
             self._runtime.apply(time_s + self._time_origin_s, self._time_series)
         else:
+            self._check_automatic_pipes(
+                binding for binding in self.manager.sources.values()
+                if self._source_enabled(binding)
+            )
             self.apply(
                 time_s=time_s + self._time_origin_s,
                 time_series=self._time_series,
@@ -1776,6 +2260,7 @@ class LineMechanics:
         disabled_sources=(),
         sampling='turn',
         _source_values=None,
+        _passage_speed=None,
     ):
         """Update this line only at a physical time; other beam buffers stay put.
 
@@ -1783,6 +2268,7 @@ class LineMechanics:
         zeta/delta arrival. It prepares frozen per-occurrence maps for one turn.
         This Python reference is intentionally measured separately from kernels.
         """
+        disabled_sources = self.manager._source_mask(disabled_sources)
         self.manager._check_aliases()
         self._check()
         if self._applied_source_recorder is not None:
@@ -1791,14 +2277,14 @@ class LineMechanics:
             self._applied_source_recorder.check_case()
         consumed = self._consumed_bodies()
         live_values = dict(_source_values or {})
-        live_values.update(
-            self.manager._sample_live_values(
-                time_s,
-                bodies=consumed,
-                disabled_sources=set(disabled_sources) | set(live_values),
-            )
-        )
+        speed = None
         if sampling == 'turn':
+            live_values.update(
+                self.manager._sample_live_values(
+                    time_s, bodies=consumed,
+                    disabled_sources=set(disabled_sources) | set(live_values),
+                )
+            )
             poses = self.manager.get_body_poses(
                 time_s=time_s,
                 time_series=time_series,
@@ -1810,7 +2296,7 @@ class LineMechanics:
         elif sampling == 'passage':
             from scipy.constants import c
 
-            if self.line.particle_ref is None:
+            if self.line.particle_ref is None and _passage_speed is None:
                 raise ValueError('Set a reference particle for passage-time sampling')
             needed = self.manager._body_closure(consumed)
             if any(
@@ -1822,7 +2308,10 @@ class LineMechanics:
                 raise ValueError(
                     'Live sources support turn freezes, not predicted passage-time motion'
                 )
-            speed = float(self.line.particle_ref.beta0[0]) * c
+            speed = (float(self.line.particle_ref.beta0[0]) * c
+                     if _passage_speed is None else _passage_speed)
+            if not np.isfinite(speed) or speed <= 0:
+                raise ValueError('Passage-time sampling requires a positive reference speed')
             table = self.line.get_table()
             updates = []
             for name in self._attachments:
@@ -1830,11 +2319,17 @@ class LineMechanics:
                     time_s=time_s + float(table['s', name]) / speed,
                     time_series=time_series,
                     disabled_sources=disabled_sources,
-                    bodies=[self._attachments[name]['body']],
+                    bodies=self._occurrence_bodies(name),
                 )
                 updates.extend(self._updates(poses, names=[name], check=False))
         else:
             raise ValueError('Use turn or passage sampling')
+        self._commit_applied(
+            updates, time_s, live_values, disabled_sources, time_series, passage_speed=speed,
+        )
+
+    def _commit_applied(self, updates, time_s, live_values, disabled_sources, time_series,
+                        *, passage_speed=None):
         self._preflight_applied(
             time_s,
             live_values,
@@ -1842,7 +2337,7 @@ class LineMechanics:
             time_series=time_series,
         )
         for attachment, element, values in updates:
-            for field, value in zip(_FIELDS, values):
+            for field, value in zip(_attachment_fields(attachment), values):
                 setattr(element, field, value)
             attachment['last_written'] = values.copy()
         self._remember_applied(
@@ -1850,6 +2345,95 @@ class LineMechanics:
             live_values,
             disabled_sources=disabled_sources,
             time_series=time_series,
+            passage_speed=passage_speed,
+        )
+
+    def freeze_at(
+        self, *, time_s, time_series=None, disabled_sources=(), applied_history=None,
+        aperture_at_s=(),
+    ):
+        """Apply one matched magnet and pipe state to this line at physical time [s].
+
+        Resolve a single body state and build the independent aperture view and
+        requested discrete limits before writing any magnet fields. Each limit
+        uses the fixed survey plane at its s position. Insert the limits into a
+        separate frozen line for loss tracking or use the returned aperture for
+        inspection. The original line.aperture remains the adopted geometry.
+
+        Stop automatic updates before applying. By default, enabled live inputs
+        are sampled once. For replay, supply an applied history that covers the
+        line and all relevant live inputs; it fixes the source mask, prescribed
+        record, and previous-hold freeze time.
+        """
+        from .applied_history import AppliedSourceHistory
+        from .tables import _static_inputs
+
+        if self.automatic_updates_enabled:
+            raise ValueError('Freeze automatic updates before applying a matched state')
+        if not np.isscalar(time_s) or np.iscomplexobj(time_s) or not np.isfinite(time_s):
+            raise ValueError('time_s must be a finite real scalar in seconds')
+        self.manager._check_aliases()
+        self._check()
+        if self._pipes is None and np.asarray(aperture_at_s).size:
+            raise ValueError('Declare installed pipe ownership before requesting limits')
+        if self._applied_source_recorder is not None:
+            self._applied_source_recorder.check_case()
+        disabled_sources = self.manager._source_mask(disabled_sources)
+        consumed = self._consumed_bodies()
+        needed = self.manager._body_closure(consumed)
+        pose_time_s = float(time_s)
+        if applied_history is None:
+            live_values = self.manager._sample_live_values(
+                time_s, bodies=consumed, disabled_sources=disabled_sources
+            )
+        else:
+            if not isinstance(applied_history, AppliedSourceHistory):
+                raise TypeError('Supply an immutable applied source history snapshot')
+            pose_time_s, time_series, disabled_sources, live_values = applied_history._resolve(
+                self.manager, consumed, time_s, time_series, disabled_sources
+            )
+        sources = {
+            name: binding for name, binding in self.manager.sources.items()
+            if name not in disabled_sources and needed.intersection(binding.targets)
+        }
+        required = {name for name, binding in sources.items() if binding.live}
+        if required.difference(live_values):
+            raise ValueError('Applied history must cover all enabled live inputs for the line')
+        live_values = {name: frozen_array(live_values[name]) for name in sources if name in required}
+        deformations = self.manager._get_body_deformations(
+            time_s=pose_time_s, time_series=time_series, disabled_sources=disabled_sources,
+            bodies=needed, _source_values=live_values,
+        )
+        static_case = {name: _static_inputs(self.manager[name])
+                       for name in self.manager.bodies if name in needed}
+        design_alignment = {
+            name: dict(zip((*_FIELDS, 'rot_s_rad'),
+                           (*a['baseline'], a['geometry'][-1])))
+            for name, a in self._attachments.items()
+        }
+        for name, axis in self._solenoid_axes.items():
+            design_alignment[name].update(zip(_SOLENOID_AXIS_FIELDS, axis['baseline']))
+        design_alignment = {name: MappingProxyType(values)
+                            for name, values in design_alignment.items()}
+        poses = _BodyPoses(self.manager, deformations)
+        element_poses = self._element_poses_from_bodies(poses)
+        aperture, pipe_table, limits = None, None, {}
+        query_kind = 'fresh_freeze' if applied_history is None else 'applied_history'
+        if self._pipes is not None:
+            aperture = self._pipes.build_aperture(time_s, pose_time_s, deformations, query_kind)
+            limits = aperture.get_limit_elements_at_s(aperture_at_s)
+            pipe_table = self._pipes.get_table(
+                time_s=time_s, _resolved=(pose_time_s, deformations, query_kind),
+            )
+        updates = self._updates(poses)
+        self._commit_applied(updates, pose_time_s, live_values, disabled_sources, time_series)
+        return FrozenMechanicalState(
+            time_s=float(time_s), pose_time_s=pose_time_s, query_kind=query_kind,
+            element_poses=MappingProxyType(element_poses), aperture=aperture, pipe_table=pipe_table,
+            limits=MappingProxyType(limits), design_alignment=MappingProxyType(design_alignment),
+            static_case=MappingProxyType(static_case),
+            source_names=tuple(sources), disabled_sources=disabled_sources,
+            prescribed_record=time_series, live_values=MappingProxyType(live_values),
         )
 
     @property
@@ -1862,11 +2446,111 @@ class LineMechanics:
 
     def set_reference_frame(self, frame):
         """Place this line's default survey in the environment world, before attachment."""
-        if self._attachments:
+        if self._attachments or self._pipes is not None:
             raise ValueError('Set the survey placement before attaching mechanics')
         self._reference = _frame(frame)
         self._reference_is_explicit = True
         self.manager._revision += 1
+
+    def attach_pipe(self, name, *, body):
+        """Declare ownership of an installed pipe placement, not its shared shape.
+
+        body=None keeps the adopted installed placement fixed. Otherwise it
+        follows a body in this environment, including installation and dynamic
+        motion. Declare every placement, including fixed ones. The original
+        line.aperture is retained as the reference geometry; get_aperture
+        builds an independent frozen-time view with fresh intersections/bounds.
+        Generated limit elements are snapshots, not automatically moving checks.
+        """
+        return self.attach_pipes({name: body})
+
+    def attach_pipes(self, assignments):
+        """Declare a batch of installed placement owners with one geometry capture.
+
+        assignments maps installed placement names to bodies (or None for
+        fixed pipes). Validate the whole batch before changing ownership.
+        """
+        from .pipes import PipeBindings
+
+        if not hasattr(assignments, 'items') or not assignments:
+            raise ValueError('Use a nonempty mapping from pipe placements to owners')
+        self._check(allow_built_aperture=True)
+        if not self._reference_is_explicit and any(
+            other is not self and (other._attachments or other._pipes is not None)
+            for other in self.manager._line_views.values()
+        ):
+            raise ValueError(
+                'Set an explicit survey reference frame before attaching a second line'
+            )
+        owners = {}
+        for name, body in assignments.items():
+            if (not isinstance(name, str)
+                    or name not in self.line.aperture.pipe_positions.keys()):
+                raise KeyError(f'Unknown installed pipe placement {name!r}')
+            if body is not None and not isinstance(body, (str, RigidBody)):
+                raise ValueError('Pipe owner must be a body in this environment')
+            name_of_body = body.name if isinstance(body, RigidBody) else body
+            if body is not None and (
+                name_of_body not in self.manager.bodies
+                or (isinstance(body, RigidBody)
+                    and self.manager[name_of_body] is not body)
+            ):
+                raise ValueError('Pipe owner must be a body in this environment')
+            if name_of_body is not None and self.automatic_updates_enabled:
+                ancestors = self.manager._body_closure([name_of_body])
+                if any(self._source_enabled(binding)
+                       and ancestors.intersection(binding.targets)
+                       for binding in self.manager.sources.values()):
+                    raise ValueError('Freeze automatic updates before binding a moving pipe')
+            if (name_of_body is not None
+                    and len(self.line.aperture.pipe_positions[name].pipe) < 2):
+                raise ValueError('A body-owned finite pipe requires at least two profiles')
+            owners[name] = name_of_body
+        bindings = self._pipes or PipeBindings(self)
+        bindings.attach(owners)
+        self._pipes = bindings
+        if self._element_names is None:
+            self._element_names = tuple(self.line.element_names)
+            self._line_geometry = self._geometry_signature()
+        self._bound_line = self.line
+        self.manager._revision += 1
+        return self
+
+    def get_pipe_table(self, *, time_s=None, time_series=None, disabled_sources=(), applied_history=None):
+        """Installed ownership, or world poses at an explicit time.
+
+        change_X/Y/Z includes owner reference adjustment, installation and
+        dynamics relative to the adopted pipe placement. pose is a world Frame
+        matrix. Nothing is written to the line or its reference aperture model.
+        """
+        if self._pipes is None:
+            raise ValueError('Declare installed pipe ownership with attach_pipe first')
+        self._check()
+        return self._pipes.get_table(
+            time_s=time_s, time_series=time_series,
+            disabled_sources=self.manager._source_mask(disabled_sources),
+            applied_history=applied_history,
+        )
+
+    def get_aperture(self, *, time_s, time_series=None, disabled_sources=(), applied_history=None):
+        """Build a frozen-time aperture view without changing the line.
+
+        Placements, derived geometry and copies of the adopted pipe/profile
+        definitions are independent of the live environment. Fixed survey-plane
+        cuts are recomputed, including pitch/yaw effects. Sample limits from
+        this view for a matching frozen tracking study. The ordinary line
+        aperture remains the adopted reference. This is a host preparation
+        operation, not an automatic per-turn aperture updater.
+        An applied history selects the latest recorded freeze at or before time_s.
+        """
+        if self._pipes is None:
+            raise ValueError('Declare installed pipe ownership with attach_pipe first')
+        self._check()
+        return self._pipes.get_aperture(
+            time_s=time_s, time_series=time_series,
+            disabled_sources=self.manager._source_mask(disabled_sources),
+            applied_history=applied_history,
+        )
 
     def new_girder(
         self,
@@ -1958,10 +2642,11 @@ class LineMechanics:
             )
             prepared.append((body, selected))
         for body, selected in prepared:
-            self.manager._bodies[body.name] = body
             for candidate in selected:
                 candidate['body'] = body.name
         self._install_candidates(candidates)
+        for body, _ in prepared:
+            self.manager._bodies[body.name] = body
         self.manager._revision += 1
         return {body.name: body for body, _ in prepared}
 
@@ -1972,9 +2657,138 @@ class LineMechanics:
             isinstance(body, RigidBody) and self.manager[name] is not body
         ):
             raise ValueError('Body must belong to this environment')
-        candidates = self._candidates(elements)
-        self._attach(name, candidates)
+        self.attach_bodies({name: elements})
+
+    def attach_bodies(self, assignments):
+        """Attach existing physical bodies to this line with one full survey.
+
+        ``assignments`` maps body names already defined in the environment to
+        nonempty sets of element occurrences in this line. This is useful for
+        a second, reversed traversal of a shared physical support inventory.
+        Use an explicit world survey reference for the second line. Validate
+        every occurrence and alias before installing any new attachment.
+        """
+        if not hasattr(assignments, 'items') or not assignments:
+            raise ValueError('Use a nonempty mapping from existing body names to elements')
+        owner = {}
+        all_names = []
+        for name, elements in assignments.items():
+            if name not in self.manager.bodies:
+                raise ValueError(f'{name}: body must belong to this environment')
+            names = (elements,) if isinstance(elements, str) else tuple(elements)
+            if not names:
+                raise ValueError('Select nonempty unique element names')
+            all_names.extend(names)
+            owner.update((element, name) for element in names)
+        candidates = self._candidates(all_names)
+        for candidate in candidates:
+            candidate['body'] = owner[candidate['element']]
+        self._install_candidates(candidates)
         self.manager._revision += 1
+
+    def new_solenoid_axis(self, name, *, elements, anchor='center'):
+        """Mount one independent longitudinal field axis inside a rigid chart.
+
+        Select previously attached VariableSolenoid elements sharing one chart
+        body. The solenoid axis is a transverse-only child of that body. It
+        retains each segment's adopted local x0/y0 and adds relative x/y
+        displacement expressed in the local field chart. The parent carries the
+        complete chart, including all multipole fields, in six degrees of
+        freedom. No multipole strength or contribution is inferred or changed.
+
+        Relative pitch/yaw/roll or longitudinal motion of the solenoid profile
+        is not represented by x0/y0. Use the parent for shared rigid motion.
+        The child's frame has the first selected element's adopted axes by
+        default; all selected field chart axes must be parallel or antiparallel
+        to its longitudinal axis.
+        """
+        names, parent = self._solenoid_chart(elements)
+        if isinstance(anchor, str):
+            if anchor != 'center':
+                raise ValueError("Use anchor='center' or an explicit Frame/XYZ")
+            first, last = (self._attachments[n] for n in (names[0], names[-1]))
+            frame = Frame(first['base_element'])
+            endpoints = []
+            for attachment, key in ((first, 'base_element'),
+                                    (last, 'base_element_end')):
+                element = self.line.element_dict[attachment['element']]
+                matrix = attachment[key]
+                endpoints.append(
+                    matrix[:3, 3] + matrix[:3, :2] @ _values(element, _SOLENOID_AXIS_FIELDS)
+                )
+            frame.matrix[:3, 3] = .5 * (endpoints[0] + endpoints[1])
+            anchor = frame
+        body = self.manager._body_definition(
+            name, anchor=anchor, parent=parent, feet_local_m=None,
+            kind='solenoid_axis', transverse_only=True,
+        )
+        candidates = self._solenoid_axis_candidates(body, names, parent)
+        self.manager._bodies[name] = body
+        self._solenoid_axes.update((a['element'], a) for a in candidates)
+        self.manager._revision += 1
+        return body
+
+    def attach_solenoid_axis(self, body, *, elements):
+        """Attach other chart segments to an existing transverse axis body."""
+        name = body.name if isinstance(body, RigidBody) else body
+        if name not in self.manager.bodies or (
+            isinstance(body, RigidBody) and self.manager[name] is not body
+        ):
+            raise ValueError('Body must belong to this environment')
+        names, parent = self._solenoid_chart(elements)
+        candidates = self._solenoid_axis_candidates(self.manager[name], names, parent)
+        self._solenoid_axes.update((a['element'], a) for a in candidates)
+        self.manager._revision += 1
+
+    def _solenoid_chart(self, elements):
+        from ..beam_elements.variable_solenoid import VariableSolenoid
+
+        self.manager._check_aliases()
+        self._check(allow_built_aperture=True)
+        names = (elements,) if isinstance(elements, str) else tuple(elements)
+        if not names or len(set(names)) != len(names):
+            raise ValueError('Select nonempty unique VariableSolenoid segments')
+        for name in names:
+            if name not in self._attachments or name in self._solenoid_axes:
+                raise ValueError(
+                    f'{name}: select an attached chart without an existing solenoid axis'
+                )
+            if not isinstance(self.line.element_dict[name], VariableSolenoid):
+                raise ValueError(f'{name}: solenoid axis requires VariableSolenoid')
+        parents = {self._attachments[name]['body'] for name in names}
+        if len(parents) != 1:
+            raise ValueError('Select segments sharing one rigid field chart body')
+        selection = set(names)
+        names = [name for name in self.line.element_names if name in selection]
+        return names, parents.pop()
+
+    def _solenoid_axis_candidates(self, body, names, parent):
+        if not body._transverse_only or body.parent != parent:
+            raise ValueError('A solenoid axis must be a transverse child of the chart body')
+        candidates, refs = [], set()
+        for name in names:
+            chart = self._attachments[name]
+            axes = chart['base_element'][:3, :3].T @ body._nominal[:3, :3]
+            if not np.allclose(axes[2, :2], 0., atol=1e-12, rtol=0.):
+                raise ValueError(f'{name}: select field charts with parallel solenoid axes')
+            element = self.line.element_dict[name]
+            baseline = _values(element, _SOLENOID_AXIS_FIELDS)
+            if not np.all(np.isfinite(baseline)):
+                raise ValueError(f'{name}: adopted x0/y0 must be finite')
+            for field in _SOLENOID_AXIS_FIELDS:
+                reference = getattr(self.line.env.ref[name], field)
+                if getattr(reference, '_expr', None) is not None:
+                    raise ValueError(
+                        f'{name}.{field}: expression-driven axis is not supported by numeric lowering'
+                    )
+                refs.add(reference)
+            candidates.append(dict(
+                element=name, body=body.name, chart_body=parent,
+                projection=axes[:2, :2].copy(), baseline=baseline,
+                last_written=baseline.copy(), object_id=id(element),
+            ))
+        _check_alignment_consumers(self.line.env.ref_manager, refs)
+        return candidates
 
     def clear(self):
         """Restore this line's local alignment and detach it from mechanics.
@@ -1986,7 +2800,7 @@ class LineMechanics:
         if self._attachments and self.line.aperture.is_built:
             self.line.aperture.discard_model()
         for attachment, element, values in updates:
-            for field, value in zip(_FIELDS, values):
+            for field, value in zip(_attachment_fields(attachment), values):
                 setattr(element, field, value)
         self._clear_bindings()
         self.manager._revision += 1
@@ -1997,17 +2811,19 @@ class LineMechanics:
             self._runtime.finish()
         updates = []
         alignment_refs = set()
-        for name, attachment in self._attachments.items():
+        for attachment in self._numeric_attachments():
+            name = attachment['element']
             element = self.line.element_dict.get(name)
             if element is None or id(element) != attachment['object_id']:
                 raise ValueError(
                     f'{name}: attached object changed; original alignment cannot be restored automatically'
                 )
-            if not np.array_equal(_values(element), attachment['last_written']):
+            fields = _attachment_fields(attachment)
+            if not np.array_equal(_values(element, fields), attachment['last_written']):
                 raise ValueError(
                     f'{name}: effective alignment was edited; clear mechanics before editing local alignment'
                 )
-            for field in _FIELDS:
+            for field in fields:
                 alignment_refs.add(getattr(self.line.env.ref[name], field))
                 if (
                     getattr(getattr(self.line.env.ref[name], field), '_expr', None)
@@ -2021,17 +2837,23 @@ class LineMechanics:
         return updates
 
     def _clear_bindings(self):
+        if self._applied_source_recorder is not None:
+            self._applied_source_recorder.stop()
         self._attachments.clear()
+        self._solenoid_axes.clear()
+        self._pipes = None
         self._element_names = None
         self._line_geometry = None
         self._vibrations_enabled = False
         self._controls_enabled = False
         self._source_mode_configured = False
+        self._tracking_source_mask = ()
+        self._last_applied_source_mask = ()
         self._last_applied_time_s = None
+        self._last_applied_passage_speed = None
         self._last_applied_time_series = None
         self._last_applied_controls = frozenset()
         self._last_control_values.clear()
-        self._applied_source_recorder = None
         self._time_series = None
         self._runtime = None
         self._reference = Frame()
@@ -2040,25 +2862,30 @@ class LineMechanics:
         self._bound_line = None
 
     def _candidates(self, elements):
-        if self._attachments:
+        if self._attachments or self._pipes is not None:
+            self.manager._check_aliases()
             self._check()
         names = (elements,) if isinstance(elements, str) else tuple(elements)
         if not names or len(set(names)) != len(names):
             raise ValueError('Select nonempty unique element names')
         line = self.line
-        if any(
-            type(element).__name__ == 'Replica'
-            or (hasattr(element, 'weight') and hasattr(element, '_parent'))
-            for element in line._elements
-        ):
+        if any(isinstance(element, Replica) for element in line._elements):
             raise ValueError(
-                'Mechanics bindings require an unsliced line without replicas'
+                'Mechanics reference geometry does not support replicas on the bound line'
             )
+        line_elements = line.element_dict
+        for element in line._elements:
+            if isinstance(element, _SliceBase):
+                _resolved_slice_parent(element, line_elements)
+            elif hasattr(element, 'weight') and hasattr(element, '_parent'):
+                raise ValueError(
+                    'Mechanics reference geometry does not support custom slices'
+                )
         if (
             not self._attachments
             and not self._reference_is_explicit
             and any(
-                v is not self and v._attachments
+                v is not self and (v._attachments or v._pipes is not None)
                 for v in self.manager._line_views.values()
             )
         ):
@@ -2070,13 +2897,9 @@ class LineMechanics:
         for index, name in enumerate(line.element_names):
             order.setdefault(name, index)
             counts[name] = counts.get(name, 0) + 1
-        elements_by_id = {}
-        for ll in self.manager.env._lines_weakrefs:
-            if ll.env is not self.manager.env:
-                continue
-            for name in ll.element_names:
-                element = ll.element_dict[name]
-                elements_by_id[id(element)] = elements_by_id.get(id(element), 0) + 1
+        elements_by_id = self.manager._alias_counts(
+            line.element_dict[name] for name in names if name in order
+        )
         alignment_refs = set()
         for name in names:
             if counts.get(name, 0) != 1 or name in self._attachments:
@@ -2084,6 +2907,11 @@ class LineMechanics:
                     f'{name}: unknown, repeated or already attached occurrence'
                 )
             element = line.element_dict[name]
+            if self._pipes is not None and getattr(element, 'installed_pipe_name', None):
+                raise ValueError(
+                    'Pipe-derived limits are frozen sections; generate fresh '
+                    'limits from get_aperture(time_s=...) instead of attaching them'
+                )
             if name in self._reference_inputs and not np.array_equal(
                 _values(element), self._reference_inputs[name]
             ):
@@ -2092,8 +2920,7 @@ class LineMechanics:
                 )
             if (
                 not getattr(element, 'allow_rot_and_shift', False)
-                or type(element).__name__ == 'Replica'
-                or (hasattr(element, 'weight') and hasattr(element, '_parent'))
+                or isinstance(element, (Replica, _SliceBase))
             ):
                 raise ValueError(
                     f'{name}: first lowering supports unsliced alignment-capable elements'
@@ -2159,13 +2986,17 @@ class LineMechanics:
         self._bound_line = line
 
     def _geometry_signature(self):
-        return tuple(
-            (
-                id(self.line.element_dict[n]),
-                _reference_geometry(self.line.element_dict[n]),
-            )
-            for n in self.line.element_names
-        )
+        elements = self.line.element_dict
+        geometry = []
+        for name in self.line.element_names:
+            element = elements[name]
+            if isinstance(element, Replica):
+                raise ValueError('Line reference geometry changed: replica introduced')
+            signature = _reference_geometry(element)
+            if isinstance(element, _SliceBase):
+                signature += (_slice_reference_geometry(element, elements),)
+            geometry.append((id(element), signature))
+        return tuple(geometry)
 
     def validate(self):
         """Validate captured line geometry and alignment ownership explicitly.
@@ -2185,10 +3016,13 @@ class LineMechanics:
         # rather than mistaking the prepared kernel's own writes for user edits.
         if self._runtime is not None:
             self._runtime.finish()
+        if self._pipes is not None:
+            self._pipes.validate(complete=not allow_built_aperture)
         if (
             self._attachments
             and self.line.aperture.is_built
             and not allow_built_aperture
+            and self._pipes is None
         ):
             raise ValueError(
                 'Discard/rebuild the aperture survey model when applying mechanics; pipe-body coupling is not implemented yet'
@@ -2208,17 +3042,19 @@ class LineMechanics:
                 'Line reference geometry changed after attachment; rebuild survey bindings'
             )
         alignment_refs = set()
-        for name, a in self._attachments.items():
+        for a in self._numeric_attachments():
+            name = a['element']
             element = self.line.element_dict[name]
             if id(element) != a['object_id']:
                 raise ValueError(f'{name}: attached element object was replaced')
-            if _geometry(element) != a['geometry']:
+            if 'geometry' in a and _geometry(element) != a['geometry']:
                 raise ValueError(f'{name}: nominal geometry changed after attachment')
-            if not np.array_equal(_values(element), a['last_written']):
+            fields = _attachment_fields(a)
+            if not np.array_equal(_values(element, fields), a['last_written']):
                 raise ValueError(
                     f'{name}: local alignment edited after attachment; restore/rebind explicitly'
                 )
-            for field in _FIELDS:
+            for field in fields:
                 alignment_refs.add(getattr(self.line.env.ref[name], field))
                 if (
                     hasattr(element, field)
@@ -2238,25 +3074,21 @@ class LineMechanics:
             a = self._attachments[name]
             element = self.line.element_dict[name]
             body = self.manager[a['body']]
-            if hasattr(poses, '_deformations'):
-                values = lower(a, body._nominal, poses._deformations[body.name])
-            else:
-                # Private callers may still provide explicit world frames.
-                target = (
-                    poses[body.name]
-                    @ Frame(body._nominal).inverse()
-                    @ Frame(a['base_element'])
-                )
-                effective = (
-                    Frame(a['ref_start']).inverse()
-                    @ target
-                    @ Frame().rotate_s(-element.rot_s_rad)
-                )
-                values = np.array(
-                    [*effective.XYZ, effective.phi, effective.theta, effective.psi, 0.0]
-                )
+            values = lower(a, body._nominal, poses._deformations[body.name])
             updates.append((a, element, values))
+            if name in self._solenoid_axes:
+                axis = self._solenoid_axes[name]
+                updates.append((axis, element, self._axis_values(axis, poses)))
         return updates
+
+    @staticmethod
+    def _axis_values(axis, poses):
+        # The chart's common inherited motion cancels exactly. Work in the
+        # axis body's local translation, without subtracting world frames.
+        translation = poses._deformations.local[axis['body']][0][:2]
+        if not np.any(translation):
+            return axis['baseline'].copy()
+        return axis['baseline'] + axis['projection'] @ translation
 
     def get_element_poses(self, *, time_s=0.0, time_series=None, disabled_sources=()):
         self._check()
@@ -2264,8 +3096,11 @@ class LineMechanics:
             time_s=time_s,
             time_series=time_series,
             disabled_sources=disabled_sources,
-            bodies=self._consumed_bodies(),
+            bodies=tuple(dict.fromkeys(a['body'] for a in self._attachments.values())),
         )
+        return self._element_poses_from_bodies(poses)
+
+    def _element_poses_from_bodies(self, poses):
         return {
             name: poses[a['body']]
             @ self.manager[a['body']].nominal_frame.inverse()
@@ -2274,7 +3109,8 @@ class LineMechanics:
         }
 
     def read_bpm(
-        self, name, *, time_s=0.0, time_series=None, beam_frame=None, **coordinates
+        self, name, *, time_s=0.0, time_series=None, beam_frame=None,
+        disabled_sources=(), **coordinates
     ):
         """Project a nominal-frame beam ray into an attached pickup's moved frame."""
         self._check()
@@ -2286,7 +3122,8 @@ class LineMechanics:
         attachment = self._attachments[name]
         body = self.manager[attachment['body']]
         deformation = self.manager._get_body_deformations(
-            time_s=time_s, time_series=time_series, bodies=[body.name]
+            time_s=time_s, time_series=time_series, bodies=[body.name],
+            disabled_sources=disabled_sources,
         )[body.name]
         shift, rotation = entry_affine(attachment, body._nominal, deformation)
         design_rotation = np.eye(3) + rotation_increment(psi=attachment['geometry'][-1])
@@ -2301,7 +3138,7 @@ class LineMechanics:
             )
         return project_to_bpm(beam_frame=beam_frame, bpm_frame=target, **coordinates)
 
-    def get_table(self, *, time_s=None, time_series=None):
+    def get_table(self, *, time_s=None, time_series=None, disabled_sources=()):
         """Attached element occurrences, optionally with read-only world poses.
 
         Each attached element has its own row, even when several share a body.
@@ -2309,7 +3146,37 @@ class LineMechanics:
         """
         from .tables import element_table
 
-        return element_table(self, time_s=time_s, time_series=time_series)
+        return element_table(self, time_s=time_s, time_series=time_series,
+                             disabled_sources=disabled_sources)
+
+    def get_applied_table(self):
+        """Read the element-entry frames currently installed on this line.
+
+        This reads the lowered element fields without evaluating any source.
+        last_applied_time_s is the latest mechanics update time, or the turn
+        start for passage sampling. pose_time_s gives the time of each map.
+        World display resolution is binary64.
+        """
+        self._check()
+        survey = self.line.survey(include_element_frames=True)
+        names = list(self._attachments)
+        poses = np.array([
+            (self._reference @ survey.get_frame(name, which='elem_start')).matrix
+            for name in names
+        ]).reshape(-1, 4, 4)
+        applied = self.last_applied_time_s
+        times = np.full(len(names), np.nan if applied is None else applied)
+        if names and self._last_applied_passage_speed is not None:
+            times += survey['s', names] / self._last_applied_passage_speed
+        data = dict(
+            name=np.array(names, dtype=str),
+            body=np.array([self._attachments[name]['body'] for name in names], dtype=str),
+            X=poses[:, 0, 3], Y=poses[:, 1, 3], Z=poses[:, 2, 3], pose=poses,
+            pose_time_s=times,
+        )
+        return Table(dict(data, last_applied_time_s=self.last_applied_time_s,
+                          disabled_sources=self._last_applied_source_mask),
+                     col_names=list(data))
 
     def get_alignment_table(self):
         """Original element-local versus current effective alignment fields.
@@ -2336,3 +3203,35 @@ class LineMechanics:
             [self.line.element_dict[n].rot_s_rad for n in names]
         )
         return Table(data)
+
+    def get_solenoid_axis_table(self, *, time_s=None, time_series=None,
+                                disabled_sources=()):
+        """Inspect adopted and effective local x0/y0 [m] for field-axis groups.
+
+        With no time, inspect the installed buffer values. At explicit time
+        sample the relative axis sources without changing any field. The
+        ordinary get_table() continues to describe the whole tracking chart.
+        """
+        if time_s is None and time_series is not None:
+            raise ValueError('Supply time_s when requesting an axis pose table')
+        disabled_sources = self.manager._source_mask(disabled_sources)
+        self._check()
+        names = list(self._solenoid_axes)
+        axes = list(self._solenoid_axes.values())
+        baseline = np.array([a['baseline'] for a in axes]).reshape(-1, 2)
+        if time_s is None:
+            values = np.array([a['last_written'] for a in axes]).reshape(-1, 2)
+        else:
+            poses = self.manager.get_body_poses(
+                time_s=time_s, time_series=time_series,
+                disabled_sources=disabled_sources,
+                bodies=tuple(dict.fromkeys(a['body'] for a in axes)),
+            )
+            values = np.array([self._axis_values(a, poses) for a in axes]).reshape(-1, 2)
+        return Table(dict(
+            name=np.array(names, dtype=str),
+            chart_body=np.array([a['chart_body'] for a in axes], dtype=str),
+            axis_body=np.array([a['body'] for a in axes], dtype=str),
+            local_x0=baseline[:, 0], local_y0=baseline[:, 1],
+            effective_x0=values[:, 0], effective_y0=values[:, 1],
+        ))

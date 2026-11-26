@@ -4,9 +4,29 @@
 # ######################################### #
 """Prescribed motion sources for the experimental mechanics interface."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
+
+from .motion import checked_scalar
+
+# Limit receiver-coefficient scratch for uncached continuous-field queries.
+# The mode parameters and requested output samples are separate, unavoidable
+# storage; one receiver's coefficients are the minimum indivisible block.
+_SPECTRAL_RECEIVER_SCRATCH_BYTES = 8 * 1024**2
+
+
+def _scalar_displacement_samples(values, time_s, positions_m):
+    """Normalize one shared waveform or explicitly ordered receiver samples."""
+    values = np.asarray(values)
+    if np.iscomplexobj(values) or not np.all(np.isfinite(values)):
+        raise ValueError('Scalar displacement samples must be finite and real')
+    shape = (len(time_s), len(positions_m))
+    if values.shape == (len(time_s),):
+        values = np.broadcast_to(values[:, None], shape)
+    if values.shape != shape:
+        raise ValueError('Scalar displacement must have shape (times, receivers) or (times,)')
+    return values
 
 
 @dataclass(frozen=True)
@@ -25,10 +45,8 @@ class Harmonic:
     def __post_init__(self):
         if self.unit not in ('m', 'rad'):
             raise ValueError("Harmonic unit must be 'm' or 'rad'")
-        if np.iscomplexobj([self.amplitude, self.frequency_hz, self.phase_rad]):
-            raise ValueError('Use real amplitude/frequency and explicit phase_rad')
-        if not np.all(np.isfinite([self.amplitude, self.frequency_hz, self.phase_rad])):
-            raise ValueError('Harmonic parameters must be finite')
+        for name in ('amplitude', 'frequency_hz', 'phase_rad'):
+            object.__setattr__(self, name, checked_scalar(getattr(self, name), name))
         if self.frequency_hz < 0:
             raise ValueError('frequency_hz must be nonnegative')
 
@@ -58,25 +76,17 @@ class PlaneWave:
     frame = 'world'
 
     def __post_init__(self):
+        for name in ('amplitude', 'frequency_hz', 'speed_m_s', 'phase_rad'):
+            object.__setattr__(self, name, checked_scalar(getattr(self, name), name))
         if any(
             np.iscomplexobj(value)
             for value in (
-                self.amplitude,
-                self.frequency_hz,
-                self.speed_m_s,
-                self.phase_rad,
                 self.direction,
                 self.polarization,
                 self.origin_m,
             )
         ):
             raise ValueError('Wave parameters must be real')
-        if not np.all(
-            np.isfinite(
-                [self.amplitude, self.frequency_hz, self.speed_m_s, self.phase_rad]
-            )
-        ):
-            raise ValueError('Wave parameters must be finite')
         if self.frequency_hz < 0 or self.speed_m_s <= 0:
             raise ValueError('Use nonnegative frequency and positive speed')
         for name in ('direction', 'polarization', 'origin_m'):
@@ -128,6 +138,7 @@ class MeasuredMotion:
             or not np.all(np.isfinite(times))
             or values.ndim not in (1, 2)
             or values.shape[0] != len(times)
+            or (values.ndim == 2 and values.shape[1] == 0)
             or not np.all(np.isfinite(values))
         ):
             raise ValueError(
@@ -143,12 +154,15 @@ class MeasuredMotion:
         )
 
     def evaluate(self, time_s, positions_m):
+        from .motion import checked_sample_times
+
+        time_s = checked_sample_times(time_s)
         times, values = np.asarray(self.time_s), np.asarray(self.displacement)
         if np.any(time_s < times[0]) or np.any(time_s > times[-1]):
             raise ValueError('Requested time lies outside the measured motion record')
         if values.ndim == 1:
             values = np.broadcast_to(values[:, None], (len(times), len(positions_m)))
-        if values.shape[1] != len(positions_m):
+        if not len(positions_m) or values.shape[1] != len(positions_m):
             raise ValueError('Measured channels must match source targets')
         if self.interpolation == 'previous':
             return values[np.searchsorted(times, time_s, side='right') - 1].copy()
@@ -208,11 +222,14 @@ class DisplacementPSD:
         ):
             raise ValueError('seed must be a nonnegative integer')
         length = self.correlation_length_m
-        if length is not None and (not np.isfinite(length) or length <= 0):
-            raise ValueError('correlation_length_m must be finite and positive')
+        if length is not None:
+            length = checked_scalar(length, 'correlation_length_m')
+            if length <= 0:
+                raise ValueError('correlation_length_m must be finite and positive')
         object.__setattr__(self, 'frequency_hz', tuple(f))
         object.__setattr__(self, 'density', tuple(s))
         object.__setattr__(self, 'seed', int(self.seed))
+        object.__setattr__(self, 'correlation_length_m', length)
 
     def workspace_bytes(self, n_times, n_receivers):
         # FFT quadratures/coefficients plus the dense spatial reference path.
@@ -222,6 +239,10 @@ class DisplacementPSD:
         )
 
     def evaluate(self, time_s, positions_m):
+        replay = self._prepare_fourier(time_s, positions_m)
+        return replay.evaluate(time_s, positions_m)
+
+    def _prepare_fourier(self, time_s, positions_m):
         count, channels = len(time_s), len(positions_m)
         if count < 2:
             raise ValueError(
@@ -270,8 +291,10 @@ class DisplacementPSD:
         coefficients = (quadratures[0] + 1j * quadratures[1]) * np.sqrt(
             count / dt * s[:, None] / 4
         )
-        coefficients *= np.exp(2j * np.pi * f * time_s[0])[:, None]
-        return np.fft.irfft(coefficients, n=count, axis=0)
+        bins = np.flatnonzero(s)
+        active = coefficients[bins]
+        bins.flags.writeable = active.flags.writeable = False
+        return _FourierReplay(count, dt, bins, active, self.unit)
 
 
 @dataclass(frozen=True)
@@ -279,6 +302,36 @@ class AngularPSD(DisplacementPSD):
     """Same one-sided convention as DisplacementPSD, density in rad²/Hz."""
 
     unit = 'rad'
+
+
+@dataclass(frozen=True)
+class _FourierReplay:
+    """One FFT draw, with global phases and a sparse set of active bins."""
+
+    count: int
+    dt: float
+    bins: np.ndarray
+    coefficients: np.ndarray
+    unit: str
+    frame = 'body_local'
+
+    def evaluate(self, time_s, positions_m):
+        times = np.asarray(time_s)
+        frequencies = self.bins / (self.count * self.dt)
+        if len(times) == self.count:
+            relative = self.dt * np.arange(self.count)
+            tolerance = 64 * np.finfo(float).eps * max(abs(times[0]), abs(times[-1]), self.dt)
+            if np.allclose(times, times[0] + relative, rtol=0., atol=tolerance):
+                # Uniform grids, including a constant propagation delay,
+                # retain the cheap inverse FFT used for record construction.
+                coefficients = np.zeros((self.count // 2 + 1, len(positions_m)), complex)
+                coefficients[self.bins] = (
+                    np.exp(2j * np.pi * frequencies * times[0])[:, None] * self.coefficients
+                )
+                return np.fft.irfft(coefficients, n=self.count, axis=0)
+        phase = np.exp(2j * np.pi * times[:, None] * frequencies)
+        # The PSD generator excludes DC and Nyquist.
+        return (phase @ self.coefficients).real * (2. / self.count)
 
 
 @dataclass(frozen=True)
@@ -303,6 +356,8 @@ class SpectralGroundMotion:
     unit = 'm'
 
     def __post_init__(self):
+        if self.correlation_length_m is None:
+            raise ValueError('Spectral ground motion requires correlation_length_m')
         specification = DisplacementPSD(
             self.frequency_hz, self.density, self.seed, self.correlation_length_m
         )
@@ -315,6 +370,7 @@ class SpectralGroundMotion:
         object.__setattr__(self, 'frequency_hz', specification.frequency_hz)
         object.__setattr__(self, 'density', specification.density)
         object.__setattr__(self, 'seed', specification.seed)
+        object.__setattr__(self, 'correlation_length_m', specification.correlation_length_m)
         rng = np.random.default_rng(self.seed)
         f, s = np.array(self.frequency_hz), np.array(self.density)
         area = 0.5 * (s[1:] + s[:-1]) * np.diff(f)
@@ -353,10 +409,40 @@ class SpectralGroundMotion:
         return 32 * self.n_modes * (n_times + n_receivers) + 16 * n_times * n_receivers
 
     def evaluate(self, time_s, positions_m):
-        phase = np.asarray(positions_m) @ self._wavevectors.T + self._phases
-        time_phase = 2 * np.pi * np.asarray(time_s)[:, None] * self._frequencies
-        return self._amplitude * (
-            np.sin(time_phase) @ np.cos(phase).T + np.cos(time_phase) @ np.sin(phase).T
+        positions = np.asarray(positions_m)
+        count = len(positions)
+        size = 8 * self.n_modes * (2 * count + 1)
+        if size <= _SPECTRAL_RECEIVER_SCRATCH_BYTES or count <= 1:
+            return self._prepare_receivers(positions).evaluate(time_s, positions)
+        per_chunk = max(1, (_SPECTRAL_RECEIVER_SCRATCH_BYTES // (8*self.n_modes) - 1) // 2)
+        output = np.empty((len(time_s), count))
+        for first in range(0, count, per_chunk):
+            last = min(first+per_chunk, count)
+            receivers = positions[first:last]
+            output[:, first:last] = self._prepare_receivers(receivers).evaluate(time_s, receivers)
+        return output
+
+    def _prepare_receivers(self, positions_m):
+        phase = np.asarray(positions_m) @ self._wavevectors.T
+        phase += self._phases
+        cosine = np.cos(phase)
+        np.sin(phase, out=phase)
+        return _SpectralReceivers(2 * np.pi * self._frequencies, self._amplitude, cosine, phase)
+
+
+@dataclass(frozen=True)
+class _SpectralReceivers:
+    angular_frequencies: np.ndarray
+    amplitude: float
+    cosine: np.ndarray
+    sine: np.ndarray
+    frame = 'body_local'
+    unit = 'm'
+
+    def evaluate(self, time_s, positions_m):
+        phase = np.asarray(time_s)[:, None] * self.angular_frequencies
+        return self.amplitude * (
+            np.sin(phase) @ self.cosine.T + np.cos(phase) @ self.sine.T
         )
 
 
@@ -378,13 +464,13 @@ class LocatedSource:
     frame = 'world'
 
     def __post_init__(self):
+        for name in ('decay_length_m', 'speed_m_s'):
+            object.__setattr__(self, name, checked_scalar(getattr(self, name), name))
         if any(
             np.iscomplexobj(value)
             for value in (
                 self.position_m,
                 self.polarization,
-                self.decay_length_m,
-                self.speed_m_s,
             )
         ):
             raise ValueError('Source geometry and propagation parameters must be real')
@@ -398,7 +484,6 @@ class LocatedSource:
             or not np.all(np.isfinite(position))
             or not np.all(np.isfinite(polarization))
             or np.linalg.norm(polarization) == 0
-            or not np.all(np.isfinite([self.decay_length_m, self.speed_m_s]))
             or min(self.decay_length_m, self.speed_m_s) <= 0
             or getattr(self.waveform, 'frame', None) != 'body_local'
             or getattr(self.waveform, 'unit', 'm') != 'm'
@@ -413,14 +498,15 @@ class LocatedSource:
 
     def evaluate(self, time_s, positions_m):
         distance = np.linalg.norm(np.asarray(positions_m) - self.position_m, axis=1)
-        signals = [
-            self.waveform.evaluate(
-                np.asarray(time_s) - d / self.speed_m_s,
-                np.asarray(self.position_m)[None, :],
-            )[:, 0]
-            * np.exp(-d / self.decay_length_m)
-            for d in distance
-        ]
+        port = np.asarray(self.position_m)[None, :]
+        signals = []
+        for d in distance:
+            delayed_times = np.asarray(time_s) - d / self.speed_m_s
+            waveform = _scalar_displacement_samples(
+                self.waveform.evaluate(time_s=delayed_times, positions_m=port),
+                delayed_times, port,
+            )
+            signals.append(waveform[:, 0] * np.exp(-d / self.decay_length_m))
         return np.column_stack(signals)[..., None] * np.asarray(self.polarization)
 
     def to_dict(self):
@@ -442,13 +528,13 @@ class GaussianRegion:
     sigma_m: float
 
     def __post_init__(self):
-        if np.iscomplexobj(self.center_m) or np.iscomplexobj(self.sigma_m):
+        object.__setattr__(self, 'sigma_m', checked_scalar(self.sigma_m, 'sigma_m'))
+        if np.iscomplexobj(self.center_m):
             raise ValueError('Regional geometry must be real')
         center = np.asarray(self.center_m, dtype=float)
         if (
             center.shape != (3,)
             or not np.all(np.isfinite(center))
-            or not np.isfinite(self.sigma_m)
             or self.sigma_m <= 0
         ):
             raise ValueError('Use finite regional centers and positive spatial widths')
@@ -470,7 +556,8 @@ class RegionalGroundMotion:
     unit = 'm'
 
     def __post_init__(self):
-        sources = [self.background] + [r.source for r in self.regions]
+        regions = tuple(self.regions)
+        sources = [self.background] + [r.source for r in regions]
         if any(
             getattr(s, 'frame', None) != 'body_local' or getattr(s, 'unit', 'm') != 'm'
             for s in sources
@@ -479,7 +566,7 @@ class RegionalGroundMotion:
         seeds = [seed for source in sources for seed in _source_seeds(source)]
         if len(seeds) != len(set(seeds)):
             raise ValueError('Independent regional components require distinct seeds')
-        for region in self.regions:
+        for region in regions:
             if (
                 np.asarray(region.center_m).shape != (3,)
                 or not np.all(np.isfinite(region.center_m))
@@ -489,7 +576,7 @@ class RegionalGroundMotion:
                 raise ValueError(
                     'Use finite regional centers and positive spatial widths'
                 )
-        object.__setattr__(self, 'regions', tuple(self.regions))
+        object.__setattr__(self, 'regions', regions)
 
     def workspace_bytes(self, n_times, n_receivers):
         sources = [self.background] + [r.source for r in self.regions]
@@ -507,19 +594,23 @@ class RegionalGroundMotion:
         )
 
     def evaluate(self, time_s, positions_m):
-        background = np.asarray(self.background.evaluate(time_s, positions_m))
-        # Providers may return cached or read-only samples. Own the accumulation
-        # buffer and promote integer inputs without discarding complex values;
-        # the sampling/binding boundary still validates real displacement.
+        background = _scalar_displacement_samples(
+            self.background.evaluate(time_s=time_s, positions_m=positions_m),
+            time_s, positions_m,
+        )
+        # Own the accumulation buffer: providers may return cached or
+        # read-only samples, and scalar integer inputs need float promotion.
         output = np.array(
             background, dtype=np.result_type(background.dtype, float), copy=True
         )
         del background
         for region in self.regions:
             radius2 = np.sum((positions_m - region.center_m) ** 2, axis=1)
-            output += np.exp(-radius2 / (2 * region.sigma_m**2))[
-                None, :
-            ] * region.source.evaluate(time_s, positions_m)
+            excess = _scalar_displacement_samples(
+                region.source.evaluate(time_s=time_s, positions_m=positions_m),
+                time_s, positions_m,
+            )
+            output += np.exp(-radius2 / (2 * region.sigma_m**2))[None, :] * excess
         return output
 
     def to_dict(self):
@@ -597,7 +688,10 @@ class VectorGroundMotion:
         values = np.zeros((len(time_s), len(positions_m), 3))
         for axis, component in enumerate(self.components):
             if component is not None:
-                values[..., axis] = component.evaluate(time_s, positions_m)
+                values[..., axis] = _scalar_displacement_samples(
+                    component.evaluate(time_s=time_s, positions_m=positions_m),
+                    time_s, positions_m,
+                )
         return values @ np.asarray(self.mixing).T
 
     def to_dict(self):
@@ -708,12 +802,130 @@ def requires_time_series(source):
     return False
 
 
+def source_time_bounds(source, positions_m):
+    """Replay bounds for built-in sources with finite support."""
+    from .motion import ModalMotion, RigidMotion
+
+    if type(source) in (MeasuredMotion, ModalMotion, RigidMotion):
+        return float(source.time_s[0]), float(source.time_s[-1])
+    if type(source) is LocatedSource:
+        bounds = source_time_bounds(source.waveform, [source.position_m])
+        if bounds is None:
+            return None
+        delay = np.linalg.norm(np.asarray(positions_m) - source.position_m, axis=1)
+        delay /= source.speed_m_s
+        return bounds[0] + delay.max(), bounds[1] + delay.min()
+    if type(source) is RegionalGroundMotion:
+        components = (source.background, *(region.source for region in source.regions))
+    elif type(source) is VectorGroundMotion:
+        components = source.components
+    else:
+        return None
+    bounds = [bound for component in components
+              if (bound := source_time_bounds(component, positions_m)) is not None]
+    if bounds:
+        return max(bound[0] for bound in bounds), min(bound[1] for bound in bounds)
+    return None
+
+
+def _source_children(source):
+    if type(source) is LocatedSource:
+        return (source.waveform,)
+    if type(source) is RegionalGroundMotion:
+        return (source.background, *(region.source for region in source.regions))
+    if type(source) is VectorGroundMotion:
+        return tuple(component for component in source.components if component is not None)
+    return ()
+
+
+def retained_fourier_bytes(source, n_times, n_receivers):
+    if type(source) in (DisplacementPSD, AngularPSD):
+        return (n_times // 2 + 1) * (16 * n_receivers + np.dtype(np.intp).itemsize)
+    if type(source) is LocatedSource:
+        n_receivers = 1
+    return sum(retained_fourier_bytes(child, n_times, n_receivers)
+               for child in _source_children(source))
+
+
+def prepare_spectral_receivers(source, positions, *, max_bytes):
+    """Prepare immutable continuous-field receiver coefficients within a budget.
+
+    Builtin vector/regional/located wrappers retain their evaluation semantics
+    and original receiver order. Only exact SpectralGroundMotion leaves are
+    replaced; custom sources and already-prepared finite FFT providers remain
+    untouched. An over-budget leaf keeps its ordinary uncached evaluator.
+    """
+    used = 0
+
+    def prepare(node, receivers):
+        nonlocal used
+        if type(node) is SpectralGroundMotion:
+            size = 8 * node.n_modes * (2 * len(receivers) + 1)
+            if used + size <= max_bytes:
+                used += size
+                return node._prepare_receivers(receivers)
+        elif type(node) is LocatedSource:
+            waveform = prepare(node.waveform, np.array([node.position_m]))
+            if waveform is not node.waveform:
+                return replace(node, waveform=waveform)
+        elif type(node) is RegionalGroundMotion:
+            background = prepare(node.background, receivers)
+            parts = tuple(prepare(region.source, receivers) for region in node.regions)
+            if background is not node.background or any(
+                prepared is not region.source for prepared, region in zip(parts, node.regions)
+            ):
+                regions = tuple(replace(region, source=prepared)
+                                for region, prepared in zip(node.regions, parts))
+                return replace(node, background=background, regions=regions)
+        elif type(node) is VectorGroundMotion:
+            components = tuple(None if child is None else prepare(child, receivers)
+                               for child in node.components)
+            if any(a is not b for a, b in zip(components, node.components)):
+                return replace(node, components=components)
+        return node
+
+    prepared = prepare(source, positions)
+    return (prepared if prepared is not source else None), used
+
+
+def prepare_source_replay(source, times, positions):
+    """Return exact replay for built-in sources, or None for a custom provider."""
+    from .motion import ModalMotion, RigidMotion
+
+    def supported(node):
+        children = _source_children(node)
+        if children:
+            return all(supported(child) for child in children)
+        return type(node) in (
+            Harmonic, PlaneWave, SpectralGroundMotion, MeasuredMotion,
+            DisplacementPSD, AngularPSD, RigidMotion, ModalMotion,
+        )
+
+    def prepare(node, receivers):
+        if not requires_time_series(node):
+            return node
+        if type(node) in (DisplacementPSD, AngularPSD):
+            return node._prepare_fourier(times, receivers)
+        if type(node) is LocatedSource:
+            waveform = prepare(node.waveform, np.array([node.position_m]))
+            return replace(node, waveform=waveform)
+        if type(node) is RegionalGroundMotion:
+            regions = tuple(replace(region, source=prepare(region.source, receivers))
+                            for region in node.regions)
+            return replace(node, background=prepare(node.background, receivers), regions=regions)
+        return replace(node, components=tuple(
+            None if child is None else prepare(child, receivers) for child in node.components
+        ))
+
+    return prepare(source, positions) if supported(source) else None
+
+
 def encode_source(source):
     from dataclasses import asdict
-    from .motion import RigidMotion
+    from .motion import RigidMotion, ModalMotion
 
-    if type(source) is RigidMotion:
-        return dict(type='RigidMotion', parameters=source.to_dict())
+    if type(source) in (RigidMotion, ModalMotion):
+        return dict(type=type(source).__name__, parameters=source.to_dict())
     if SOURCE_CLASSES.get(type(source).__name__) is not type(source):
         raise TypeError('custom source serialization is not defined yet')
     return dict(
@@ -723,13 +935,10 @@ def encode_source(source):
 
 
 def decode_source(stored):
-    from .motion import RigidMotion
+    from .motion import RigidMotion, ModalMotion
 
-    cls = (
-        RigidMotion
-        if stored['type'] == 'RigidMotion'
-        else SOURCE_CLASSES[stored['type']]
-    )
+    classes = {**SOURCE_CLASSES, 'RigidMotion': RigidMotion, 'ModalMotion': ModalMotion}
+    cls = classes[stored['type']]
     parameters = dict(stored['parameters'])
     if cls is LocatedSource:
         parameters['waveform'] = decode_source(parameters['waveform'])

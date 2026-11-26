@@ -29,6 +29,8 @@ class RigidOffset:
         if np.iscomplexobj(values):
             raise ValueError('Static installation offsets must be real')
         values = np.array(values, dtype=float)
+        if values.shape != (6,):
+            raise ValueError('Static installation offsets must be six scalar coordinates')
         if not np.all(np.isfinite(values)):
             raise ValueError('Static installation offsets must be finite')
         return values
@@ -56,6 +58,10 @@ class InstallationErrors:
         """Set the installation layer only; call manager.apply for tracking fields."""
         if not set(self.names).issubset(manager.bodies):
             raise ValueError('Installation case contains unknown bodies')
+        from .model import _check_transverse_values
+
+        for name, values in zip(self.names, self.values):
+            _check_transverse_values(manager[name], values)
         for name, values in zip(self.names, self.values):
             for field, value in zip(COORDINATES, values):
                 setattr(manager[name].installation, field, value)
@@ -125,6 +131,10 @@ def generate_installation_errors(
     sigma = np.array([*translation_sigma_m, *rotation_sigma_rad], dtype=float)
     if sigma.shape != (6,) or not np.all(np.isfinite(sigma)) or np.any(sigma < 0):
         raise ValueError('Use three nonnegative finite translation and rotation sigmas')
+    from .model import _check_transverse_values
+
+    for name in names:
+        _check_transverse_values(manager[name], sigma)
     if distribution not in ('gaussian', 'uniform'):
         raise ValueError('Use gaussian or uniform installation distribution')
     if truncate_sigma is not None and (

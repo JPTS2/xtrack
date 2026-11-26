@@ -3,7 +3,7 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# A sparse bunch train samples different phases of the same moving quadrupole.
+# Run each selected bunch phase independently through the same moving quadrupole.
 # Compare actual frozen Twiss with the independently tracked driven response.
 # Bunches run separately; this does not implement packed multibunch mechanics.
 
@@ -42,7 +42,7 @@ CONTEXT      = xo.ContextCpu()
 # Choose source frequencies and amplitude
 ########################################
 FREQUENCIES_HZ       = None           # None uses the fractions below
-FREQUENCY_OVER_FREV  = (.003, .30)    # Cycles/turn; high case tests the clock
+FREQUENCY_OVER_FREV  = (.003, .30)    # Cycles/turn; high case resolves the finite-frequency beam response
 AMPLITUDE_M         = 100e-9          # Peak body-local horizontal displacement
 DRIVE_PHASE_RAD     = np.pi / 4
 
@@ -188,7 +188,7 @@ mech.clear()
 # the same support and one source; no source is reseeded for individual bunches.
 
 ################################################################################
-# Compare frozen per-bunch Twiss with a time-dependent beam response
+# Compare frozen optics at each bunch phase with independently driven tracking
 ################################################################################
 
 results = []
@@ -224,13 +224,15 @@ for scenario_index, frequency_hz in enumerate(frequencies_hz):
         line.mechanics.apply(time_s = float(arrival_s))
         optics = line.twiss(method = '4d')
         frozen_orbits.append(float(optics.x[0] - baseline.x[0]))
-        beta_beating.append(optics.betx[sampled] / baseline.betx[sampled] - 1)
+        full_beta_beating = optics.betx / baseline.betx - 1
+        beta_beating.append(full_beta_beating[sampled])
         frozen_rows.append(dict(name = f'{frequency_hz:g}Hz.bucket{bucket}',
             bucket = int(bucket), frequency_hz = float(frequency_hz),
             arrival_offset_s = float(arrival_s),
             phase_rad = float(DRIVE_PHASE_RAD + 2 * np.pi * frequency_hz * arrival_s),
             x_co_m = float(optics.x[0]), y_co_m = float(optics.y[0]),
             betx_m = float(optics.betx[0]), bety_m = float(optics.bety[0]),
+            peak_relative_betx_change = float(np.max(np.abs(full_beta_beating))),
             qx = float(optics.qx), qy = float(optics.qy)))
     timings[f'frozen_twiss_{frequency_hz:g}_hz_s'] = perf_counter() - started
 
@@ -314,15 +316,21 @@ print('-------------------------------------------------')
 print(f'C = {line.get_length():.3f} m; T_rev = {period_s:.9g} s; RF harmonic = {harmonic}')
 print(f'Quad: {quad}; observation: {table.name[0]}; initial state: {INITIAL_CONDITION}')
 print('Buckets:', buckets.tolist())
-print('Sequential bunches share one prescribed source. Empty buckets do not reset it.')
+print('Each occupied RF bucket is an independent tracking run with its own arrival-time offset.')
+print('The bunch cases sample one common prescribed source; this is not a packed multibunch simulation.')
+print('Empty bucket gaps advance the source phase; they do not restart it.')
 print('Whole-line turn-held maps omit s/(beta0*c) passage delays and within-bunch arrival spread.')
 print('Frozen Twiss is an optics snapshot, not a time-dependent equilibrium beam.')
 print(f'The final source remains defined; the line is frozen for bucket {buckets[representative_bunch]}.')
 print(f'Quadrupole displacement amplitude: {AMPLITUDE_M * 1e9:g} nm peak.')
-print('Low frequency: bunches see almost the same magnet position and follow nearly frozen optics.')
+if INITIAL_CONDITION == 'driven':
+    print('Launches use the calibrated linear driven particular solution; no free betatron transient is imposed.')
+else:
+    print('Launches use the zero-motion closed orbit; the prediction retains the resulting free betatron transient.')
+print('The low-frequency case tests how closely the driven motion follows a sequence of frozen closed orbits.')
 print('High frequency: the fill samples different positions, and beam dynamics differ from a sequence of static orbits.')
 print('\nSource and beam comparison')
-print('Frequency [Hz]  Phase span [rad]  Frozen bunch spread [nm]  Driven/static gain  Linear tracking error')
+print('Frequency [Hz]  Phase span [rad]  Frozen orbit spread [nm]  Particular/static gain  Relative map error')
 for result in results:
     frequency_hz = result['frequency_hz']
     spread = 2 * np.pi * frequency_hz * np.ptp(arrival_offsets_s)
@@ -330,13 +338,13 @@ for result in results:
     print(f'{frequency_hz:14.3f} {spread:17.5f} {np.ptp(result["frozen_orbits"]) * 1e9:25.3f}'
           f' {result["gain"]:19.5f} {error:22.3e}')
 print('\nHigh-frequency bunches: actual magnet positions and frozen Twiss at their arrival phases')
-print('Bucket  Arrival [µs]  Magnet x [nm]  Frozen orbit x [nm]  Relative beta change [ppm]')
+print('Bucket  Arrival [µs]  Magnet x [nm]  Frozen orbit at origin [nm]  Peak ring beta change [ppm]')
 for index, bucket in enumerate(buckets):
     row = high_frequency_bunches.rows[high_frequency_bunches.bucket == bucket]
     phase = float(row.phase_rad[0])
     print(f'{bucket:6d} {arrival_offsets_s[index] * 1e6:13.6f} {AMPLITUDE_M * np.sin(phase) * 1e9:14.3f}'
           f' {(float(row.x_co_m[0]) - baseline.x[0]) * 1e9:20.3f}'
-          f' {(float(row.betx_m[0]) / baseline.betx[0] - 1) * 1e6:27.3f}')
+          f' {float(row.peak_relative_betx_change[0]) * 1e6:27.3f}')
 if PRINT_TIMINGS:
     print('\nOperation costs [s], including cold preparation in the first track:')
     for name, value in timings.items():
@@ -359,7 +367,7 @@ fill_axis.annotate('Next turn', xy = (period_s * 1e6, 0.), xytext = (period_s * 
                    ha = 'right', fontsize = 8, arrowprops = {'arrowstyle': '->', 'color': '.4'})
 fill_axis.set(xlim = (-.03 * period_s * 1e6, 1.03 * period_s * 1e6), ylim = (-.4, .45),
               xlabel = 'Arrival time at the line origin within one revolution [µs]', yticks = [],
-              title = 'Two illustrative trains and their empty gaps; all bunches see one common vibration')
+              title = 'Occupied RF phases used in independent runs; gaps retain their physical arrival times')
 for edge in ('left', 'right', 'top'):
     fill_axis.spines[edge].set_visible(False)
 arrival_grid = np.linspace(0., period_s, 400)
@@ -378,27 +386,40 @@ axes[0, 1].set(xlabel = 'Bunch arrival offset [µs]', ylabel = 'Frozen closed-or
                title = 'Actual frozen Twiss at each bunch arrival')
 for axis, result in zip(axes[1], results):
     bunch = result['bunches'][len(buckets) // 2]
-    axis.plot(turns, bunch['actual'] * 1e9, label = 'Tracked')
-    axis.plot(turns, bunch['prediction'] * 1e9, '--', label = 'Driven map + free transient')
-    axis.plot(turns, bunch['frozen_sequence'] * 1e9, color = '.5', label = 'Frozen-orbit sequence')
+    axis.plot(turns, bunch['actual'] * 1e9, lw = 2, label = 'Tracked particle')
+    axis.plot(turns, bunch['prediction'] * 1e9, 'o', ms = 3, mfc = 'none',
+              markevery = max(1, N_TURNS // 32), label = 'Calibrated driven-map prediction')
+    axis.plot(turns, bunch['frozen_sequence'] * 1e9, ':', lw = 1.5, color = '.35', label = 'Frozen-orbit sequence')
     axis.set(xlabel = 'Turn', ylabel = 'Observation x [nm]',
-        title = f'{result["frequency_hz"]:g} Hz; driven/static gain {result["gain"]:.3f}')
+        title = f'{result["frequency_hz"]:g} Hz; particular/static gain {result["gain"]:.3f}')
     if result['frequency_hz'] / frev_hz > .1:
         axis.set_xlim(0, 40)
 for axis in axes.flat:
-    axis.legend(fontsize = 8)
+    axis.margins(y = .25)
+    axis.legend(fontsize = 7.5, loc = 'upper center')
     axis.grid(alpha = .2)
-figure.suptitle('A sparse fill samples one vibrating quadrupole: frozen optics and tracked beam motion', fontsize = 12)
+figure.suptitle('Independent bunch phases: frozen lattice snapshots versus the dynamically driven beam', fontsize = 12)
 
 ########################################
 # Plot actual frozen beta beating for the higher source frequency
 ########################################
-beta_figure, beta_axis = plt.subplots(figsize = (10, 4), layout = 'constrained')
-for bucket, beating in zip(buckets, results[-1]['beta_beating']):
-    beta_axis.plot(baseline.s[sampled], beating * 1e6, label = f'Bucket {bucket}')
-beta_axis.set(xlabel = 's [m]', ylabel = 'Frozen Δβx / βx [ppm]',
-    title = 'Actual frozen per-bunch Twiss; a sequence of optics snapshots')
-beta_axis.axvline(float(table['s', quad]), color = '.3', ls = ':', label = 'Moving quadrupole')
-beta_axis.legend(ncol = 3, fontsize = 8)
-beta_axis.grid(alpha = .2)
+beta_figure, beta_axes = plt.subplots(1, 2, figsize = (12, 4.5),
+                                      gridspec_kw = {'width_ratios': [1.7, 1.]}, layout = 'constrained')
+spread_by_position = np.ptp(results[-1]['beta_beating'], axis = 0)
+location = int(np.argmax(spread_by_position))
+location_s = baseline.s[sampled[location]]
+for bucket, beating, arrival in zip(buckets, results[-1]['beta_beating'], arrival_offsets_s):
+    curve, = beta_axes[0].plot(baseline.s[sampled], beating * 1e6, label = f'Bucket {bucket}')
+    beta_axes[1].plot(arrival * 1e6, beating[location] * 1e6, 'o', color = curve.get_color())
+beta_axes[0].set(xlabel = 'Ring position s [m]', ylabel = 'Frozen Δβx / βx [ppm]',
+                 title = 'Frozen snapshot optics at each selected bunch phase')
+beta_axes[0].axvline(float(table['s', quad]), color = '.3', ls = ':', label = 'Moving quadrupole')
+beta_axes[0].axvline(float(location_s), color = '.5', ls = '--', label = 'Largest plotted bunch-phase spread')
+beta_axes[0].margins(y = .25)
+beta_axes[0].legend(ncol = 2, fontsize = 7.5, loc = 'upper center')
+beta_axes[1].set(xlabel = 'Bunch arrival offset [µs]', ylabel = 'Frozen Δβx / βx [ppm]',
+                 title = f'Bunch-phase dependence at s = {location_s:.1f} m')
+for ax in beta_axes:
+    ax.grid(alpha = .2)
+beta_figure.suptitle('Recomputed Twiss for fixed mechanical snapshots; not dynamic-equilibrium optics', fontsize = 11)
 plt.show()

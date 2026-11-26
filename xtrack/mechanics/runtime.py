@@ -19,8 +19,10 @@ import xobjects as xo
 from ..composer.positions import CompensatedFloat
 
 from .local_deformations import attachment_reference, rotation_increment, static_local
-from .motion import RigidMotion
-from .sources import Harmonic, PlaneWave, requires_time_series
+from .motion import RigidMotion, sample_at
+from .sources import (
+    Harmonic, PlaneWave, prepare_spectral_receivers, requires_time_series,
+)
 from .context_arrays import to_context, upload_into
 
 
@@ -34,13 +36,9 @@ FIELDS = (
     'rot_shift_anchor',
 )
 
-
-def _interpolate(times, values, time_s):
-    if time_s < times[0] or time_s > times[-1]:
-        raise ValueError('Requested time lies outside the computed motion record')
-    index = min(int(np.searchsorted(times, time_s, side='right')) - 1, len(times) - 2)
-    weight = (time_s - times[index]) / (times[index + 1] - times[index])
-    return values[index] + weight * (values[index + 1] - values[index])
+# Bound receiver coefficients on the host. This storage is independent of
+# track duration and is never copied to the tracking context.
+_SPECTRAL_RECEIVER_BUDGET = 32 * 1024**2
 
 
 def _compile(context):
@@ -49,6 +47,7 @@ def _compile(context):
         for name in (
             'mechanics_body_update',
             'mechanics_lower',
+            'mechanics_lower_solenoid_axis',
             'mechanics_sources',
             'mechanics_sources_mixed',
             'mechanics_source_values',
@@ -63,16 +62,22 @@ def _compile(context):
     body = [xo.Arg(xo.Int64, name='n')]
     body += [arg(xo.Int64, n) for n in ('paths_offsets', 'paths')]
     body += [arg(xo.Float64, n) for n in ('relations', 'static_local', 'dynamic_local')]
-    body += [arg(xo.Int64, 'absolute'), arg(xo.Float64, 'out')]
+    body += [arg(xo.Float64, 'out')]
     lower = [xo.Arg(xo.Int64, name='n'), arg(xo.Int64, 'body_indices')]
     lower += [arg(xo.Float64, n) for n in ('geometry', 'baseline')]
     lower += [arg(xo.Int64, 'offsets'), arg(xo.Float64, 'bodyout')]
     lower += [arg(xo.Int8, 'buffer'), arg(xo.Float64, 'values')]
+    axis_lower = [xo.Arg(xo.Int64, name='n'), arg(xo.Int64, 'body_indices')]
+    axis_lower += [arg(xo.Float64, n) for n in ('projection', 'baseline')]
+    axis_lower += [arg(xo.Int64, 'offsets')]
+    axis_lower += [arg(xo.Float64, n) for n in ('static_local', 'dynamic_local')]
+    axis_lower += [arg(xo.Int8, 'buffer'), arg(xo.Float64, 'values')]
     context.add_kernels(
         sources=[Path(__file__).parent / 'runtime_src/update.h'],
         kernels={
             'mechanics_body_update': xo.Kernel(args=body, n_threads='n'),
             'mechanics_lower': xo.Kernel(args=lower, n_threads='n'),
+            'mechanics_lower_solenoid_axis': xo.Kernel(args=axis_lower, n_threads='n'),
             'mechanics_sources': xo.Kernel(
                 args=[
                     xo.Arg(xo.Int64, name='n'),
@@ -116,7 +121,6 @@ def _compile(context):
                 n_threads='n',
             ),
         },
-        extra_include_dirs=[str(Path(xo.__file__).resolve().parents[1])],
     )
 
 
@@ -130,10 +134,23 @@ class _ConsumedSource:
     axes: np.ndarray
 
 
+def has_fixed_reference(tracker):
+    classes = {type(element) for element in tracker._tracker_data_base._elements}
+    return all(
+        cls.__module__.startswith(('xtrack.beam_elements', 'xtrack.monitors'))
+        and cls.__name__ not in (
+            'ReferenceEnergyIncrease', 'ReferenceEnergyChange', 'LineSegmentMap',
+        )
+        for cls in classes
+    )
+
+
 class PreparedMechanics:
     """One current-pose buffer, never an implicit entire-run cache."""
 
     def __init__(self, view):
+        from .model import _check_transverse_values
+
         self.view = view
         self.manager = view.manager
         self.revision = self.manager._revision
@@ -141,23 +158,14 @@ class PreparedMechanics:
         self.context = self.buffer.context
         self._clocks = WeakKeyDictionary()
         self._source_modes = self._current_source_modes()
-        classes = {
-            type(element) for element in view.line.tracker._tracker_data_base._elements
-        }
-        self.fixed_reference = all(
-            cls.__module__.startswith(('xtrack.beam_elements', 'xtrack.monitors'))
-            and cls.__name__
-            not in (
-                'ReferenceEnergyIncrease',
-                'ReferenceEnergyChange',
-                'LineSegmentMap',
-            )
-            for cls in classes
-        )
+        self.fixed_reference = has_fixed_reference(view.line.tracker)
         _compile(self.context)
         needed = self.manager._body_closure(view._consumed_bodies())
         self.names = tuple(name for name in self.manager.bodies if name in needed)
         self.indices = {name: i for i, name in enumerate(self.names)}
+        self.transverse_indices = [
+            i for i, name in enumerate(self.names) if self.manager[name]._transverse_only
+        ]
         n = len(self.names)
         relations, static = np.zeros((n, 12)), np.zeros((n, 12))
         self._static_settings = np.zeros((n, 12))
@@ -195,6 +203,8 @@ class PreparedMechanics:
             if not np.all(np.isfinite(values)):
                 raise ValueError(f'{name}: local alignment must be finite')
             installation = body.installation.values()
+            _check_transverse_values(body, values)
+            _check_transverse_values(body, installation)
             self._static_settings[i] = np.concatenate((values, installation))
             d, e = static_local(values, installation)
             static[i, :3], static[i, 3:] = d, e.ravel()
@@ -224,7 +234,9 @@ class PreparedMechanics:
                     'Prepared mechanics requires elements in the tracker buffer'
                 )
             offsets[i] = [element._xobject._get_offset(field) for field in FIELDS]
-        array = lambda value: to_context(self.context, value)
+        def array(value):
+            return to_context(self.context, value)
+
         self.paths_offsets, self.paths = (
             array(np.array(starts, dtype=np.int64)),
             array(np.array(paths, dtype=np.int64)),
@@ -240,7 +252,6 @@ class PreparedMechanics:
         )
         self.input = np.zeros((n, 12))
         self.dynamic_local = array(self.input.ravel())
-        self.absolute_host = np.zeros(n, dtype=np.int64)
         self.disabled_sources = view._disabled_tracking_sources()
         self.sources = []
         for name, binding in self.manager.sources.items():
@@ -275,17 +286,35 @@ class PreparedMechanics:
                     frames[:, :3, :3],
                 )
             )
-            if binding.reference == 'absolute':
-                self.absolute_host[indices] = 1
-        self.absolute = array(self.absolute_host)
         self._dispatch_key = None
         self._dispatch_record = object()
         self._dispatch_values = None
+        self._spectral_receivers = {}
+        self._spectral_receiver_bytes = 0
         self._prepare_dispatch(None)
         self.bodyout = self.context.zeros(n * 12, dtype=np.float64)
         self.values = array(
             np.array([item['last_written'] for item in self.attachments]).ravel()
         )
+        self.solenoid_axes = list(view._solenoid_axes.values())
+        if self.solenoid_axes:
+            self.axis_indices = array(np.array(
+                [self.indices[a['body']] for a in self.solenoid_axes], dtype=np.int64,
+            ))
+            self.axis_projection = array(np.array(
+                [a['projection'] for a in self.solenoid_axes]
+            ).ravel())
+            self.axis_baseline = array(np.array(
+                [a['baseline'] for a in self.solenoid_axes]
+            ).ravel())
+            self.axis_offsets = array(np.array([
+                [view.line.element_dict[a['element']]._xobject._get_offset(field)
+                 for field in ('x0', 'y0')]
+                for a in self.solenoid_axes
+            ], dtype=np.int64).ravel())
+            self.axis_values = array(np.array(
+                [a['last_written'] for a in self.solenoid_axes]
+            ).ravel())
         self.applied = False
         from .geometry_guard import GeometryGuard
 
@@ -296,23 +325,32 @@ class PreparedMechanics:
         values = None if time_series is None else time_series.values
         if time_series is self._dispatch_record and values is self._dispatch_values:
             return
+        # A composed exact provider may also contain finite Fourier replay
+        # belonging to this particular record, not just continuous modes.
+        self._spectral_receivers.clear()
+        self._spectral_receiver_bytes = 0
         recorded = frozenset() if time_series is None else frozenset(time_series.values)
+        exact = frozenset() if time_series is None else frozenset(
+            name for name in recorded if time_series.replay_modes[name] == 'source'
+        )
+        layout = (recorded, exact)
         self._dispatch_record, self._dispatch_values = time_series, values
-        if recorded == self._dispatch_key:
+        if layout == self._dispatch_key:
             return
         rows = [[] for _ in self.names]
         self.row_slices = {}
         self.host_sources = []
         self.native_sources = []
+        self._bounded_native = False
         self.live_values = {}
         offset = 0
-        empty_analytic = (0.0,) * 7
+        empty_analytic = (0.0,) * 8
         for item in self.sources:
             binding, source = item.binding, item.binding.source
             native = (
                 not binding.live
                 and type(source) in (Harmonic, PlaneWave)
-                and item.name not in recorded
+                and (item.name not in recorded or item.name in exact)
             )
             if not native:
                 self.host_sources.append(item)
@@ -324,6 +362,7 @@ class PreparedMechanics:
                 offset += len(item.indices)
                 continue
             self.native_sources.append(item)
+            self._bounded_native |= item.name in recorded
             omega = 2 * np.pi * source.frequency_hz
             if type(source) is Harmonic:
                 component = ('x', 'y', 's', 'pitch', 'yaw', 'roll').index(
@@ -341,6 +380,7 @@ class PreparedMechanics:
                                 0.0,
                                 0.0,
                                 0.0,
+                                0.0,
                             ],
                         )
                     )
@@ -349,18 +389,19 @@ class PreparedMechanics:
                     item.positions[item.selected],
                     item.axes[item.selected],
                 )
-                phase = (
-                    source.phase_rad
-                    - omega
-                    * ((positions - source.origin_m) @ np.asarray(source.direction))
+                delay = (
+                    (positions - source.origin_m) @ np.asarray(source.direction)
                     / source.speed_m_s
                 )
                 polarization = np.einsum('bji,j->bi', axes, source.polarization)
-                for body, angle, direction in zip(item.indices, phase, polarization):
+                for body, delay_s, direction in zip(item.indices, delay, polarization):
                     rows[body].append(
-                        (-1, [-1, source.amplitude, omega, angle, *direction])
+                        (-1, [-1, source.amplitude, omega, source.phase_rad,
+                              delay_s, *direction])
                     )
-        array = lambda value: to_context(self.context, value)
+        def array(value):
+            return to_context(self.context, value)
+
         self.source_starts = array(
             np.concatenate(([0], np.cumsum([len(row) for row in rows]))).astype(
                 np.int64
@@ -383,14 +424,24 @@ class PreparedMechanics:
             )
             self.raw_values = np.zeros((offset, 6))
             self.sample_values = array(self.raw_values.ravel())
-        self._dispatch_key = recorded
+        self._dispatch_key = layout
 
     def _current_source_modes(self):
         return (
             self.view._source_mode_configured,
             self.view._vibrations_enabled,
             self.view._controls_enabled,
+            self.view._tracking_source_mask,
         )
+
+    def _clock_for(self, particles, time_s, reference_turns, step):
+        previous = self._clocks.get(particles)
+        if (
+            previous is not None and float(previous[0]) == time_s
+            and previous[1] == reference_turns and previous[2] == step
+        ):
+            return previous[0]
+        return CompensatedFloat(time_s)
 
     def _check_state(self):
         if (
@@ -437,6 +488,11 @@ class PreparedMechanics:
             raise ValueError('Body local alignments must be real')
         if not np.all(np.isfinite(values)) or not np.all(np.isfinite(installation)):
             raise ValueError('Body local alignments must be finite')
+        if self.transverse_indices and (
+            np.any(values[self.transverse_indices, 2:])
+            or np.any(installation[self.transverse_indices, 2:])
+        ):
+            raise ValueError('Relative solenoid axis supports only transverse x/y translations')
         settings = np.column_stack((values, installation))
         if np.array_equal(settings, self._static_settings):
             return
@@ -454,9 +510,11 @@ class PreparedMechanics:
 
     def apply(self, time_s, time_series=None):
         self._check_state()
-        if not np.isscalar(time_s) or not np.isfinite(time_s):
+        if not np.isscalar(time_s) or np.iscomplexobj(time_s) or not np.isfinite(time_s):
             raise ValueError('time_s must be a finite scalar in seconds')
         self._prepare_dispatch(time_series)
+        if self._bounded_native:
+            time_series._check_time(time_s)
         live_inputs = {}
         if self.analytic:
             self.view._preflight_applied(
@@ -483,63 +541,46 @@ class PreparedMechanics:
         for item in self.host_sources:
             name, binding = item.name, item.binding
             source = binding.source
-            if (
+            recorded = (
                 not binding.live
                 and time_series is not None
                 and name in time_series.values
-            ):
-                values = _interpolate(
-                    time_series.time_s, time_series.values[name], time_s
+            )
+            spectral = None
+            exact = recorded and time_series.replay_modes[name] == 'source'
+            if exact:
+                time_series._check_time(time_s)
+            if not binding.live and (exact or (
+                not recorded and not requires_time_series(source)
+            )):
+                if name not in self._spectral_receivers:
+                    provider = time_series._providers[name] if exact else source
+                    prepared, size = prepare_spectral_receivers(
+                        provider, item.positions,
+                        max_bytes=_SPECTRAL_RECEIVER_BUDGET-self._spectral_receiver_bytes,
+                    )
+                    self._spectral_receivers[name] = prepared
+                    self._spectral_receiver_bytes += size
+                spectral = self._spectral_receivers[name]
+            if spectral is not None:
+                values = self.manager._evaluate_source(
+                    binding, np.array([time_s]), positions=item.positions,
+                    axes=item.axes, provider=spectral,
+                )[0]
+            elif recorded:
+                values = time_series._sample(
+                    binding, time_s, positions=item.positions, axes=item.axes,
                 )
             elif requires_time_series(source):
                 raise ValueError(
                     f'{name}: supply a computed motion record for this source'
                 )
             elif type(source) is RigidMotion:
-                values = _interpolate(source.time_s, source.values, time_s)
+                values = sample_at(source.time_s, source.values, time_s)
             else:
-                values = np.asarray(
-                    source.evaluate(
-                        time_s=np.array([time_s]), positions_m=item.positions
-                    )
-                )
-                if np.iscomplexobj(values) or not np.all(np.isfinite(values)):
-                    raise ValueError(f'{name}: source must return finite real motion')
-                frame = getattr(source, 'frame', 'body_local')
-                if frame == 'world':
-                    if values.shape != (1, len(item.positions), 3):
-                        raise ValueError(
-                            f'{name}: world source must match all target receivers'
-                        )
-                    values = np.column_stack(
-                        (
-                            np.einsum('bji,bj->bi', item.axes, values[0]),
-                            np.zeros((len(item.positions), 3)),
-                        )
-                    )
-                elif frame == 'body_local_rigid':
-                    if values.shape != (1, len(item.positions), 6):
-                        raise ValueError(
-                            f'{name}: rigid source must match all target receivers'
-                        )
-                    values = values[0]
-                else:
-                    if values.shape == (1,):
-                        values = np.broadcast_to(
-                            values[:, None], (1, len(item.positions))
-                        )
-                    if values.shape != (1, len(item.positions)):
-                        raise ValueError(
-                            f'{name}: scalar source must match all target receivers'
-                        )
-                    output = np.zeros((len(item.positions), 6))
-                    output[
-                        :,
-                        ('x', 'y', 's', 'pitch', 'yaw', 'roll').index(
-                            binding.component
-                        ),
-                    ] = values[0]
-                    values = output
+                values = self.manager._evaluate_source(
+                    binding, np.array([time_s]), positions=item.positions, axes=item.axes,
+                )[0]
             if (
                 values.shape != (len(item.positions), 6)
                 or np.iscomplexobj(values)
@@ -548,6 +589,7 @@ class PreparedMechanics:
                 raise ValueError(
                     f'{name}: source must return finite real motion with matching targets'
                 )
+            binding._check_transverse(values)
             if binding.live:
                 # Providers may reuse one ndarray across bindings. Own the full
                 # normalized block before another evaluation can overwrite it.
@@ -596,7 +638,6 @@ class PreparedMechanics:
             relations=self.relations,
             static_local=self.static_local,
             dynamic_local=self.dynamic_local,
-            absolute=self.absolute,
             out=self.bodyout,
         )
         self.context.kernels.mechanics_lower(
@@ -609,6 +650,18 @@ class PreparedMechanics:
             buffer=self.buffer.buffer,
             values=self.values,
         )
+        if self.solenoid_axes:
+            self.context.kernels.mechanics_lower_solenoid_axis(
+                n=len(self.solenoid_axes),
+                body_indices=self.axis_indices,
+                projection=self.axis_projection,
+                baseline=self.axis_baseline,
+                offsets=self.axis_offsets,
+                static_local=self.static_local,
+                dynamic_local=self.dynamic_local,
+                buffer=self.buffer.buffer,
+                values=self.axis_values,
+            )
         self.applied = True
 
     def finish(self):
@@ -617,6 +670,10 @@ class PreparedMechanics:
             values = self.context.nparray_from_context_array(self.values).reshape(-1, 7)
             for attachment, value in zip(self.attachments, values):
                 attachment['last_written'] = value.copy()
+            if self.solenoid_axes:
+                axis_values = self.context.nparray_from_context_array(self.axis_values).reshape(-1, 2)
+                for attachment, value in zip(self.solenoid_axes, axis_values):
+                    attachment['last_written'] = value.copy()
             self.applied = False
 
 
@@ -699,16 +756,7 @@ def track_prepared(
         for name in ('time_s', 'reference_turns', 't_sim')
     )
     runtime = tracker.line.mechanics._runtime
-    previous = runtime._clocks.get(particles)
-    if (
-        previous is not None
-        and float(previous[0]) == time_s
-        and previous[1] == reference_turns
-        and previous[2] == step
-    ):
-        clock = previous[0]
-    else:
-        clock = CompensatedFloat(time_s)
+    clock = runtime._clock_for(particles, time_s, reference_turns, step)
     context = tracker._context
     offsets = to_context(
         context,

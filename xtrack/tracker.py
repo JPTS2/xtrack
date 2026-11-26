@@ -372,10 +372,22 @@ class Tracker:
         else:
             tracking_func = self._track_no_collective
 
+        prepared_scheduler = False
         if self.line._mechanics_updates_enabled and self.line.mechanics._runtime is not None and not args:
             from .mechanics.runtime import can_track_prepared, track_prepared
             if can_track_prepared(self, particles, kwargs):
+                prepared_scheduler = True
                 tracking_func = lambda pp, **kw: track_prepared(self, pp, **kw)
+
+        if (self.line._mechanics_updates_enabled and not args
+                and kwargs.get('ele_start') in (None, 0)
+                and kwargs.get('ele_stop') is None and kwargs.get('num_elements') is None
+                and (kwargs.get('log') is None
+                     or type(kwargs.get('log')) is Log and not kwargs['log'])
+                and not kwargs.get('backtrack', False)):
+            self.line.mechanics._check_tracking_window(
+                particles, num_turns=kwargs.get('num_turns'), prepared=prepared_scheduler,
+            )
 
         if with_progress:
             if self.enable_pipeline_hold:

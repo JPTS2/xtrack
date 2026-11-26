@@ -3,8 +3,9 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Sample one floor field at four feet per girder and reconstruct rigid motion.
-# Show the part a rigid body can follow and the remaining contact mismatch.
+# Can one rigid girder follow all four prescribed floor-contact displacements?
+# Fit its six-coordinate pose, carry the whole magnet with that pose, and
+# inspect the contact motion that a rigid body cannot reproduce.
 
 ################################################################################
 # Required packages
@@ -57,35 +58,35 @@ SAMPLE_STEP_S = 1 / 256
 ########################################
 INSPECT_TIME_S     = .125
 GEOMETRY_GAIN      = 1e7             # Same gain for local translation and rotation
-PRINT_TIMINGS      = False
+
+########################################
+# Optional execution-cost output
+########################################
+PRINT_TIMINGS = False
 
 ################################################################################
 # Set up the ordinary Xtrack line
 ################################################################################
 
 ########################################
-# Start performance monitoring
+# Prepare optional execution-cost diagnostics
 ########################################
 timings = {}
 
 ########################################
-# Time line load and copy
-########################################
-started = perf_counter()
-
-########################################
 # Locate and load the demonstration ring
 ########################################
+started = perf_counter()
 repo_root = Path(__file__).resolve().parents[2]
 nominal_env = xt.load(repo_root / LATTICE_FILE)
-line = nominal_env['demo'].copy()        # Independent elements for reference lowering
+line = nominal_env['demo'].copy()        # Work on an independent machine
 env = line.env
 env['demo'] = line
 
 timings['line_load_and_copy_s'] = perf_counter() - started
 
 ########################################
-# Prepare and time the tracker before mechanics queries
+# Build the ordinary tracking model
 ########################################
 started = perf_counter()
 line.build_tracker()
@@ -101,37 +102,29 @@ timings['tracker_build_s'] = perf_counter() - started
 mech = env.mechanics
 
 ########################################
-# Time reference adoption
-########################################
-started = perf_counter()
-
-########################################
 # Adopt existing offsets as the deliberate reference
 ########################################
+started = perf_counter()
 line.mechanics.adopt_reference()
 
 timings['reference_adoption_s'] = perf_counter() - started
 
 ########################################
-# Time mechanics definition
-########################################
-started = perf_counter()
-
-########################################
 # Store four local feet on each rigid support
 ########################################
-girders = [line.mechanics.new_girder(f'g.{name}', elements = [name], feet_local_m = FEET_LOCAL_M)
-           for name in QUADRUPOLES]
-timings['mechanics_definition_s'] = perf_counter() - started
-
-########################################
-# Time the receiver geometry preparation separately
-########################################
 started = perf_counter()
+girders = [
+    line.mechanics.new_girder(
+        f'g.{name}', elements = [name], feet_local_m = FEET_LOCAL_M,
+    )
+    for name in QUADRUPOLES
+]
+timings['mechanics_definition_s'] = perf_counter() - started
 
 ########################################
 # Collect the same contact geometry in world coordinates
 ########################################
+started = perf_counter()
 frames = [g.nominal_frame for g in girders]
 feet = np.array([g.feet_local_m for g in girders])
 positions = np.concatenate([g.nominal_feet_m for g in girders])
@@ -143,13 +136,9 @@ timings['source_geometry_s'] = perf_counter() - started
 ################################################################################
 
 ########################################
-# Start timing sampling and fitting
-########################################
-started = perf_counter()
-
-########################################
 # Choose a prescribed wave or correlated floor PSD
 ########################################
+started = perf_counter()
 if SOURCE == 'wave':
     source = xt.mechanics.PlaneWave(
         amplitude = AMPLITUDE_M, frequency_hz = FREQUENCY_HZ,
@@ -178,13 +167,10 @@ motion, residual = floor.fit_rigid_bodies(
 )
 
 ########################################
-# Bind the fitted motion as an absolute support response
+# Bind the fitted motion to the root support bodies
 ########################################
-mech.add_source('floor_following', motion, targets = motion.target_names, reference = 'absolute')
+mech.add_source('floor_following', motion, targets = motion.target_names)
 
-########################################
-# Record the floor sampling and fitting cost
-########################################
 timings['sample_and_fit_s'] = perf_counter() - started
 
 ################################################################################
@@ -237,7 +223,16 @@ print('Contacts span 0.6 m across the support and 2 m along it; the body referen
 if SOURCE == 'wave':
     print(f'Wave wavelength: {SPEED_M_S / FREQUENCY_HZ:g} m; propagation XYZ {DIRECTION}; polarization XYZ {POLARIZATION}.')
 print(f'First support, stored sample at t = {selected_time_s:g} s:')
-print('Contact    Floor vertical [nm]    Rigid-fit vertical [nm]    Full mismatch norm [nm]')
+print('\nFitted rigid motion at the magnetic-axis reference\n'
+      '--------------------------------------------------')
+print('Local translation [nm]: '
+      f'x = {values[0] * 1e9:+.4f}, y = {values[1] * 1e9:+.4f}, s = {values[2] * 1e9:+.4f}')
+print('Survey angles [nrad]: '
+      f'pitch = {values[3] * 1e9:+.4f}, yaw = {values[4] * 1e9:+.4f}, roll = {values[5] * 1e9:+.4f}')
+print('The same rotation acts on the feet, deck and magnet; their displacements differ by lever arm.')
+print('\nSupplied floor motion versus fitted contact motion\n'
+      '-------------------------------------------------')
+print('Contact    Local floor y [nm]     Rigid contact y [nm]      Full mismatch norm [nm]')
 for name, raw, fitted, difference in zip('ABCD', floor_local, fit_displacement, contact_difference):
     print(f'{name:<8} {raw[1] * 1e9:+20.4f} {fitted[1] * 1e9:+26.4f} {np.linalg.norm(difference) * 1e9:27.4f}')
 print(f'Full three-dimensional contact mismatch RMS [nm]: {residual[index, 0] * 1e9:.6f}')
@@ -272,12 +267,15 @@ axes[0, 0].legend(loc = 'upper center', fontsize = 8)
 enlarged_rotation = Rotation.from_rotvec(GEOMETRY_GAIN * Rotation.from_matrix(local_rotation).as_rotvec()).as_matrix()
 enlarged_translation = GEOMETRY_GAIN * local_translation
 shown_feet = first_feet @ enlarged_rotation.T + enlarged_translation
-shown_floor = first_feet + GEOMETRY_GAIN * floor_local
+# Magnify the physical residual relative to the enlarged rigid pose. Directly
+# scaling raw floor positions would mix nonlinear display-rotation terms into
+# the red mismatch segments, even though the physical residual is unchanged.
+shown_floor = shown_feet + GEOMETRY_GAIN * contact_difference
 length = float(line[QUADRUPOLES[0]].length)
 magnet = np.array([[0., -.15, -length / 2], [0., -.15, length / 2],
                    [0., .15, length / 2], [0., .15, -length / 2], [0., -.15, -length / 2]])
 shown_magnet = magnet @ enlarged_rotation.T + enlarged_translation
-axes[0, 1].plot(magnet[:, 2], magnet[:, 1], '--', color = '0.65')
+axes[0, 1].plot(magnet[:, 2], magnet[:, 1], '--', color = '0.65', label = 'Installed magnet, no dynamic motion')
 axes[0, 1].fill(shown_magnet[:, 2], shown_magnet[:, 1], alpha = .15, color = 'tab:blue')
 axes[0, 1].plot(shown_magnet[:, 2], shown_magnet[:, 1], color = 'tab:blue', label = 'Carried rigid magnet')
 axes[0, 1].plot(shown_feet[outline_order, 2], shown_feet[outline_order, 1], color = 'tab:blue', lw = 1)
@@ -298,7 +296,7 @@ axes[0, 1].set(title = f'Local elevation; motion ×{GEOMETRY_GAIN:,.0f}', xlabel
 axes[0, 1].set_aspect('equal', adjustable = 'box')
 axes[0, 1].margins(.15)
 handles, labels = axes[0, 1].get_legend_handles_labels()
-fig.legend(handles, labels, loc = 'lower center', ncol = 3, fontsize = 8)
+fig.legend(handles, labels, loc = 'lower center', ncol = 2, fontsize = 8)
 
 ########################################
 # Compare each floor height with the closest rigid-body contact height
@@ -317,15 +315,15 @@ axes[1, 0].legend(fontsize = 8)
 for component, colour, offset in [(0, 'tab:blue', -.24), (1, 'tab:orange', 0.), (2, 'tab:green', .24)]:
     axes[1, 1].bar(xx + offset, contact_difference[:, component] * 1e9, .23,
                    color = colour, label = ['Local x', 'Local y', 'Local s'][component])
-axes[1, 1].set(xticks = xx, xticklabels = list('ABCD'), title = 'Incompatible motion remains as a residual',
+axes[1, 1].set(xticks = xx, xticklabels = list('ABCD'), title = 'The rigid body cannot follow this part',
                xlabel = 'Contact', ylabel = 'Floor − rigid fit [nm]')
 axes[1, 1].axhline(0., color = '0.5', lw = .7)
 axes[1, 1].legend(fontsize = 8)
 fig.suptitle(f'One sampled floor field → one rigid pose per support; first support at t = {selected_time_s:g} s', fontsize = 11)
-fig.tight_layout(rect = (0., .055, 1., 1.), h_pad = 2.)
+fig.tight_layout(rect = (0., .075, 1., 1.), h_pad = 2.)
 
 ################################################################################
-# Review execution costs and figures
+# Display figures and optional execution costs
 ################################################################################
 
 ########################################

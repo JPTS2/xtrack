@@ -16,7 +16,7 @@ from .sources import (
     RegionalGroundMotion,
     VectorGroundMotion,
 )
-from .motion import RigidMotion, FieldMotion, sample_field
+from .motion import RigidMotion, ModalMotion, FieldMotion, sample_field
 from .responses import (
     BaseExcitedOscillator,
     LoadedTwoMass,
@@ -25,6 +25,6 @@ from .responses import (
 )
 from .installation import RigidOffset, InstallationErrors
 from .observation import project_to_bpm, BpmReading
-from .model import MechanicsManager, LineMechanics, MechanicalTimeSeries
+from .model import MechanicsManager, LineMechanics, MechanicalTimeSeries, FrozenMechanicalState
 from .tables import MechanicsTable, MotionHistoryTable
 from .applied_history import AppliedSourceRecorder, AppliedSourceHistory

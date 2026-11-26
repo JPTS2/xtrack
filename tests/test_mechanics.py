@@ -177,7 +177,7 @@ def test_conflicting_edits_aliases_and_topology_fail_before_writes():
         env.mechanics.apply()
     assert env['q1'].shift_y == 3e-6
     env['q2'].shift_y = 0
-    extra = env.new_line(name='alias', components=['q1'])
+    env.new_line(name='alias', components=['q1'])
     with pytest.raises(ValueError, match='shared/repeated'):
         env.mechanics.apply()
     assert env['q1'].shift_y == 3e-6

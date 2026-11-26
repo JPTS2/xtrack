@@ -9,6 +9,7 @@
 ################################################################################
 # Required packages
 ################################################################################
+
 from pathlib import Path
 from time import perf_counter
 from tempfile import gettempdir
@@ -186,11 +187,16 @@ print('Follow one magnet from a table row to its rigid motion\n'
       '------------------------------------------------------')
 print('q1 and q2 share one girder whose reference is 0.35 m below the beam.')
 print('The existing q1 horizontal offset and design roll are adopted unchanged.')
-print(f'Static installation y = {INSTALLATION_Y_M * 1e6:g} µm; inspection time = {INSPECT_TIME_S:g} s.')
-print('Source bindings:')
+print(f'Installation y = {INSTALLATION_Y_M * 1e6:g} µm; requested snapshot time = {INSPECT_TIME_S:g} s.')
+print(f'Query kind: {quads.query_kind}; live-input state: {quads.live_state}.')
+print('\n1. Inspect the six prescribed motion inputs')
 sources.cols['name component unit'].show()
-print('Element rows remain distinct even though they share the same girder:')
+print('\n2. Select an element occurrence, even on a shared girder')
 quads.cols['name body element_type'].show()
+print('Magnet    Installed entrance Y [µm]    Dynamic entrance Y [nm]')
+for name in quads.name:
+    print(f'{name:<9} {quads["static_Y", name] * 1e6:25.6f}'
+          f' {quads["dynamic_Y", name] * 1e9:26.6f}')
 
 ################################################################################
 # Follow one selected quadrupole through the full record
@@ -202,6 +208,7 @@ quads.cols['name body element_type'].show()
 selected = quads.rows[QUADRUPOLE]
 quad = selected.get_element()
 print(f'Selected {QUADRUPOLE}: length {quad.length:g} m; design roll {quad.rot_s_rad:g} rad')
+print(f'The live element still has shift_y = {quad.shift_y * 1e6:g} µm: querying a pose does not apply it.')
 
 ########################################
 # Compose the selected element history on the bound record grid
@@ -213,9 +220,11 @@ timings['selected_history_s'] = perf_counter() - started
 ########################################
 # Check the lever arm between the support anchor and magnet entrance
 ########################################
-support_history = motion.get_table(girder.name)
-lever_arm_y = history.dynamic_Y - support_history.shift_y
-print(f'Element history: {len(history)} samples over {DURATION_S:g} s')
+started = perf_counter()
+support_history = girders.rows[girder.name].get_time_series()
+timings['support_history_s'] = perf_counter() - started
+lever_arm_y = history.dynamic_Y - support_history.dynamic_Y
+print(f'\n3. Compose its prescribed history: {len(history)} samples over {DURATION_S:g} s')
 print(f'Largest magnet/support vertical difference [nm]: {np.max(np.abs(lever_arm_y)) * 1e9:.6f}')
 print('The selected history includes the full rigid lever arm, not just the source displacement.')
 print(f'Deliberate x [µm]: {quad.shift_x * 1e6:g}; deliberate roll [mrad]: {quad.rot_s_rad * 1e3:g}.')
@@ -251,23 +260,26 @@ for name in ('q1', 'q2'):
 layout_ax.plot([0., line.get_length()], [-.35, -.35], color = '.3', lw = 2)
 layout_ax.plot(line.get_length() / 2, -.35, 'kD', ms = 4)
 layout_ax.set(xlabel = 'World Z [m]', ylabel = 'World Y [m]',
-               title = 'Select a magnet row; its history includes the shared support and its lever arm')
+               title = f'Installed reference layout: {QUADRUPOLE} selected; diamond = girder anchor')
 layout_ax.set_ylim(-.45, .25)
 for name, values, colour, style in [
-    ('Girder reference', support_history.shift_y, '.4', '--'),
+    ('Girder reference', support_history.dynamic_Y, '.4', '--'),
     (QUADRUPOLE + ' entrance', history.dynamic_Y, magnet_colours[QUADRUPOLE], '-'),
     (str(neighbour.name[0]) + ' entrance', neighbour_history.dynamic_Y,
      magnet_colours[str(neighbour.name[0])], '-'),
 ]:
     history_axes[0].plot(times, values * 1e9, color = colour, ls = style, label = name)
-history_axes[0].set(ylabel = 'Vertical displacement [nm]',
-                    title = 'A shared rigid motion produces different magnet displacements through lever arms')
+history_axes[0].set(ylabel = 'Vertical displacement [nm]')
+history_axes[0].set_title('One rigid girder, two distinct magnet-entrance histories', pad = 30)
 history_axes[0].margins(y = .30)
-history_axes[0].legend(loc = 'upper center', ncol = 3, fontsize = 8)
+history_axes[0].legend(loc = 'lower center', bbox_to_anchor = (.5, 1.02), ncol = 3, fontsize = 8)
 for coordinate, label in [('phi', 'Pitch'), ('theta', 'Yaw'), ('psi', 'Roll')]:
     history_axes[1].plot(times, history['dynamic_' + coordinate] * 1e6, label = label)
 history_axes[1].set(xlabel = 'Physical time [s]', ylabel = 'Selected magnet rotation [µrad]')
-history_axes[1].legend(ncol = 3)
+history_axes[1].legend(ncol = 3, loc = 'lower center', bbox_to_anchor = (.5, 1.02), fontsize = 8)
+history_axes[0].text(INSPECT_TIME_S, .97, f'  Snapshot at {INSPECT_TIME_S:g} s',
+                    transform = history_axes[0].get_xaxis_transform(), va = 'top',
+                    fontsize = 8, bbox = {'facecolor': 'white', 'edgecolor': 'none', 'alpha': .8})
 for ax in history_axes:
     ax.axvline(INSPECT_TIME_S, ls = ':', color = '.4')
     ax.grid(alpha = .2)
@@ -297,7 +309,7 @@ if SAVE_GIF:
     started = perf_counter()
     animation.save(GIF_FILE, writer = 'pillow', fps = GIF_FPS, dpi = 100)
     timings['gif_render_and_encode_s'] = perf_counter() - started
-    print(f'Saved {N_FRAMES} frames: {GIF_FILE}')
+    print(f'\n4. Magnified envelope: saved {N_FRAMES} frames to {GIF_FILE}')
 
 ########################################
 # Verify that inspection never overwrote the deliberate line inputs

@@ -98,12 +98,26 @@ class AppliedSourceHistory:
 
     def at(self, time_s):
         """Read recorded inputs with previous-sample hold; never query providers."""
-        if not np.isscalar(time_s) or not np.isfinite(time_s):
+        return self._sample(time_s)[1]
+
+    def _sample(self, time_s):
+        if not np.isscalar(time_s) or np.iscomplexobj(time_s) or not np.isfinite(time_s):
             raise ValueError('Applied history time must be finite scalar seconds')
         if time_s < self.time_s[0] or time_s > self.time_s[-1]:
             raise ValueError('Requested time lies outside the captured applied history')
         index = np.searchsorted(self.time_s, time_s, side='right') - 1
-        return {name: values[index] for name, values in self.values.items()}
+        return float(self.time_s[index]), {
+            name: values[index] for name, values in self.values.items()
+        }
+
+    def _resolve(self, manager, bodies, time_s, time_series, disabled_sources):
+        if disabled_sources or (
+            time_series is not None and time_series is not self.prescribed_record
+        ):
+            raise ValueError('Applied history fixes the source mask and prescribed record')
+        self._check(manager, bodies=bodies)
+        pose_time_s, values = self._sample(time_s)
+        return pose_time_s, self.prescribed_record, self.disabled_sources, values
 
     def to_dict(self):
         """Export numerical evidence and provenance without a live manager."""
@@ -113,11 +127,13 @@ class AppliedSourceHistory:
             digest = hashlib.sha256(memoryview(record.time_s).cast('B'))
             for name, values in record.values.items():
                 digest.update(name.encode())
+                digest.update(record.replay_modes[name].encode())
                 digest.update(memoryview(values).cast('B'))
             prescribed = dict(
                 time_start_s=float(record.time_s[0]),
                 time_stop_s=float(record.time_s[-1]),
                 source_names=list(record.values),
+                replay_modes=dict(record.replay_modes),
                 sha256=digest.hexdigest(),
             )
         return dict(
@@ -154,7 +170,8 @@ class AppliedSourceRecorder:
     """
 
     def __init__(
-        self, view, *, sources, max_samples=4096, max_memory_bytes=32 * 1024**2
+        self, view, *, sources, max_samples=4096, max_memory_bytes=32 * 1024**2,
+        case_scope='affected',
     ):
         manager = view.manager
         names = (sources,) if isinstance(sources, str) else tuple(sources)
@@ -178,27 +195,30 @@ class AppliedSourceRecorder:
             raise ValueError(
                 'Use max_samples >= 2 and a positive integer max_memory_bytes'
             )
-        if not view._attachments:
+        if not view._consumed_bodies():
             raise ValueError('Attach a line before recording its applied inputs')
-        closure = manager._body_closure([a['body'] for a in view._attachments.values()])
+        closure = manager._body_closure(view._consumed_bodies())
         if any(
             not closure.intersection(manager.sources[name].targets) for name in names
         ):
             raise ValueError('Recorded sources must affect this attached line')
-        selected_targets = {
-            target for name in names for target in manager.sources[name].targets
-        }
-        affected = {}
-        for name in closure:
-            pending, current = [], name
-            while current is not None and current not in affected:
-                pending.append(current)
-                current = manager[current].parent
-            for current in reversed(pending):
-                affected[current] = current in selected_targets or affected.get(
-                    manager[current].parent, False
-                )
-        closure = manager._body_closure([name for name in closure if affected[name]])
+        if case_scope not in ('affected', 'line'):
+            raise ValueError("Use case_scope='affected' or 'line'")
+        if case_scope == 'affected':
+            selected_targets = {
+                target for name in names for target in manager.sources[name].targets
+            }
+            affected = {}
+            for name in closure:
+                pending, current = [], name
+                while current is not None and current not in affected:
+                    pending.append(current)
+                    current = manager[current].parent
+                for current in reversed(pending):
+                    affected[current] = current in selected_targets or affected.get(
+                        manager[current].parent, False
+                    )
+            closure = manager._body_closure([name for name in closure if affected[name]])
         existing = getattr(view, '_applied_source_recorder', None)
         if existing is not None and existing.active:
             raise ValueError('Stop the active applied source recorder first')

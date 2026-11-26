@@ -3,8 +3,8 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Add a local excess ground spectrum to one shared background over the demo ring.
-# Use continuous random modes so receiver order and time chunks keep one process.
+# Does a noisy region replace the background ground motion or add to it?
+# Keep one correlated background field and superpose an independent regional excess.
 
 ################################################################################
 # Required packages
@@ -64,12 +64,19 @@ SAMPLE_STEP_S = 1 / 128
 ########################################
 INSPECT_TIME_S = .5
 
+########################################
+# Optional execution-cost diagnostics
+########################################
+PRINT_TIMINGS = False
+
 ################################################################################
 # Set up the ordinary Xtrack line
 ################################################################################
 
+########################################
+# Start optional performance monitoring
+########################################
 timings = {}
-PRINT_TIMINGS = False                 # Optional diagnostics after the physical comparison
 
 started = perf_counter()
 
@@ -119,7 +126,7 @@ quads = list(line.get_table().rows.match(element_type = 'Quadrupole').name)
 timings['geometry_selection_s'] = perf_counter() - started
 started = perf_counter()
 
-girders = [line.mechanics.new_girder(f'g.{name}', elements = [name]) for name in quads]
+girders = list(line.mechanics.new_girders({f'g.{name}': [name] for name in quads}).values())
 
 ########################################
 # Collect world receivers and define the region envelope
@@ -200,6 +207,12 @@ floor = xt.mechanics.sample_field(source, time_s = times, positions_m = position
 # Query the very same latent background for the matched region-removed case.
 background_y = background.evaluate(times, positions)
 
+########################################
+# Retain the independent regional contribution explicitly
+########################################
+regional_y = region_gain[None, :] * excess.evaluate(times, positions)
+np.testing.assert_allclose(floor.values[..., 1], background_y + regional_y, atol = 1e-22, rtol = 1e-13)
+
 timings['sample_field_s'] = perf_counter() - started
 
 ################################################################################
@@ -251,18 +264,21 @@ mech.add_source('regional_site', motion, targets = motion.target_names)
 # Select representative receivers and compare observed RMS
 ########################################
 near, far = 0, int(np.argmin(region_gain))
-print('Background and regional excess PSD\n-----------------------------------')
+print('One background field plus an independent regional excess\n-------------------------------------------------------')
 print(f'Supports: {len(girders)}; modes per independent field: {N_MODES}')
 print('Receiver           Region gain    Background only [nm RMS]    With local excess [nm RMS]')
 
 for label, index in [('Near region', near), ('Far from region', far)]:
-    print(f'{label:<18} {region_gain[index]:11.6f} {np.std(background_y[:, index]) * 1e9:27.6f}'
+    print(f'{label:<18} {region_gain[index]:11.3g} {np.std(background_y[:, index]) * 1e9:27.6f}'
           f' {np.std(floor.values[:, index, 1]) * 1e9:29.6f}')
 print(f'Chunk / receiver-order discrepancies [m]: {chunk_error:.3g} / {order_error:.3g}')
 print(f'World field payload [MiB]: {floor.nbytes / 1024**2:.3f}')
-print('The regional contribution is gain² × excess PSD, plus the shared background.')
-print('An independent world-X field is also sampled and projected into each support frame.')
+print('At each receiver: total displacement = the same background query + gain × independent excess.')
+print('Ensemble PSD = background PSD + gain² × excess PSD; no background is replaced.')
+print('The Gaussian envelope is an amplitude gain, not a hard regional boundary.')
+print('World X has a separate independent field; world Y contains the background and regional excess.')
 print('Finite random modes approximate spectra/coherence; this is not an exact dense covariance.')
+print('Welch spectra also contain finite-window leakage; the dashed PSDs are ensemble inputs.')
 
 ########################################
 # Compute the ensemble target for amplitude correlation
@@ -282,6 +298,8 @@ expected_correlation = (
 observed_correlation = np.corrcoef(floor.values[..., 1].T)[near]
 correlation_error = np.sqrt(np.mean((observed_correlation - expected_correlation)**2))
 print(f'Finite-record amplitude-correlation deviation, RMS: {correlation_error:.6f}')
+print(f'Largest regional contribution at the far receiver [nm]: {np.max(np.abs(regional_y[:, far])) * 1e9:.3g}')
+print('Near and far background traces belong to one correlated field; they need not be identical.')
 
 ################################################################################
 # Locate the noisy region and see what changes when its excess is removed
@@ -327,10 +345,12 @@ rms_ax.grid(alpha = .2)
 ########################################
 for ax, index, title in [(near_ax, near, 'Near the excess-PSD centre'), (far_ax, far, 'Far from the excess-PSD centre')]:
     ax.plot(times, background_y[:, index] * 1e9, '--', color = '0.4', label = 'Same background alone')
+    ax.plot(times, regional_y[:, index] * 1e9, color = 'tab:orange', alpha = .75, label = 'Regional excess alone')
     ax.plot(times, floor.values[:, index, 1] * 1e9, color = 'tab:blue', label = 'Background + local excess')
     ax.set(xlabel = 'Physical time [s]', ylabel = 'Vertical displacement [nm]', title = title, xlim = (0., 1.))
     ax.legend(fontsize = 8, loc = 'upper right')
     ax.grid(alpha = .2)
+physical_fig.suptitle('Add a regional contribution while retaining the same background', fontsize = 12)
 physical_fig.tight_layout()
 
 ########################################
@@ -349,7 +369,7 @@ print('The field is applied through the surveyed supports; the same background i
 ################################################################################
 
 ########################################
-# Prepare the three diagnostic panels
+# Prepare the spectrum and spatial-correlation diagnostics
 ########################################
 fig, axes = plt.subplots(1, 2, figsize = (10, 4))
 spectrum_ax, correlation_ax = axes
@@ -363,7 +383,7 @@ for label, index in [('Near', near), ('Far', far)]:
     expected = np.interp(frequency, background.frequency_hz, background.density)
     expected += region_gain[index]**2 * np.interp(frequency, excess.frequency_hz, excess.density)
     spectrum_ax.loglog(frequency[1:], expected[1:], '--', color = line_plot.get_color(), label = f'{label}: target PSD')
-spectrum_ax.set(xlabel = 'Frequency [Hz]', ylabel = 'PSD [m²/Hz]', xlim = (.2, 50), ylim = (1e-22, 1e-16))
+spectrum_ax.set(title = 'Ensemble PSDs and one finite-record estimate', xlabel = 'Frequency [Hz]', ylabel = 'PSD [m²/Hz]', xlim = (.2, 50), ylim = (1e-22, 1e-16))
 
 ########################################
 # Compare spatial correlation against Euclidean distance
@@ -371,7 +391,7 @@ spectrum_ax.set(xlabel = 'Frequency [Hz]', ylabel = 'PSD [m²/Hz]', xlim = (.2, 
 order = np.argsort(distance)
 correlation_ax.plot(distance[order], expected_correlation[order], color = '0.4', label = 'Ensemble target')
 correlation_ax.plot(distance, observed_correlation, '.', label = 'Finite modes + record')
-correlation_ax.set(xlabel = 'Euclidean distance from first support [m]',
+correlation_ax.set(title = 'One field remains spatially correlated', xlabel = 'Euclidean distance from first support [m]',
             ylabel = 'Band-integrated amplitude correlation', ylim = (-.3, 1.05))
 
 ########################################

@@ -92,20 +92,20 @@ def test_nested_motion_and_installation_are_invariant_to_world_origin():
     np.testing.assert_array_equal(values[0], values[2])
 
 
-def test_absolute_child_keeps_static_mount_but_rejects_parent_vibration():
+def test_child_keeps_static_mount_and_parent_vibration():
     env, line = placed_quad((20000., 0., 30000.))
     parent = env.mechanics.new_girder('floor', anchor=(20000., 0., 30000.))
     parent.installation.shift_y = 2e-6
-    child = line.mechanics.new_girder('g', elements=['q'], parent=parent)
+    line.mechanics.new_girder('g', elements=['q'], parent=parent)
     env.mechanics.add_source('floor_motion', Harmonic(1e-6, 0., np.pi/2),
                             targets='floor', component='y')
     coordinates = np.zeros((2, 1, 6))
     coordinates[:, 0, 0] = 1e-12
     coordinates[:, 0, 4] = 1e-9
     motion = RigidMotion([0., 1.], coordinates, target_names=('g',))
-    env.mechanics.add_source('absolute_child', motion, targets='g', reference='absolute')
+    env.mechanics.add_source('child_motion', motion, targets='g')
     env.mechanics.apply(time_s=.5)
-    assert line['q'].shift_y == pytest.approx(2e-6, rel=0., abs=1e-21)
+    assert line['q'].shift_y == pytest.approx(3e-6, rel=0., abs=1e-21)
     assert line['q'].shift_x == pytest.approx(1e-12-.25e-9, rel=0., abs=1e-24)
 
 
@@ -171,7 +171,7 @@ def test_selected_query_composes_ancestor_closure_and_preserves_joint_sources():
             return np.full((len(time_s),len(positions_m)),len(positions_m)*1e-9)
     env = xt.Environment()
     root = env.mechanics.new_girder('floor',anchor=(20000.,0.,30000.))
-    child = env.mechanics.new_girder('g',anchor=(20000.,0.,30001.),parent=root)
+    env.mechanics.new_girder('g',anchor=(20000.,0.,30001.),parent=root)
     unused = env.mechanics.new_girder('unused',anchor=(0.,0.,0.))
     root.installation.shift_x = 1e-6
     env.mechanics.add_source('joint',JointSource(),targets=['floor','unused'],component='x')

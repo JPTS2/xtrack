@@ -138,10 +138,11 @@ GPUFUN void mechanics_rotation_increment(const double phi, const double theta,
 }
 
 /* Analytic sources use body-local CSR rows, in source insertion order.
- * Each source_data row is [component, amplitude, omega, phase, px, py, pz].
+ * Each source_data row is [component, amplitude, omega, phase, delay, px, py, pz].
  * component 0..2 drives a local translation; 3..5 drives survey pitch/yaw/roll;
  * -1 drives translation with a preprojected local polarization. For plane waves
- * the prepared phase includes the nominal-position propagation delay.
+ * subtract the nominal-position propagation delay before multiplying by
+ * omega, as in the reference provider. Harmonic rows have zero delay.
  * No device buffers, body dictionaries or waveform arrays return to the host.
  */
 /*gpukern*/ void mechanics_sources(
@@ -153,12 +154,14 @@ GPUFUN void mechanics_rotation_increment(const double phi, const double theta,
     VECTORIZE_OVER(body, n)
     double result[12] = {0.};
     for (int64_t source = source_starts[body]; source < source_starts[body+1]; source++) {
-        int component = (int)source_data[7*source];
-        double value = source_data[7*source+1] * sin(
-            source_data[7*source+2] * time_s + source_data[7*source+3]);
+        const int64_t start = 8*source;
+        int component = (int)source_data[start];
+        double value = source_data[start+1] * sin(
+            source_data[start+2] * (time_s - source_data[start+4])
+            + source_data[start+3]);
         if (component == -1) {
             for (int i = 0; i < 3; i++)
-                result[i] += value * source_data[7*source+4+i];
+                result[i] += value * source_data[start+5+i];
         } else if (component < 3) {
             result[component] += value;
         } else {
@@ -199,7 +202,7 @@ GPUFUN void mechanics_rotation_increment(const double phi, const double theta,
 
 /* Mixed rows retain the original binding order. A nonnegative source_rows
  * entry selects an uploaded six-coordinate sample; -1 selects analytic data
- * in the same seven-double layout as mechanics_sources. Composing two finished
+ * in the same eight-double layout as mechanics_sources. Composing two finished
  * analytic/sample rotations instead would change noncommuting source order. */
 /*gpukern*/ void mechanics_sources_mixed(
         const int64_t n,
@@ -217,12 +220,14 @@ GPUFUN void mechanics_rotation_increment(const double phi, const double theta,
         if (row >= 0) {
             for (int i = 0; i < 6; i++) values[i] = sample_values[6*row+i];
         } else {
-            const int component = (int)source_data[7*source];
-            const double value = source_data[7*source+1] * sin(
-                source_data[7*source+2] * time_s + source_data[7*source+3]);
+            const int64_t start = 8*source;
+            const int component = (int)source_data[start];
+            const double value = source_data[start+1] * sin(
+                source_data[start+2] * (time_s - source_data[start+4])
+                + source_data[start+3]);
             if (component == -1) {
                 for (int i = 0; i < 3; i++)
-                    values[i] = value * source_data[7*source+4+i];
+                    values[i] = value * source_data[start+5+i];
             } else {
                 values[component] = value;
             }
@@ -242,8 +247,7 @@ GPUFUN void mechanics_rotation_increment(const double phi, const double theta,
 
 /* Each body thread traverses immutable root-to-body indices independently.
  * No thread reads a parent's output, so no in-kernel global barrier is needed.
- * Absolute motion retains inherited static placement but replaces inherited
- * vibration, exactly as the public reference model specifies.
+ * Each mounted body's local motion composes with its carried parent pose.
  */
 /*gpukern*/ void mechanics_body_update(
         const int64_t n,
@@ -252,49 +256,32 @@ GPUFUN void mechanics_rotation_increment(const double phi, const double theta,
         /*gpuglmem*/ const double* relations,
         /*gpuglmem*/ const double* static_local,
         /*gpuglmem*/ const double* dynamic_local,
-        /*gpuglmem*/ const int64_t* absolute,
         /*gpuglmem*/ double* out) {
     VECTORIZE_OVER(body, n)
-    double current[12] = {0.}, fixed[12] = {0.};
+    double current[12] = {0.};
     for (int64_t position = paths_offsets[body];
          position < paths_offsets[body+1]; position++) {
         int64_t node = paths[position];
-        double relation[12], local_static_transform[12], dynamic[12], inherited[12], inherited_fixed[12];
+        double relation[12], local_static_transform[12], dynamic[12], inherited[12];
         for (int i = 0; i < 12; i++) {
             relation[i] = relations[12*node+i];
             local_static_transform[i] = static_local[12*node+i];
             dynamic[i] = dynamic_local[12*node+i];
         }
-        mechanics_inherit(fixed, relation, inherited_fixed);
-        mechanics_compose(inherited_fixed, local_static_transform, fixed);
-        if (absolute[node]) {
-            // Dynamic translation is added in nominal body axes; its rotation
-            // acts on the static orientation, without rotating its translation.
-            for (int i = 0; i < 3; i++) current[i] = fixed[i] + dynamic[i];
-            for (int i = 0; i < 3; i++) {
-                for (int j = 0; j < 3; j++) {
-                    double value = fixed[3 + 3*i+j] + dynamic[3 + 3*i+j];
-                    for (int k = 0; k < 3; k++)
-                        value += dynamic[3 + 3*i+k] * fixed[3 + 3*k+j];
-                    current[3 + 3*i+j] = value;
-                }
+        mechanics_inherit(current, relation, inherited);
+        // Relative translation adds to local static translation; dynamic
+        // rotation left-multiplies the local static orientation only.
+        double combined[12];
+        for (int i = 0; i < 3; i++) combined[i] = local_static_transform[i] + dynamic[i];
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                double value = local_static_transform[3 + 3*i+j] + dynamic[3 + 3*i+j];
+                for (int k = 0; k < 3; k++)
+                    value += dynamic[3 + 3*i+k] * local_static_transform[3 + 3*k+j];
+                combined[3 + 3*i+j] = value;
             }
-        } else {
-            mechanics_inherit(current, relation, inherited);
-            // Relative translation adds to local static translation; dynamic
-            // rotation left-multiplies the local static orientation only.
-            double combined[12];
-            for (int i = 0; i < 3; i++) combined[i] = local_static_transform[i] + dynamic[i];
-            for (int i = 0; i < 3; i++) {
-                for (int j = 0; j < 3; j++) {
-                    double value = local_static_transform[3 + 3*i+j] + dynamic[3 + 3*i+j];
-                    for (int k = 0; k < 3; k++)
-                        value += dynamic[3 + 3*i+k] * local_static_transform[3 + 3*k+j];
-                    combined[3 + 3*i+j] = value;
-                }
-            }
-            mechanics_compose(inherited, combined, current);
         }
+        mechanics_compose(inherited, combined, current);
     }
     for (int i = 0; i < 12; i++) out[12*body+i] = current[i];
     END_VECTORIZE
@@ -373,6 +360,36 @@ GPUFUN void mechanics_rotation_increment(const double phi, const double theta,
         values[7*attachment+i] = result[i];
         /*gpuglmem*/ double* destination = (/*gpuglmem*/ double*)(buffer + offsets[7*attachment+i]);
         *destination = result[i];
+    }
+    END_VECTORIZE
+}
+
+/* A transverse-only axis is relative to its chart parent. Both share the
+ * complete inherited rigid motion, so only the child's local x/y matter.
+ * projection maps those two nominal axes into each segment's field chart.
+ * No world-position subtraction or change of multipole strengths occurs.
+ */
+/*gpukern*/ void mechanics_lower_solenoid_axis(
+        const int64_t n,
+        /*gpuglmem*/ const int64_t* body_indices,
+        /*gpuglmem*/ const double* projection,
+        /*gpuglmem*/ const double* baseline,
+        /*gpuglmem*/ const int64_t* offsets,
+        /*gpuglmem*/ const double* static_local,
+        /*gpuglmem*/ const double* dynamic_local,
+        /*gpuglmem*/ int8_t* buffer,
+        /*gpuglmem*/ double* values) {
+    VECTORIZE_OVER(axis, n)
+    const int64_t body = body_indices[axis];
+    const double dx = static_local[12*body] + dynamic_local[12*body];
+    const double dy = static_local[12*body+1] + dynamic_local[12*body+1];
+    for (int i = 0; i < 2; i++) {
+        double value = baseline[2*axis+i];
+        if (dx != 0. || dy != 0.)
+            value += projection[4*axis+2*i]*dx + projection[4*axis+2*i+1]*dy;
+        values[2*axis+i] = value;
+        /*gpuglmem*/ double* destination = (/*gpuglmem*/ double*)(buffer + offsets[2*axis+i]);
+        *destination = value;
     }
     END_VECTORIZE
 }

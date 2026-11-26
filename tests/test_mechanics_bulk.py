@@ -153,3 +153,54 @@ def test_invalid_bulk_body_kind_does_not_install_any_attachment():
         line.mechanics.new_bodies({'m1': ['q1'], 'm2': ['q2']}, kind='')
     assert not env.mechanics.bodies
     assert not line.mechanics._attachments
+
+
+def test_bulk_attach_existing_bodies_reverse_line(monkeypatch):
+    env = xt.Environment()
+    for name in ('q1', 'q2', 'q1.reverse', 'q2.reverse'):
+        env.new(name, xt.Quadrupole, length=1., k1=.1)
+    forward = env.new_line(name='forward', components=['q1', 'q2'])
+    reverse = env.new_line(name='reverse', components=['q2.reverse', 'q1.reverse'])
+    reverse.mechanics.set_reference_frame(xt.Frame.from_survey_angles(Z=2., theta=np.pi))
+    forward.mechanics.new_girders({'g1': ['q1'], 'g2': ['q2']})
+    calls = {'survey': 0, 'signature': 0}
+    survey, signature = reverse.survey, reverse.mechanics._geometry_signature
+
+    def measured_survey(*args, **kwargs):
+        calls['survey'] += 1
+        return survey(*args, **kwargs)
+
+    def measured_signature():
+        calls['signature'] += 1
+        return signature()
+
+    monkeypatch.setattr(reverse, 'survey', measured_survey)
+    monkeypatch.setattr(reverse.mechanics, '_geometry_signature', measured_signature)
+    env.mechanics.attach_bodies({'g1': ['q1.reverse'], 'g2': ['q2.reverse']}, line=reverse)
+    assert calls == {'survey': 1, 'signature': 1}
+    assert len(env.mechanics.bodies) == 2
+    assert reverse.mechanics.get_table()['body', 'q1.reverse'] == 'g1'
+    env.mechanics['g1'].shift_x = 2e-6
+    env.mechanics['g2'].shift_x = 3e-6
+    env.mechanics.apply(time_s=0.)
+    assert forward['q1'].shift_x == pytest.approx(2e-6)
+    assert reverse['q1.reverse'].shift_x == pytest.approx(-2e-6)
+    assert forward['q2'].shift_x == pytest.approx(3e-6)
+    assert reverse['q2.reverse'].shift_x == pytest.approx(-3e-6)
+
+
+@pytest.mark.parametrize('assignments', [
+    {'g1': ['q1'], 'missing': ['q2']},
+    {'g1': ['q1'], 'g2': ['q1']},
+    {'g1': ['q1'], 'g2': ['missing']},
+    {'g1': ['q1'], 'g2': []},
+])
+def test_invalid_existing_body_batch_is_atomic(assignments):
+    env, line = make_line()
+    env.mechanics.new_girder('g1', anchor=xt.Frame())
+    env.mechanics.new_girder('g2', anchor=xt.Frame())
+    revision = env.mechanics._revision
+    with pytest.raises(ValueError):
+        line.mechanics.attach_bodies(assignments)
+    assert not line.mechanics._attachments
+    assert env.mechanics._revision == revision

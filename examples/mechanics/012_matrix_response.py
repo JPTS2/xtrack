@@ -159,13 +159,13 @@ drive = xt.mechanics.RigidMotion(times, drive_values, ('support',))
 ################################################################################
 
 ########################################
-# Prepare frequency bins and the six-by-six table
+# Prepare frequency bins and a six-output by six-input table
 ########################################
 frequency = np.fft.rfftfreq(N_SAMPLES, SAMPLE_STEP_S)
 matrix = np.zeros((len(frequency), 6, 6), dtype = complex)
 
 ########################################
-# Set the independent coordinate responses
+# Set the independent coordinate responses at one nominal support port
 ########################################
 for index, resonance in enumerate(RESONANCE_HZ):
     matrix[:, index, index] = xt.mechanics.BaseExcitedOscillator(resonance, DAMPING).evaluate(frequency)
@@ -174,6 +174,9 @@ diagonal_matrix = matrix.copy()
 ########################################
 # Add yaw-to-x and y-to-pitch response couplings in SI units
 ########################################
+# Matrix rows are output coordinates; columns are input coordinates.
+# Both use [x, y, s, pitch, yaw, roll], with metres and survey radians.
+# Cross terms therefore carry m/rad or rad/m; the matrix is not dimensionless.
 matrix[:, 0, 4] = YAW_TO_X_M_PER_RAD * matrix[:, 0, 0]
 matrix[:, 3, 1] = Y_TO_PITCH_RAD_PER_M * matrix[:, 3, 3]
 
@@ -202,10 +205,9 @@ magnet_motion = support_motion.transport(
 )
 
 ########################################
-# Bind the support and magnet as absolute outputs
+# Drive the support and let the mounting tree carry the magnet
 ########################################
-mech.add_source('support_response', support_motion, targets = ['support'], reference = 'absolute')
-mech.add_source('magnet_transport', magnet_motion, targets = ['magnet'], reference = 'absolute')
+mech.add_source('support_response', support_motion, targets = ['support'])
 
 timings['matrix_response_and_transport_s'] = perf_counter() - started
 
@@ -254,8 +256,12 @@ timings['Matched frozen-map beam tracking'] = perf_counter() - started
 ########################################
 # Report the two distinct causes of magnet motion at one physical time
 ########################################
-print('Mechanical cross coupling and rigid mounting geometry\n'
-      '----------------------------------------------------')
+print('Can response coupling and a geometric lever arm be separated?\n'
+      '------------------------------------------------------------')
+print('Response coordinates: [x, y, s, pitch, yaw, roll] in nominal support axes.')
+print('Rows map outputs from columns of inputs; translations are metres and angles are survey radians.')
+print('This illustrative H(f) is supplied at one port; loading is not derived from this mount or from PSDs.')
+print('No installation error is added here: both H(f) and transport use the declared nominal ports.')
 print(f'Mount from support response port to magnet port x/y/s [m]: {MAGNET_MOUNT_M}')
 print(f'Supplied yaw -> x coupling [m/rad]: {YAW_TO_X_M_PER_RAD:g}')
 print(f'Supplied y -> pitch coupling [rad/m]: {Y_TO_PITCH_RAD_PER_M:g}')
@@ -273,6 +279,7 @@ print('The second difference is motion at another point on the same rigid body.'
 print('For this aligned mount, dx_transport ~= s*yaw - y*roll and dy_transport ~= s*pitch + x*roll.')
 print(f'Tracked one-turn change at the ring origin [nm]: dx = {beam_change_nm[0]:+.6f}, dy = {beam_change_nm[1]:+.6f}.')
 print('Both traversals use the same design-closed-orbit launch; the second holds one mechanical state fixed.')
+print('Pitch uses Rx(-pitch), yaw uses Ry(yaw), and roll uses Rz(roll).')
 print('The frequency-domain response is periodic offline filtering; no causal startup or force law is inferred.')
 
 ################################################################################
@@ -304,7 +311,7 @@ ax = setup_axes[1]
 ax.set_axis_off()
 for y, title, detail in [
     (.83, 'Six-coordinate support input', '[x, y, s, pitch, yaw, roll]'),
-    (.50, 'Loaded response H(f), at the same port', 'Diagonal response + yaw -> x + y -> pitch'),
+    (.50, 'Supplied illustrative H(f), at the same port', 'Dimensionless diagonal; cross terms have m/rad or rad/m'),
     (.17, 'Rigid transport to the magnet port', 'Use the declared lever once; preserve the phase'),
 ]:
     ax.text(.5, y, title + '\n' + detail, transform = ax.transAxes, ha = 'center', va = 'center', fontsize = 9,
@@ -340,6 +347,10 @@ for ax in axes:
     ax.grid(alpha = .2)
     ax.margins(y = .3)
     ax.legend(fontsize = 8, loc = 'upper right')
+axes[0].text(INSPECT_TIME_S + .008, .03, f't = {INSPECT_TIME_S:g} s',
+              transform = axes[0].get_xaxis_transform(), fontsize = 8, va = 'bottom')
+axes[1].legend(fontsize = 8, loc = 'upper center', ncol = 2)
+axes[1].margins(y = .45)
 fig.tight_layout()
 
 ########################################

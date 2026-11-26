@@ -96,31 +96,17 @@ def test_explicit_disabled_control_updates_held_pose_to_zero():
     assert line['q'].shift_y == pytest.approx(23e-6)
 
 
-@pytest.mark.parametrize('control_first', [False, True])
-def test_absolute_descendant_cannot_silently_mask_ancestor_control(control_first):
+def test_mounted_body_rejects_replacement_motion():
     env = xt.Environment()
     env.mechanics.new_girder('parent', anchor=(0.0, 0.0, 0.0))
     env.mechanics.new_body('child', parent='parent', anchor=(0.0, 0.0, 1.0))
-    operations = [
-        lambda: env.mechanics.add_source(
-            'control', HeldPosition(), targets='parent', role='control', live=True
-        ),
-        lambda: env.mechanics.add_source(
-            'plant',
-            xt.mechanics.RigidMotion([0.0, 1.0], np.zeros((2, 6))),
-            targets='child',
-            reference='absolute',
-        ),
-    ]
-    if not control_first:
-        operations.reverse()
-    operations[0]()
-    with pytest.raises(ValueError, match='mask ancestor control'):
-        operations[1]()
-    assert len(env.mechanics.sources) == 1
+    motion = xt.mechanics.RigidMotion([0., 1.], np.zeros((2, 6)))
+    with pytest.raises(ValueError, match='mounted body inherits parent motion'):
+        env.mechanics.add_source('plant', motion, targets='child', reference='absolute')
+    assert not env.mechanics.sources
 
 
-def test_downstream_control_mover_composes_with_absolute_plant():
+def test_downstream_control_mover_composes_with_plant():
     env = xt.Environment()
     env.new('q', xt.Quadrupole, length=0.3, k1=0.1, shift_y=3e-6)
     line = env.new_line(name='ring', components=['q'])
@@ -198,7 +184,7 @@ def test_disabling_retains_actual_coarse_prescribed_control_from_manual_apply():
     env.mechanics.add_source(
         'control', xt.mechanics.Harmonic(1e-6, 0.5), targets='g', role='control'
     )
-    record = env.mechanics.compute_time_series(time_s=[0.0, 1.0])
+    record = env.mechanics.compute_time_series(time_s=[0.0, 1.0], interpolation='linear')
     env.mechanics.apply(time_s=0.5, time_series=record)
     actual = line['q'].shift_y
     assert actual == pytest.approx(0.0, abs=1e-20)
@@ -215,6 +201,34 @@ def test_record_metadata_cannot_be_rebound_or_deleted():
             setattr(record, name, value)
         with pytest.raises(AttributeError, match='read-only'):
             delattr(record, name)
+
+
+def test_manual_passage_disable_preserves_applied_control_and_element_times():
+    from scipy.constants import c
+
+    env = xt.Environment()
+    env.new('q1', xt.Quadrupole, length=.3, k1=.1)
+    env.new('q2', xt.Quadrupole, length=.3, k1=-.1)
+    env.new('d', xt.Drift, length=.125 * c - .3)
+    line = env.new_line(components=['q1', 'd', 'q2'])
+    line.set_particle_ref('proton', p0c=7e12)
+    line.mechanics.new_girder('g', elements=['q1', 'q2'])
+    env.mechanics.add_source('control', xt.mechanics.Harmonic(1e-6, 1.),
+                            targets='g', role='control')
+    env.mechanics.add_source('noise', xt.mechanics.Harmonic(2e-6, 0., np.pi/2),
+                            targets='g')
+    record = env.mechanics.compute_time_series(time_s=[0., .25], interpolation='linear')
+    beta = float(line.particle_ref.beta0[0])
+    times = .05 + np.array([0., .125 / beta])
+    control = 4e-6 * times
+
+    line.mechanics.apply(time_s=.05, sampling='passage', time_series=record)
+    np.testing.assert_allclose(line.mechanics.get_applied_table().pose_time_s, times)
+    np.testing.assert_allclose([line[q].shift_y for q in ('q1', 'q2')], control + 2e-6)
+    line.set_particle_ref('proton', p0c=1e9)
+    line.mechanics.disable_vibrations()
+    np.testing.assert_allclose(line.mechanics.get_applied_table().pose_time_s, times)
+    np.testing.assert_allclose([line[q].shift_y for q in ('q1', 'q2')], control)
 
 
 def test_active_recorder_rejects_manual_passage_with_disabled_live_input():

@@ -4,7 +4,8 @@
 # ######################################### #
 
 # Restore the design orbit after installation errors without erasing intentional quad offsets.
-# Correct their frozen BPM orbits with the same measured response matrix.
+# Solve independent frozen closed orbits and apply offline corrector trims.
+# Electrical pickup residuals and true design-orbit residuals are different quantities.
 
 ################################################################################
 # Required packages
@@ -136,12 +137,14 @@ started = perf_counter()
 ########################################
 # Assign the quadrupoles to supports
 ########################################
-girders = [line.mechanics.new_girder(f'g.{name}', elements = [name]) for name in quads]
+girders = list(line.mechanics.new_girders({f'g.{name}': [name] for name in quads}).values())
 
 ########################################
 # Give each pickup its own mechanical body
 ########################################
-pickups = [mech.new_body(f'pickup.{name}', kind = 'pickup', elements = [name], line = line) for name in bpms]
+pickups = list(line.mechanics.new_bodies(
+    {f'pickup.{name}': [name] for name in bpms}, kind = 'pickup',
+).values())
 
 timings['mechanics_definition_s'] = perf_counter() - started
 
@@ -192,7 +195,7 @@ inverse = (vh[keep].T / singular[keep]) @ uu[:, keep].T
 timings['response_calibration_s'] = perf_counter() - started
 
 ################################################################################
-# Generate and correct the installation cases
+# Generate static installation cases and solve their offline correction
 ################################################################################
 
 started = perf_counter()
@@ -234,7 +237,7 @@ for seed in INSTALLATION_SEEDS:
     mech.apply()
 
     ########################################
-    # Measure the installed orbit before correction
+    # Compute the frozen installed closed orbit and project it into pickup frames
     ########################################
     before_twiss = line.twiss4d()
     before = read_pickups(before_twiss) - reference
@@ -244,7 +247,7 @@ for seed in INSTALLATION_SEEDS:
     after_twiss = before_twiss
 
     ########################################
-    # Correct using the retained response modes
+    # Solve static corrector trims using the retained response modes
     ########################################
     for iteration in range(N_CORRECTIONS):
         kicks -= inverse @ after
@@ -269,12 +272,17 @@ timings['installation_cases_and_correction_s'] = perf_counter() - started
 ########################################
 # Report reference optics, installation scatter and residuals
 ########################################
-print('Static installation and orbit correction\n----------------------------------------')
+print('Static installation errors and offline closed-orbit correction\n'
+      '-------------------------------------------------------------')
+print('Each seed defines one fixed geometry. Twiss supplies the orbit used by the electrical readout.')
+print('Corrector probes and trims are static calculations; no monitor acquisition or online feedback is used.')
 print(f'Intentional quad shift_x [mm]: {DELIBERATE_X_M * 1e3:.6f}')
 print(f'BPMs / correctors / retained modes: {len(bpms)} / {len(knobs)} / {keep.sum()}')
 print(f'Bare demonstration tunes: {reference_twiss.qx:.6f} / {reference_twiss.qy:.6f}')
 print('The near-integer vertical tune and insertion beta make this demo sensitive to installation errors.')
-print('The correction targets electrical BPM errors, relative to the adopted design orbit.')
+print('One illustrative support per quad and one independent body per pickup are used.')
+print('The correction targets projected electrical pickup errors relative to the adopted design readout.')
+print('Corrector limits, alignment tolerances and beam survival are not established by these frozen solves.')
 print('Seed     Quad y RMS [µm]    BPM before [µm]    BPM after [µm]    True beam after [µm]')
 for case in cases:
     rms = lambda values: np.sqrt(np.mean(np.asarray(values)**2))
@@ -283,7 +291,10 @@ for case in cases:
           f' {rms(case["beam_after"]) * 1e6:23.5f}')
 print('Installation records remain immutable. Corrector trims do not redefine the installation.')
 print('No dynamic source seed enters these static installation draws.')
-print('Displaced BPM electrical zeros limit how closely electrical correction restores the true design orbit.')
+print('Pickup offsets bias the electrical zero. Discarded response modes and the finite trim iterations also leave residuals.')
+print('An electrical residual and a design-coordinate beam residual therefore need not coincide.')
+print('Largest absolute corrector trim per seed [µrad]:',
+      ', '.join(f'{case["seed"]}: {np.max(np.abs(case["kicks"])) * 1e6:.3f}' for case in cases))
 
 ################################################################################
 # See the installation errors and what the correction actually restores
@@ -298,11 +309,14 @@ ax.set_axis_off()
 for index, (title, detail) in enumerate([
     ('Design placement', f'Intentional quad x = {DELIBERATE_X_M * 1e3:g} mm\nAdopted before errors'),
     ('Static installation errors', 'Seeded magnet and pickup offsets\nHeld fixed during correction'),
-    ('Corrector trims', 'Steering changes the beam\nInstallation geometry is retained'),
+    ('Offline corrector trims', 'Frozen Twiss -> electrical error -> SVD trim\nRecompute Twiss; retain installation'),
 ]):
     y = .82 - index * .31
     ax.text(.5, y, title + '\n' + detail, transform = ax.transAxes, ha = 'center', va = 'center', fontsize = 9,
             bbox = {'boxstyle': 'round,pad=.4', 'fc': '0.96', 'ec': '0.45'})
+for upper_y, lower_y in ((.71, .63), (.40, .32)):
+    ax.annotate('', xy = (.5, lower_y), xytext = (.5, upper_y), xycoords = 'axes fraction',
+                arrowprops = {'arrowstyle': '->', 'color': '.4'})
 last = cases[-1]
 quad_s = table['s', quads]
 quad_y = last['installed'].values[:, 1] * 1e6
@@ -311,33 +325,46 @@ setup_axes[1].plot(quad_s, quad_y, '.', label = 'Quad support installation y')
 setup_axes[1].plot(table['s', bpms], pickup_y, 's', mfc = 'none', label = 'Pickup installation y')
 setup_axes[1].set(xlabel = 'Survey position s [m]', ylabel = 'Static installation error [µm]',
                    title = f'One actual installation realization: seed {last["seed"]}')
-setup_axes[1].legend(fontsize = 8)
+setup_axes[1].margins(y = .25)
+setup_axes[1].legend(loc = 'upper center', ncol = 2, fontsize = 8)
 setup_axes[1].grid(alpha = .2)
 setup_fig.tight_layout()
 
 ########################################
 # Compare electrical errors with true beam errors at the same BPM locations
 ########################################
-fig, axes = plt.subplots(2, 2, figsize = (10, 6.5))
+fig, axes = plt.subplot_mosaic(
+    [['seeds', 'residuals'], ['before', 'modes'], ['after', 'modes']],
+    figsize = (11, 8), gridspec_kw = {'height_ratios': [1.1, .75, .75]}, layout = 'constrained',
+)
 before_rms = [np.sqrt(np.mean(case['before']**2)) * 1e6 for case in cases]
 after_rms = [np.sqrt(np.mean(case['after']**2)) * 1e6 for case in cases]
 true_after_rms = [np.sqrt(np.mean(case['beam_after']**2)) * 1e6 for case in cases]
-axes[0, 0].plot(INSTALLATION_SEEDS, before_rms, 'o-', label = 'Electrical error before correction')
-axes[0, 0].plot(INSTALLATION_SEEDS, after_rms, 'o-', label = 'Electrical error after correction')
-axes[0, 0].set(xlabel = 'Installation seed', ylabel = 'Electrical BPM RMS [µm]', title = 'Same correction procedure for every static seed')
-axes[0, 1].plot(INSTALLATION_SEEDS, after_rms, 'o-', label = 'Electrical residual')
-axes[0, 1].plot(INSTALLATION_SEEDS, true_after_rms, 'o-', label = 'True design-coordinate beam residual')
-axes[0, 1].set(xlabel = 'Installation seed', ylabel = 'Residual RMS [µm]', title = 'What remains after correction?')
-axes[1, 0].plot(table['s', bpms], last['beam_before'] * 1e6, '.-', label = 'True beam before correction')
-axes[1, 0].plot(table['s', bpms], last['beam_after'] * 1e6, '.-', label = 'True beam after correction')
-axes[1, 0].set(xlabel = 'BPM s [m]', ylabel = 'Beam error from design [µm]', title = f'Actual beam around the ring: seed {last["seed"]}')
-axes[1, 1].semilogy(np.arange(1, len(singular) + 1), singular / singular[0], 'o-', label = 'Measured response modes')
-axes[1, 1].axhline(SVD_REL_CUTOFF, ls = '--', color = '0.4', label = 'Retained-mode threshold')
-axes[1, 1].set(xlabel = 'Response mode', ylabel = 'Relative singular value', title = 'Correction uses the observable response directions')
-for ax in axes.flat:
-    ax.legend(fontsize = 8)
+axes['seeds'].semilogy(INSTALLATION_SEEDS, before_rms, 'o-', label = 'Electrical error before trim')
+axes['seeds'].semilogy(INSTALLATION_SEEDS, after_rms, 'o-', label = 'Electrical residual after trim')
+axes['seeds'].set(xticks = INSTALLATION_SEEDS, xlabel = 'Installation seed', ylabel = 'Electrical RMS [µm]',
+                  title = 'Same offline solve; log scale resolves the correction')
+axes['residuals'].plot(INSTALLATION_SEEDS, after_rms, 'o-', label = 'Electrical residual')
+axes['residuals'].plot(INSTALLATION_SEEDS, true_after_rms, 'o-', label = 'True design-orbit residual')
+axes['residuals'].set(xticks = INSTALLATION_SEEDS, xlabel = 'Installation seed', ylabel = 'Residual RMS [µm]',
+                      title = 'Residuals after the same finite number of trims')
+axes['before'].plot(table['s', bpms], last['beam_before'] * 1e6, '.-', color = 'tab:blue')
+axes['before'].set(ylabel = 'True beam error [µm]', title = f'Seed {last["seed"]}: before offline correction')
+axes['before'].tick_params(labelbottom = False)
+axes['after'].sharex(axes['before'])
+axes['after'].plot(table['s', bpms], last['beam_after'] * 1e6, '.-', label = 'True design-orbit error')
+axes['after'].plot(table['s', bpms], last['after'] * 1e6, 's--', mfc = 'none', label = 'Electrical readout error')
+axes['after'].set(xlabel = 'Pickup position s [m]', ylabel = 'Residual [µm]',
+                  title = 'After correction, on a separate vertical scale')
+axes['modes'].semilogy(np.arange(1, len(singular) + 1), singular / singular[0], 'o-', label = 'Calibrated response modes')
+axes['modes'].axhline(SVD_REL_CUTOFF, ls = '--', color = '.4', label = 'Retained-mode threshold')
+axes['modes'].set(xlabel = 'Response mode', ylabel = 'Relative singular value',
+                  title = 'Weak response directions are omitted from the solve')
+for name, ax in axes.items():
+    if name != 'before':
+        ax.legend(fontsize = 8)
     ax.grid(alpha = .2)
-fig.tight_layout()
+fig.suptitle('Static installation geometry is fixed while offline steering trims change the frozen orbit', fontsize = 11)
 
 ################################################################################
 # Remove mechanics without redefining the magnetic reference

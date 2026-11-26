@@ -179,6 +179,10 @@ class LineAperture:
         """Line owning this aperture container."""
         return self._line_ref()
 
+    @property
+    def _aperture_environment(self):
+        return self.line.env.aperture
+
     def __getstate__(self):
         """Leave the owner reference to be restored by the line after unpickling."""
         state = self.__dict__.copy()
@@ -266,7 +270,7 @@ class LineAperture:
     @property_with_doc_group("Introspection")
     def profiles(self) -> ProfilesView:
         """Return the profile collection view."""
-        return self.line.env.aperture.profiles
+        return self._aperture_environment.profiles
 
     @property_with_doc_group("Introspection")
     def pipe_positions(self) -> PipePositionsView:
@@ -276,17 +280,17 @@ class LineAperture:
     @property_with_doc_group("Introspection")
     def pipes(self) -> PipesView:
         """Return the pipe collection view."""
-        return self.line.env.aperture.pipes
+        return self._aperture_environment.pipes
 
     @doc_group("Construction")
     def new_profile(self, name, shape, **shape_params):
         """Create a profile in the line's aperture environment."""
-        return self.line.env.aperture.new_profile(name, shape, **shape_params)
+        return self._aperture_environment.new_profile(name, shape, **shape_params)
 
     @doc_group("Construction")
     def new_pipe(self, name, curvature=0.0, positions=None):
         """Create a pipe in the line's aperture environment."""
-        return self.line.env.aperture.new_pipe(
+        return self._aperture_environment.new_pipe(
             name, curvature=curvature, positions=positions,
         )
 
@@ -329,7 +333,7 @@ class LineAperture:
             table = self.line.get_table()
         index = table.rows.get_index(name)
         element = self.line[table.env_name[index]]
-        profile_index = self.line.env.aperture.profile_index(profile)
+        profile_index = self._aperture_environment.profile_index(profile)
         profile = self.profiles[profile_index]
 
         length = element.length if getattr(element, 'isthick', False) else 0.0
@@ -458,7 +462,7 @@ class LineAperture:
         transformation = self._get_anchor_transform(survey_reference, anchor) @ transformation
 
         position = PipePosition(
-            pipe_index=self.line.env.aperture.pipe_index(pipe),
+            pipe_index=self._aperture_environment.pipe_index(pipe),
             survey_reference_name=survey_reference,
             survey_index=-1,
             transformation=transformation,
@@ -487,7 +491,7 @@ class LineAperture:
             not repair that geometry or guarantee meaningful computations.
         """
         if self._model is not None:
-            aperture_env = self.line.env.aperture.build_model(
+            aperture_env = self._aperture_environment.build_model(
                 context=self.context)
             self._model.bind_environment(aperture_env)
 
@@ -508,7 +512,7 @@ class LineAperture:
 
             return self
 
-        aperture_env = self.line.env.aperture.build_model(context=self.context)
+        aperture_env = self._aperture_environment.build_model(context=self.context)
         self.survey = self.line.survey()
         self.is_ring = (_survey_is_closed(self.survey)
                         if self._is_ring_setting == 'auto'
@@ -597,7 +601,7 @@ class LineAperture:
             position_names = self._pipe_position_name_to_index
             is_ring = self._is_ring_setting
 
-        pipe_names = list(self.line.env.aperture._pipe_name_to_index)
+        pipe_names = list(self._aperture_environment._pipe_name_to_index)
         positions = []
         for name, position in zip(position_names, positions_source):
             data = position._to_dict()
@@ -650,7 +654,7 @@ class LineAperture:
         ``env.aperture.from_json(...)``.
         """
         context = context or self.context
-        environment = self.line.env.aperture
+        environment = self._aperture_environment
         pipe_names = list(environment._pipe_name_to_index)
         pipe_indices = {name: index for index, name in enumerate(pipe_names)}
         positions = []

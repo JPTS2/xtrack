@@ -1179,6 +1179,13 @@ class Environment:
         out["metadata"] = deepcopy(self.metadata)
 
         if self.__dict__.get('_mechanics') is not None and self._mechanics._has_configuration:
+            if not include_aperture and any(
+                    view._pipes is not None
+                    for view in self._mechanics._line_views.values()):
+                raise ValueError(
+                    'Use include_aperture=True when exporting mechanical pipe '
+                    'ownership; its adopted pipe definitions are required'
+                )
             out['mechanics'] = self.mechanics.to_dict()
 
         if include_aperture and (len(self.aperture.profiles) or len(self.aperture.pipes)):

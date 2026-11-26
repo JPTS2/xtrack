@@ -3,8 +3,8 @@
 # Copyright (c) CERN, 2026.                 #
 # ######################################### #
 
-# Mount a pump in girder-local coordinates and prescribe its two coupling paths.
-# Changing the mount changes the floor footprint, gain and travel delays.
+# How do two coherent pump paths combine at the support and in the beam?
+# Mounting fixes geometry; both displacement-coupling paths are supplied explicitly.
 
 ################################################################################
 # Required packages
@@ -55,12 +55,19 @@ N_SAMPLES      = 4096
 SAMPLE_STEP_S  = 1 / 512
 INSPECT_TIME_S = .01
 
+########################################
+# Optional execution-cost diagnostics
+########################################
+PRINT_TIMINGS = False
+
 ################################################################################
 # Set up the ordinary Xtrack line
 ################################################################################
 
+########################################
+# Start optional performance monitoring
+########################################
 timings = {}
-PRINT_TIMINGS = False                 # Optional diagnostics after the physical comparison
 
 started = perf_counter()
 
@@ -189,15 +196,17 @@ distance = np.linalg.norm(positions - pump.nominal_frame.XYZ, axis = 1)
 ########################################
 # Report amplitude gains, delays and direct coupling
 ########################################
-print('Mounted pump and supplied propagation\n--------------------------------------')
+print('One pump tone, two supplied displacement paths\n---------------------------------------------')
 print('Receiver       Distance [m]    Amplitude gain    Delay [ms]')
 for index, radius in enumerate(distance):
     print(f'{"Support " + str(index + 1):<14} {radius:10.4f} {np.exp(-radius / DECAY_LENGTH_M):17.6f}'
           f' {radius / PROPAGATION_SPEED_M_S * 1e3:13.5f}')
 print(f'Pump mount local x/y/s [m]: {PUMP_LOCAL_M}')
 print(f'Direct mount tone [nm peak]: {DIRECT_MOUNT_PEAK_M * 1e9:.3f}')
-print('The floor law and direct coupling are supplied models, not inferred elasticity.')
+print('Both paths use the same pump frequency and phase; combine their displacements coherently.')
+print('The floor law and direct coupling are supplied models, not an inferred force or elasticity.')
 print('The pump body fixes nominal mounting; propagation uses that reference geometry.')
+print('The sinusoid is defined before t = 0: plotted phase delays are not a switch-on arrival test.')
 
 ################################################################################
 # Separate direct coupling, propagation and their combined beam effect
@@ -220,9 +229,6 @@ closed_orbit_changes = {}
 first_support_displacements = {}
 for label, disabled in path_cases.items():
     mech.apply(time_s = INSPECT_TIME_S, disabled_sources = disabled)
-    state = mech.survey(time_s = INSPECT_TIME_S) if not disabled else mech.get_body_poses(
-        time_s = INSPECT_TIME_S, disabled_sources = disabled,
-    )
     first_support_displacements[label] = float(env[QUADRUPOLES[0]].shift_y)
     closed_orbit_changes[label] = line.twiss4d()['y', OBSERVATION_BPM] - base_y
 print(f'\nMatched physical states at t = {INSPECT_TIME_S:g} s\n'
@@ -238,27 +244,32 @@ print(f'The BPM is {OBSERVATION_BPM}; these are fixed-map closed orbits, not a d
 ########################################
 offset = np.linspace(-50, 50, 101)
 xx, zz = np.meshgrid(offset, offset)
-grid = pump.nominal_frame.XYZ + np.column_stack((xx.ravel(), np.zeros(xx.size), zz.ravel()))
+# Evaluate the colour map at receiver height, including the pump's vertical separation.
+receiver_height = positions[0, 1]
+np.testing.assert_allclose(positions[:, 1], receiver_height, atol = 1e-12, rtol = 0)
+grid = np.column_stack((pump.nominal_frame.XYZ[0] + xx.ravel(),
+                        np.full(xx.size, receiver_height),
+                        pump.nominal_frame.XYZ[2] + zz.ravel()))
 gain = np.exp(-np.linalg.norm(grid - pump.nominal_frame.XYZ, axis = 1) / DECAY_LENGTH_M)
 fig, axes = plt.subplots(2, 2, figsize = (11, 7))
 image = axes[0, 0].pcolormesh(xx, zz, gain.reshape(xx.shape), shading = 'auto', vmin = 0, vmax = 1)
-axes[0, 0].plot(0, 0, 'r*', ms = 12, label = 'Current pump mount')
+axes[0, 0].plot(0, 0, 'r*', ms = 12, label = 'Current pump')
 alt = alternative.XYZ - pump.nominal_frame.XYZ
-axes[0, 0].plot(alt[0], alt[2], '*', color = 'lime', mec = 'k', ms = 10, label = 'Alternative mount')
+axes[0, 0].plot(alt[0], alt[2], '*', color = 'lime', mec = 'k', ms = 10, label = 'Other mount')
 relative = positions - pump.nominal_frame.XYZ
 for index, point in enumerate(relative):
     axes[0, 0].plot(point[0], point[2], 'wo', mec = 'k')
-    axes[0, 0].annotate(f'Support {index + 1}', (point[0], point[2]), xytext = (5, 4),
+    axes[0, 0].annotate(f'Support {index + 1}', (point[0], point[2]), xytext = (-7, 5), ha = 'right',
                        textcoords = 'offset points', fontsize = 8)
 axes[0, 0].set(xlabel = 'World X relative to pump [m]', ylabel = 'World Z relative to pump [m]',
-               aspect = 'equal', title = 'Pump, supports and propagation gain')
-axes[0, 0].legend(fontsize = 8, loc = 'lower left')
+               aspect = 'equal', title = 'Supplied gain at support-anchor height')
+axes[0, 0].legend(fontsize = 8, loc = 'lower right')
 fig.colorbar(image, ax = axes[0, 0], label = 'Amplitude gain [m/m]')
 
 ########################################
 # Resolve the actual mounts and first receiver inside the larger footprint
 ########################################
-zoom = axes[0, 0].inset_axes([.54, .53, .43, .42])
+zoom = axes[0, 0].inset_axes([.06, .08, .43, .37])
 mount_points = np.array([[0., 0.], alt[[0, 2]], relative[0, [0, 2]]])
 zoom.plot(mount_points[[0, 2], 0], mount_points[[0, 2], 1], ':', color = '0.6', lw = .8)
 zoom.plot(mount_points[[1, 2], 0], mount_points[[1, 2], 1], ':', color = '0.6', lw = .8)
@@ -271,7 +282,7 @@ for point, marker, colour, text, offset_text in [
     zoom.annotate(text, point, xytext = offset_text, textcoords = 'offset points', fontsize = 7)
 zoom.set(xlim = (mount_points[:, 0].min() - .7, mount_points[:, 0].max() + .7),
           ylim = (mount_points[:, 1].min() - .7, mount_points[:, 1].max() + .7), aspect = 'equal')
-zoom.set_title('Mount detail: top view [m]', fontsize = 7, pad = 3)
+zoom.set_title('Mount detail [m]', fontsize = 7, pad = 3)
 zoom.tick_params(labelsize = 7)
 
 ########################################
@@ -283,7 +294,7 @@ for values, label in [(direct_y, 'Direct mount'), (floor_y, 'Propagation'),
                        (direct_y + floor_y, 'Combined')]:
     axes[0, 1].plot(times, values * 1e9, label = label)
 axes[0, 1].set(xlabel = 'Physical time [s]', ylabel = 'First support y [nm]', xlim = (0, .12),
-               title = 'Two paths at the mounted support')
+               title = 'Coherent paths can partially cancel')
 axes[0, 1].legend(fontsize = 7.5, loc = 'upper center', ncol = 3)
 axes[0, 1].margins(y = .3)
 
@@ -295,7 +306,7 @@ for index in range(len(girders)):
 axes[1, 0].plot(times, other_field.values[:, 0, 1] * 1e9, '--', color = '0.35',
                 label = 'Support 1: alternative mount')
 axes[1, 0].set(xlabel = 'Physical time [s]', ylabel = 'Propagated y [nm]', xlim = (0, .12),
-               title = 'Distance changes both gain and arrival phase')
+               title = 'Distance changes gain and steady-state phase')
 axes[1, 0].legend(fontsize = 7.5, loc = 'upper center', ncol = 2)
 axes[1, 0].margins(y = .4)
 
@@ -307,7 +318,7 @@ bars = axes[1, 1].barh(np.arange(len(labels)),
                        [closed_orbit_changes[label] * 1e9 for label in labels], color = ['tab:blue', 'tab:orange', 'tab:green'])
 axes[1, 1].bar_label(bars, fmt = '%+.2f', padding = 4, fontsize = 9)
 axes[1, 1].set(yticks = np.arange(len(labels)), yticklabels = ['Direct mount', 'Propagation', 'Both paths'],
-               xlabel = 'Frozen BPM orbit change [nm]', title = 'Matched beam response at the selected phase')
+               xlabel = 'Frozen BPM orbit change [nm]', title = 'Frozen beam response: preserve the same pump phase')
 axes[1, 1].margins(x = .28)
 axes[1, 1].invert_yaxis()
 for ax in (axes[0, 1], axes[1, 0], axes[1, 1]):

@@ -2,10 +2,36 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import xobjects as xo
 from xobjects.test_helpers import allow_kernel_compilation, for_all_test_contexts
 
 from xtrack.mechanics.local_deformations import compose, inherit, rotation_increment
+
+
+@pytest.mark.parametrize('context_class', [xo.ContextCupy, xo.ContextPyopencl])
+def test_prepared_kernel_registration_uses_portable_context_api(context_class):
+    """Exercise the GPU registration signature without requiring a device."""
+    from xtrack.mechanics.geometry_guard import _compile as compile_guard
+    from xtrack.mechanics.runtime import _compile as compile_runtime
+
+    class RegistrationContext(context_class):
+        def __init__(self):
+            self._kernels = {}
+            self.registrations = []
+
+        def build_kernels(self, kernel_descriptions, **kwargs):
+            self.registrations.append(tuple(kernel_descriptions))
+            return dict.fromkeys(kernel_descriptions)
+
+    context = RegistrationContext()
+    compile_runtime(context)
+    compile_guard(context)
+    compile_runtime(context)
+    compile_guard(context)
+    assert len(context.registrations) == 2
+    assert 'mechanics_sources_mixed' in context.kernels
+    assert 'mechanics_guard_gather' in context.kernels
 
 
 def compile_kernels(context):
@@ -21,7 +47,7 @@ def compile_kernels(context):
         'mechanics_body_update': xo.Kernel(args=[xo.Arg(xo.Int64, name='n'),
             pointer('paths_offsets', xo.Int64), pointer('paths', xo.Int64),
             pointer('relations'), pointer('static_local'), pointer('dynamic_local'),
-            pointer('absolute', xo.Int64), pointer('out')], n_threads='n'),
+            pointer('out')], n_threads='n'),
         'mechanics_lower': xo.Kernel(args=[xo.Arg(xo.Int64, name='n'),
             pointer('body_indices', xo.Int64), pointer('geometry'), pointer('baseline'),
             pointer('offsets', xo.Int64), pointer('bodyout'),
@@ -32,7 +58,7 @@ def compile_kernels(context):
 
 @for_all_test_contexts
 @allow_kernel_compilation
-def test_prepared_kernel_hierarchy_absolute_and_lowering(test_context):
+def test_prepared_kernel_hierarchy_and_lowering(test_context):
     compile_kernels(test_context)
     to_context = test_context.nparray_to_context_array
     to_numpy = test_context.nparray_from_context_array
@@ -60,29 +86,22 @@ def test_prepared_kernel_hierarchy_absolute_and_lowering(test_context):
         data[:, :3] = rng.normal(0, scale, (n, 3))
         for row in data:
             row[3:] = rotation_increment(*rng.normal(0, scale, 3)).ravel()
-    absolute = (rng.uniform(size=n) < .3).astype('i8')
     actual_device = test_context.zeros(n*12, dtype=np.float64)
     test_context.kernels.mechanics_body_update(n=n,
         paths_offsets=to_context(np.array(starts, dtype='i8')),
         paths=to_context(np.array(paths, dtype='i8')),
         relations=to_context(relations.ravel()), static_local=to_context(static.ravel()),
-        dynamic_local=to_context(dynamic.ravel()), absolute=to_context(absolute), out=actual_device)
+        dynamic_local=to_context(dynamic.ravel()), out=actual_device)
     actual = to_numpy(actual_device).reshape(n, 12)
-    expected, fixed = np.zeros_like(actual), np.zeros_like(actual)
+    expected = np.zeros_like(actual)
     def unpack(row):
         return row[:3], row[3:].reshape(3, 3)
     for node, parent in enumerate(parents):
         zero = (np.zeros(3), np.zeros((3, 3)))
-        si = inherit(unpack(fixed[parent]), nominal[parent], nominal[node]) if parent >= 0 else zero
         wi = inherit(unpack(expected[parent]), nominal[parent], nominal[node]) if parent >= 0 else zero
-        sd, se = compose(si, unpack(static[node]))
-        fixed[node, :3], fixed[node, 3:] = sd, se.ravel()
         d, e = unpack(dynamic[node])
         ls, le = unpack(static[node])
-        if absolute[node]:
-            wd, we = sd+d, e+se+e@se
-        else:
-            wd, we = compose(wi, (ls+d, e+le+e@le))
+        wd, we = compose(wi, (ls+d, e+le+e@le))
         expected[node, :3], expected[node, 3:] = wd, we.ravel()
     np.testing.assert_allclose(actual, expected, atol=1e-12, rtol=2e-14)
 
@@ -130,10 +149,10 @@ def test_prepared_analytic_source_order_and_small_rotations(test_context):
     to_context = test_context.nparray_to_context_array
     # A projected plane wave, two scalar translations, then ordered finite
     # pitch/yaw/roll and a picoradian pitch. Empty bodies remain exactly zero.
-    rows = np.array([[-1, 1e-9, 12., .3, .2, -.4, .8],
-        [0, 2e-9, 3., .1, 0., 0., 0.], [2, -4e-9, 7., -.2, 0., 0., 0.],
-        [3, .1, 5., .8, 0., 0., 0.], [4, -.2, 1., .6, 0., 0., 0.],
-        [5, .3, 9., .1, 0., 0., 0.], [3, 1e-12, 4., .5, 0., 0., 0.]])
+    rows = np.array([[-1, 1e-9, 12., .3, .125, .2, -.4, .8],
+        [0, 2e-9, 3., .1, 0., 0., 0., 0.], [2, -4e-9, 7., -.2, 0., 0., 0., 0.],
+        [3, .1, 5., .8, 0., 0., 0., 0.], [4, -.2, 1., .6, 0., 0., 0., 0.],
+        [5, .3, 9., .1, 0., 0., 0., 0.], [3, 1e-12, 4., .5, 0., 0., 0., 0.]])
     starts = np.array([0, 3, 6, 7, 7], dtype='i8')
     times = (-.1, 0., 3.)
     for time_s in times:
@@ -142,9 +161,9 @@ def test_prepared_analytic_source_order_and_small_rotations(test_context):
             source_data=to_context(rows.ravel()), time_s=time_s, dynamic_local=output)
         expected = np.zeros((4, 12))
         for body in range(4):
-            for component, amplitude, omega, phase, px, py, pz in rows[starts[body]:starts[body+1]]:
+            for component, amplitude, omega, phase, delay, px, py, pz in rows[starts[body]:starts[body+1]]:
                 component = int(component)
-                value = amplitude*np.sin(omega*time_s+phase)
+                value = amplitude*np.sin(omega*(time_s-delay)+phase)
                 if component == -1:
                     expected[body, :3] += value*np.array([px, py, pz])
                 elif component < 3:

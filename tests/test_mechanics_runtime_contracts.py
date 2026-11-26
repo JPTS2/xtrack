@@ -82,6 +82,66 @@ def test_alias_filter_checks_live_attached_objects_across_all_physical_lines():
     assert unrelated.env is aliased.env is env
 
 
+@pytest.mark.parametrize('kind', ['slice', 'replica_chain', 'replica_of_slice'])
+@pytest.mark.parametrize('late', [False, True])
+def test_alias_filter_includes_hidden_parents(kind, late):
+    env = xt.Environment()
+    env.new('q', xt.Quadrupole, length=.5)
+    line = env.new_line(name='ring', components=['q'])
+    line.set_particle_ref('proton', p0c=7e12)
+
+    def introduce_alias():
+        if kind == 'replica_chain':
+            env.element_dict['r1'] = xt.Replica(parent_name='q')
+            env.element_dict['r2'] = xt.Replica(parent_name='r1')
+            return env.new_line(name='other', components=['r2'])
+        # Construct the additional physical line before slicing. Preparing its
+        # tracker is unnecessary for this alias to consume q's fields.
+        if kind == 'slice':
+            other = env.new_line(name='other', components=['q'])
+            other.slice_thick_elements(
+                slicing_strategies=[xt.Strategy(slicing=xt.Teapot(2, mode='thick'))],
+                with_progress=False,
+            )
+            return other
+        parent = env.element_dict['q']
+        element = xt.ThickSliceQuadrupole(_parent=parent, weight=.5,
+                                          _buffer=parent._buffer)
+        element.parent_name = 'q'
+        env.element_dict['slc'] = element
+        env.element_dict['r1'] = xt.Replica(parent_name='slc')
+        return env.new_line(name='other', components=['r1'])
+
+    if late:
+        view = line.mechanics
+        view.new_girder('g', elements=['q']).shift_y = 1e-6
+        view.enable_vibrations(backend='compiled')
+        view._prepare_for_tracking()
+        other = introduce_alias()
+        with pytest.raises(ValueError, match='shared/repeated'):
+            line.track(line.build_particles(), num_turns=1)
+    else:
+        other = introduce_alias()
+        with pytest.raises(ValueError, match='shared/repeated'):
+            line.mechanics.new_girder('g', elements=['q'])
+        assert not env.mechanics.bodies
+    assert line['q'].shift_y == 0.
+    assert other.env is env
+
+
+def test_alias_filter_rejects_distinct_wrappers_of_attached_storage():
+    line = nested_line(xo.ContextCpu())
+    env = line.env
+    target = env.element_dict['q']
+    env.element_dict['alias'] = xt.Quadrupole(_xobject=target._xobject)
+    assert env.element_dict['alias'] is not target
+    other = env.new_line(name='raw_wrapper_alias', components=['alias'])
+    with pytest.raises(ValueError, match='shared/repeated'):
+        env.mechanics.apply()
+    assert line['q'].shift_x == 3e-6
+    assert other.env is env
+
+
 def test_empty_log_source_failure_keeps_completed_turn_and_can_resume():
     class InterruptibleMotion(xt.mechanics.Harmonic):
         fail = False
@@ -154,3 +214,44 @@ def test_source_cannot_add_callbacks_to_an_admitted_empty_log(finish_during_eval
     line.track(particles, num_turns=1, log=log)
     assert particles.at_turn[0] == 1
     assert line.mechanics._prepared_empty_log is None
+
+
+@for_all_test_contexts
+def test_environment_copy_tracks_independently_in_one_allocation_buffer(test_context):
+    env = xt.Environment()
+    env.new('q', xt.Quadrupole, length=.5, k1=.1)
+    env.new('d', xt.Drift, length=.7)
+    line = env.new_line(name='beam', components=['q', 'd'])
+    line.set_particle_ref('proton', p0c=7e12)
+    line.build_tracker(_context=test_context)
+    line.mechanics.new_girder('g', elements=['q'])
+    env.mechanics.add_source('motion', xt.mechanics.Harmonic(1e-6, 0., np.pi/2),
+                            targets='g')
+    line.mechanics.enable_vibrations(backend='compiled')
+
+    copied = env.copy(with_progress=False)
+    other = copied.lines['beam']
+    assert not other.mechanics.automatic_updates_enabled
+    # Sharing an allocation buffer is supported: copied elements retain
+    # distinct storage, unlike explicit aliases of one writable Xobject.
+    other.build_tracker(_buffer=line.tracker._buffer)
+    original_element, copied_element = line['q']._xobject, other['q']._xobject
+    assert original_element._buffer is copied_element._buffer
+    assert original_element._offset != copied_element._offset
+    copied.mechanics['g'].installation.shift_y = 3e-6
+    other.mechanics.enable_vibrations(backend='compiled')
+
+    first, second = line.build_particles(), other.build_particles()
+    line.track(first)
+    original_alignment = line['q'].shift_y
+    other.track(second)
+    assert line['q'].shift_y == original_alignment == pytest.approx(1e-6)
+    assert other['q'].shift_y == pytest.approx(4e-6)
+    np.testing.assert_allclose(
+        test_context.nparray_from_context_array(second.py),
+        4 * test_context.nparray_from_context_array(first.py),
+        rtol=2e-14, atol=1e-22,
+    )
+    env.mechanics.restore()
+    assert line['q'].shift_y == 0.
+    assert other['q'].shift_y == pytest.approx(4e-6)

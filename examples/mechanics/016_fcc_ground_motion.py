@@ -52,7 +52,7 @@ GROUND_DENSITY_M2_PER_HZ = [0., 0., 1e-18, 1e-18, 0.]
 GROUND_POLARIZATION     = (0., 1., 0.)           # World XYZ
 GROUND_LENGTH_M         = 30.
 GROUND_SEED             = 1956
-N_MODES                 = 128                   # Convergence control, not a validated site model
+N_MODES                 = 128                   # Cost/UI default; FCC spatial statistics are not converged
 
 ########################################
 # Optional plane wave in the same floor field
@@ -103,6 +103,7 @@ MAX_FIELD_WORKSPACE_MIB = 1024
 N_TURNS     = 128
 PARTICLE_COUNTS = (1,)                          # Use (1, 32) for the longer throughput comparison
 N_REPEATS   = 3
+PRINT_TIMINGS = False                          # Detailed setup costs and individual repeats
 
 ########################################
 # Selected-port inspection and optional GIF
@@ -423,14 +424,13 @@ pickup_motion = xt.mechanics.RigidMotion(times,
     pickup_filter.process(pickup_input.values), pickup_input.target_names)
 
 ########################################
-# Bind resolved absolute outputs without adding inherited vibration twice
+# Bind the support drive and the relative magnet and pickup responses
 ########################################
-mech.add_source('resolved_girders', girder_motion,
-    targets = girder_motion.target_names, reference = 'absolute')
-mech.add_source('resolved_magnets', magnet_motion,
-    targets = magnet_motion.target_names, reference = 'absolute')
-mech.add_source('resolved_virtual_pickup', pickup_motion,
-    targets = pickup_motion.target_names, reference = 'absolute')
+mech.add_source('resolved_girders', girder_motion, targets = girder_motion.target_names)
+mech.add_source('relative_magnets', magnet_motion.relative_to(magnet_input),
+    targets = magnet_motion.target_names)
+mech.add_source('relative_pickup', pickup_motion.relative_to(pickup_input),
+    targets = pickup_motion.target_names)
 timings['conditional_responses_and_bindings_s'] = perf_counter() - started
 
 ################################################################################
@@ -519,22 +519,63 @@ timings['optional_matched_beam_tracking_s'] = perf_counter() - beam_diagnostic_s
 
 
 ########################################
-# Report the model assumptions, bounded allocations and measured costs
+# State what this standalone FCC mechanics case represents
 ########################################
-print('FCC-ee prescribed ground motion\n-------------------------------')
+print('FCC-ee mechanics: existing lattice, supplied motion, actual tracking\n'
+      '-----------------------------------------------------------------')
 print(f'Lattice: {lattice_path}')
 print(f'Line / circumference [m]: {LINE_NAME} / {line.get_length():.6f}')
 print(f'Quad supports / magnets / contacts: {len(girders)} / {len(magnets)} / {len(positions)}')
-print('Assignment: one support per quad; cyclic response classes; NOT engineering girders.')
-print('One virtual pickup port follows a conditional quad-to-pickup response; no online BPM/feedback coupling.')
+print('Assignment: one support per quad; cyclic response classes, not engineering girder data.')
+print(f'Selected path: {girders[selected_index].name} -> {magnets[selected_index].name} -> {pickup.name}')
+print('The virtual pickup is a mechanical inspection port, not an identified FCC beam readout.')
+print(f'Floor contacts are {abs(FEET_LOCAL_M[0][1]):g} m below the support response reference.')
+print('Supplied support classes [Hz]: '
+      + ', '.join(f'{frequency:g} ({np.count_nonzero(class_indices == index)} supports)'
+                  for index, frequency in enumerate(GIRDER_RESONANCE_HZ)))
+print(f'Conditional magnet / pickup resonances [Hz]: {MAGNET_RESONANCE_HZ:g} / {PICKUP_RESONANCE_HZ:g}')
 print(f'Ground / installation seeds: {GROUND_SEED} / {INSTALLATION_SEED}')
+
+########################################
+# Qualify the finite field before interpreting its amplitudes
+########################################
+print('\n1. A finite motion sample, not a converged FCC noise prediction\n'
+      '-------------------------------------------------------------')
+if GROUND_MODEL == 'psd':
+    print(f'Ground field: {N_MODES} random modes; correlation length {GROUND_LENGTH_M:g} m.')
+    if N_MODES == 128 and GROUND_LENGTH_M == 30.:
+        print('The default 128-mode FCC field is known NOT to be spatially converged.')
+    else:
+        print('This script does not establish spatial or spectral convergence for the chosen mode count.')
+    print('This is a runnable UI/cost case. Increase modes and assess PSD/coherency convergence before noise studies.')
+else:
+    print('The main input is a stated plane wave; no stochastic ground statistics are inferred.')
 print(f'Record samples / interval [s] / step [s]: {len(times)} / [{times[0]:g}, {times[-1]:g}] / {SAMPLE_STEP_S:g}')
 print(f'Record sample rate / Nyquist [Hz]: {1 / SAMPLE_STEP_S:g} / {nyquist_hz:g}')
 print('Causal filters start at rest at the beginning of this finite record.')
+print('Sample rate, record length and causal startup also require convergence checks.')
 print(f'Floor record / bound response records [MiB]: {floor.nbytes / 1024**2:.2f} / {(girder_motion.nbytes + magnet_motion.nbytes + pickup_motion.nbytes) / 1024**2:.2f}')
-print('The full records stay on the host; tracking uploads one current source block.')
+print('These retained array sizes are not process peak memory. Records stay on the host; tracking uses a current block.')
 print(f'Rigid contact mismatch RMS for t>=0 [nm]: {np.sqrt(np.mean(contact_residual_m[times >= 0.]**2)) * 1e9:.6f}')
 print(f'Ground model: {GROUND_MODEL}; plane wave peak [nm]: {WAVE_PEAK_M * 1e9:g}; pump peak [nm]: {PUMP_PEAK_M * 1e9:g}')
+
+########################################
+# Compare beam observations before discussing execution cost
+########################################
+print('\n2. What changed in the tracked beam?\n-----------------------------------')
+print('Design, installed-static and installed-moving runs use the same fresh launch.')
+print(f'The entrance monitor observes {N_TURNS} turns, or {N_TURNS * period_s * 1e3:.6f} ms.')
+for coordinate in ('x', 'y'):
+    difference_nm = beam_difference[coordinate] * 1e9
+    print(f'Moving minus static-installation beam {coordinate}: '
+          f'RMS {np.sqrt(np.mean(difference_nm**2)):.6f} nm; '
+          f'largest absolute change {np.max(np.abs(difference_nm)):.6f} nm.')
+print('These beam differences belong to the finite sample above, not a validated FCC vibration budget.')
+
+########################################
+# Compare matched warm calls with setup and diagnostics excluded
+########################################
+print('\n3. Warm tracking cost for this workload\n--------------------------------------')
 print(f'Turns / particle counts / repeats / physical tracking duration [s]: {N_TURNS} / {PARTICLE_COUNTS} / {N_REPEATS} / {N_TURNS * period_s:.9g}')
 print('Particles    Nominal [ms/turn]    Frozen [ms/turn]    Dynamic [ms/turn]    Moving/nominal    Moving/frozen')
 print('Each timed packet has one motion phase; these are not packed bunches.')
@@ -545,14 +586,8 @@ for count in PARTICLE_COUNTS:
     print(f'{count:9d} {nominal_ms:20.6f} {frozen_ms:19.6f} {dynamic_ms:20.6f} {nominal_slowdowns[count]:17.4f} {slowdowns[count]:16.4f}')
     print(f'  First-particle final x change from frozen case [nm]: {(dynamic_final_x[count][0] - frozen_final_x[count][0]) * 1e9:.6f}')
 source_table.cols['name model reference n_targets'].show()
-print('\nWhat did the moving magnets do to the beam?\n------------------------------------------')
-print('Three diagnostic runs use the same launch and monitor the beam at the ring origin.')
-for coordinate in ('x', 'y'):
-    difference_nm = beam_difference[coordinate] * 1e9
-    print(f'Moving minus static-installation beam {coordinate}: '
-          f'RMS {np.sqrt(np.mean(difference_nm**2)):.6f} nm; '
-          f'largest absolute change {np.max(np.abs(difference_nm)):.6f} nm.')
-print('These monitored calls are separate from the unmonitored performance comparison.')
+print('Setup, compilation, plots and monitored diagnostic calls are excluded from these warm medians.')
+print('Ratios describe this context, call length and particle packet; they are not a universal slowdown bound.')
 
 ################################################################################
 # Plot the floor-to-girder-to-magnet hierarchy
@@ -569,103 +604,142 @@ for label, record, origin, index in [
 ]:
     selected_record = record.select([record.target_names[index]], target_names = [pickup.name]).transport(
         from_frames = [origin], to_frames = [pickup.nominal_frame], target_names = [pickup.name])
-    axes[0].plot(times, selected_record.values[:, 0, 1] * 1e9, label = label)
-axes[0].plot(times, pickup_motion.values[:, 0, 1] * 1e9, label = 'Virtual pickup response')
+    colour = {'Fitted floor': '.45', 'Girder response': 'tab:blue', 'Magnet response': 'tab:orange'}[label]
+    axes[0].plot(times, selected_record.values[:, 0, 1] * 1e9,
+                 color = colour, ls = '--' if label == 'Fitted floor' else '-', label = label)
+axes[0].plot(times, pickup_motion.values[:, 0, 1] * 1e9, color = 'tab:green', label = 'Virtual pickup response')
 axes[0].axvline(0., color = '.6', ls = '--')
-axes[0].set(ylabel = 'Vertical motion at pickup port [nm]', title = selected_quad + ': compare every stage at the same port')
+axes[0].set(ylabel = 'Vertical motion at pickup port [nm]')
+axes[0].set_title(selected_quad + ': response stages at one pickup port', pad = 30)
 relative_y = magnet_motion.values[:, selected_index, 1] - magnet_input.values[:, selected_index, 1]
-axes[1].plot(times, relative_y * 1e9, label = 'Magnet minus transported girder')
+axes[1].plot(times, relative_y * 1e9, color = 'tab:orange', label = 'Magnet minus transported girder')
 axes[1].plot(times, (pickup_motion.values[:, 0, 1] - pickup_input.values[:, 0, 1]) * 1e9,
-             label = 'Virtual pickup minus transported quad')
+             color = 'tab:green', label = 'Virtual pickup minus transported quad')
 axes[1].axvline(0., color = '.6', ls = '--', label = 'Tracking starts')
 axes[1].set(xlabel = 'Physical time [s]', ylabel = 'Relative vertical motion [nm]')
-for axis in axes:
-    axis.legend()
+for axis, legend_columns in zip(axes, (4, 2)):
+    axis.axvspan(0., N_TURNS * period_s, color = '.5', alpha = .1)
+    axis.margins(y = .35)
+    axis.legend(ncol = legend_columns, fontsize = 8, loc = 'lower center', bbox_to_anchor = (.5, 1.02))
     axis.grid(alpha = .2)
-fig.tight_layout()
+axes[0].text(.98, .03, f'Shaded interval: {N_TURNS * period_s * 1e3:.2f} ms of tracking',
+             transform = axes[0].transAxes, ha = 'right', fontsize = 8,
+             bbox = {'facecolor': 'white', 'edgecolor': 'none', 'alpha': .8})
+fig.tight_layout(h_pad = 3.)
 
 ########################################
 # Show the actual beam effect separately from the larger static orbit errors
 ########################################
-beam_fig = plt.figure(figsize = (10, 7))
-beam_layout = beam_fig.add_gridspec(2, 2, height_ratios = [1., 1.1])
-beam_axis = beam_fig.add_subplot(beam_layout[0, 0])
-difference_axis = beam_fig.add_subplot(beam_layout[0, 1])
-port_axis = beam_fig.add_subplot(beam_layout[1, :])
+beam_fig, (beam_axis, difference_axis) = plt.subplots(1, 2, figsize = (10, 3.9))
 beam_time_ms = np.arange(N_TURNS) * period_s * 1e3
 for label, record in beam_cases.items():
     beam_axis.plot(beam_time_ms, record['y'] * 1e6, label = label)
 beam_axis.set(xlabel = 'Physical tracking time [ms]', ylabel = 'Beam y at ring origin [µm]',
-              title = 'Design, installed and moving FCC lattice')
+              title = 'Same launch: design, installed and moving')
 beam_axis.legend(fontsize = 7)
 for coordinate in ('x', 'y'):
     difference_axis.plot(beam_time_ms, beam_difference[coordinate] * 1e9, label = coordinate)
 difference_axis.set(xlabel = 'Physical tracking time [ms]', ylabel = 'Moving minus installed beam [nm]',
-                    title = 'The additional effect of dynamic mechanics')
+                    title = 'Additional effect of the moving magnets')
 difference_axis.legend(title = 'Beam coordinate', fontsize = 8)
+for axis in (beam_axis, difference_axis):
+    axis.grid(alpha = .2)
+beam_fig.tight_layout()
 
 ########################################
 # Draw the actual reference offsets used by the selected provisional support
 ########################################
+port_fig, port_axis = plt.subplots(figsize = (9, 4.))
 reference = girders[selected_index].nominal_frame
 magnet_port = (reference.inverse() @ magnets[selected_index].nominal_frame).XYZ
 pickup_port = (reference.inverse() @ pickup.nominal_frame).XYZ
 feet = np.asarray(girders[selected_index].feet_local_m)
 quad_length_m = float(line[selected_quad].length)
 port_axis.plot([magnet_port[2], magnet_port[2] + quad_length_m], [magnet_port[1]] * 2,
-               color = 'tab:blue', lw = 7, alpha = .35, label = 'Quadrupole span from lattice')
+               color = 'tab:orange', lw = 7, alpha = .35, label = 'Quadrupole span from lattice')
 port_axis.scatter(feet[:, 2], feet[:, 1], marker = '^', s = 50, color = '.35', label = 'Four floor contacts (side projection)')
 for foot in feet:
     port_axis.plot([foot[2], 0.], [foot[1], 0.], ':', color = '.65', lw = .8)
-port_axis.plot(0., 0., 'kD', label = 'Girder response reference')
-port_axis.plot(magnet_port[2], magnet_port[1], 'o', color = 'tab:blue', label = 'Magnet response port')
+port_axis.plot(0., 0., 'D', color = 'tab:blue', label = 'Girder response reference')
+port_axis.plot(magnet_port[2], magnet_port[1], 'o', color = 'tab:orange', label = 'Magnet response port')
 port_axis.plot(pickup_port[2], pickup_port[1], 'o', color = 'tab:green', label = 'Virtual pickup port')
 port_axis.annotate(f'Contact offset Y = {feet[0, 1]:g} m', xy = (feet[0, 2], feet[0, 1]),
                    xytext = (.02, .12), textcoords = 'axes fraction', fontsize = 8,
                    arrowprops = {'arrowstyle': '->', 'color': '.4'})
 port_axis.set(xlabel = 'Selected support local s [m]', ylabel = 'Local y [m]',
-              title = 'Reference ports and fit geometry; dotted lines are lever arms, not engineering supports')
+              title = 'Provisional quad span, response ports and floor contacts')
 port_axis.margins(x = .15, y = .35)
-port_axis.legend(fontsize = 7, ncol = 3, loc = 'upper center')
-for axis in (beam_axis, difference_axis):
-    axis.grid(alpha = .2)
-beam_fig.tight_layout()
+port_axis.legend(fontsize = 8, ncol = 2, loc = 'upper center', bbox_to_anchor = (.5, -.20))
+port_fig.tight_layout(rect = (0., .08, 1., 1.))
+port_fig.text(.5, .015, 'Dotted lines show fit lever arms, not engineering girder members.',
+              ha = 'center', fontsize = 8)
 
 ########################################
 # Compare the prescribed floor PSD and supplied girder responses
 ########################################
-fig = plt.figure(figsize = (10, 7))
-layout = fig.add_gridspec(2, 2)
-psd_axis = fig.add_subplot(layout[0, 0])
-response_axis = fig.add_subplot(layout[0, 1])
-ring_axis = fig.add_subplot(layout[1, :])
+law_fig, (psd_axis, response_axis) = plt.subplots(1, 2, figsize = (10, 3.9))
 if GROUND_MODEL == 'psd':
-    psd_axis.plot(GROUND_FREQUENCY_HZ, GROUND_DENSITY_M2_PER_HZ)
+    psd_axis.plot(GROUND_FREQUENCY_HZ, GROUND_DENSITY_M2_PER_HZ, color = '.45')
     psd_axis.set(xlabel = 'Frequency [Hz]', ylabel = 'One-sided PSD [m²/Hz]',
-                title = 'Supplied stochastic ground spectrum')
+                title = 'Specified input PSD, not a measured output spectrum')
+    psd_axis.text(.03, .05, f'{N_MODES} random modes\nSpatial convergence not established',
+                  transform = psd_axis.transAxes, fontsize = 8,
+                  bbox = {'facecolor': 'white', 'edgecolor': '.7', 'alpha': .9})
 else:
     psd_axis.stem([WAVE_HZ], [WAVE_PEAK_M * 1e9])
     psd_axis.set(xlabel = 'Frequency [Hz]', ylabel = 'Wave peak displacement [nm]',
                 title = 'Stated plane-wave input')
 response_frequencies = np.linspace(.1, 100., 600)
-for resonance_hz in GIRDER_RESONANCE_HZ:
+for index, resonance_hz in enumerate(GIRDER_RESONANCE_HZ):
     response = xt.mechanics.BaseExcitedOscillator(resonance_hz, GIRDER_DAMPING)
     response_axis.plot(response_frequencies, np.abs(response.evaluate(response_frequencies)),
-                 label = f'Girder {resonance_hz:g} Hz')
+                 color = 'tab:blue', ls = ('-', '--', '-.', ':')[index % 4], label = f'Girder {resonance_hz:g} Hz')
 response_axis.set(xlabel = 'Frequency [Hz]', ylabel = 'Displacement / base displacement',
-            title = 'Illustrative conditional response classes')
+            title = 'Supplied illustrative support classes')
 response_axis.legend()
+for axis in (psd_axis, response_axis):
+    axis.grid(alpha = .2)
+law_fig.tight_layout()
+
+########################################
+# Resolve ring context, a local view and the smaller relative magnet motion
+########################################
+# Compare at identical quad entrance ports. The support's own anchor is at a
+# different reference point, so subtracting its table coordinate directly would
+# mix mechanical response with a geometric lever-arm change.
+carried_table = line.mechanics.get_table(
+    time_s = INSPECT_TIME_S, disabled_sources = 'relative_magnets',
+)
 quad_s_km = np.array([table['s', name] for name in quads]) / 1000
 girder_y_nm = np.array([body_pose_table['dynamic_Y', body.name] for body in girders]) * 1e9
-ring_axis.plot(quad_s_km, girder_y_nm, label = 'Girders', lw = 1.)
-ring_axis.plot(quad_s_km, element_table.dynamic_Y * 1e9,
-               label = 'Quadrupoles', alpha = .7, lw = .8)
-ring_axis.set(xlabel = 'Ring coordinate s [km]', ylabel = 'Dynamic world Y [nm]',
-              title = f'Whole FCC ring at t={INSPECT_TIME_S:g} s')
-ring_axis.legend()
-for axis in (psd_axis, response_axis, ring_axis):
+quad_y_nm = np.asarray(element_table.dynamic_Y) * 1e9
+carried_y_nm = np.asarray(carried_table.dynamic_Y) * 1e9
+relative_quad_y_nm = quad_y_nm - carried_y_nm
+first = max(0, selected_index - 12)
+last = min(len(quads), first + 25)
+local = slice(first, last)
+ring_fig, ring_axes = plt.subplots(3, 1, figsize = (10, 8.))
+ring_axes[0].plot(quad_s_km, girder_y_nm, color = 'tab:blue', lw = .8)
+ring_axes[0].axvspan(quad_s_km[first], quad_s_km[last - 1], color = '.5', alpha = .15,
+                    label = 'Local view below')
+ring_axes[0].set(xlabel = 'Ring coordinate s [km]', ylabel = 'Support world Y [nm]',
+                 title = 'Full-ring context: prescribed support motion')
+ring_axes[0].legend(fontsize = 8)
+ring_axes[1].plot(quad_s_km[local], carried_y_nm[local], '.-', color = 'tab:blue',
+                  label = 'Carried support motion at quad entrance')
+ring_axes[1].plot(quad_s_km[local], quad_y_nm[local], 'o--', color = 'tab:orange',
+                  ms = 3, label = 'Quad with its relative response')
+ring_axes[1].set(xlabel = 'Ring coordinate s [km]', ylabel = 'World Y [nm]',
+                 title = 'Local comparison at the same physical ports')
+ring_axes[1].legend(fontsize = 8)
+ring_axes[2].plot(quad_s_km, relative_quad_y_nm, color = 'tab:orange', lw = .8)
+ring_axes[2].set(xlabel = 'Ring coordinate s [km]', ylabel = 'Quad minus carried support [nm]',
+                 title = 'Relative magnet response on its own vertical scale')
+ring_fig.suptitle(f'Finite FCC motion sample at t = {INSPECT_TIME_S:g} s; spatial convergence not established',
+                  fontsize = 12)
+for axis in ring_axes:
     axis.grid(alpha = .2)
-fig.tight_layout()
+ring_fig.tight_layout(h_pad = 1.5)
 
 ########################################
 # Show selected support feet and magnet span at magnified scale
@@ -685,11 +759,14 @@ if SAVE_GIF:
     animation.save(GIF_FILE, writer = 'pillow', fps = 24)
 
 timings['optional_tables_plots_and_gif_s'] = perf_counter() - started
-print('\nSeparate operation costs [s]')
-for name, value in timings.items():
-    print(f'{name:<43} {value:10.6f}')
-print(f'Nominal tracking repeat costs [s]: {nominal_samples}')
-print(f'Frozen tracking repeat costs [s]: {frozen_samples}')
-print(f'Dynamic tracking repeat costs [s]: {dynamic_samples}')
-print('Automatic vibrations disabled; inspect mech, source_table, body_table, element_table and quad_history.')
+if PRINT_TIMINGS:
+    print('\nSeparate operation costs [s]\n----------------------------')
+    for name, value in timings.items():
+        print(f'{name:<43} {value:10.6f}')
+    print(f'Nominal tracking repeat costs [s]: {nominal_samples}')
+    print(f'Frozen tracking repeat costs [s]: {frozen_samples}')
+    print(f'Dynamic tracking repeat costs [s]: {dynamic_samples}')
+print(f'\nInspection snapshot: {selected_quad} at t={INSPECT_TIME_S:g} s; '
+      f'query_kind={quad_row.query_kind}.')
+print('Automatic vibrations are disabled; tables, quad_history and figures remain available for inspection.')
 plt.show()

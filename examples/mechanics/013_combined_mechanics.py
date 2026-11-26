@@ -55,7 +55,7 @@ PUMP_PEAK_M  = 30e-9
 PUMP_HZ      = 25.
 
 ########################################
-# Prescribed slow drift
+# Prescribed slow longitudinal support drift
 ########################################
 DRIFT_M_PER_S = 1e-9
 
@@ -103,6 +103,9 @@ MAX_FIELD_WORKSPACE_MIB = 256
 # Set up the ordinary Xtrack line
 ################################################################################
 
+########################################
+# Start performance monitoring
+########################################
 timings = {}
 
 started = perf_counter()
@@ -309,7 +312,7 @@ girder_filter = xt.mechanics.CausalResponse(
 girder_motion = xt.mechanics.RigidMotion(times, girder_filter.process(fitted.values), fitted.target_names)
 
 ########################################
-# Superpose a separate slow support drift
+# Superpose a separate slow longitudinal support drift
 ########################################
 drift_values = np.zeros_like(girder_motion.values)
 drift_values[..., 2] = np.maximum(times, 0.)[:, None] * DRIFT_M_PER_S
@@ -349,10 +352,16 @@ pickup_filter = xt.mechanics.CausalResponse(
 pickup_motion = xt.mechanics.RigidMotion(times, pickup_filter.process(pickup_input.values), pickup_input.target_names)
 
 ########################################
-# Bind all resolved outputs as absolute body motion
+# Bind the support motion and the residuals at the carried ports
 ########################################
-for name, record in [('supports', girder_motion), ('magnets', magnet_motion), ('pickups', pickup_motion)]:
-    mech.add_source(name, record, targets = record.target_names, reference = 'absolute')
+# The response functions use nominal ports. Installation stays in the body
+# model, and each mounted body inherits the motion of its actual parent.
+for name, record in [
+    ('supports', girder_motion),
+    ('magnets_relative', magnet_motion.relative_to(magnet_input)),
+    ('pickups_relative', pickup_motion.relative_to(pickup_input)),
+]:
+    mech.add_source(name, record, targets = record.target_names)
 
 timings['response_paths_s'] = perf_counter() - started
 
@@ -428,17 +437,36 @@ selected_magnet_index = magnets.index(pickup_magnets[selected_pickup_index])
 selected_girder = girders[selected_magnet_index]
 selected_magnet = magnets[selected_magnet_index]
 selected_pickup = pickups[selected_pickup_index]
-print(f'Selected physical path: {selected_girder.name} -> {selected_magnet.name} -> {selected_pickup.name}')
-print('Stage         Selected-port y standard deviation after startup [nm]')
 
-for label, record in [('Support', girder_motion), ('Magnet', magnet_motion), ('Pickup', pickup_motion)]:
-    index = selected_pickup_index if label == 'Pickup' else selected_magnet_index
-    print(f'{label:<13} {np.std(record.values[positive, index, 1]) * 1e9:30.6f}')
+########################################
+# Compare every stage in the same selected pickup frame
+########################################
+common_port_records = []
+for label, record, index, origin in [
+    ('Fitted floor', fitted, selected_magnet_index, selected_girder.nominal_frame),
+    ('Girder response', girder_motion, selected_magnet_index, selected_girder.nominal_frame),
+    ('Magnet response', magnet_motion, selected_magnet_index, selected_magnet.nominal_frame),
+]:
+    selected = record.select([record.target_names[index]], target_names = [selected_pickup.name])
+    common_port_records.append((label, selected.transport(
+        from_frames = [origin], to_frames = [selected_pickup.nominal_frame], target_names = [selected_pickup.name],
+    )))
+common_port_records.append(('Pickup response', pickup_motion.select([selected_pickup.name])))
+
+print(f'Selected physical path: {selected_girder.name} -> {selected_magnet.name} -> {selected_pickup.name}')
+print('\n1. Resolve the same floor realization through the mounting hierarchy')
+print('All stages below are transported to the same pickup port and axes.')
+print('Stage              Pickup-port y standard deviation [nm]')
+for label, record in common_port_records:
+    print(f'{label:<19} {np.std(record.values[positive, 0, 1]) * 1e9:34.6f}')
+print(f'Separate prescribed longitudinal support drift [nm/s]: {DRIFT_M_PER_S * 1e9:g}')
+print('\n2. Compare a moving lattice with its initial pose held fixed')
 print(f'Tracked turns / physical duration [s]: {N_TURNS} / {launch.time_s:.9g}')
 print(f'Installation y RMS unchanged [µm]: {np.std(installation.values[:, 1]) * 1e6:.6f}')
 print(f'Largest moving-minus-initial-frozen beam y at ring origin [nm]: {np.max(np.abs(moving_y - frozen_y)) * 1e9:.6f}')
 print('Both beam runs start from the same initial frozen closed orbit, with identical installation errors.')
-print('The pickup response is a mechanical inspection port; no online feedback is applied.')
+print(f'The motion plot covers {DURATION_S:g} s; beam tracking covers only {launch.time_s * 1e3:.6f} ms.')
+print('The pickup response is a mechanical inspection port, not an electrical beam measurement.')
 print('Sources use nominal reference geometry. The example does not infer force propagation or support loading.')
 
 ################################################################################
@@ -471,15 +499,16 @@ setup_axes[0].legend(fontsize = 8, loc = 'upper right')
 path_ax = setup_axes[1]
 path_ax.set(xlim = (0., 1.), ylim = (0., 1.), title = 'From floor contacts to the selected pickup')
 path_ax.axis('off')
-for y, text in [
-    (.89, 'Common ground + regional excess + pump field'),
-    (.66, 'Four feet per support -> rigid fit\nContact mismatch retained; no girder bending'),
-    (.43, f'Girder {GIRDER_HZ:g} Hz -> magnet {MAGNET_HZ:g} Hz'),
-    (.20, f'Magnet -> pickup {BPM_HZ:g} Hz\nExplicit port transport before each response'),
+for y, text, colour in [
+    (.91, 'Common site + regional excess + mounted pump', '.94'),
+    (.73, 'Four contacts -> rigid input\nRetain contact mismatch; no bending', '.94'),
+    (.55, f'Girder response: {GIRDER_HZ:g} Hz\nPlus stated longitudinal drift', '#e3edfa'),
+    (.37, f'Transport -> magnet response: {MAGNET_HZ:g} Hz', '#fff0df'),
+    (.19, f'Transport -> pickup response: {BPM_HZ:g} Hz', '#e2f1e6'),
 ]:
     path_ax.text(.5, y, text, ha = 'center', va = 'center', fontsize = 9,
-                 bbox = {'boxstyle': 'round,pad=.55', 'fc': '#edf3f7', 'ec': '.55'})
-for upper, lower in [(.82, .74), (.58, .50), (.35, .27)]:
+                 bbox = {'boxstyle': 'round,pad=.55', 'fc': colour, 'ec': '.55'})
+for upper, lower in [(.86, .79), (.67, .61), (.49, .42), (.32, .24)]:
     path_ax.annotate('', xy = (.5, lower), xytext = (.5, upper), arrowprops = {'arrowstyle': '->'})
 path_ax.text(.5, .035, 'Responses are supplied conditional loaded responses.\nMounts alone do not determine the transfer functions.',
              ha = 'center', va = 'center', fontsize = 8)
@@ -490,38 +519,31 @@ setup_fig.tight_layout()
 ################################################################################
 
 ########################################
-# Transport the upstream records to the selected pickup reference frame
+# Plot the already transported records with physical units
 ########################################
-common_port_records = []
-for label, record, index, origin in [
-    ('Fitted floor', fitted, selected_magnet_index, selected_girder.nominal_frame),
-    ('Girder response', girder_motion, selected_magnet_index, selected_girder.nominal_frame),
-    ('Magnet response', magnet_motion, selected_magnet_index, selected_magnet.nominal_frame),
-]:
-    selected = record.select([record.target_names[index]], target_names = [selected_pickup.name])
-    common_port_records.append((label, selected.transport(
-        from_frames = [origin], to_frames = [selected_pickup.nominal_frame], target_names = [selected_pickup.name],
-    )))
-common_port_records.append(('Pickup response', pickup_motion.select([selected_pickup.name])))
 fig, axes = plt.subplots(3, 1, figsize = (9, 8))
+stage_colours = {'Fitted floor': '.45', 'Girder response': 'tab:blue',
+                 'Magnet response': 'tab:orange', 'Pickup response': 'tab:green'}
 for label, record in common_port_records:
-    axes[0].plot(times[positive], record.values[positive, 0, 1] * 1e9, label = label)
-axes[0].set(ylabel = 'Port displacement [nm]', title = 'Same port and axes: compare the response stages')
+    axes[0].plot(times[positive], record.values[positive, 0, 1] * 1e9,
+                 color = stage_colours[label], ls = '--' if label == 'Fitted floor' else '-', label = label)
+axes[0].set(ylabel = 'Port displacement [nm]')
+axes[0].set_title('Response stages at the same pickup port', pad = 30)
 axes[0].margins(y = .25)
-axes[0].legend(fontsize = 8, ncol = 2, loc = 'upper center')
+axes[0].legend(fontsize = 8, ncol = 4, loc = 'lower center', bbox_to_anchor = (.5, 1.02))
 
 ########################################
 # Separate real relative motion from transport through a lever arm
 ########################################
 axes[1].plot(times[positive], (magnet_motion.values[positive, selected_magnet_index, 1]
                - magnet_input.values[positive, selected_magnet_index, 1]) * 1e9,
-               label = 'Magnet minus transported girder')
+               color = stage_colours['Magnet response'], label = 'Magnet minus transported girder')
 axes[1].plot(times[positive], (pickup_motion.values[positive, selected_pickup_index, 1]
                - pickup_input.values[positive, selected_pickup_index, 1]) * 1e9,
-               label = 'Pickup minus transported magnet')
+               color = stage_colours['Pickup response'], label = 'Pickup minus transported magnet')
 axes[1].set(xlabel = 'Physical time after tracking start [s]', ylabel = 'Relative displacement [nm]')
 axes[1].margins(y = .25)
-axes[1].legend(fontsize = 8, ncol = 2, loc = 'upper center')
+axes[1].legend(fontsize = 8, ncol = 2, loc = 'lower center', bbox_to_anchor = (.5, 1.02))
 
 ########################################
 # Show what changes when the same initial mechanical map moves during tracking
@@ -529,7 +551,7 @@ axes[1].legend(fontsize = 8, ncol = 2, loc = 'upper center')
 beam_times_ms = np.arange(N_TURNS) * line.get_length() / (float(line.particle_ref.beta0[0]) * 299792458.) * 1e3
 axes[2].plot(beam_times_ms, (moving_y - frozen_y) * 1e9, color = 'tab:purple')
 axes[2].set(xlabel = 'Physical tracking time [ms]', ylabel = 'Beam Δy [nm]',
-            title = 'Actual tracked beam at the ring origin; identical launch and installation')
+            title = 'Tracked beam: moving minus initial frozen map')
 for ax in axes:
     ax.grid(alpha = .2)
 fig.tight_layout()

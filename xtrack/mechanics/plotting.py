@@ -72,6 +72,7 @@ def motion_survey(
     _source_values=None,
     disabled_sources=(),
 ):
+    disabled_sources = manager._source_mask(disabled_sources)
     from .tables import (
         mechanics_table,
         pose_columns,
@@ -128,7 +129,8 @@ def motion_survey(
             ],
         )
     )
-    return mechanics_table(data, owner=manager, time_s=time_s, time_series=time_series)
+    return mechanics_table(data, owner=manager, time_s=time_s, time_series=time_series,
+                           disabled_sources=disabled_sources)
 
 
 def plot_motion(
@@ -142,6 +144,7 @@ def plot_motion(
     rotation_scale=1.0,
     view='line',
     baseline='reference',
+    disabled_sources=(),
 ):
     """Plot total-minus-reference translation and proper relative rotation.
 
@@ -149,8 +152,6 @@ def plot_motion(
     rotation vector, preserving orthonormal frames, never on Euler differences.
     """
     import matplotlib.pyplot as plt
-    from scipy.spatial.transform import Rotation
-
     if (
         not np.all(np.isfinite([displacement_scale, rotation_scale]))
         or min(displacement_scale, rotation_scale) <= 0
@@ -161,7 +162,8 @@ def plot_motion(
     if baseline not in ('nominal', 'reference', 'static'):
         raise ValueError('Use nominal, reference or static plot baseline')
     survey = motion_survey(
-        manager, time_s=time_s, time_series=time_series, bodies=bodies
+        manager, time_s=time_s, time_series=time_series, bodies=bodies,
+        disabled_sources=disabled_sources,
     )
     if not len(survey):
         raise ValueError('Select at least one body to plot')
@@ -235,7 +237,11 @@ def plot_motion(
         xlabel='World X [m]',
         ylabel='World Z [m]',
         zlabel='World Y [m]',
-        title=f'Displacement ×{displacement_scale:g}, t={time_s:g} s\nAxes independently scaled',
+        title=(
+            f'Displacement ×{displacement_scale:g}, t={time_s:g} s\n'
+            + ('Current held live inputs; ' if survey.live_source_names else '')
+            + 'Axes independently scaled'
+        ),
     )
     layout.legend(fontsize=8)
     orientation = fig.add_subplot(122, projection='3d')
@@ -271,27 +277,47 @@ def animate_motion(
     interval_ms=80,
     view='line',
     baseline='reference',
+    disabled_sources=(),
 ):
+    """Animate prescribed body poses, not retrospective live input samples."""
     from matplotlib.animation import FuncAnimation
-    from scipy.spatial.transform import Rotation
-
-    times = np.asarray(time_s, dtype=float)
-    if times.ndim != 1 or not len(times) or not np.all(np.isfinite(times)):
+    disabled_sources = manager._source_mask(disabled_sources)
+    times = np.asarray(time_s)
+    if (np.iscomplexobj(times) or times.ndim != 1 or not len(times)
+            or not np.all(np.isfinite(times))):
         raise ValueError('Use finite animation frame times')
+    if (np.iscomplexobj(interval_ms) or not np.isscalar(interval_ms)
+            or not np.isfinite(interval_ms) or interval_ms <= 0):
+        raise ValueError('Use a positive finite frame interval')
+    names = list(manager.bodies) if bodies is None else (
+        [bodies] if isinstance(bodies, str) else list(bodies)
+    )
+    needed = manager._body_closure(names)
+    live = [name for name, binding in manager.sources.items()
+            if binding.live and name not in disabled_sources
+            and needed.intersection(binding.targets)]
+    if live:
+        raise ValueError(
+            'Cannot animate a history of live mechanics inputs: '
+            + ', '.join(live)
+            + '. Use a selected table row and an applied source history instead.'
+        )
     fig, (axis, orientation) = plot_motion(
         manager,
         time_s=times[0],
         time_series=time_series,
-        bodies=bodies,
+        bodies=names,
         line=line,
         displacement_scale=displacement_scale,
         rotation_scale=rotation_scale,
         view=view,
         baseline=baseline,
+        disabled_sources=disabled_sources,
     )
     points = axis.collections[-1]
     survey = motion_survey(
-        manager, time_s=times[0], time_series=time_series, bodies=bodies
+        manager, time_s=times[0], time_series=time_series, bodies=names,
+        disabled_sources=disabled_sources,
     )
     reference_frames = survey[baseline + '_matrix']
     reference = reference_frames[:, :3, 3]
@@ -300,7 +326,8 @@ def animate_motion(
     lower, upper = reference.min(axis=0), reference.max(axis=0)
     for time in times:
         current = motion_survey(
-            manager, time_s=time, time_series=time_series, bodies=names
+            manager, time_s=time, time_series=time_series, bodies=names,
+            disabled_sources=disabled_sources,
         )
         display = _display_matrices(
             reference_frames,
@@ -339,7 +366,8 @@ def animate_motion(
 
     def update(index):
         current = motion_survey(
-            manager, time_s=times[index], time_series=time_series, bodies=names
+            manager, time_s=times[index], time_series=time_series, bodies=names,
+            disabled_sources=disabled_sources,
         )
         display = _display_matrices(
             reference_frames,
@@ -394,6 +422,7 @@ def animate_cuboid(
     size_m,
     time_series=None,
     applied_history=None,
+    disabled_sources=None,
     displacement_scale=1.0,
     rotation_scale=1.0,
     baseline='static',
@@ -420,7 +449,8 @@ def animate_cuboid(
     if baseline not in ('nominal', 'reference', 'static'):
         raise ValueError('Use nominal, reference or static as display baseline')
     history = table.get_time_series(
-        name, time_s=time_s, time_series=time_series, applied_history=applied_history
+        name, time_s=time_s, time_series=time_series, applied_history=applied_history,
+        disabled_sources=disabled_sources,
     )
     reference = history[baseline + '_matrix']
     shown = _display_matrices(

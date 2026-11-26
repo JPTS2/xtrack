@@ -104,3 +104,31 @@ def test_guard_checks_python_collective_geometry():
     device.length = .6
     with pytest.raises(ValueError, match='Custom element reference geometry changed'):
         guard.check()
+
+
+@for_all_test_contexts
+def test_guard_reads_hidden_slice_parent_geometry_without_scalar_transfers(
+    test_context, monkeypatch,
+):
+    line = xt.Line(elements={
+        'bend': xt.RBend(length_straight=1., angle=.03),
+        'q': xt.Quadrupole(length=.4),
+    })
+    line.slice_thick_elements(
+        slicing_strategies=[
+            xt.Strategy(slicing=None),
+            xt.Strategy(slicing=xt.Teapot(2, mode='thick'), name='bend'),
+        ],
+        with_progress=False,
+    )
+    line.build_tracker(_context=test_context)
+    line.mechanics.new_girder('g', elements=['q'])
+    guard = GeometryGuard(line.mechanics)
+    line['bend'].k0 = .043
+    guard.check()
+    line['bend'].length_straight += .1
+    def forbidden(*args, **kwargs):
+        raise AssertionError('A prepared slice geometry guard attempted a scalar read')
+    monkeypatch.setattr(type(guard.buffer), 'to_bytearray', forbidden)
+    with pytest.raises(ValueError, match='reference geometry changed'):
+        guard.check()

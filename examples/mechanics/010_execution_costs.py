@@ -49,6 +49,7 @@ PROJECTED_HISTORY_TURNS = 1_000_000   # Memory estimate only; not allocated
 AMPLITUDE_M    = 50e-9
 FREQUENCY_HZ   = 20_000.              # Deliberately tests within-turn phase
 INSPECT_TIME_S = .000123
+PRINT_TIMINGS  = False               # Detailed setup/update table; physical comparison is always shown
 
 ################################################################################
 # Set up the timing comparison
@@ -214,6 +215,8 @@ for count in SUPPORT_COUNTS:
     # Retain the spatial comparison and workload timings
     ########################################
     if count == max(SUPPORT_COUNTS):
+        applied = line.mechanics.get_applied_table().rows[quads]
+        passage_time_s = applied.pose_time_s.copy()
         phase_comparison = (line.get_table()['s', quads], held, passage)
         probe_passage = line.build_particles(x = 1e-7, y = 1e-8)
         line.track(probe_passage, turn_by_turn_monitor = 'ONE_TURN_EBE')
@@ -250,31 +253,34 @@ beam_s, held_beam, passage_beam = beam_comparison
 print(f'Observation at line end, held / passage y [nm]: {held_beam[-1] * 1e9:+.6f} / {passage_beam[-1] * 1e9:+.6f}')
 print(f'Change caused by resolving the passage times [nm]: {(passage_beam[-1] - held_beam[-1]) * 1e9:+.6f}')
 print('This is one-turn transport through two sampling approximations, with identical launch and magnetic strengths.')
-print('\nWarm tracking workload and setup costs\n--------------------------------------')
-print(f'Context: {type(CONTEXT).__name__}; particles: {N_PARTICLES}; turns: {N_TURNS}')
-print('Supports   Load [s]   Select [ms]   Attach [s]   Build [s]   Warm [s]   Pose [ms]   Apply [ms]   Frozen [s]   Dynamic [s]')
-for row in rows:
-    print(f'{row["count"]:8d} {row["model_s"]:10.4f} {row["selection_s"] * 1e3:13.3f}'
-          f' {row["setup_s"]:12.4f} {row["build_s"]:11.4f} {row["warm_s"]:10.4f}'
-          f' {row["pose_s"] * 1e3:11.3f} {row["apply_s"] * 1e3:12.3f}'
-          f' {row["frozen_s"]:12.4f} {row["dynamic_s"]:13.4f}')
+print(f'Inspection time at line entrance [µs]: {INSPECT_TIME_S * 1e6:.6f}')
+print(f'Applied magnet times [µs]: {passage_time_s.min() * 1e6:.6f} to {passage_time_s.max() * 1e6:.6f}')
+print(f'Reference flight time for one turn [µs]: {turn_time * 1e6:.6f}')
+print(f'Source phase advance during that passage [rad]: {2 * np.pi * FREQUENCY_HZ * turn_time:.6f}')
+print(f'Largest applied-position difference between the approximations [nm]: {np.max(np.abs(held-passage)) * 1e9:.6f}')
+print('Reference-passage sampling uses beta0: it omits particle-specific zeta/delta arrival delays.')
+print('Each element still receives one rigid pose; neither comparison is continuous motion inside a thick element.')
+print('Automatic updates are disabled. The final effective fields retain the displayed passage-sampled state.')
 
 ########################################
-# Quantify the phase missed by turn-held motion
-########################################
-print(f'Turn time [µs]: {turn_time * 1e6:.6f}; 2π f T_rev [rad]: {2 * np.pi * FREQUENCY_HZ * turn_time:.6f}')
-print('Passage preparation [ms]:', ', '.join(f'{r["count"]}: {r["passage_prepare_s"] * 1e3:.3f}' for r in rows))
-print(f'Largest held/passage alignment difference [nm]: {np.max(np.abs(held-passage)) * 1e9:.6f}')
-
-########################################
-# Estimate full-history memory without allocating it
+# Keep detailed timing and memory diagnostics optional
 ########################################
 history_bytes = PROJECTED_HISTORY_TURNS * max(SUPPORT_COUNTS) * 16 * 8
-print(f'Unallocated full matrix history for {PROJECTED_HISTORY_TURNS:,} turns [GiB]: {history_bytes / 1024**3:.3f}')
-print('Explicit pose/application probes use the host API; automatic tracking uses its selected prepared backend.')
-print('Mechanics first-use preparation [ms]:', ', '.join(f'{r["count"]}: {r["dynamic_prepare_s"] * 1e3:.3f}' for r in rows))
-print('The automatic-motion timing excludes that first-use preparation. Actual GPU execution needs a device run.')
-print('Frozen/dynamic timings use the same particle workload, with different motion semantics.')
+if PRINT_TIMINGS:
+    print('\nWarm tracking workload and setup costs\n--------------------------------------')
+    print(f'Context: {type(CONTEXT).__name__}; particles: {N_PARTICLES}; turns: {N_TURNS}')
+    print('Supports   Load [s]   Select [ms]   Attach [s]   Build [s]   Warm [s]   Pose [ms]   Apply [ms]   Frozen [s]   Dynamic [s]')
+    for row in rows:
+        print(f'{row["count"]:8d} {row["model_s"]:10.4f} {row["selection_s"] * 1e3:13.3f}'
+              f' {row["setup_s"]:12.4f} {row["build_s"]:11.4f} {row["warm_s"]:10.4f}'
+              f' {row["pose_s"] * 1e3:11.3f} {row["apply_s"] * 1e3:12.3f}'
+              f' {row["frozen_s"]:12.4f} {row["dynamic_s"]:13.4f}')
+    print('Reference-passage preparation [ms]:', ', '.join(f'{r["count"]}: {r["passage_prepare_s"] * 1e3:.3f}' for r in rows))
+    print('Mechanics first-use preparation [ms]:', ', '.join(f'{r["count"]}: {r["dynamic_prepare_s"] * 1e3:.3f}' for r in rows))
+    print(f'Unallocated full matrix history for {PROJECTED_HISTORY_TURNS:,} turns [GiB]: {history_bytes / 1024**3:.3f}')
+    print('Explicit application probes use the host API; automatic tracking uses its selected prepared backend.')
+    print('Warm tracking excludes first-use preparation. Actual GPU execution needs a device run.')
+    print('Frozen/dynamic timings use the same workload but different motion semantics.')
 
 ################################################################################
 # Show what the passage-time approximation changes physically
@@ -287,7 +293,7 @@ fig, axes = plt.subplots(2, 1, figsize = (9, 6.5))
 axes[0].plot(path_s, held * 1e9, label = 'Pose held at turn entrance')
 axes[0].plot(path_s, passage * 1e9, label = 'Pose at reference-particle passage')
 axes[0].set(xlabel = 'Quadrupole position s [m]', ylabel = 'Applied vertical displacement [nm]',
-            title = f'One coherent {FREQUENCY_HZ:g} Hz vibration sampled by a travelling beam')
+            title = f'One coherent {FREQUENCY_HZ:g} Hz vibration: entrance time {INSPECT_TIME_S * 1e6:g} µs')
 axes[0].legend()
 
 ########################################
@@ -296,7 +302,7 @@ axes[0].legend()
 axes[1].plot(beam_s, held_beam * 1e9, label = 'Tracking with turn-held poses')
 axes[1].plot(beam_s, passage_beam * 1e9, label = 'Tracking with passage-time poses')
 axes[1].set(xlabel = 'Beam position s [m]', ylabel = 'Tracked vertical coordinate [nm]',
-            title = 'Same one-pass launch, different mechanical sampling')
+            title = 'Tracked one-pass beam: turn-held versus reference-speed passage poses')
 axes[1].legend()
 for ax in axes:
     ax.grid(alpha = .2)
@@ -315,7 +321,7 @@ cost_ax.plot(counts, [r['frozen_s'] / N_TURNS * 1e3 for r in rows], 'o-', label 
 cost_ax.plot(counts, [r['dynamic_s'] / N_TURNS * 1e3 for r in rows], 'o-', label = 'Automatic motion + tracking, per turn')
 cost_ax.plot(counts, [r['apply_s'] * 1e3 for r in rows], 'o--', label = 'One explicit host application')
 cost_ax.set(xlabel = 'Attached supports', ylabel = 'Warm cost [ms]', yscale = 'log',
-            title = 'Same particles and turns; loading and first-use preparation excluded')
+            title = 'Warm tracking per turn and one host application\nLoading and first-use preparation excluded')
 cost_ax.legend(fontsize = 9)
 cost_ax.grid(alpha = .2)
 cost_fig.tight_layout()

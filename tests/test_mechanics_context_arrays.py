@@ -44,6 +44,16 @@ def test_cpu_upload_keeps_dtype_shape_and_contiguous_values():
     np.testing.assert_array_equal(uploaded, values)
 
 
+def test_cpu_upload_owns_contiguous_host_staging():
+    context = xo.ContextCpu()
+    staging = np.arange(6., dtype=np.float64)
+    expected = staging.copy()
+    uploaded = to_context(context, staging)
+    staging[:] = -1.
+    np.testing.assert_array_equal(uploaded, expected)
+    assert not np.shares_memory(uploaded, staging)
+
+
 def test_older_cupy_upload_uses_its_synchronous_numpy_default():
     class OlderCupyContext(FakeCupyContext):
         __version__ = '12.3.0'

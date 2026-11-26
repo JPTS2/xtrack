@@ -429,14 +429,19 @@ for label in cases:
     dx, dy = snapshot_exits[label] * 1e9
     print(f'{label:<26} {q1[0] * 1e9:9.3f} {q1[1] * 1e9:9.3f}'
           f' {q2[0] * 1e9:9.3f} {q2[1] * 1e9:9.3f} {dx:+12.6f} {dy:+12.6f}')
+    if label == 'Roll about girder base':
+        q1 = axis_roll_centres['q1'] - installed_centres['q1']
+        q2 = axis_roll_centres['q2'] - installed_centres['q2']
+        dx, dy = axis_roll_snapshot_exit * 1e9
+        print(f'{"Roll about magnetic axis":<26} {q1[0] * 1e9:9.3f} {q1[1] * 1e9:9.3f}'
+              f' {q2[0] * 1e9:9.3f} {q2[1] * 1e9:9.3f} {dx:+12.6f} {dy:+12.6f}')
 print('Translation moves both magnet centres together.')
 print('Pitch gives opposite vertical centre displacements; yaw gives opposite horizontal displacements.')
 print('Rolling the girder about its base sways both magnet centres and rotates their field axes.')
 print(f'Height × roll predicts the first-order horizontal sway: '
       f'{-axis_height_above_base_m * roll_at_inspection_rad * 1e9:+.3f} nm.')
-print('Roll with magnetic axis held fixed: both centres remain fixed; the field axes still rotate.')
-print(f'  Observation-point beam change [nm]: dx = {axis_roll_snapshot_exit[0] * 1e9:+.6f}, '
-      f'dy = {axis_roll_snapshot_exit[1] * 1e9:+.6f}.')
+print('At the same roll angle, holding the magnetic axis fixed removes centre sway.')
+print('Its smaller beam response remains because the quadrupole field axes still rotate.')
 print('These are different imposed motions: zero translation is specified at different reference points.')
 print(f'Baseline beam at the observation point: x = {baseline_exit[0] * 1e6:+.6f} µm, '
       f'y = {baseline_exit[1] * 1e6:+.6f} µm.')

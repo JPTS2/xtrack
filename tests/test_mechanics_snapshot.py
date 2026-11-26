@@ -1,4 +1,5 @@
 """Ownership-safe frozen snapshots and removal failures for mechanics."""
+from copy import deepcopy
 import gc
 import weakref
 
@@ -151,6 +152,29 @@ def test_loading_does_not_overwrite_unattached_reference_configuration():
         env.mechanics.from_dict(data)
     assert line.mechanics.reference_frame.X == 1.
     assert not env.mechanics.bodies
+
+
+@pytest.mark.parametrize('invalid', ['source', 'attachment'])
+def test_failed_loading_leaves_empty_manager_and_can_be_retried(invalid):
+    env, line = make_snapshot_case()
+    data = env.mechanics.to_dict()
+    env.mechanics.clear()
+    view = line.mechanics
+    before = values(line)
+    broken = deepcopy(data)
+    if invalid == 'source':
+        broken['sources'][0]['source']['type'] = 'UnknownMotion'
+    else:
+        broken['lines'][0]['attachments'][0]['body'] = 'unknown_body'
+    with pytest.raises(KeyError):
+        env.mechanics.from_dict(broken)
+    assert line.mechanics is view
+    assert not env.mechanics._has_configuration
+    np.testing.assert_array_equal(values(line), before)
+    env.mechanics.from_dict(data)
+    assert line.mechanics is view
+    assert not view.vibrations_enabled
+    assert env.mechanics.to_dict() == data
 
 
 @pytest.mark.parametrize('layer', ['reference', 'installation'])
@@ -375,7 +399,99 @@ def test_unsupported_upstream_geometry_is_rejected_before_binding(upstream):
     line = xt.Line(elements={'parent': parent, 'upstream': element,
                              'q': xt.Quadrupole(length=.3, k1=.2)},
                    element_names=['upstream', 'q'])
-    with pytest.raises(ValueError, match='unsliced line without replicas'):
+    with pytest.raises(ValueError, match='reference geometry'):
         line.mechanics.new_girder('g', elements=['q'])
     assert not line.env.mechanics.bodies
     assert not line.mechanics._attachments
+
+
+def make_line_with_unrelated_slices():
+    line = xt.Line(elements={
+        'bend': xt.RBend(length_straight=1., angle=.02, rot_s_rad=.03),
+        'q': xt.Quadrupole(length=.3, k1=.2),
+    })
+    line.env.lines['ring'] = line
+    line.set_particle_ref('proton', p0c=7e12)
+    line.slice_thick_elements(
+        slicing_strategies=[
+            xt.Strategy(slicing=None),
+            xt.Strategy(slicing=xt.Teapot(2, mode='thick'), name='bend'),
+        ],
+        with_progress=False,
+    )
+    return line
+
+
+def test_unrelated_native_slices_can_share_a_line_with_mechanics():
+    line = make_line_with_unrelated_slices()
+    view = line.mechanics
+    with pytest.raises(ValueError, match='unsliced alignment-capable'):
+        view.new_girder('bad', elements=['bend..0'])
+    assert not line.env.mechanics.bodies
+    girder = view.new_girder('g', elements=['q'])
+    girder.shift_y = 1e-6
+    line.env.mechanics.add_source(
+        'wave', xt.mechanics.Harmonic(2e-6, 100., .4, unit='rad'),
+        targets='g', component='roll',
+    )
+    initial = line.build_particles(x=2e-6, y=3e-6)
+    results = []
+    for backend in ('reference', 'compiled'):
+        view.enable_vibrations(backend=backend)
+        particles = initial.copy()
+        line.track(particles, num_turns=4)
+        results.append(particles)
+        view.disable_vibrations()
+    for coordinate in ('x', 'px', 'y', 'py', 'zeta', 'delta'):
+        np.testing.assert_allclose(
+            getattr(results[0], coordinate), getattr(results[1], coordinate),
+            rtol=2e-13, atol=2e-17,
+        )
+    assert line['bend'].shift_y == 0.
+    assert line['bend..0'].weight == .5
+    assert line.env.copy(with_progress=False).mechanics.bodies['g'].shift_y == 1e-6
+
+
+@pytest.mark.parametrize('prepared', [False, True])
+@pytest.mark.parametrize('change', [
+    'length', 'angle', 'roll', 'model', 'weight', 'offset',
+    'parent_name', 'parent_object', 'raw_pointer',
+])
+def test_unrelated_slice_geometry_is_guarded_before_updates(prepared, change):
+    line = make_line_with_unrelated_slices()
+    view = line.mechanics
+    # Create another compatible parent in the same buffer for pointer tests.
+    line.element_dict['other_bend'] = xt.RBend(length_straight=1., angle=.02)
+    view.new_girder('g', elements=['q']).shift_y = 2e-6
+    parent = line.element_dict['bend']
+    other = line.element_dict['other_bend']
+    slc = line.element_dict['bend..0']
+    other.move(_buffer=parent._buffer)
+    if prepared:
+        from xtrack.mechanics.geometry_guard import GeometryGuard
+        guard = GeometryGuard(view)
+        guard.check()
+        check = guard.check
+    else:
+        check = line.env.mechanics.apply
+    if change == 'length':
+        parent.length_straight += .01
+    elif change == 'angle':
+        parent.angle += .01
+    elif change == 'roll':
+        parent.rot_s_rad += .01
+    elif change == 'model':
+        parent.rbend_model = 'straight-body'
+    elif change == 'weight':
+        slc.weight += .1
+    elif change == 'offset':
+        slc.slice_offset += .01
+    elif change == 'parent_name':
+        slc.parent_name = 'other_bend'
+    elif change == 'parent_object':
+        line.element_dict['bend'] = other
+    elif change == 'raw_pointer':
+        slc._xobject._parent = other._xobject
+    with pytest.raises(ValueError, match='reference geometry changed'):
+        check()
+    assert line['q'].shift_y == 0.

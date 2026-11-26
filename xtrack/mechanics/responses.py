@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .motion import checked_times
+from .motion import checked_scalar, checked_times
 
 
 class FrequencyResponse:
@@ -72,9 +72,10 @@ class BaseExcitedOscillator(FrequencyResponse):
     damping_ratio: float
 
     def __post_init__(self):
+        for name in ('frequency_hz', 'damping_ratio'):
+            object.__setattr__(self, name, checked_scalar(getattr(self, name), name))
         if (
-            not np.all(np.isfinite([self.frequency_hz, self.damping_ratio]))
-            or self.frequency_hz <= 0
+            self.frequency_hz <= 0
             or self.damping_ratio <= 0
         ):
             raise ValueError(
@@ -105,16 +106,14 @@ class LoadedTwoMass(FrequencyResponse):
     stage: str = 'floor_to_girder'
 
     def __post_init__(self):
-        values = [
-            self.girder_mass_kg,
-            self.magnet_mass_kg,
-            self.floor_stiffness_n_m,
-            self.magnet_stiffness_n_m,
-            self.floor_damping_ns_m,
-            self.magnet_damping_ns_m,
-        ]
-        if not np.all(np.isfinite(values)) or min(values) <= 0:
-            raise ValueError('Use positive finite masses, stiffnesses and damping')
+        for name in (
+            'girder_mass_kg', 'magnet_mass_kg', 'floor_stiffness_n_m',
+            'magnet_stiffness_n_m', 'floor_damping_ns_m', 'magnet_damping_ns_m',
+        ):
+            value = checked_scalar(getattr(self, name), name)
+            if value <= 0:
+                raise ValueError('Use positive finite masses, stiffnesses and damping')
+            object.__setattr__(self, name, value)
         if self.stage not in ('floor_to_girder', 'girder_to_magnet', 'floor_to_magnet'):
             raise ValueError('Unknown loaded-response stage')
 
@@ -172,6 +171,9 @@ class TabulatedResponse(FrequencyResponse):
 
     def evaluate(self, frequency_hz):
         frequency = np.asarray(frequency_hz)
+        if (frequency.ndim > 1 or frequency.dtype.kind not in 'fiu'
+                or not np.all(np.isfinite(frequency))):
+            raise ValueError('Use finite real scalar or vector query frequencies')
         scalar = frequency.ndim == 0
         frequency = np.atleast_1d(frequency)
         if np.any(frequency < self.frequency_hz[0]) or np.any(
@@ -201,9 +203,9 @@ class CausalResponse:
     def __init__(self, *, oscillator, sample_step_s, method='zoh'):
         from scipy.signal import cont2discrete
 
+        sample_step_s = checked_scalar(sample_step_s, 'sample_step_s')
         if (
             not isinstance(oscillator, BaseExcitedOscillator)
-            or not np.isfinite(sample_step_s)
             or sample_step_s <= 0
         ):
             raise ValueError('Use a BaseExcitedOscillator and a positive sample step')
@@ -235,6 +237,34 @@ class CausalResponse:
     def reset(self):
         self._state = None
 
+    def get_state(self):
+        """Export JSON-compatible filter delays for continuing at the next sample."""
+        return dict(
+            sample_step_s=self.sample_step_s,
+            sos=self.sos.tolist(),
+            delay=None if self._state is None else self._state.tolist(),
+        )
+
+    def set_state(self, state):
+        """Restore delays for the same discretized response and ordered channels.
+
+        The caller supplies the next consecutive input sample on the same
+        time grid. The filter has no absolute clock or input/source state.
+        """
+        if state['sample_step_s'] != self.sample_step_s or not np.array_equal(
+            state['sos'], self.sos
+        ):
+            raise ValueError('Response state requires the same discrete filter and sample step')
+        delay = state['delay']
+        if delay is not None:
+            if np.iscomplexobj(delay):
+                raise ValueError('Response delays must be real')
+            delay = np.array(delay, dtype=float, copy=True)
+            if (delay.shape[:2] != (len(self.sos), 2) or not delay.size
+                    or not np.all(np.isfinite(delay))):
+                raise ValueError('Invalid causal response delay state')
+        self._state = delay
+
     def process(self, values):
         from scipy.signal import sosfilt
 
@@ -242,13 +272,14 @@ class CausalResponse:
         if (
             np.iscomplexobj(values)
             or values.ndim < 1
+            or not values.size
             or not np.all(np.isfinite(values))
         ):
-            raise ValueError('Causal response requires finite real samples')
+            raise ValueError('Causal response requires nonempty finite real samples')
         shape = (len(self.sos), 2) + values.shape[1:]
-        if self._state is None:
-            self._state = np.zeros(shape)
-        if self._state.shape != shape:
+        state = np.zeros(shape) if self._state is None else self._state
+        if state.shape != shape:
             raise ValueError('Response channel layout changed; reset explicitly')
-        output, self._state = sosfilt(self.sos, values, axis=0, zi=self._state)
+        output, new_state = sosfilt(self.sos, values, axis=0, zi=state)
+        self._state = new_state
         return output

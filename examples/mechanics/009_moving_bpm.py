@@ -4,7 +4,8 @@
 # ######################################### #
 
 # Does centring a moving BPM also centre the beam in the design coordinates?
-# Correct frozen states using each readout; this is a quasi-static study, not feedback tracking.
+# Apply a frozen mechanical pose, solve its closed orbit, then compare two offline trims.
+# The electrical readout is a geometric ray/plane projection of frozen Twiss coordinates.
 
 ################################################################################
 # Required packages
@@ -153,7 +154,7 @@ pickup = mech.new_body('pickup', kind = 'pickup', parent = magnet,
 timings['mechanics_definition_s'] = perf_counter() - started
 
 ################################################################################
-# Calibrate the actual electrical readout
+# Calibrate the geometric electrical readout using frozen optics
 ################################################################################
 
 started = perf_counter()
@@ -230,15 +231,23 @@ pickup_motion = magnet_motion.through(
 )
 
 ########################################
-# Bind each body's absolute motion
+# Bind motion relative to each carried port
 ########################################
-for name, record in [('girder_motion', girder_motion), ('magnet_motion', magnet_motion), ('pickup_motion', pickup_motion)]:
-    mech.add_source(name, record, targets = record.target_names, reference = 'absolute')
+# These records drive vertical translation only, with common vertical axes.
+# Rigid transport preserves that translation, irrespective of the lever arm.
+magnet_carried = girder_motion.select('girder', target_names = ('magnet',))
+pickup_carried = magnet_motion.select('magnet', target_names = ('pickup',))
+for name, record in [
+    ('girder_motion', girder_motion),
+    ('magnet_relative', magnet_motion.relative_to(magnet_carried)),
+    ('pickup_relative', pickup_motion.relative_to(pickup_carried)),
+]:
+    mech.add_source(name, record, targets = record.target_names)
 
 timings['response_records_s'] = perf_counter() - started
 
 ################################################################################
-# Compare the two correction targets
+# Solve two offline correction targets at each frozen mechanical state
 ################################################################################
 
 started = perf_counter()
@@ -251,7 +260,7 @@ beam_y, pickup_y, actual_y, nominal_corrected, pickup_corrected = [], [], [], []
 nominal_beam_after, pickup_beam_after = [], []
 
 ########################################
-# Repeat the frozen correction comparison
+# Repeat independent frozen-state calculations, with no controller history
 ########################################
 for time_s in state_times:
 
@@ -282,7 +291,7 @@ for time_s in state_times:
     actual_y.append(observed)
 
     ########################################
-    # Correct using each readout and remeasure the actual pickup
+    # Solve one static trim, recompute Twiss, then project the corrected beam ray
     ########################################
     for error, calibration, destination, beam_destination in [
         (beam_y[-1], nominal_response, nominal_corrected, nominal_beam_after),
@@ -305,21 +314,38 @@ timings['frozen_states_and_correction_s'] = perf_counter() - started
 ########################################
 # Report the signed response and residual RMS
 ########################################
-print('Moving pickup and frozen orbit correction\n-----------------------------------------')
+state_index = int(np.argmax(np.abs(pickup_y)))
+chosen_time = state_times[state_index]
+print('Moving electrical zero and offline frozen-orbit correction\n'
+      '---------------------------------------------------------')
+print('Each row below comes from a frozen mechanical pose and closed-orbit solves.')
+print('Electrical BPM error is the beam ray projected into the moved, rolled pickup plane,')
+print('relative to its adopted design readout. It is not simply a vertical coordinate difference.')
 print(f'Signed corrector -> design-coordinate response [m/rad]: {nominal_response:.6f}')
-print(f'Signed corrector -> electrical BPM response [m/rad]: {response:.6f}')
-print('Frozen states share the same floor realization and corrector calibration.')
-print('Question: centre the beam on its design orbit, or centre it in the moving pickup?')
-print('Quantity                                             RMS [nm]')
-for label, values in [('Beam in nominal coordinates', beam_y), ('Pickup motion', pickup_y),
-                       ('Actual pickup before correction', actual_y),
-                       ('After nominal-coordinate correction', nominal_corrected),
-                       ('After moving-pickup correction', pickup_corrected),
-                       ('True beam after nominal-coordinate correction', nominal_beam_after),
-                       ('True beam after moving-pickup correction', pickup_beam_after)]:
-    print(f'{label:<50} {np.sqrt(np.mean(np.asarray(values)**2)) * 1e9:12.6f}')
-print('Readout uses ray/plane intersection, including pickup orientation and beam slope.')
-print('Each state is frozen Twiss. No causal controller or turn-by-turn feedback is claimed.')
+print(f'Signed corrector -> electrical-readout response [m/rad]: {response:.6f}')
+print(f'Pickup electrical roll: {PICKUP_ROLL_RAD * 1e3:g} mrad; same prescribed motion in both trim cases.')
+print('\nComparison across the same frozen times')
+print(f'{"Offline correction target":<34} {"Electrical error RMS [nm]":>27} {"Design-orbit error RMS [nm]":>29}')
+for label, electrical, beam in [
+    ('No corrector trim', actual_y, beam_y),
+    ('Restore the design-coordinate orbit', nominal_corrected, nominal_beam_after),
+    ('Zero the moving electrical readout', pickup_corrected, pickup_beam_after),
+]:
+    electrical_rms = np.sqrt(np.mean(np.asarray(electrical)**2)) * 1e9
+    beam_rms = np.sqrt(np.mean(np.asarray(beam)**2)) * 1e9
+    print(f'{label:<34} {electrical_rms:27.6f} {beam_rms:29.6f}')
+print(f'Pickup-centre motion RMS [nm]: {np.sqrt(np.mean(np.asarray(pickup_y)**2)) * 1e9:.6f}')
+print(f'\nOne frozen state: t = {chosen_time:.6g} s; pickup centre Y = {pickup_y[state_index] * 1e9:+.3f} nm')
+print(f'{"Offline correction target":<34} {"Electrical error [nm]":>24} {"Design-orbit error [nm]":>26}')
+for label, electrical, beam in [
+    ('No corrector trim', actual_y, beam_y),
+    ('Restore the design-coordinate orbit', nominal_corrected, nominal_beam_after),
+    ('Zero the moving electrical readout', pickup_corrected, pickup_beam_after),
+]:
+    print(f'{label:<34} {electrical[state_index] * 1e9:+24.6f} {beam[state_index] * 1e9:+26.6f}')
+print('Centring the moving electrical zero can leave the beam displaced from the design orbit.')
+print('The response records describe periodic steady-state motion; startup transients are not studied here.')
+print('No tracking monitor, causal controller or online feedback is used in this lesson.')
 
 ################################################################################
 # Draw the moving electrical zero and compare the two correction objectives
@@ -328,8 +354,6 @@ print('Each state is frozen Twiss. No causal controller or turn-by-turn feedback
 ########################################
 # Inspect the state with the largest pickup displacement
 ########################################
-state_index = int(np.argmax(np.abs(pickup_y)))
-chosen_time = state_times[state_index]
 setup_fig, setup_axes = plt.subplots(2, 1, figsize = (9, 5.7), gridspec_kw = {'height_ratios': [1, 2]})
 chain_ax, position_ax = setup_axes
 chain_ax.set_axis_off()
@@ -347,7 +371,7 @@ for left, next_left in zip(box_left[:-1], box_left[1:]):
     chain_ax.annotate('', xy = (next_left, .55), xytext = (left + box_width, .55),
                       xycoords = 'axes fraction',
                       arrowprops = {'arrowstyle': '->', 'color': '0.4', 'shrinkA': 0, 'shrinkB': 0})
-chain_ax.set_title('Supplied response chain (schematic); pickup and beam have different origins')
+chain_ax.set_title('Supplied conditional response path (schematic); no force law is inferred')
 positions = np.array([beam_y[state_index], nominal_beam_after[state_index], pickup_beam_after[state_index]]) * 1e9
 pickup_position = float(pickup_y[state_index]) * 1e9
 for index, value in enumerate(positions):
@@ -359,9 +383,12 @@ position_ax.plot([], [], 'o', color = 'tab:blue', label = 'True beam position')
 position_ax.plot([], [], 's', mfc = 'none', mec = 'tab:orange', label = 'Moving pickup centre')
 position_ax.set(xticks = range(3), xticklabels = ['No correction', 'Correct design-coordinate error', 'Correct electrical BPM error'],
                 ylabel = 'Vertical displacement from design [nm]', title = f'One frozen state at t = {chosen_time:.4g} s')
-position_ax.legend(fontsize = 8, loc = 'best')
-position_ax.margins(y = .25)
-setup_fig.suptitle(f'Electrical pickup roll is {PICKUP_ROLL_RAD * 1e3:g} mrad; points below show nominal vertical coordinates', fontsize = 10)
+position_ax.text(.02, .98, 'Dotted connectors show the geometric vertical gap.\nElectrical readout also includes pickup roll and beam slope.',
+                  transform = position_ax.transAxes, ha = 'left', va = 'top', fontsize = 8,
+                  bbox = {'facecolor': 'white', 'edgecolor': 'none', 'alpha': .8})
+position_ax.legend(fontsize = 8, loc = 'lower right')
+position_ax.margins(y = .4)
+setup_fig.suptitle(f'One frozen mechanical state; two offline trim targets; pickup roll {PICKUP_ROLL_RAD * 1e3:g} mrad', fontsize = 10)
 setup_fig.tight_layout()
 
 ########################################
@@ -370,22 +397,23 @@ setup_fig.tight_layout()
 fig, axes = plt.subplots(2, 2, sharex = True, figsize = (10, 6.5))
 for label, values in [('Beam in design coordinates', beam_y), ('Pickup-centre displacement', pickup_y)]:
     axes[0, 0].plot(state_times, np.asarray(values) * 1e9, '.-', label = label)
-axes[0, 0].set(title = 'Before correction: two independently moving objects', ylabel = 'Vertical displacement [nm]')
+axes[0, 0].set(title = 'Before trimming: beam and pickup centre', ylabel = 'Vertical displacement [nm]')
 axes[0, 1].plot(state_times, np.asarray(actual_y) * 1e9, '.-', label = 'Actual electrical readout')
-axes[0, 1].set(title = 'What the moving BPM measures', ylabel = 'Electrical BPM error [nm]')
+axes[0, 1].set(title = 'Geometric electrical readout of the frozen orbit', ylabel = 'Electrical BPM error [nm]')
 for label, electrical, beam in [
     ('Correct design coordinates', nominal_corrected, nominal_beam_after),
     ('Correct electrical readout', pickup_corrected, pickup_beam_after),
 ]:
     axes[1, 0].plot(state_times, np.asarray(electrical) * 1e9, '.-', label = label)
     axes[1, 1].plot(state_times, np.asarray(beam) * 1e9, '.-', label = label)
-axes[1, 0].set(title = 'Electrical residual after correction', ylabel = 'Electrical BPM error [nm]')
-axes[1, 1].set(title = 'True beam position after correction', ylabel = 'Beam error in design coordinates [nm]')
+axes[1, 0].set(title = 'Electrical residual after each offline trim', ylabel = 'Electrical BPM error [nm]')
+axes[1, 1].set(title = 'Design-orbit residual after each offline trim', ylabel = 'Beam error in design coordinates [nm]')
 for ax in axes.flat:
     ax.set_xlabel('Frozen physical time [s]')
     ax.grid(alpha = .2)
-    ax.legend(fontsize = 8)
-fig.suptitle('Centring a moving electrical zero and restoring the design orbit are different objectives', fontsize = 11)
+    ax.margins(y = .25)
+    ax.legend(fontsize = 8, loc = 'upper center')
+fig.suptitle('Offline frozen-state correction: an electrical zero and the design orbit are different targets', fontsize = 11)
 fig.tight_layout()
 env[CORRECTOR] = 0.
 mech.restore()

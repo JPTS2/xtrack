@@ -179,7 +179,7 @@ class PipePositionView:
 
     @property
     def pipe(self) -> PipeView:
-        aperture_environment = self._owner.line.env.aperture
+        aperture_environment = self._owner._aperture_environment
         pipe_name = list(aperture_environment._pipe_name_to_index)[
             self.pipe_index]
         return PipeView(aperture_environment, pipe_name)

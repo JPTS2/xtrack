@@ -109,3 +109,112 @@ def test_mixed_unit_channel_cannot_hide_an_unrepresentable_nyquist_phase():
 def test_invalid_response_dimensions_give_a_validation_error():
     with pytest.raises(ValueError, match='response'):
         xt.mechanics.TabulatedResponse([0., 1.], 1.)
+
+
+@pytest.mark.parametrize('interpolation', ['linear', 'previous'])
+@pytest.mark.parametrize('times', [np.array([np.nan]), np.array([np.inf]),
+                                  np.array([.25+0j]), .25, np.array([[.25]])])
+def test_measured_motion_rejects_invalid_query_times(interpolation, times):
+    """A NaN query, in particular, cannot select the last held sample."""
+    motion = xt.mechanics.MeasuredMotion([0., 1.], [1., 2.], interpolation)
+    with pytest.raises(ValueError, match='finite real sample times'):
+        motion.evaluate(times, [[0., 0., 0.]])
+
+
+@pytest.mark.parametrize('times', [np.array([np.nan]), np.array([np.inf]),
+                                  np.array([.25+0j]), .25, np.array([[.25]])])
+def test_rigid_motion_rejects_invalid_query_times(times):
+    motion = xt.mechanics.RigidMotion([0., 1.], np.zeros((2, 6)))
+    with pytest.raises(ValueError, match='finite real sample times'):
+        motion.evaluate(times, [[0., 0., 0.]])
+
+
+def test_motion_queries_accept_unordered_finite_times():
+    """Replay does not impose the construction grid's monotonicity on queries."""
+    times = [1., .5, 0., .5]
+    measured = xt.mechanics.MeasuredMotion([0., 1.], [1., 2.])
+    np.testing.assert_array_equal(measured.evaluate(times, [[0., 0., 0.]])[:, 0],
+                                  [2., 1.5, 1., 1.5])
+    rigid = xt.mechanics.RigidMotion([0., 1.], np.array([[1.]*6, [2.]*6]))
+    np.testing.assert_array_equal(rigid.evaluate(times, [[0., 0., 0.]])[:, 0, 0],
+                                  [2., 1.5, 1., 1.5])
+
+
+def test_motion_records_require_at_least_one_receiver():
+    with pytest.raises(ValueError, match='Rigid values'):
+        xt.mechanics.RigidMotion([0., 1.], np.zeros((2, 0, 6)))
+    with pytest.raises(ValueError, match='displacement samples'):
+        xt.mechanics.MeasuredMotion([0., 1.], np.zeros((2, 0)))
+    with pytest.raises(ValueError, match='receiver XYZ'):
+        xt.mechanics.FieldMotion([0., 1.], np.zeros((0, 3)), np.zeros((2, 0, 3)))
+
+
+def test_static_alignment_coordinates_are_scalar():
+    offsets = [np.zeros(1) for _ in range(6)]
+    with pytest.raises(ValueError, match='scalar coordinates'):
+        xt.mechanics.RigidOffset(*offsets).values()
+
+    env = xt.Environment()
+    body = env.mechanics.new_body('body', anchor=xt.Frame())
+    for field, value in zip(xt.mechanics.motion.COORDINATES, offsets):
+        setattr(body, field, value)
+    with pytest.raises(ValueError, match='scalar coordinates'):
+        env.mechanics.get_table()
+
+
+def test_spectral_ground_motion_requires_a_correlation_length():
+    with pytest.raises(ValueError, match='correlation_length_m'):
+        xt.mechanics.SpectralGroundMotion([1., 2.], [1., 1.], 1, None)
+
+
+@pytest.mark.parametrize('factory, field', [
+    (lambda value: xt.mechanics.Harmonic(value, 2.), 'amplitude'),
+    (lambda value: xt.mechanics.PlaneWave(1., 2., (1., 0., 0.), value), 'speed_m_s'),
+    (lambda value: xt.mechanics.DisplacementPSD([1., 2.], [1., 1.], 1, value),
+     'correlation_length_m'),
+    (lambda value: xt.mechanics.SpectralGroundMotion([1., 2.], [1., 1.], 1, value,
+                                                     n_modes=16),
+     'correlation_length_m'),
+    (lambda value: xt.mechanics.LocatedSource(xt.mechanics.Harmonic(1., 2.),
+                                             (0., 0., 0.), value, 1.), 'decay_length_m'),
+    (lambda value: xt.mechanics.GaussianRegion(xt.mechanics.Harmonic(1., 2.),
+                                              (0., 0., 0.), value), 'sigma_m'),
+    (lambda value: xt.mechanics.BaseExcitedOscillator(value, .1), 'frequency_hz'),
+    (lambda value: xt.mechanics.LoadedTwoMass(value, 2., 3., 4., 5., 6.), 'girder_mass_kg'),
+    (lambda value: xt.mechanics.CausalResponse(
+        oscillator=xt.mechanics.BaseExcitedOscillator(2., .1), sample_step_s=value),
+     'sample_step_s'),
+])
+def test_scalar_source_and_response_parameters_are_owned(factory, field):
+    value = np.array(1.)
+    source = factory(value)
+    value[...] = 2.
+    assert isinstance(getattr(source, field), float)
+    assert getattr(source, field) == 1.
+    for invalid in (np.array([1.]), np.array(True), np.array(1j), np.nan):
+        with pytest.raises(ValueError, match='finite real scalar'):
+            factory(invalid)
+
+
+@pytest.mark.parametrize('frequency', [np.nan, [np.inf], 1j, [[.5]]])
+def test_tabulated_response_rejects_invalid_frequency_queries(frequency):
+    response = xt.mechanics.TabulatedResponse([0., 1.], [1., 2.])
+    with pytest.raises(ValueError, match='finite real scalar or vector query frequencies'):
+        response.evaluate(frequency)
+    assert response.evaluate(.5) == 1.5
+    np.testing.assert_array_equal(response.evaluate([.5, 0.]), [1.5, 1.])
+
+
+def test_empty_causal_response_block_does_not_fix_channel_layout():
+    oscillator = xt.mechanics.BaseExcitedOscillator(2., .1)
+    causal = xt.mechanics.CausalResponse(oscillator=oscillator, sample_step_s=.1)
+    with pytest.raises(ValueError, match='nonempty finite real samples'):
+        causal.process(np.empty((0, 3)))
+    assert causal.get_state()['delay'] is None
+    reference = xt.mechanics.CausalResponse(oscillator=oscillator, sample_step_s=.1)
+    values = np.ones(3)
+    np.testing.assert_array_equal(causal.process(values), reference.process(values))
+    saved = causal.get_state()
+    with pytest.raises(ValueError, match='nonempty finite real samples'):
+        causal.process(np.empty(0))
+    assert causal.get_state() == saved
